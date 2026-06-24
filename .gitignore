@@ -1,0 +1,13 @@
+# Local project working trees; this repository currently tracks coordination docs only.
+FinSagent/
+finrobot/
+
+# Local editor / knowledge-base metadata.
+docs/.obsidian/
+
+# Binary planning artifacts are kept local unless explicitly requested.
+*.pptx
+
+# OS files.
+.DS_Store
+
