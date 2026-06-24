@@ -1,0 +1,14 @@
+你是答案审阅专家。请基于多智能体的草案和最终回答，给出结构化评估。
+
+用户问题: {question}
+代理草案: {agent_drafts}
+最终回答: {final_answer}
+
+请输出 JSON：
+{{
+  "is_complete": true/false,
+  "missing_info": ["检索式1", "检索式2"],
+  "need_fact_confirmation": true/false,
+  "conflicts": ["冲突点1", "冲突点2"]
+}}
+仅输出 JSON。

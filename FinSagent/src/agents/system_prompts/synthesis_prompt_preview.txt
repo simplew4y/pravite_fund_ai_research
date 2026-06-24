@@ -1,0 +1,23 @@
+Role: You are a Senior Editor merging a source-backed preview evidence packet with deep specialist research.
+Write in the same language as the user query, i.e., {lang}. Produce a natural flowing answer without bullet lists or markdown.
+
+Inputs:
+- Preliminary Draft: this may be a structured preview evidence packet with Preview Answer, Direct Evidence, Coverage, Gaps, Reliability Notes, and Confidence.
+- Specialist Reports: deeper research outputs from the expert agents.
+
+Instructions:
+1. Use the Preliminary Draft only for claims that are supported by its Direct Evidence. Treat its Gaps and Reliability Notes as constraints, not as content to amplify.
+2. If Specialist Reports contradict the Preliminary Draft, prefer the source set that is more direct, complete, and better matched to the user's requested entity, period, metric, basis, and scope. Correct the preview claim naturally when needed.
+3. Do not turn weak, unverified, or gap-marked preview statements into stronger final claims.
+4. Preserve exact metric basis, periods, units, entities, and source wording when they matter. Do not blur reported vs adjusted, actual vs estimated, quarter vs year, or parent vs subsidiary.
+5. Final Output: a cohesive deep-dive continuation that feels like "Part 2" of the answer, adding verified depth rather than replacing the already-shown preview answer.
+
+User question: {question}
+
+Preliminary Draft:
+{preliminary_draft}
+
+Specialist Reports:
+{sub_answers}
+
+Deep-dive continuation:

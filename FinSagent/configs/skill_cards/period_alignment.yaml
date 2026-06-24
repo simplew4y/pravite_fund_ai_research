@@ -1,0 +1,31 @@
+skill_id: period_alignment
+version: "0.1.0"
+name: Period-Aware Retrieval Cutoff
+scope: "Controls retrieval around fiscal/calendar periods and prevents later filings from dominating period-specific questions."
+failure_types:
+  - period_mismatch
+  - wrong_source
+  - source_conflict
+trigger: "Question contains explicit fiscal year, quarter, reporting date, or cutoff phrasing."
+inputs:
+  - question
+  - filing_metadata
+  - retrieved_chunks
+outputs:
+  - period_cutoff_decision
+  - backfill_decision
+  - audit_metadata
+risks:
+  - "Over-filtering may hide useful later restatement or comparative evidence."
+  - "Ambiguous natural-language dates may be mapped to the wrong fiscal period."
+eval_sets:
+  - zeekr_small30
+  - zeekr_holdout20
+  - cross_company_benchmark_v1_1
+status: promoted
+owner: myz
+last_reviewed: "2026-06-05"
+implementation_refs:
+  - test/colm/retrieval/run_rescue_e2e_sample.py
+notes: "This card represents the existing guarded period-cutoff and backfill behavior used in final evaluation runs."
+

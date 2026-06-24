@@ -1,0 +1,88 @@
+proposals:
+- candidate_id: qa_kp_000015_general_period_source_arbitration
+  candidate_skill_name: general_period_source_arbitration
+  observed_failures:
+  - 'source_conflict (high): source_conflict skill trace triggered, indicating conflicting
+    retrieved source periods or interpretations. Evidence: {''filename'': ''20250126_10-K_base_final.json'',
+    ''matched_phrase'': ''Data Center revenue in China grew in fiscal year 2025''}'
+  - 'period_mismatch (high): The repair reason indicates a period/source conflict
+    for a period-specific question. Evidence: period_source_conflict_nvidia_fy2025_export_control'
+  - 'source_conflict (high): Run row indicates period_source_conflict repair was applied.
+    Evidence: {''filename'': ''20250126_10-K_base_final.json'', ''matched_phrase'':
+    ''Data Center revenue in China grew in fiscal year 2025''}'
+  - 'period_mismatch (high): A 2025-period question is associated with later H20/FY2026/April
+    2025 disclosure markers. Evidence: H20, 2026财年, 2025年4月9日, 45亿美元, 实质上'
+  - 'wrong_source (medium): Top retrieval preview contains later filings that may
+    conflict with the requested period framing. Evidence: 20251026_10-Q_base_final.json,
+    20251026_10-Q_base_final.json, 20250427_10-Q_base_final.json'
+  - 'wrong_source (medium): Retrieval preview includes sources from a different company
+    corpus. Evidence: /root/autodl-tmp/RAG_Agent_data/lotus/20250701/filtered_pdf_processed_table/Lotus
+    20-F 20250430_table_reconstructed.json, /root/autodl-tmp/RAG_Agent_data/lotus/20250701/filtered_pdf_processed_table/Lotus
+    424B3 20240925_table_reconstructed.json'
+  failure_types:
+  - source_conflict
+  - period_mismatch
+  - wrong_source
+  hypothesis: Period-specific SEC questions fail when later filings or later event
+    disclosures are retrieved together with period-compatible filings, and the answer
+    mixes the later evidence into the requested period.
+  proposed_trigger: Question contains a fiscal/calendar period and retrieval preview
+    contains both period-compatible sources and later-dated sources with conflict
+    markers such as H20, new export licenses, restatements, or later inventory charges.
+  proposed_action: Rank or gate answer evidence by period compatibility; require at
+    least one period-compatible supporting span before rewriting or qualifying the
+    answer. Preserve later disclosures as later-period context instead of letting
+    them dominate.
+  risks:
+  - May hide legitimate later restatement evidence if period compatibility is too
+    strict.
+  - Needs company-independent period parsing before promotion.
+  - Could overfit to the NVIDIA H20 case unless tested across other source-conflict
+    questions.
+  required_tests:
+  - NVIDIA q15 remains correct with repair trace.
+  - Lotus and Zeekr cross-company benchmark do not regress.
+  - At least three additional fiscal-period conflict probes from different filings
+    are manually reviewed.
+  - Gate verifies later-period context is preserved when the question explicitly asks
+    for latest status.
+  suggested_status: proposed
+  source_failure_report: test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_failure_report.json
+  human_review_required: true
+  notes: This generalizes the existing narrow NVIDIA source_conflict repair into a
+    governed skill proposal.
+  metadata:
+    qid: qa_kp_000015
+- candidate_id: qa_kp_000015_cross_company_source_guard
+  candidate_skill_name: cross_company_source_guard
+  observed_failures:
+  - 'wrong_source (medium): Top retrieval preview contains later filings that may
+    conflict with the requested period framing. Evidence: 20251026_10-Q_base_final.json,
+    20251026_10-Q_base_final.json, 20250427_10-Q_base_final.json'
+  - 'wrong_source (medium): Retrieval preview includes sources from a different company
+    corpus. Evidence: /root/autodl-tmp/RAG_Agent_data/lotus/20250701/filtered_pdf_processed_table/Lotus
+    20-F 20250430_table_reconstructed.json, /root/autodl-tmp/RAG_Agent_data/lotus/20250701/filtered_pdf_processed_table/Lotus
+    424B3 20240925_table_reconstructed.json'
+  failure_types:
+  - wrong_source
+  hypothesis: Fallback or table retrieval can leak evidence from another company corpus
+    when multiple company datasets coexist on the same server or config path.
+  proposed_trigger: Question/company hint differs from source path, filename, or collection
+    metadata in top retrieved chunks or table fallback chunks.
+  proposed_action: Add a preview-time and retrieval-time guard that flags or filters
+    chunks whose source company conflicts with the question company, unless explicitly
+    requested as a cross-company comparison.
+  risks:
+  - Naive path matching may block legitimate peer-comparison questions.
+  - Company aliases must be maintained in company_profiles rather than hard-coded
+    globally.
+  required_tests:
+  - NVIDIA q15 preview no longer includes Lotus table fallback chunks.
+  - Cross-company comparison questions can opt out of the guard.
+  - Zeekr, Lotus, and NVIDIA sanity sets show no retrieval regressions.
+  suggested_status: proposed
+  source_failure_report: test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_failure_report.json
+  human_review_required: true
+  notes: This candidate came from diagnosis, not manual answer reverse-engineering.
+  metadata:
+    qid: qa_kp_000015

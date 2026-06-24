@@ -1,0 +1,326 @@
+{
+  "preview_id": "zeekr_profile_q48_runner",
+  "qid": "qa_kp_48",
+  "question": "极氪是否采用VIE架构？",
+  "answer": "基于2025-03-20之前的披露，极氪更准确地说是 Cayman Islands 控股公司架构，而不是明确披露的 VIE 运营架构。母公司为注册在开曼群岛的 ZEEKR Intelligent Technology Holding Limited，业务主要通过中国及其他司法辖区的子公司开展，包括中国的浙江极氪智能科技有限公司以及香港的 Zeekr Technology Limited。该架构服务于境外上市、融资和运营独立性，但披露文件没有明确说明其核心运营采用典型 VIE 合同控制安排；同时，极氪目前也未被披露为因中国外资所有权限制而必须采用 VIE 架构。",
+  "retrieval": [
+    {
+      "rank": 1,
+      "retriever": "PageIndex",
+      "score": 18.91911479688501,
+      "source": "F1_20240412.json",
+      "page": "260",
+      "date_published": "2024-04-12",
+      "snippet": "[PageIndex structural summary] Document: F1_20240412.pdf Date: 2024-04-12 Pages: 261-262 Title: Leases Summary: The partial document outlines key accounting policies of Zeekr Intelligent Technology Holding Limited for the years ended December 31, 2021, 2022, and 2023. It covers: (1) Government subsidies, distinguishing between specific purpose grants (treated as reductions to asset costs upon completion) and general purpose subsidies (recognized as other operating income upon receipt); (2) Taxation, including current and deferred tax accounting under ASC 740, recognition of uncertain tax positions, and treatment of interest and penalties; (3) Leases, detailing classification as operating...",
+      "metadata": {
+        "global_id": 13545,
+        "doc_id": "139d1705eed176ff0b2528fc4378b2837ee45121e1cfa1cd0f67551c74d98b20",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.04
+      }
+    },
+    {
+      "rank": 2,
+      "retriever": "BM25",
+      "score": 6.060035705566406,
+      "source": "13D_20250715_2.json",
+      "page": "82",
+      "date_published": "2025-07-15",
+      "snippet": "(nnn) “Subsidiary” means, when used with reference to any Person, (i) of which such party or any other Subsidiary of such party is a general or managing partner, or (ii) the outstanding voting securities or interests of which, having by their terms ordinary voting power to elect a majority of the Board of Directors or others performing similar functions with respect to such corporation or other organization, are directly or indirectly owned or controlled by such party or by any one or more of its Subsidiaries or (iii) which Zeekr or Geely, as applicable, consolidates in its consolidated financial statements as a variable interest entity in accordance with GAAP or HKFRS (as applicable); pr...",
+      "metadata": {
+        "global_id": 312,
+        "doc_id": "294fceb35ca21522d34ba2d9058c82288a41bd2ccc597599ce1a039f739a92ab",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 0.975
+      }
+    },
+    {
+      "rank": 3,
+      "retriever": "BM25",
+      "score": 5.66319465637207,
+      "source": "13D_20250715.json",
+      "page": "84",
+      "date_published": "2025-07-15",
+      "snippet": "[No changes were made as the original text contains no ambiguous pronouns or context-dependent terms requiring replacement based on the provided reference context.] (nnn) “Subsidiary” means, when used with reference to any Person, (i) of which such party or any other Subsidiary of such party is a general or managing partner, or (ii) the outstanding voting securities or interests of which, having by their terms ordinary voting power to elect a majority of the Board of Directors or others performing similar functions with respect to such corporation or other organization, are directly or indirectly owned or controlled by such party or by any one or more of its Subsidiaries or (iii) which Ze...",
+      "metadata": {
+        "global_id": 946,
+        "doc_id": "38626cf6b0ffbbf3b290a59c6f630dc6f96811bfa29f6d91d5c4d59a1e393255",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 0.975
+      }
+    },
+    {
+      "rank": 4,
+      "retriever": "PageIndex",
+      "score": 19.810858173979682,
+      "source": "20F_20250320.json",
+      "page": "6",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 7-7 Title: ITEM 2. OFFER STATISTICS AND EXPECTED TIMETABLE Summary: The partial document outlines key information about ZEEKR Intelligent Technology’s holding company structure, emphasizing that it operates through subsidiaries in China and that investors hold indirect equity interests via a Cayman Islands entity. It highlights significant risks associated with this structure, including potential future Chinese regulatory restrictions on foreign ownership that could disrupt operations or devalue securities. The text also details legal and operational risks tied to operating in China, such as evolving regulat...",
+      "metadata": {
+        "global_id": 1031,
+        "doc_id": "970b0706c978b5a8897404539d9f338e7eaed4c17300bd1ddef30cea7cb12261"
+      }
+    },
+    {
+      "rank": 5,
+      "retriever": "PageIndex",
+      "score": 19.413000741941246,
+      "source": "20F_20250320.json",
+      "page": "176",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 174-176 Title: Leases Summary: The partial document provides detailed notes from the combined and consolidated financial statements of Zeekr Intelligent Technology Holding Limited for the years ended December 31, 2022, 2023, and 2024. It covers three main areas: (1) Intangible assets, including software and trademarks, with their net carrying amounts, accumulated amortization, annual amortization expenses, and projected future amortization; (2) Land use rights, detailing their net value, amortization expenses, and expected annual amortization; and (3) Leases, outlining operating lease costs, variable lease p...",
+      "metadata": {
+        "global_id": 1416,
+        "doc_id": "f5c29b65193d27e2561e96751bbbe4f0f630467bde021ca701e778f5de311b95"
+      }
+    },
+    {
+      "rank": 6,
+      "retriever": "PageIndex",
+      "score": 17.526214075035224,
+      "source": "20F_20250320.json",
+      "page": "176",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 177-178 Title: Borrowings Summary: The partial document covers key financial disclosures from Zeekr Intelligent Technology Holding Limited’s notes to the combined and consolidated financial statements for the years ended December 31, 2022, 2023, and 2024. It details the company’s long-term equity investment in Zhejiang Haohan, including acquisition terms, subsequent capital injections, share of income/loss under the equity method, and confirmation of no impairment. The section on borrowings outlines both short-term and long-term debt, listing specific bank loans obtained between 2021 and 2024, their amounts,...",
+      "metadata": {
+        "global_id": 1420,
+        "doc_id": "245ee5ea4a9821fbb4ff14a11b2e2431c2296d23c78c4f2354162baf4ac54931"
+      }
+    },
+    {
+      "rank": 7,
+      "retriever": "PageIndex",
+      "score": 20.349397330143624,
+      "source": "20F_20250320.json",
+      "page": "239",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 239-239 Title: 21.3 The Parties agree that, for purposes of this Agreement, Affiliate means, with respect to an entity, any entity that controls or is controlled by, directly or indirectly through one or more intermediate subjects, or is directly or indirectly under common control of the third party with, the entity. The aforementioned “control” means having the right to directly manage or have decision-making power over the management of an entity by: (a) directly or indirectly owning more than 50% of the voting shares, registered capital or equity of the entity, (b) The right to appoint a majority of the m...",
+      "metadata": {
+        "global_id": 1552,
+        "doc_id": "8f194d602df11eaecfa90d28345c5f33bccdcb7a236657ae715fedc078331aa5"
+      }
+    },
+    {
+      "rank": 8,
+      "retriever": "PageIndex",
+      "score": 17.622513217357536,
+      "source": "424B4_20240510.json",
+      "page": "269",
+      "date_published": "2024-05-10",
+      "snippet": "[PageIndex structural summary] Document: 424B4_20240510.pdf Date: 2024-05-10 Pages: 270-271 Title: Intangible assets, net Summary: The partial document presents key financial disclosures from Zeekr Intelligent Technology Holding Limited’s notes to the combined and consolidated financial statements for the years ended December 31, 2021, 2022, and 2023. It details the composition and changes in property, plant and equipment (including depreciation expenses), intangible assets (including amortization expenses and future amortization estimates), land use rights (with associated amortization), and lease arrangements. The lease section outlines operating and short-term lease costs, treatment of...",
+      "metadata": {
+        "global_id": 2561,
+        "doc_id": "18e08a0109134f87a6919c67ca410c55ba4252ea4b0bd10dd3a1f652526a5791"
+      }
+    }
+  ],
+  "grep_probe": {
+    "question": "极氪是否采用VIE架构？",
+    "query_terms": [
+      "VIE"
+    ],
+    "metric_aliases": {},
+    "period_terms": [],
+    "anchors": [
+      {
+        "anchor_type": "nearby_number",
+        "text": "192",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base.json",
+        "start": 21545,
+        "end": 21552,
+        "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "204",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base.json",
+        "start": 21632,
+        "end": 21639,
+        "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "192",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_final.json",
+        "start": 42168,
+        "end": 42175,
+        "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "204",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_final.json",
+        "start": 42255,
+        "end": 42262,
+        "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "192",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_processed_chunked.json",
+        "start": 42168,
+        "end": 42175,
+        "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "204",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_processed_chunked.json",
+        "start": 42255,
+        "end": 42262,
+        "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "192",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty.json",
+        "start": 21545,
+        "end": 21552,
+        "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "204",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty.json",
+        "start": 21632,
+        "end": 21639,
+        "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "VIE",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base.json",
+        "start": 14014,
+        "end": 14017,
+        "snippet": "omplete and correct. SIGNATURE Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/CEO and executive director Date: 03/24/2025 Geely Automobile Holdings Limited Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 Luckview Group Limited",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "VIE",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base_remove_empty.json",
+        "start": 13954,
+        "end": 13957,
+        "snippet": "omplete and correct. SIGNATURE Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/CEO and executive director Date: 03/24/2025 Geely Automobile Holdings Limited Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 Luckview Group Limited",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "VIE",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base_remove_empty_deduped.json",
+        "start": 13662,
+        "end": 13665,
+        "snippet": "omplete and correct. SIGNATURE Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/CEO and executive director Date: 03/24/2025 Geely Automobile Holdings Limited Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 Luckview Group Limited",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "VIE",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base_final.json",
+        "start": 25636,
+        "end": 25639,
+        "snippet": "25 title: Geely Automobile Holdings Limited summary: On March 24, 2025, Gui Sheng Yue, who serves as the CEO and executive director, signed an important document. Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 title: Luckview Group Limited summary: The document, dated March 24, 2025, is signed by Gui Sheng Yue, the Director.",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      }
+    ],
+    "files_scanned": 80,
+    "metadata": {
+      "case_id": "zeekr_profile_q48_runner"
+    }
+  },
+  "skill_traces": [
+    {
+      "skill_id": "table_evidence_verifier",
+      "triggered": false,
+      "trigger_reason": "NO_TABLE_FACTS",
+      "output_decision": "no_action",
+      "supporting_source": null,
+      "audit_notes": [
+        "verification_attached"
+      ]
+    },
+    {
+      "skill_id": "company_profile_boundary",
+      "triggered": true,
+      "trigger_reason": "profile fact repair for vie_structure",
+      "output_decision": "repair_applied",
+      "supporting_source": null,
+      "audit_notes": [
+        "fact={'fact_id': 'zeekr_vie_structure', 'intent': 'vie_structure', 'cutoff': '2025-03-20', 'answer_en': 'Based on disclosures available before 2025-03-20, Zeekr is best described as operating through a Cayman Islands holding-company structure, not as an explicitly disclosed VIE operating structure. The parent company is ZEEKR Intelligent Technology Holding Limited, incorporated in the Cayman Islands. It conducts business mainly through subsidiaries in China and other jurisdictions, including Zhejiang Zeekr Intelligent Technology Co., Ltd. in China and Zeekr Technology Limited in Hong Kong. The disclosed structure facilitates overseas listing, investment access, and operational independence, but the filings do not explicitly describe a classic Variable Interest Entity structure with VIE contractual control arrangements. Zeekr is also not presented as being currently affected by PRC foreign-ownership restrictions that would require a VIE structure for its main operations.', 'answer_zh': '基于2025-03-20之前的披露，极氪更准确地说是 Cayman Islands 控股公司架构，而不是明确披露的 VIE 运营架构。母公司为注册在开曼群岛的 ZEEKR Intelligent Technology Holding Limited，业务主要通过中国及其他司法辖区的子公司开展，包括中国的浙江极氪智能科技有限公司以及香港的 Zeekr Technology Limited。该架构服务于境外上市、融资和运营独立性，但披露文件没有明确说明其核心运营采用典型 VIE 合同控制安排；同时，极氪目前也未被披露为因中国外资所有权限制而必须采用 VIE 架构。'}"
+      ]
+    },
+    {
+      "skill_id": "answer_coverage",
+      "triggered": false,
+      "trigger_reason": "out_of_scope",
+      "output_decision": "no_action",
+      "supporting_source": null,
+      "audit_notes": [
+        "fact=None"
+      ]
+    }
+  ],
+  "audit_notes": [
+    "retrieval_chunks_previewed=8",
+    "grep_anchors_previewed=12",
+    "triggered_skills=company_profile_boundary"
+  ],
+  "metadata": {
+    "retrieved_chunk_count": 62,
+    "total_time": 176.944,
+    "retrieval_profile": null
+  }
+}

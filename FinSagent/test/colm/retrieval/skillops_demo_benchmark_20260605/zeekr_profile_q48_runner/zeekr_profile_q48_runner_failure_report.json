@@ -1,0 +1,25 @@
+{
+  "qid": "qa_kp_48",
+  "question": "极氪是否采用VIE架构？",
+  "primary_failure_type": "profile_boundary_error",
+  "confidence": 0.6900000000000001,
+  "signals": [
+    {
+      "failure_type": "profile_boundary_error",
+      "severity": "medium",
+      "evidence": "{'skill_id': 'company_profile_boundary', 'triggered': True, 'trigger_reason': 'profile fact repair for vie_structure', 'output_decision': 'repair_applied', 'supporting_source': None, 'audit_notes': [\"fact={'fact_id': 'zeekr_vie_structure', 'intent': 'vie_structure', 'answer_zh': '基于披露，极氪更准确地说是 Cayman Islands 控股公司架构，而不是明确披露的 VIE 运营架构。'}\"]}",
+      "rationale": "Profile boundary repair trace triggered."
+    }
+  ],
+  "suggested_next_action": "Move stable profile assumptions into reviewed company profile metadata with explicit scope.",
+  "audit_notes": [
+    "rule_based_explainer",
+    "signals=1"
+  ],
+  "metadata": {
+    "preview_id": "zeekr_profile_q48_runner",
+    "retrieved_chunk_count": 62,
+    "grep_anchor_count": 12,
+    "skill_trace_count": 1
+  }
+}

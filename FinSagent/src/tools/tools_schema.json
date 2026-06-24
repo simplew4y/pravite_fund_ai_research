@@ -1,0 +1,175 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_stock_price",
+      "description": "Look up by a company ticker, then get the current stock price.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', 'ZK'"
+          }
+        },
+        "required": ["ticker"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_ipo_info",
+      "description": "Look up IPO information by stock ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          }
+        },
+        "required": ["ticker"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "company_profile",
+      "description": "Retrieve a public company's profile using a stock ticker symbol, including company name, ticker, country, currency, exchange, industry, IPO date, market capitalization, shares outstanding, website, phone number, and logo URL.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          }
+        },
+        "required": ["symbol"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "company_news",
+      "description": "Get recent company news headlines and summaries by stock ticker symbol over a date range.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          },
+          "from_date": {
+            "type": "string",
+            "description": "Optional start date in YYYY-MM-DD format."
+          },
+          "to_date": {
+            "type": "string",
+            "description": "Optional end date in YYYY-MM-DD format."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of news items to return."
+          }
+        },
+        "required": ["symbol"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "basic_financials",
+      "description": "Get company basic financials, including snapshot metrics such as eps, margin, enterprise value, P/E ratio, 52-week high/low etc; and annual/quarterly metrics",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', 'ZK'"
+          }
+        },
+        "required": ["symbol"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "stock_snapshot",
+      "description": "Get a compact stock market snapshot by stock ticker symbol, including current price, one-month move, market cap, PE, and 52-week range.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          }
+        },
+        "required": ["symbol"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "price_history",
+      "description": "Get historical OHLCV price data from Yahoo Finance by stock ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          },
+          "period": {
+            "type": "string",
+            "description": "History window such as '5d', '1mo', '3mo', '6mo', '1y', or '5y'."
+          },
+          "interval": {
+            "type": "string",
+            "description": "Sampling interval such as '1d', '1wk', or '1mo'."
+          },
+          "max_points": {
+            "type": "integer",
+            "description": "Maximum number of returned rows."
+          }
+        },
+        "required": ["symbol"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "sec_company_concept",
+      "description": "Fetch a single US-GAAP financial concept for a company directly from the SEC XBRL API. Use this when the user asks about income statement or balance sheet line items (revenue, gross profit, operating income, net income, assets, liabilities, cash). Returns up to 20 most recent annual and quarterly filings for the requested concept. The cik must be looked up from the company registry.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cik": {
+            "type": "string",
+            "description": "The company's SEC CIK number, e.g. '0001954042' for Zeekr. Look up from the company registry."
+          },
+          "concept": {
+            "type": "string",
+            "enum": [
+              "CostOfRevenue",
+              "GrossProfit",
+              "OperatingIncomeLoss",
+              "NetIncomeLoss",
+              "Assets",
+              "Liabilities",
+              "CashAndCashEquivalentsAtCarryingValue"
+            ],
+            "description": "The US-GAAP concept to retrieve. Choose based on the user's question: revenue/sales → GrossProfit or CostOfRevenue; profit → NetIncomeLoss or OperatingIncomeLoss; balance sheet → Assets or Liabilities; liquidity → CashAndCashEquivalentsAtCarryingValue."
+          }
+        },
+        "required": ["cik", "concept"]
+      }
+    }
+  }
+]

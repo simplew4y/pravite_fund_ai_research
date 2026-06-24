@@ -1,0 +1,347 @@
+{
+  "question": "NVIDIA在2025年如何描述出口管制对中国Data Center业务的影响？",
+  "query_terms": [
+    "export controls",
+    "export control",
+    "license",
+    "China",
+    "Chinese",
+    "Data Center",
+    "NVIDIA",
+    "2025",
+    "Data",
+    "Center"
+  ],
+  "metric_aliases": {},
+  "period_terms": [],
+  "anchors": [
+    {
+      "anchor_type": "nearby_number",
+      "text": "$4.5 billion",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250427_10-Q/base_final.json",
+      "start": 90914,
+      "end": 90926,
+      "snippet": "mpanies headquartered or with an ultimate parent therein, of NVIDIA's H20 integrated circuits and any other circuits achieving the H20’s memory bandwidth, interconnect bandwidth, or combination thereof. As a result of these new requirements, NVIDIA incurred a $4.5 billion charge in the first quarter of fiscal year 2026 associated with H20 excess inventory and purchase obligations as the demand for H20 products diminished. The $4.5 billion charge was less than what NVIDIA initially anticipated as NVIDIA was able...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "China",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "36,000",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 39080,
+      "end": 39087,
+      "snippet": "foreign government regulations. Sustainability efforts include the Earth-2 initiative to create a digital twin of Earth for climate change predictions and adaptation strategies. Human capital management emphasizes employees as a key asset, with approximately 36,000 employees globally—27,100 in R&D and 8,900 in sales, marketing, operations, and administration—overseen by the Compensation Committee. Workforce demographics show 78% male, 21% female, and 1% not declared, with 6% of U.S. employees being Black or Afri...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "license",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "27,100",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 39106,
+      "end": 39113,
+      "snippet": "tions. Sustainability efforts include the Earth-2 initiative to create a digital twin of Earth for climate change predictions and adaptation strategies. Human capital management emphasizes employees as a key asset, with approximately 36,000 employees globally—27,100 in R&D and 8,900 in sales, marketing, operations, and administration—overseen by the Compensation Committee. Workforce demographics show 78% male, 21% female, and 1% not declared, with 6% of U.S. employees being Black or African American and Hispanic...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "license",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "8,900",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 39124,
+      "end": 39130,
+      "snippet": "ity efforts include the Earth-2 initiative to create a digital twin of Earth for climate change predictions and adaptation strategies. Human capital management emphasizes employees as a key asset, with approximately 36,000 employees globally—27,100 in R&D and 8,900 in sales, marketing, operations, and administration—overseen by the Compensation Committee. Workforce demographics show 78% male, 21% female, and 1% not declared, with 6% of U.S. employees being Black or African American and Hispanic or Latino. The co...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "license",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2788",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 701,
+      "end": 706,
+      "snippet": "aware # NVIDIA CORPORATION (State or other jurisdiction of # NVIDIA CORPORATION incorporation or organization) # NVIDIA CORPORATION 94-3177549 # NVIDIA CORPORATION (I.R.S. Employer # NVIDIA CORPORATION (I.R.S. Employer Identification No.) # NVIDIA CORPORATION 2788 San Tomas Expressway, Santa Clara, California # NVIDIA CORPORATION (Address of principal executive offices of NVIDIA CORPORATION) title: nvidia > 20250126_10-K summary: This section comprises the cover page and introductory portions of NVIDIA Corporati...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "NVIDIA",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "405",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 3321,
+      "end": 3325,
+      "snippet": "uired to file such reports), and (2) has been subject to such filing requirements for the past 90 days. Yes ☒ No ☐ Indicate by check mark whether the registrant has submitted electronically every Interactive Data File required to be submitted pursuant to Rule 405 of Regulation S-T (§232.405 of this chapter) during the preceding 12 months (or for such shorter period that the registrant was required to submit such files). Yes ☒ No ☐ Indicate by check mark whether the registrant is a large accelerated filer, an acc...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "232.405",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 3345,
+      "end": 3353,
+      "snippet": "ts), and (2) has been subject to such filing requirements for the past 90 days. Yes ☒ No ☐ Indicate by check mark whether the registrant has submitted electronically every Interactive Data File required to be submitted pursuant to Rule 405 of Regulation S-T (§232.405 of this chapter) during the preceding 12 months (or for such shorter period that the registrant was required to submit such files). Yes ☒ No ☐ Indicate by check mark whether the registrant is a large accelerated filer, an accelerated filer, a non-ac...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2025042",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250427_10-Q/base_final.json",
+      "start": 92001,
+      "end": 92009,
+      "snippet": "e of a chip, the “performance density” of a chip, the interconnect bandwidth of a chip, and the memory bandwidth of a chip. NVIDIA may be unable to create a competitive product for China’s data center market that receives approval from the USG. title: nvidia > 20250427_10-Q > Part I. Financial Information > Item 2. Management's Discussion and Analysis of Financial Condition and Results of Operations > Recent Developments, Future Objectives and Challenges summary: NVIDIA’s recent developments and future objective...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export control",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "export controls",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 96550,
+      "end": 96565,
+      "snippet": "NVIDIA’s competitive position and may continue to do so if further changes occur, potentially excluding the company from markets such as China and Tier 2 countries, while also raising risks related to supply chain concentration and import restrictions. Beyond export controls, compliance with a wide range of other governmental regulations could increase costs and materially impact the company’s business, financial condition, and results of operations. Blackwell systems, such as GB200 NVL 72 and NVL 36 as well as...",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "export controls",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 99424,
+      "end": 99439,
+      "snippet": "NVIDIA’s competitive position and may continue to do so if further changes occur, potentially excluding the company from markets such as China and Tier 2 countries, while also raising risks related to supply chain concentration and import restrictions. Beyond export controls, compliance with a wide range of other governmental regulations could increase costs and materially impact the company’s business, financial condition, and results of operations. NVIDIA's competitive position has been harmed by the existing...",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "export controls",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 281973,
+      "end": 281988,
+      "snippet": "which will be subject to new compliance burdens and related extraterritorial regulatory obligations. The AI Diffusion IFR would expose U.S. providers and the U.S. industry to an enhanced risk of retaliation from other countries, in the form of tariffs, import/export controls, or other regulatory actions. title: nvidia > 20250126_10-K > Part I > Item 1A. Risk Factors > Risk Factors > Risks Related to Regulatory, Legal, Our Stock and Other Matters summary: NVIDIA faces extensive and complex regulatory, legal, and...",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "export controls",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 293824,
+      "end": 293839,
+      "snippet": "ve a greater impact on NVIDIA's ability to compete in markets subject to those controls. Export controls may disrupt NVIDIA's supply and distribution chain for a substantial portion of NVIDIA's products, which are warehoused in and distributed from Hong Kong. Export controls restricting NVIDIA's ability to sell data center GPUs may also negatively impact demand for NVIDIA's networking products used in servers containing NVIDIA's GPUs. The USG may also impose export controls on NVIDIA's networking products, such...",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "export controls",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 294027,
+      "end": 294042,
+      "snippet": "which are warehoused in and distributed from Hong Kong. Export controls restricting NVIDIA's ability to sell data center GPUs may also negatively impact demand for NVIDIA's networking products used in servers containing NVIDIA's GPUs. The USG may also impose export controls on NVIDIA's networking products, such as high-speed network interconnects, to limit the ability of downstream parties to create large clusters for frontier model training. Any new control that impacts a wider range of NVIDIA's products would...",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "export controls",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250126_10-K/base_final.json",
+      "start": 294483,
+      "end": 294498,
+      "snippet": "control that impacts a wider range of NVIDIA's products would likely have a disproportionate impact on NVIDIA and may disadvantage NVIDIA against certain of NVIDIA's competitors that sell chips that are outside the scope of such control. Excessive or shifting export controls have already and may in the future encourage customers outside China and other impacted regions to “design-out” certain U.S. semiconductors from their products to reduce the compliance burden and risk, and to ensure that these customers are...",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$29.8 billion",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250427_10-Q/base_final.json",
+      "start": 44815,
+      "end": 44828,
+      "snippet": "ncluding long-term supply and capacity agreements, certain software and technology licenses, other goods and services and long-lived assets. As of April 27, 2025, nvidia had outstanding inventory purchase and long-term supply and capacity obligations totaling $29.8 billion, an increase from the prior year led by commitments, capacity and components for nvidia's Blackwell architecture. nvidia enters into agreements with contract manufacturers that allow the contract manufacturers to procure inventory based upon n...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "license",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$7.4 billion",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250427_10-Q/base_final.json",
+      "start": 20754,
+      "end": 20766,
+      "snippet": "bes that the CEO, as CODM, assesses performance based on segment revenue and operating income. Note 14 outlines operating lease obligations, primarily for headquarters and data centers, expiring through fiscal 2041, with expected future lease commencements of $7.4 billion between the second quarter of fiscal 2026 and fiscal 2030. The effective tax rate increased primarily due to a lower tax benefit from stock-based compensation, partially offset by an increase in tax benefit from the foreign-derived intangible i...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data Center",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2788",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250427_10-Q/base_final.json",
+      "start": 596,
+      "end": 601,
+      "snippet": "IDIA. # NVIDIA CORPORATION (Exact name of registrant as specified in NVIDIA's charter) # NVIDIA CORPORATION Delaware # NVIDIA CORPORATION (Delaware) # NVIDIA CORPORATION 94-3177549 # NVIDIA CORPORATION (I.R.S. Employer Identification No.) # NVIDIA CORPORATION 2788 San Tomas Expressway, Santa Clara, California (Address of principal executive offices of NVIDIA Corporation) title: nvidia > 20250427_10-Q summary: This section contains the cover page and closing administrative details of NVIDIA Corporation’s Form 10-...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "NVIDIA",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "405",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250427_10-Q/base_final.json",
+      "start": 2440,
+      "end": 2444,
+      "snippet": "uired to file such reports), and (2) has been subject to such filing requirements for the past 90 days. Yes ☒ No ☐ Indicate by check mark whether the registrant has submitted electronically every Interactive Data File required to be submitted pursuant to Rule 405 of Regulation S-T (§232.405 of this chapter) during the preceding 12 months (or for such shorter period that the registrant was required to submit such files). Yes ☒ No ☐ Indicate by check mark whether the registrant is a large accelerated filer, an acc...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "232.405",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20250427_10-Q/base_final.json",
+      "start": 2464,
+      "end": 2472,
+      "snippet": "ts), and (2) has been subject to such filing requirements for the past 90 days. Yes ☒ No ☐ Indicate by check mark whether the registrant has submitted electronically every Interactive Data File required to be submitted pursuant to Rule 405 of Regulation S-T (§232.405 of this chapter) during the preceding 12 months (or for such shorter period that the registrant was required to submit such files). Yes ☒ No ☐ Indicate by check mark whether the registrant is a large accelerated filer, an accelerated filer, a non-ac...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$4.5 billion",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20251026_10-Q/base_final.json",
+      "start": 93812,
+      "end": 93824,
+      "snippet": "e, including the Blackwell Ultra platform, while navigating significant supply-side constraints in data center availability, energy capacity, and customer access to capital. Export controls introduce material uncertainty and financial impact, highlighted by a $4.5 billion charge tied to H20 licensing requirements for China and the potential for new restrictions from a replacement to the rescinded AI Diffusion rule. The company is also managing the complexity of product transitions, which can cause revenue volati...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export controls",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "12%",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20251026_10-Q/base_final.json",
+      "start": 21955,
+      "end": 21958,
+      "snippet": "85 million in the first nine months of fiscal 2026 and 2025 that had been included in prior year-end deferred revenue. Note 13 on segment information notes that in the third quarter and first nine months of fiscal 2025, three direct customers each represented 12% or 11% of total revenue, all attributable to the Compute & Networking segment. Note 14 describes operating lease obligations primarily for offices and data centers, with expirations between fiscal years 2026 and 2041. Nvidia's effective tax rate increas...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data Center",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "11%",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20251026_10-Q/base_final.json",
+      "start": 21962,
+      "end": 21965,
+      "snippet": "ion in the first nine months of fiscal 2026 and 2025 that had been included in prior year-end deferred revenue. Note 13 on segment information notes that in the third quarter and first nine months of fiscal 2025, three direct customers each represented 12% or 11% of total revenue, all attributable to the Compute & Networking segment. Note 14 describes operating lease obligations primarily for offices and data centers, with expirations between fiscal years 2026 and 2041. Nvidia's effective tax rate increased prim...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data Center",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "21%",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20251026_10-Q/base_final.json",
+      "start": 22524,
+      "end": 22527,
+      "snippet": "ts from stock-based compensation and U.S. federal research tax credit relative to the increase in income before income tax. Nvidia's effective tax rates for the first nine months of fiscal years 2026 and 2025 were lower than the U.S. federal statutory rate of 21% primarily due to tax benefits from foreign-derived deduction eligible income, stock-based compensation, income earned in jurisdictions that are subject to taxes at rates lower than the U.S. federal statutory tax rate, and the U.S. federal research tax c...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data Center",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2788",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20251026_10-Q/base_final.json",
+      "start": 609,
+      "end": 614,
+      "snippet": "DIA CORPORATION (Exact name of registrant as specified in NVIDIA's charter) # NVIDIA CORPORATION Delaware # NVIDIA CORPORATION (Delaware) # NVIDIA CORPORATION 94-3177549 # NVIDIA CORPORATION (I.R.S. Employer Identification No. 94-3177549) # NVIDIA CORPORATION 2788 San Tomas Expressway, Santa Clara, California (Address of NVIDIA CORPORATION's principal executive offices) title: nvidia > 20251026_10-Q summary: This section of NVIDIA's Form 10-Q for the quarterly period ended October 26, 2025, identifies the filing...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "NVIDIA",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "405",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/nvidia/20260425/2_final_pdf_v2/20251026_10-Q/base_final.json",
+      "start": 2810,
+      "end": 2814,
+      "snippet": "uired to file such reports), and (2) has been subject to such filing requirements for the past 90 days. Yes ☒ No ☐ Indicate by check mark whether the registrant has submitted electronically every Interactive Data File required to be submitted pursuant to Rule 405 of Regulation S-T (§232.405 of this chapter) during the preceding 12 months (or for such shorter period that the registrant was required to submit such files). Yes ☒ No ☐ Indicate by check mark whether the registrant is a large accelerated filer, an acc...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    }
+  ],
+  "files_scanned": 3,
+  "metadata": {}
+}

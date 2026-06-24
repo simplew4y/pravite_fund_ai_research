@@ -1,0 +1,110 @@
+# Example environment variables
+
+
+# chroma, ts_chroma, bm25_index and table_chroma are required under `persist_directory`
+persist_directory: "/root/autodl-tmp/database_20250220"
+
+embeddings_model_name: "BAAI/bge-m3"
+embedding_backend: "vllm"
+embedding_vllm_url: "http://127.0.0.1:5433/v1/embeddings"
+embedding_timeout_seconds: 60
+embedding_batch_size: 32
+
+llm_model_name: "Qwen/Qwen2___5-72B-Instruct-AWQ"
+llm_base_url: "http://127.0.0.1:8000/v1"
+llm_api_key: "EMPTY"
+
+# rerank_model: '/root/autodl-tmp/RAG_Agent_vllm_hhl/src/train_reranker/FlagEmbedding/hyde_70/checkpoint-2500'
+rerank_model : 'BAAI/bge-reranker-v2-gemma'
+reranker_backend: "vllm"
+reranker_vllm_url: "http://127.0.0.1:5432/rerank"
+reranker_timeout_seconds: 60
+
+use_chunk_risk_calibration: false
+chunk_risk_model_path: "/root/autodl-tmp/cjj/FinSagent_0212/lightgbm/outputs_reduced_46804_binary/artifacts/model.pkl"
+chunk_risk_penalty_mode: "percentile_rank"
+chunk_risk_lambda: 0.2
+
+gt_path: "/root/autodl-tmp/cjj/FinSagent_0212/test/gt/lotus_109_gt.json"
+collection_name: "lotus"
+retrieve_top_k: 10
+rerank_top_k: 5
+workers: 1
+use_multi_role: false
+enable_ctx_decomp: false
+stop_after_retrieval: false
+enable_memory: false
+
+# Optional: persist chat turns to SQLite (create tables from code/session_history/schema.sql)
+# session_history_db: "/path/to/sessions.sqlite3"
+
+# PageIndex retrieval ablation.
+# off: current baseline
+# replace_bm25: use PageIndex structural retrieval instead of the BM25 branch
+# hybrid: keep BM25 and add PageIndex structural retrieval as an extra branch
+pageindex_mode: "off"
+pageindex_index_dir: null
+pageindex_top_k: 10
+pageindex_node_top_k: 10
+pageindex_max_chunks_per_node: 3
+pageindex_page_window: 0
+pageindex_include_node_summary: false
+pageindex_recency_boost: 0.0
+pageindex_final_cap: null
+pageindex_score_multiplier: 1.0
+finance_table_topk: null
+
+# Date / period controls.
+disable_external_tools: false
+retrieval_date_cutoff_enabled: false
+retrieval_date_cutoff: null
+retrieval_date_cutoff_drop_undated: false
+retrieval_auto_period_cutoff_enabled: false
+retrieval_period_cutoff_quarter_window_days: 180
+retrieval_period_cutoff_annual_window_days: 120
+retrieval_date_cutoff_backfill_enabled: true
+retrieval_date_cutoff_backfill_factor: 3
+retrieval_date_cutoff_table_backfill_factor: 3
+retrieval_date_cutoff_min_text_candidates: null
+
+# Evidence rescue / skill repair controls.
+evidence_rescue_enabled: false
+evidence_rescue_k: 2
+evidence_rescue_min_score: 0.45
+evidence_rescue_min_year: 2024
+evidence_rescue_scorer_model_path: null
+evidence_rescue_scorer_blend_alpha: 0.7
+skill_repair_table_enabled: true
+skill_repair_profile_enabled: true
+skill_repair_profile_allow_legacy_fallback: false
+skill_repair_coverage_enabled: true
+skill_repair_period_conflict_enabled: true
+# Optional company-scoped reconstructed table directory, e.g.:
+# reconstructed_table_dir: "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250729/tables"
+
+# Optional answer verifier pass. This adds one LLM call per specialist draft and is intended for
+# high-precision eval runs where hallucination suppression matters more than latency/cost.
+answer_self_check_enabled: false
+answer_self_check_max_chars: 12000
+
+# Latest data cutoff for your databases (string, e.g., "2025-02-20" or "2025")
+data_latest_time: "2025-02-20"
+
+# DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_level: 'INFO'
+
+bearer_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJsb3R1cyBhZ2VudCB0ZXN0IiwibmFtZSI6IlNpbXBsZSBXYXkiLCJpYXQiOjE1MTYyMzkwMjJ9.L1FjNCS7G5L5KSwoMBIOWX5i7VOF2yGoq31ZdoNEpSI'
+
+tool_result_filter:
+  enabled: false
+  base_url: "http://127.0.0.1:8008/v1"
+  api_key: "finsagent-niubi"
+  model: "tool-filter"
+  timeout_seconds: 20
+  max_retries: 2
+  tools_enabled:
+    - company_news
+    - basic_financials
+
+finnhub_base_url: 'https://finnhub.io/api/v1'
+finnhub_api_key: 'FINNHUB_API_KEY'

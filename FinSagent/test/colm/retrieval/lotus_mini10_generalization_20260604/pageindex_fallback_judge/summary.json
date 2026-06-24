@@ -1,0 +1,92 @@
+{
+  "overall": {
+    "evaluated_qas": 10,
+    "total_considered_after_filters": 10,
+    "verdict_counts": {
+      "CORRECT": 10,
+      "PARTIAL": 0,
+      "INCORRECT": 0,
+      "FAILURE": 0,
+      "ERROR/UNCLEAR": 0
+    },
+    "correctness_score": 5.0,
+    "likert_stats": {
+      "Information Coverage": {
+        "count": 10,
+        "average": 4.9,
+        "std": 0.3
+      },
+      "Reasoning Chain": {
+        "count": 10,
+        "average": 4.4,
+        "std": 0.4899
+      },
+      "Factual Consistency": {
+        "count": 10,
+        "average": 5.0,
+        "std": 0.0
+      },
+      "Clarity of Expression": {
+        "count": 10,
+        "average": 4.9,
+        "std": 0.3
+      },
+      "Analytical Depth": {
+        "count": 10,
+        "average": 4.5,
+        "std": 0.5
+      }
+    }
+  },
+  "by_type": {
+    "unknown": {
+      "count": 10,
+      "passed": 10,
+      "avg_ratio_sum": 9.4,
+      "with_ratio": 10,
+      "pass_rate": 1.0,
+      "avg_match_ratio": 0.94,
+      "likert_stats": {
+        "Information Coverage": {
+          "count": 10,
+          "average": 4.9,
+          "std": 0.3
+        },
+        "Reasoning Chain": {
+          "count": 10,
+          "average": 4.4,
+          "std": 0.4899
+        },
+        "Factual Consistency": {
+          "count": 10,
+          "average": 5.0,
+          "std": 0.0
+        },
+        "Clarity of Expression": {
+          "count": 10,
+          "average": 4.9,
+          "std": 0.3
+        },
+        "Analytical Depth": {
+          "count": 10,
+          "average": 4.5,
+          "std": 0.5
+        }
+      }
+    }
+  },
+  "simple_stats": {
+    "total_input_rows": 10,
+    "rows_after_tool_call_skip": 10,
+    "skipped_tool_call_questions": 0,
+    "target_indexes": [],
+    "matched_target_index_rows": 10,
+    "rows_considered": 10,
+    "skipped_unmatched_generated_answers": 0,
+    "rows_without_keypoints": 0,
+    "rows_missing_generated_answer": 0,
+    "judge_error_or_fallback_count": 0,
+    "generated_answers_matched": 10,
+    "generated_answers_unmatched": 0
+  }
+}

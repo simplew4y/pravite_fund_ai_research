@@ -1,0 +1,340 @@
+{
+  "question": "极氪是否采用VIE架构？",
+  "query_terms": [
+    "VIE"
+  ],
+  "metric_aliases": {},
+  "period_terms": [],
+  "anchors": [
+    {
+      "anchor_type": "nearby_number",
+      "text": "42.13",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 488,
+      "end": 494,
+      "snippet": "judge evaluated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8 | What kind of services does Zeekr provide other than vehicle sales? | CORRECT | 44; Waymo; 2024; RMB | | 4 | qa_kp_3 | Is Zeekr operating under VIE structure? | CORRECT | VIE; 2024 | | 5 | qa_kp_4 | 极氪的车在哪里生产？ | CORRECT |...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "19.1",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 495,
+      "end": 500,
+      "snippet": "valuated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8 | What kind of services does Zeekr provide other than vehicle sales? | CORRECT | 44; Waymo; 2024; RMB | | 4 | qa_kp_3 | Is Zeekr operating under VIE structure? | CORRECT | VIE; 2024 | | 5 | qa_kp_4 | 极氪的车在哪里生产？ | CORRECT | 2024 |...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "118",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 1080,
+      "end": 1084,
+      "snippet": "eekr have? | CORRECT | Mobileye; Waymo; 2024 | | 7 | qa_kp_7 | 吉利为什么要私有化极氪？ | CORRECT | 2024 | | 8 | qa_kp_39 | 极氪的股权架构？ | CORRECT | 2024 | | 9 | qa_kp_83 | 极氪2024年四季度的销量 | CORRECT | 2024 | | 10 | qa_kp_99 | 极氪2023年四季度毛利率 | CORRECT | 19.1; 2024 | | 11 | qa_kp_118 | Between Zeekr’s actual and pro forma figures as of June 30, 2023, did the improvement in total capitalization come more from higher paid-in capital than from changes in accumulated deficit? | CORRECT | 44; RMB | | 12 | qa_kp_133 | Is it reasonable to...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "19.1",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 1053,
+      "end": 1058,
+      "snippet": "driving partnerships does Zeekr have? | CORRECT | Mobileye; Waymo; 2024 | | 7 | qa_kp_7 | 吉利为什么要私有化极氪？ | CORRECT | 2024 | | 8 | qa_kp_39 | 极氪的股权架构？ | CORRECT | 2024 | | 9 | qa_kp_83 | 极氪2024年四季度的销量 | CORRECT | 2024 | | 10 | qa_kp_99 | 极氪2023年四季度毛利率 | CORRECT | 19.1; 2024 | | 11 | qa_kp_118 | Between Zeekr’s actual and pro forma figures as of June 30, 2023, did the improvement in total capitalization come more from higher paid-in capital than from changes in accumulated deficit? | CORRECT | 44; RMB | | 12 | qa_kp...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "0,0,0,0,,",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+      "start": 339,
+      "end": 348,
+      "snippet": "nt,required_count,missing_required_count,present_required_count,missing_required,reasons,question qa_kp_1,1,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪在中国的销售网络？ qa_kp_2,2,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的产品矩阵？ qa_kp_3,3,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,Is Zeekr operating under VIE structure? qa_kp_4,4,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "0,0,0,0,,",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+      "start": 448,
+      "end": 457,
+      "snippet": "LLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪在中国的销售网络？ qa_kp_2,2,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的产品矩阵？ qa_kp_3,3,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,Is Zeekr operating under VIE structure? qa_kp_4,4,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的车在哪里生产？ qa_kp_5,5,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "0,0,0,0,,",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+      "start": 588,
+      "end": 597,
+      "snippet": "BLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的产品矩阵？ qa_kp_3,3,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,Is Zeekr operating under VIE structure? qa_kp_4,4,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的车在哪里生产？ qa_kp_5,5,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的毛利水平？ qa_kp_6,6,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact patt...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "0,0,0,0,,",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+      "start": 699,
+      "end": 708,
+      "snippet": "E_FACTS,,0,0,0,0,,no supported table-fact pattern detected,Is Zeekr operating under VIE structure? qa_kp_4,4,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的车在哪里生产？ qa_kp_5,5,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的毛利水平？ qa_kp_6,6,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,What kind of autonomous driving partnerships does Zeekr have? qa_kp_7,7,ALLOW,none,out_of_scope,NO...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 6400,
+      "end": 6403,
+      "snippet": "kr is incorporated as ZEEKR Intelligent Technology Holding Limited, an exempted company in the Cayman Islands, which holds no direct operations and conducts business through onshore Chinese subsidiaries—a setup frequently seen in offshore listings that employ VIE structures due to foreign ownership restrictions in Ch ... ## 5. 极氪的车在哪里生产？ - QID: qa_kp_4 - Judge verdict: CORRECT - Key points matched: 5/5 - Key points: - 极氪汽车主要在极氪工厂、成都工厂和眉山工厂生产 - 极氪工厂生产极氪001、极氪001 FR、极氪009 - 成都工厂生产极氪X - 眉山工厂生产高端轿车 - 生产基于与吉利集团",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 4822,
+      "end": 4825,
+      "snippet": "ing arrangements. For charging, Zeekr supplies home chargers (7kW/11kW units with remote start and sharing capabilities), operates its own ZEEKR Power network—746 stations as of June 30, 2023, featuring ultra, super, and ... ## 4. Is Zeekr operating under VIE structure? - QID: qa_kp_3 - Judge verdict: CORRECT - Key points matched: 4/4 - Key points: - Zeekr operates under a holding company structure - The parent company, Zeekr Intelligent Technology Holding Limited, is incorporated in the Cayman Islands - Bu",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 10800,
+      "end": 10803,
+      "snippet": ".7%股份 - CEO安聪慧持有2.7%股份 - 员工持股平台Gagk Innovation Limited持有2.4%股份 - 富达管理研究公司持有1.1%股份 Answer excerpt: 截至2025年5月7日（在数据截止日2025年5月15日前的最新披露），极氪（Zeekr）的股权架构显示，创始人李书福通过其控制的一系列实体合计持有极氪约76.8%的已发行普通股，对应1,950,996,860股，基于截至2024年12月31日的总股本2,541,971,138股计算。这些实体包括：Luckview Group Limited（持股1,668,996,860股，占65.7%）、GHGK Innovation Limited（2.22亿股，占8.7%）、宁波吉控企业管理有限公司（2.82亿股，占11.1%）以及宁波吉控集聚企业管理合伙企业（2.22亿股，占8.7%）。所有相关方对所持股份均拥有共同的投票权和处置权，未报告任何单独权力。 其中，Geely Automobile Holdings Limited（吉利汽车控股有限公司）通过其全资子公司Luckview Group Limited直接持有1,668",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+      "start": 43657,
+      "end": 43660,
+      "snippet": "scope of the provided reference. While some structural details align (Cayman parent, Chinese/HK subsidiaries), the core claim about VIE-related disclosures directly conflicts with the gold answer’s assertion that the structure does *not* explicitly mention a VIE. 极氪的股权结构如下： 1. **Geely Automobile Holdings Limited（吉利汽车控股）**持有166,899,686股，占总股本的65.7%。 2. **GHGK Innovation Limited（吉利控股关联实体）**持有22,200,000股，占总股本的8.7%。 3. **Cong Hui An（安聪慧，CEO）**持有6,800,000股，占总股本的2.7%。 4. **Gagk Innovation Limited（员工持股平台）**持有6,000,000",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 11489,
+      "end": 11492,
+      "snippet": "资产（如极氪上海、极氪杭州湾、宁波威睿及CEVT）的同一控制下重组；2023年完成总额7.5亿美元的A轮融资；2025年2月14日，极氪完成对领克（LYNK & CO）51%股权的战略整合，使其成为间接非全资子公司。 此外，2025年5月7日，吉利汽车提出一项无约束力要约，拟以每股2.566美元现金或每1股极氪股票换取1.23股吉利汽车股票的方式收购其尚未持有的全部极氪股份，旨在将极氪私有化并从纽交所退市。该交易虽于2025年7月15日达成最终合并协议，但由于该日期超出数据截止范围，相关后续变动（如吉利/Luckview持股比例调整为65.2%、李书福持股微降至76.2%）在此不被视为“当前”权威依据。 需注意的是，上述持股比例均未包含根据极氪2021年股权激励计划预留的股份；同时，部分境外股权安排可能受中国外汇管理（如国家外汇管理局37号文）及税务规则（如国家税务总局公告2015年第7号）影响，存在合规不确定性。 ## 9. 极氪2024年四季度的销量 - QID: qa_kp_83 - Judge verdict: CORRECT - Key points matched: 2/2 - Key points: -",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+      "start": 45944,
+      "end": 45947,
+      "snippet": "7%。 4. **Gagk Innovation Limited（员工持股平台）**持有6,000,000股，占总股本的2.4%。 5. **FMR LLC（富达管理研究公司）**持有2,850,756股，占总股本的1.1%。 6. **Intel Capital Corporation（英特尔资本）**持有2,400,995股，占总股本的0.9%。 以上信息基于2025年7月15日之前的知识。 The generated answer provides a detailed and updated view of Zeekr's ownership structure as of May 2025, but it directly contradicts the gold answer on several key points. Most critically, it omits any mention of CEO Cong Hui An (An Conghui) holding 2.7% and the employee platform Gagk Innovation Limited holding 2.4",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "0,0,0,0,,",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+      "start": 808,
+      "end": 817,
+      "snippet": "ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的车在哪里生产？ qa_kp_5,5,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的毛利水平？ qa_kp_6,6,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,What kind of autonomous driving partnerships does Zeekr have? qa_kp_7,7,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,吉利为什么要私有化极氪？ qa_kp_8,8,ALLOW,none,out_of_scop...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "5.4 million",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge/results.json",
+      "start": 17105,
+      "end": 17116,
+      "snippet": "or enduring harm from the pandemic. Instead, it continued investing in R&D, expanded its Direct-to-Consumer model, and maintained its focus on growth in the premium BEV segment. The broader market context further supports this view: China’s BEV sales reached 5.4 million units in 2022, an 81.6% year-over-year increase, demonstrating resilient demand and intact industry fundamentals. Zeekr itself rebounded strongly, delivering 71,941 vehicles in 2022 and reporting revenue growth of 388.7% year-over-year to RMB 31....",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "81.6%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge/results.json",
+      "start": 17135,
+      "end": 17140,
+      "snippet": "emic. Instead, it continued investing in R&D, expanded its Direct-to-Consumer model, and maintained its focus on growth in the premium BEV segment. The broader market context further supports this view: China’s BEV sales reached 5.4 million units in 2022, an 81.6% year-over-year increase, demonstrating resilient demand and intact industry fundamentals. Zeekr itself rebounded strongly, delivering 71,941 vehicles in 2022 and reporting revenue growth of 388.7% year-over-year to RMB 31.90 billion. By February 28, 20...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "71,941",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge/results.json",
+      "start": 17275,
+      "end": 17282,
+      "snippet": "egment. The broader market context further supports this view: China’s BEV sales reached 5.4 million units in 2022, an 81.6% year-over-year increase, demonstrating resilient demand and intact industry fundamentals. Zeekr itself rebounded strongly, delivering 71,941 vehicles in 2022 and reporting revenue growth of 388.7% year-over-year to RMB 31.90 billion. By February 28, 2023, cumulative deliveries had reached 86,519 units, and monthly deliveries consistently exceeded 12,000 units from July 2023 onward. While Z...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "388.7%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge/results.json",
+      "start": 17331,
+      "end": 17337,
+      "snippet": "s view: China’s BEV sales reached 5.4 million units in 2022, an 81.6% year-over-year increase, demonstrating resilient demand and intact industry fundamentals. Zeekr itself rebounded strongly, delivering 71,941 vehicles in 2022 and reporting revenue growth of 388.7% year-over-year to RMB 31.90 billion. By February 28, 2023, cumulative deliveries had reached 86,519 units, and monthly deliveries consistently exceeded 12,000 units from July 2023 onward. While Zeekr later included “disruptions from health epidemics”...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "RMB 31.90 billion",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge/results.json",
+      "start": 17356,
+      "end": 17373,
+      "snippet": "reached 5.4 million units in 2022, an 81.6% year-over-year increase, demonstrating resilient demand and intact industry fundamentals. Zeekr itself rebounded strongly, delivering 71,941 vehicles in 2022 and reporting revenue growth of 388.7% year-over-year to RMB 31.90 billion. By February 28, 2023, cumulative deliveries had reached 86,519 units, and monthly deliveries consistently exceeded 12,000 units from July 2023 onward. While Zeekr later included “disruptions from health epidemics” among general forward-loo...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "86,519",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge/results.json",
+      "start": 17431,
+      "end": 17438,
+      "snippet": "strating resilient demand and intact industry fundamentals. Zeekr itself rebounded strongly, delivering 71,941 vehicles in 2022 and reporting revenue growth of 388.7% year-over-year to RMB 31.90 billion. By February 28, 2023, cumulative deliveries had reached 86,519 units, and monthly deliveries consistently exceeded 12,000 units from July 2023 onward. While Zeekr later included “disruptions from health epidemics” among general forward-looking risk factors, these were framed as potential future uncertainties—not...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "50%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+      "start": 27151,
+      "end": 27154,
+      "snippet": "ownership figures cited as either 50.8% or 55.3% of Zeekr’s total voting power. As of the May 3, 2024 F-1 filing, Geely Auto was identified as the controlling shareholder, satisfying the NYSE’s definition of a controlled company—namely, one in which more than 50% of the voting power is held by another entity. The ownership structure also reflects that Shufu Li, through indirect holdings via entities such as Luckview Group Limited, GHGK Innovation Limited, and GAGK Innovation Limited, held approximately 76.8%–77....",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "76.8%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+      "start": 27400,
+      "end": 27405,
+      "snippet": "more than 50% of the voting power is held by another entity. The ownership structure also reflects that Shufu Li, through indirect holdings via entities such as Luckview Group Limited, GHGK Innovation Limited, and GAGK Innovation Limited, held approximately 76.8%–77.8% of Zeekr’s ordinary shares as of late 2024 and early 2025. While both Geely Auto and Shufu Li are described as controlling parties, some uncertainty remains regarding how their respective stakes align following strategic integration transactions t...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "77.8%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+      "start": 27406,
+      "end": 27411,
+      "snippet": "than 50% of the voting power is held by another entity. The ownership structure also reflects that Shufu Li, through indirect holdings via entities such as Luckview Group Limited, GHGK Innovation Limited, and GAGK Innovation Limited, held approximately 76.8%–77.8% of Zeekr’s ordinary shares as of late 2024 and early 2025. While both Geely Auto and Shufu Li are described as controlling parties, some uncertainty remains regarding how their respective stakes align following strategic integration transactions that o...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "467,",
+      "source_path": "test/colm/retrieval/diagnostic_testsets_20260526/README.md",
+      "start": 732,
+      "end": 737,
+      "snippet": "arge_100_regression.json` | 100-question broad regression set | | `zeekr_large_100_regression.csv` | Human-readable index of the large set | | `qid_lists.json` | QID lists for scripts | ## Design Principles 1. Cover the observed hard failures: sales-network 467, gross margin table facts, 44-city Power Delivery, VIE/ownership, privatization, and multi-hop finance tables. 2. Keep the small set compact enough for repeated runs, while preserving all major failure modes. 3. Make the large set broad enough for paramet...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    }
+  ],
+  "files_scanned": 17,
+  "metadata": {
+    "case_id": "zeekr_profile_q48_runner"
+  }
+}

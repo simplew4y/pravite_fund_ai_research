@@ -1,0 +1,27 @@
+skill_id: quant_skill_hints
+version: "0.1.0"
+name: Financial Quant Skill Hints
+scope: "Provides hints for financial metric interpretation, unit handling, and table-derived calculations."
+failure_types:
+  - metric_alias_error
+  - table_alignment_error
+trigger: "Question asks for financial metrics, percentage points, margin changes, capitalization, or period-over-period numeric comparisons."
+inputs:
+  - question
+outputs:
+  - metric_hints
+  - unit_hints
+  - calculation_hints
+risks:
+  - "Hints should guide verification, not replace evidence-backed calculation."
+  - "Ambiguous metric names require filing-specific evidence anchors."
+eval_sets:
+  - quant_skill_integration_v1
+  - zeekr_small30
+status: experimental
+owner: myz
+last_reviewed: "2026-06-05"
+implementation_refs:
+  - src/utils/quant_skill_hints.py
+notes: "Useful as a bridge between deterministic table verification and future metric-alias skill evolution."
+

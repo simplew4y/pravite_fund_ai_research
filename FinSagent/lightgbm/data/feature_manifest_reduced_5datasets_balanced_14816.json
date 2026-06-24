@@ -1,0 +1,58 @@
+{
+  "row_count": 14816,
+  "positive_rate": 0.2653887688984881,
+  "feature_columns": [
+    "dataset_id",
+    "query_language",
+    "retrieval_path",
+    "chunk_type",
+    "num_retrieval_paths",
+    "has_faiss",
+    "has_bm25",
+    "has_title_summary",
+    "has_table",
+    "faiss_score",
+    "bm25_score",
+    "title_summary_score",
+    "table_score",
+    "faiss_rank",
+    "bm25_rank",
+    "title_summary_rank",
+    "table_rank",
+    "min_rank",
+    "cross_encoder_score",
+    "query_token_len",
+    "chunk_token_len",
+    "token_overlap_count",
+    "token_overlap_ratio_query",
+    "token_overlap_ratio_chunk",
+    "token_jaccard",
+    "query_number_count",
+    "chunk_number_count",
+    "number_overlap_count",
+    "year_overlap_count",
+    "title_summary_token_len",
+    "page_number",
+    "doc_year"
+  ],
+  "categorical_columns": [
+    "retrieval_path",
+    "chunk_type",
+    "dataset_id",
+    "query_language"
+  ],
+  "dataset_counts": {
+    "lotus": 6600,
+    "zeekr": 4638,
+    "financebench": 1820,
+    "secque": 1028,
+    "finder": 730
+  },
+  "label_source_counts": {
+    "implicit_negative": 7208,
+    "positive_text": 3788,
+    "negative_id": 3433,
+    "negative_text": 243,
+    "positive_id": 144
+  }
+}

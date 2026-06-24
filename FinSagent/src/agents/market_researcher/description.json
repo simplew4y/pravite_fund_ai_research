@@ -1,0 +1,22 @@
+{
+  "name": "market_researcher",
+  "summary": "Covers industry and market context for the user question.",
+  "responsibilities": [
+    "Industry/market size and growth",
+    "Company market share and positioning",
+    "Business model and customer type",
+    "Key competitors and differentiators",
+    "Suppliers or partners if mentioned"
+  ],
+  "triggers": [
+    "Questions about industry trends, market size/growth",
+    "Requests to compare competitors or positioning",
+    "Queries on business model or customer segments"
+  ],
+  "exclusions": [
+    "Financial statement details",
+    "Ownership history or equity transactions",
+    "Legal/compliance assessments"
+  ],
+  "tools_allowed": ["company_profile", "company_news"]
+}

@@ -1,0 +1,177 @@
+{
+  "summary": {
+    "title": "Human-Governed SkillOps Console",
+    "subtitle": "Cross-company SEC QA review workflow",
+    "protected_result": "40 / 40",
+    "pending_reviews": 2,
+    "approved_skills": 8,
+    "false_triggers": 0,
+    "companies": [
+      {
+        "name": "Zeekr",
+        "score": "20 / 20",
+        "gate": "ALLOW 19 · REVIEW 1",
+        "avg_seconds": 75.3
+      },
+      {
+        "name": "Lotus",
+        "score": "10 / 10",
+        "gate": "ALLOW 10",
+        "avg_seconds": 89.5
+      },
+      {
+        "name": "NVIDIA",
+        "score": "10 / 10",
+        "gate": "ALLOW 9 · REVIEW 1",
+        "avg_seconds": 90.7
+      }
+    ]
+  },
+  "review_queue": [
+    {
+      "id": "skill-zeekr-net-loss-scope",
+      "company": "Zeekr",
+      "qid": "qa_kp_82",
+      "title": "Annual net-loss statement precedence",
+      "failure_type": "profile_boundary_error",
+      "risk": "medium",
+      "status": "ready_for_review",
+      "recommendation": "approve",
+      "question": "What was Zeekr's full-year 2024 net profit or net loss?",
+      "current_answer": "Zeekr reported a 2024 net loss of RMB 5,790.649 million, narrowing 29.9% from 2023.",
+      "diagnosis": "The failure pattern appears when retrieved evidence mixes consolidated annual net loss with shareholder-attributable or comprehensive-loss snippets. The skill should prefer the annual consolidated net-loss statement only when the question asks for full-year net profit/loss.",
+      "evidence": [
+        {
+          "source": "Zeekr 2024 annual filing",
+          "type": "annual statement",
+          "snippet": "For the year ended December 31, 2024, Net loss was RMB 5,790,649 thousand and US$793,315 thousand. For 2023, Net loss was RMB 8,264,191 thousand.",
+          "anchors": ["2024", "net loss", "5,790,649", "8,264,191", "29.9%"]
+        },
+        {
+          "source": "Scope guard",
+          "type": "negative evidence",
+          "snippet": "Questions asking for loss attributable to ordinary shareholders should not be rewritten by this consolidated net-loss skill.",
+          "anchors": ["attributable", "shareholders", "scope guard"]
+        }
+      ],
+      "skill_card": {
+        "name": "annual_net_loss_statement_precedence",
+        "trigger": "Zeekr + 2024 + full-year + net profit/loss question",
+        "scope": "Consolidated annual net loss only; excludes shareholder-attributable loss questions.",
+        "evidence_requirements": ["annual net-loss line", "2024/2023 comparative values", "period marker"],
+        "action": "Check whether the answer uses the consolidated annual net-loss line; repair only if evidence is present and the answer conflicts.",
+        "known_risks": ["overwriting already-correct answers", "mixing shareholder-attributable scope", "company spillover"]
+      },
+      "gate": {
+        "targeted_short": "pass",
+        "core_protected": "pass",
+        "cross_company_guard": "pass",
+        "failure_bank": "pass",
+        "profile_precedence": "pass",
+        "manual_review": "pending"
+      }
+    },
+    {
+      "id": "skill-nvidia-direct-customer",
+      "company": "NVIDIA",
+      "qid": "nvidia_mini10_q_customer",
+      "title": "Annual direct-customer table precedence",
+      "failure_type": "source_conflict",
+      "risk": "medium",
+      "status": "ready_for_review",
+      "recommendation": "approve",
+      "question": "For fiscal year 2025, which NVIDIA direct customers contributed more than 10% of revenue?",
+      "current_answer": "Direct Customer A represented 12%, Direct Customer B represented 11%, and Direct Customer C represented 11% of total revenue.",
+      "diagnosis": "The failure pattern appears when quarterly or indirect-customer snippets override the annual 10-K direct-customer table. The skill should require fiscal-year scope and direct-customer table evidence.",
+      "evidence": [
+        {
+          "source": "NVIDIA FY2025 10-K",
+          "type": "annual table",
+          "snippet": "Sales to direct Customers A, B and C represented 12%, 11% and 11% of total revenue, respectively, for fiscal year 2025.",
+          "anchors": ["fiscal year 2025", "Direct Customer A", "12%", "11%", "11%"]
+        },
+        {
+          "source": "Scope guard",
+          "type": "negative evidence",
+          "snippet": "Quarterly, first-half, FY2024, indirect-customer, or non-NVIDIA questions should not trigger this skill.",
+          "anchors": ["quarter", "first half", "FY2024", "indirect customer", "cross-company"]
+        }
+      ],
+      "skill_card": {
+        "name": "annual_direct_customer_table_precedence",
+        "trigger": "NVIDIA + FY2025 + direct customer + annual/fiscal-year scope",
+        "scope": "Annual 10-K direct-customer concentration only.",
+        "evidence_requirements": ["direct customer table", "FY2025 marker", "12%, 11%, 11% values"],
+        "action": "Prefer annual direct-customer table over quarterly or indirect-customer snippets.",
+        "known_risks": ["wrong fiscal period", "indirect/direct customer confusion", "already-correct answer overwrite"]
+      },
+      "gate": {
+        "targeted_short": "pass",
+        "core_protected": "pass",
+        "cross_company_guard": "pass",
+        "failure_bank": "pass",
+        "profile_precedence": "pass",
+        "manual_review": "pending"
+      }
+    },
+    {
+      "id": "candidate-period-source-arbitration",
+      "company": "NVIDIA",
+      "qid": "nvidia_q15",
+      "title": "Period-aware source arbitration",
+      "failure_type": "period_mismatch",
+      "risk": "high",
+      "status": "needs_more_tests",
+      "recommendation": "request_more_tests",
+      "question": "Within the FY2025 framing, how did export-control restrictions affect NVIDIA?",
+      "current_answer": "The draft mixed FY2025 evidence with later FY2026/H20/April 2025 disclosures.",
+      "diagnosis": "Grep probe detects later-period markers that are semantically relevant but temporally incompatible with the question.",
+      "evidence": [
+        {
+          "source": "Grep evidence probe",
+          "type": "period leakage",
+          "snippet": "FY2026 / H20 / April 2025 markers appear near export-control evidence even though the question asks for FY2025 framing.",
+          "anchors": ["FY2026", "H20", "April 2025", "FY2025"]
+        }
+      ],
+      "skill_card": {
+        "name": "period_aware_source_arbitration",
+        "trigger": "Question has explicit fiscal-period scope and retrieved evidence contains later-period leakage markers.",
+        "scope": "Period-sensitive source conflict questions.",
+        "evidence_requirements": ["question period", "evidence period", "source filing date"],
+        "action": "Flag for period arbitration or exclude later-period evidence from answer synthesis.",
+        "known_risks": ["over-filtering valid historical explanations", "missing narrative evidence without explicit date markers"]
+      },
+      "gate": {
+        "targeted_short": "pass",
+        "core_protected": "pass",
+        "cross_company_guard": "pending",
+        "failure_bank": "pass",
+        "profile_precedence": "not_applicable",
+        "manual_review": "pending"
+      }
+    }
+  ],
+  "baseline_results": [
+    {
+      "name": "naive auto",
+      "false_triggers": 12,
+      "description": "Target pass implies auto-promotion."
+    },
+    {
+      "name": "self-review proxy",
+      "false_triggers": 3,
+      "description": "Automatic card-level company/year/period/evidence review."
+    },
+    {
+      "name": "static guarded",
+      "false_triggers": 0,
+      "description": "Fixed target/noop/scope/cross-company regression gate."
+    },
+    {
+      "name": "governed SkillOps",
+      "false_triggers": 0,
+      "description": "Automatic proposal and testing with human-controlled promotion."
+    }
+  ]
+}

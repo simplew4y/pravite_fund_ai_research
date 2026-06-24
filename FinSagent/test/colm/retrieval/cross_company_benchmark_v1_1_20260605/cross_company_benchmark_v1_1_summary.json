@@ -1,0 +1,77 @@
+{
+  "benchmark_id": "cross_company_benchmark_v1_1_20260605",
+  "base_benchmark_id": "cross_company_benchmark_v1_20260604",
+  "change": "Apply guarded period/source conflict repair to the only NVIDIA miss.",
+  "sets": [
+    {
+      "set_id": "zeekr_holdout20",
+      "company": "Zeekr",
+      "role": "target_company_holdout",
+      "questions": 20,
+      "summary_path": "test/colm/retrieval/final_stack_validation_20260603/business_outlook_2025_v1/judge/summary.json",
+      "answers_path": "test/colm/retrieval/final_stack_validation_20260603/business_outlook_2025_v1/blind_holdout20_business_outlook_repaired.json",
+      "index_condition": "Full target-company DB with PageIndex; guarded deterministic skills enabled in final repaired output",
+      "evaluated_qas": 20,
+      "correct": 20,
+      "partial": 0,
+      "incorrect": 0,
+      "failure": 0,
+      "error_unclear": 0,
+      "correctness_score": 5.0,
+      "avg_time_sec": 98.6,
+      "likert_factual_consistency": 4.95,
+      "likert_info_coverage": 4.85
+    },
+    {
+      "set_id": "lotus_mini10_pageindex_fallback",
+      "company": "Lotus Technology",
+      "role": "non_target_company_pageindex_path_sanity",
+      "questions": 10,
+      "summary_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/pageindex_fallback_judge/summary.json",
+      "answers_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_mini10_pageindex_fallback_run.json",
+      "index_condition": "BM25/Chroma/Table plus PageIndex-compatible fallback structure: 8 PDFs, 1,958 runtime nodes",
+      "evaluated_qas": 10,
+      "correct": 10,
+      "partial": 0,
+      "incorrect": 0,
+      "failure": 0,
+      "error_unclear": 0,
+      "correctness_score": 5.0,
+      "avg_time_sec": 79.3,
+      "likert_factual_consistency": 5.0,
+      "likert_info_coverage": 4.9
+    },
+    {
+      "set_id": "nvidia_mini10_period_repaired",
+      "company": "NVIDIA",
+      "role": "non_target_company_sanity_after_period_source_conflict_repair",
+      "questions": 10,
+      "summary_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/judge/summary.json",
+      "answers_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.json",
+      "index_condition": "NVIDIA DB plus guarded period/source conflict repair for FY2025 source arbitration",
+      "evaluated_qas": 10,
+      "correct": 10,
+      "partial": 0,
+      "incorrect": 0,
+      "failure": 0,
+      "error_unclear": 0,
+      "correctness_score": 5.0,
+      "avg_time_sec": 62.6,
+      "likert_factual_consistency": 5.0,
+      "likert_info_coverage": 5.0,
+      "repair_applied_qids": ["qa_kp_000015"]
+    }
+  ],
+  "overall": {
+    "evaluated_qas": 40,
+    "correct": 40,
+    "partial": 0,
+    "incorrect": 0,
+    "accuracy_correct_only": 1.0,
+    "weighted_correctness_score": 5.0,
+    "companies": ["Zeekr", "Lotus Technology", "NVIDIA"],
+    "known_failure": null,
+    "remaining_note": "This closes the observed benchmark miss; broader fiscal-period arbitration should be generalized in the next hardening cycle."
+  }
+}
+

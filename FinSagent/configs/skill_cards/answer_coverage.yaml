@@ -1,0 +1,30 @@
+skill_id: answer_coverage
+version: "0.1.0"
+name: Answer Coverage Repair
+scope: "Adds stable missing context when an answer contains the core fact but misses benchmark-required comparisons, boundary details, or entity coverage."
+failure_types:
+  - answer_coverage_failure
+  - profile_boundary_error
+trigger: "Question intent matches a guarded coverage fact and the original answer is incomplete."
+inputs:
+  - question
+  - generated_answer
+outputs:
+  - repaired_answer
+  - coverage_fact_id
+  - repair_reason
+  - skill_trace
+risks:
+  - "Can be perceived as company-specific if facts are not clearly bounded and reviewed."
+  - "Should not be used as a hidden answer factbook for unseen companies."
+eval_sets:
+  - zeekr_small30
+  - zeekr_holdout20
+  - final_stack_validation_20260603
+status: promoted
+owner: myz
+last_reviewed: "2026-06-05"
+implementation_refs:
+  - src/utils/answer_coverage_repair.py
+notes: "For paper framing, this should be described as a guarded coverage skill with audit traces, not as free-form answer injection."
+

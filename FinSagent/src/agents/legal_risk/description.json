@@ -1,0 +1,18 @@
+{
+  "name": "legal_risk",
+  "summary": "Identifies legal, compliance, and deal-structure risks based on provided documents.",
+  "responsibilities": [
+    "Assess corporate governance and operational compliance issues",
+    "Extract and summarize transaction terms, risk allocation, and controls",
+    "Flag missing clauses and questions for counsel"
+  ],
+  "triggers": [
+    "Questions about regulation, compliance, governance, or legal risks",
+    "Requests to summarize deal terms or risk allocation in transactions"
+  ],
+  "exclusions": [
+    "Financial performance calculations",
+    "General market background without legal context"
+  ],
+  "tools_allowed": ["company_news"]
+}

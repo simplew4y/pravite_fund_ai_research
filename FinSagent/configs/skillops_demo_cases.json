@@ -1,0 +1,78 @@
+{
+  "suite_id": "skillops_demo_benchmark_20260605",
+  "description": "Default SkillOps demo suite for SEC QA audit and skill evolution. This is a taxonomy/demo suite, not the statistical accuracy benchmark.",
+  "accuracy_benchmark_reference": {
+    "name": "cross_company_benchmark_v1_1",
+    "path": "test/colm/retrieval/cross_company_benchmark_v1_1_20260605/cross_company_benchmark_v1_1_summary.json",
+    "scope": "40 QA cases across Zeekr, Lotus Technology, and NVIDIA",
+    "result": "40 correct, 0 partial, 0 incorrect"
+  },
+  "cases": [
+    {
+      "case_id": "lotus_q1_success_runner",
+      "label": "Lotus success control",
+      "case_kind": "success_control",
+      "row_json": "test/colm/retrieval/skillops_demo_inputs/lotus_q1_success_row.json",
+      "row_index": 0,
+      "grep_roots": [
+        "test/colm/retrieval/skillops_demo_inputs"
+      ],
+      "expected_primary_failure_type": "no_failure_detected"
+    },
+    {
+      "case_id": "nvidia_q15_source_conflict_runner",
+      "label": "NVIDIA source conflict",
+      "case_kind": "audit_trace_demo",
+      "row_json": "test/colm/retrieval/skillops_demo_inputs/nvidia_q15_source_conflict_row.json",
+      "row_index": 0,
+      "grep_roots": [
+        "test/colm/retrieval/skillops_demo_inputs"
+      ],
+      "expected_primary_failure_type": "source_conflict"
+    },
+    {
+      "case_id": "nvidia_period_mismatch_runner",
+      "label": "NVIDIA period mismatch",
+      "case_kind": "failure_taxonomy_demo",
+      "row_json": "test/colm/retrieval/skillops_demo_inputs/nvidia_period_mismatch_row.json",
+      "row_index": 0,
+      "grep_roots": [
+        "test/colm/retrieval/skillops_demo_inputs"
+      ],
+      "expected_primary_failure_type": "period_mismatch"
+    },
+    {
+      "case_id": "zeekr_table_q100_runner",
+      "label": "Zeekr table alignment",
+      "case_kind": "audit_trace_demo",
+      "row_json": "test/colm/retrieval/skillops_demo_inputs/zeekr_table_q100_row.json",
+      "row_index": 0,
+      "grep_roots": [
+        "test/colm/retrieval/skillops_demo_inputs"
+      ],
+      "expected_primary_failure_type": "table_alignment_error"
+    },
+    {
+      "case_id": "zeekr_profile_q48_runner",
+      "label": "Zeekr profile boundary",
+      "case_kind": "audit_trace_demo",
+      "row_json": "test/colm/retrieval/skillops_demo_inputs/zeekr_profile_q48_row.json",
+      "row_index": 0,
+      "grep_roots": [
+        "test/colm/retrieval/skillops_demo_inputs"
+      ],
+      "expected_primary_failure_type": "profile_boundary_error"
+    },
+    {
+      "case_id": "zeekr_coverage_q62_runner",
+      "label": "Zeekr answer coverage",
+      "case_kind": "audit_trace_demo",
+      "row_json": "test/colm/retrieval/skillops_demo_inputs/zeekr_coverage_q62_row.json",
+      "row_index": 0,
+      "grep_roots": [
+        "test/colm/retrieval/skillops_demo_inputs"
+      ],
+      "expected_primary_failure_type": "answer_coverage_failure"
+    }
+  ]
+}

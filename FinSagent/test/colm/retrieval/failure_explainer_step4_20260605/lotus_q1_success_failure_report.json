@@ -1,0 +1,18 @@
+{
+  "qid": "lotus_gen_01",
+  "question": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023?",
+  "primary_failure_type": "no_failure_detected",
+  "confidence": 0.65,
+  "signals": [],
+  "suggested_next_action": "No failure-class signal detected by the rule-based explainer. Use this as a success/control preview.",
+  "audit_notes": [
+    "rule_based_explainer",
+    "no_triggered_failure_signals"
+  ],
+  "metadata": {
+    "preview_id": "lotus_q1_success",
+    "retrieved_chunk_count": 26,
+    "grep_anchor_count": 12,
+    "skill_trace_count": 0
+  }
+}

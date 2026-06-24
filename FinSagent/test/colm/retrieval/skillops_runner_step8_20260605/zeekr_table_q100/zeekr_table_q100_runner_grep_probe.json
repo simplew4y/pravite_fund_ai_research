@@ -1,0 +1,341 @@
+{
+  "question": "极氪2024年一季度毛利率",
+  "query_terms": [
+    "gross margin",
+    "2024"
+  ],
+  "metric_aliases": {},
+  "period_terms": [],
+  "anchors": [
+    {
+      "anchor_type": "nearby_number",
+      "text": "2301,",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-KA_20241114/base_remove_empty_similarity_results.json",
+      "start": 62,
+      "end": 68,
+      "snippet": "For the month of November 2024 Date: November 14, 2024 Room 2301, Building 1, Dadao Wangchao Shangwu Center, Yingfeng Street, Xiaoshan District, Hangzhou, Zhejiang Province, China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_final.json",
+      "start": 50,
+      "end": 54,
+      "snippet": "For the month of June 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I can assist you in creating a summary, but I need more specific details about the content or topics you want summarized for Ju",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_processed_chunked.json",
+      "start": 50,
+      "end": 54,
+      "snippet": "For the month of June 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I can assist you in creating a summary, but I need more specific details about the content or topics you want summarized for Ju",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_final.json",
+      "start": 50,
+      "end": 54,
+      "snippet": "For the month of June 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I can assist you with a summary for June 2024, but I need more specific information about the topics or events you're intereste",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_processed_chunked.json",
+      "start": 50,
+      "end": 54,
+      "snippet": "For the month of June 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I can assist you with a summary for June 2024, but I need more specific information about the topics or events you're intereste",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240701/base_final.json",
+      "start": 50,
+      "end": 54,
+      "snippet": "For the month of July 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I apologize for the confusion, but I need more specific details to assist you effectively. Are you seeking a summary of events,",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240701/base_processed_chunked.json",
+      "start": 50,
+      "end": 54,
+      "snippet": "For the month of July 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I apologize for the confusion, but I need more specific details to assist you effectively. Are you seeking a summary of events,",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-KA_20241114/base_final.json",
+      "start": 54,
+      "end": 58,
+      "snippet": "For the month of November 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I am unable to provide summaries or insights on events or information from November 2024, as my knowledge is limited to data av",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_remove_empty_similarity_results.json",
+      "start": 226,
+      "end": 230,
+      "snippet": "No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer For the month of June 2024 Date: June 3, 2024",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_remove_empty_similarity_results.json",
+      "start": 246,
+      "end": 250,
+      "snippet": "No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer For the month of June 2024 Date: June 3, 2024",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_remove_empty_similarity_results.json",
+      "start": 226,
+      "end": 230,
+      "snippet": "No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer For the month of June 2024 Date: June 11, 2024",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_remove_empty_similarity_results.json",
+      "start": 247,
+      "end": 251,
+      "snippet": "No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer For the month of June 2024 Date: June 11, 2024",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D2_20250320/base_remove_empty_similarity_results.json",
+      "start": 2112,
+      "end": 2116,
+      "snippet": "on December 31, 2024. Row 13 represents the percentage that is calculated based on a total of 2,541,971,138 Ordinary Shares of the Issuer issued and outstanding as reported in the Issuer's annual report on Form 20-F for the fiscal year ended on December 31, 2024.",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base.json",
+      "start": 22,
+      "end": 26,
+      "snippet": "For the month of June 2024 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 Commission File Number: 001-42042 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 No.",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-KA_20241114/base_processed_chunked.json",
+      "start": 54,
+      "end": 58,
+      "snippet": "For the month of November 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I am unable to provide summaries or insights on events or information from November 2024, as my knowledge is limited to data av",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2,507,346,254",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D2_20241121/base_remove_empty_similarity_results.json",
+      "start": 53,
+      "end": 67,
+      "snippet": "(2) The percentage is calculated based on a total of 2,507,346,254 Ordinary Shares of the Issuer issued and outstanding as reported in the final prospectus of the Issuer dated May 9, 2024 (after giving effect to the full exercise of over-allotment option). (2) The percentage is calculated based on a total of 2,507,346,254 Or",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2,507,346,254",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20241121/base_remove_empty_similarity_results.json",
+      "start": 53,
+      "end": 67,
+      "snippet": "(2) The percentage is calculated based on a total of 2,507,346,254 Ordinary Shares of the Issuer issued and outstanding as reported in the final prospectus of the Issuer dated May 9, 2024 after taking into account the subsequent full exercise of over-allotment option). The ownership percentage of Geely Automobile Holdings Lim",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2,507,346,254",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D_20250103/base_remove_empty_similarity_results.json",
+      "start": 72,
+      "end": 86,
+      "snippet": "Row 13 represents the percentage that is calculated based on a total of 2,507,346,254 Ordinary Shares of the Issuer issued and outstanding as reported in the final prospectus of the Issuer dated May 9, 2024 after taking into account the subsequent full exercise of over-allotment option). The ownership percentage of Geely Automobile Holdings Lim",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base.json",
+      "start": 161,
+      "end": 165,
+      "snippet": "For the month of June 2024 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 Commission File Number: 001-42042 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) ZEEKR",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_remove_empty.json",
+      "start": 161,
+      "end": 165,
+      "snippet": "For the month of June 2024 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 Commission File Number: 001-42042 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) ZEEKR",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_remove_empty_deduped.json",
+      "start": 161,
+      "end": 165,
+      "snippet": "For the month of June 2024 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 Commission File Number: 001-42042 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) ZEEKR",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base.json",
+      "start": 161,
+      "end": 165,
+      "snippet": "For the month of June 2024 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 Commission File Number: 001-42042 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) ZEEKR",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_remove_empty.json",
+      "start": 161,
+      "end": 165,
+      "snippet": "For the month of June 2024 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 Commission File Number: 001-42042 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) ZEEKR",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_remove_empty_deduped.json",
+      "start": 161,
+      "end": 165,
+      "snippet": "For the month of June 2024 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 Commission File Number: 001-42042 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) ZEEKR",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "001",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240701/base.json",
+      "start": 161,
+      "end": 165,
+      "snippet": "For the month of July 2024 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 Commission File Number: 001-42042 REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) ZEEKR",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    }
+  ],
+  "files_scanned": 80,
+  "metadata": {
+    "case_id": "zeekr_table_q100_runner"
+  }
+}

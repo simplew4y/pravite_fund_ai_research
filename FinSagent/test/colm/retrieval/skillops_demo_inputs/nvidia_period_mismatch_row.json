@@ -1,0 +1,22 @@
+[
+  {
+    "qid": "nvidia_period_mismatch_demo",
+    "question": "How did NVIDIA describe export-control impact on China Data Center business in fiscal year 2025?",
+    "generated_answer": "The answer incorrectly mixes in later-period disclosures: in fiscal year 2026, after the April 9, 2025 H20 export-control update, NVIDIA described a $4.5 billion impact. This is a period-mismatch demo row because those later markers should not be used as the answer to the fiscal year 2025 question.",
+    "retrieved_chunks": [
+      {
+        "retriever": "demo_stable_input",
+        "score": 1.0,
+        "page_content": "For fiscal year 2025, NVIDIA discussed export controls affecting China Data Center business. A later April 9, 2025 H20 disclosure belongs to a later period and should be separated by period-aware retrieval.",
+        "metadata": {
+          "source": "nvidia_period_mismatch_demo_stable_input",
+          "filename": "nvidia_period_mismatch_demo_stable_input",
+          "page_number": "demo",
+          "date_published": "2025-01-26"
+        }
+      }
+    ],
+    "retrieved_chunk_count": 1,
+    "demo_case_role": "failure_taxonomy_demo"
+  }
+]

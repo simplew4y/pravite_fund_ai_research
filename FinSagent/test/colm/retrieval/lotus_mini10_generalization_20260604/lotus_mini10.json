@@ -1,0 +1,159 @@
+[
+  {
+    "index": 1,
+    "qid": "lotus_gen_01",
+    "question": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023?",
+    "ground_truth_answer": "For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 317.9 million US dollars for the same nine-month period in 2023. This means revenue was about 105% higher year over year, or more than doubled.",
+    "key_points": [
+      "nine months ended September 30 2024 revenue about 652.8 million US dollars",
+      "same period 2023 revenue about 317.9 million US dollars",
+      "revenue increased about 105 percent year over year",
+      "revenue more than doubled year over year"
+    ],
+    "diagnostic_meta": {
+      "category": "cross_company_numeric_growth",
+      "company": "Lotus",
+      "evidence_cutoff": "2025-03-04"
+    }
+  },
+  {
+    "index": 2,
+    "qid": "lotus_gen_02",
+    "question": "What were Lotus Technology gross profit and gross margin in 2023?",
+    "ground_truth_answer": "For 2023, Lotus Technology had gross profit of about 102 million US dollars and gross margin of 15.0%.",
+    "key_points": [
+      "2023 gross profit about 102 million US dollars",
+      "2023 gross margin 15.0 percent"
+    ],
+    "diagnostic_meta": {
+      "category": "cross_company_margin_table",
+      "company": "Lotus",
+      "evidence_cutoff": "2025-04-30"
+    }
+  },
+  {
+    "index": 3,
+    "qid": "lotus_gen_03",
+    "question": "What does Lotus mean by vehicle delivery in its filings?",
+    "ground_truth_answer": "In Lotus Technology filings, delivery or delivered vehicles means invoiced deliveries, including commissioned deliveries in the U.S. market, unless otherwise stated. This is a filing-specific definition and should not be silently replaced by retail registrations or production volume.",
+    "key_points": [
+      "delivery means invoiced deliveries",
+      "includes commissioned deliveries in the U.S. market",
+      "unless otherwise stated",
+      "do not substitute production/registrations"
+    ],
+    "diagnostic_meta": {
+      "category": "filing_definition",
+      "company": "Lotus"
+    }
+  },
+  {
+    "index": 4,
+    "qid": "lotus_gen_04",
+    "question": "When did Lotus Technology close its business combination, and what was the SPAC counterparty?",
+    "ground_truth_answer": "Lotus Technology closed its business combination on February 22, 2024. The SPAC counterparty was L Catterton Asia Acquisition Corp.",
+    "key_points": [
+      "business combination closed on February 22 2024",
+      "SPAC counterparty was L Catterton Asia Acquisition Corp"
+    ],
+    "diagnostic_meta": {
+      "category": "transaction_timeline",
+      "company": "Lotus"
+    }
+  },
+  {
+    "index": 5,
+    "qid": "lotus_gen_05",
+    "question": "What product models does Lotus Technology say its business initially depends on?",
+    "ground_truth_answer": "Lotus Technology says its business initially depends substantially on sales and distribution of four models: Eletre, Emira, Evija, and Emeya.",
+    "key_points": [
+      "business initially depends substantially on limited product models",
+      "Eletre",
+      "Emira",
+      "Evija",
+      "Emeya"
+    ],
+    "diagnostic_meta": {
+      "category": "product_portfolio_risk",
+      "company": "Lotus"
+    }
+  },
+  {
+    "index": 6,
+    "qid": "lotus_gen_06",
+    "question": "What was Lotus Technology cash/current asset position at the end of 2023?",
+    "ground_truth_answer": "At December 31, 2023, Lotus Technology reported unrestricted cash of about 418.9 million US dollars and total current assets of about 883.7 million US dollars.",
+    "key_points": [
+      "December 31 2023 unrestricted cash about 418.9 million US dollars",
+      "December 31 2023 total current assets about 883.7 million US dollars"
+    ],
+    "diagnostic_meta": {
+      "category": "balance_sheet_snapshot",
+      "company": "Lotus",
+      "evidence_cutoff": "2025-04-30"
+    }
+  },
+  {
+    "index": 7,
+    "qid": "lotus_gen_07",
+    "question": "What were Lotus Technology total assets as of September 30, 2024 compared with December 31, 2023?",
+    "ground_truth_answer": "Lotus Technology total assets were about 2.587 billion US dollars as of September 30, 2024, compared with about 1.585 billion US dollars as of December 31, 2023.",
+    "key_points": [
+      "September 30 2024 total assets about 2.587 billion US dollars",
+      "December 31 2023 total assets about 1.585 billion US dollars"
+    ],
+    "diagnostic_meta": {
+      "category": "balance_sheet_comparison",
+      "company": "Lotus"
+    }
+  },
+  {
+    "index": 8,
+    "qid": "lotus_gen_08",
+    "question": "Does Lotus Technology still operate through a VIE structure?",
+    "ground_truth_answer": "Lotus Technology is described as a Cayman Islands holding company operating through subsidiaries in China and Europe. Its restructuring eliminated the previous VIE structure, so the current structure is not a continuing VIE operating structure, although the holding-company structure still carries China-related dividend and cash-transfer risks.",
+    "key_points": [
+      "Cayman Islands holding company",
+      "operates through subsidiaries in China and Europe",
+      "restructuring eliminated previous VIE structure",
+      "not a continuing VIE operating structure",
+      "China-related dividend/cash-transfer risks remain"
+    ],
+    "diagnostic_meta": {
+      "category": "cross_company_vie_structure",
+      "company": "Lotus"
+    }
+  },
+  {
+    "index": 9,
+    "qid": "lotus_gen_09",
+    "question": "What are the main risks from Lotus Technology relying on a limited product portfolio?",
+    "ground_truth_answer": "The filings state that Lotus Technology initially depends substantially on a limited set of models, including Eletre, Emira, Evija, and Emeya. If product variety or product cycle does not meet consumer expectations, or if the company misses projected timing, cost, or volume targets, future sales may be adversely affected.",
+    "key_points": [
+      "initial dependence on limited models",
+      "Eletre/Emira/Evija/Emeya are core models",
+      "consumer expectations require broad and upgraded product portfolio",
+      "missed timing/cost/volume targets may hurt future sales"
+    ],
+    "diagnostic_meta": {
+      "category": "risk_factor_product_portfolio",
+      "company": "Lotus"
+    }
+  },
+  {
+    "index": 10,
+    "qid": "lotus_gen_10",
+    "question": "What Nasdaq-listed securities does Lotus Technology report?",
+    "ground_truth_answer": "Lotus Technology reports American depositary shares and warrants traded on Nasdaq, with tickers LOT and LOTWW respectively.",
+    "key_points": [
+      "American depositary shares traded on Nasdaq",
+      "warrants traded on Nasdaq",
+      "ADS ticker LOT",
+      "warrant ticker LOTWW"
+    ],
+    "diagnostic_meta": {
+      "category": "listing_share_count",
+      "company": "Lotus"
+    }
+  }
+]

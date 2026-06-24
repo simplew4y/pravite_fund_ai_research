@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillOps Review Console</title>
+    <link rel="stylesheet" href="skillops_console.css">
+</head>
+<body>
+    <header class="topbar">
+        <div>
+            <div class="eyebrow">FinSAgent SkillOps</div>
+            <h1>Human-Governed Review Console</h1>
+        </div>
+        <nav class="top-actions">
+            <a href="/" class="ghost-link">Chat</a>
+            <button id="refresh-button" class="icon-button" title="Reload review data" aria-label="Reload review data">
+                <span aria-hidden="true">↻</span>
+            </button>
+        </nav>
+    </header>
+
+    <main class="layout">
+        <section class="summary-band" aria-label="Cross-company summary">
+            <div class="summary-copy">
+                <div class="eyebrow">Cross-company SEC QA maintenance</div>
+                <h2>Automatic proposal, evidence-first review, controlled promotion.</h2>
+            </div>
+            <div class="metric-strip" id="metric-strip"></div>
+        </section>
+
+        <section class="company-grid" id="company-grid" aria-label="Company protected validation"></section>
+
+        <section class="workspace">
+            <aside class="queue-panel" aria-label="Review queue">
+                <div class="panel-header">
+                    <div>
+                        <div class="eyebrow">Review Queue</div>
+                        <h2>Pending Skill Candidates</h2>
+                    </div>
+                    <span id="queue-count" class="count-pill">0</span>
+                </div>
+                <div id="review-list" class="review-list"></div>
+            </aside>
+
+            <section class="detail-panel" aria-live="polite">
+                <div class="detail-header">
+                    <div>
+                        <div id="detail-company" class="eyebrow"></div>
+                        <h2 id="detail-title"></h2>
+                    </div>
+                    <div id="detail-status" class="status-pill"></div>
+                </div>
+
+                <div class="question-block">
+                    <div class="block-label">Question</div>
+                    <p id="detail-question"></p>
+                </div>
+
+                <div class="tabs" role="tablist" aria-label="Candidate details">
+                    <button class="tab active" data-tab="evidence" role="tab">Evidence Packet</button>
+                    <button class="tab" data-tab="skill" role="tab">Skill Card</button>
+                    <button class="tab" data-tab="gate" role="tab">Promotion Gate</button>
+                    <button class="tab" data-tab="baseline" role="tab">Auto Baselines</button>
+                </div>
+
+                <div id="tab-evidence" class="tab-panel active" role="tabpanel"></div>
+                <div id="tab-skill" class="tab-panel" role="tabpanel"></div>
+                <div id="tab-gate" class="tab-panel" role="tabpanel"></div>
+                <div id="tab-baseline" class="tab-panel" role="tabpanel"></div>
+            </section>
+        </section>
+    </main>
+
+    <div class="decision-bar" aria-label="Manual review actions">
+        <div>
+            <strong id="decision-title">No candidate selected</strong>
+            <span id="decision-note">Select a queued skill candidate to review gate evidence.</span>
+        </div>
+        <div class="decision-actions">
+            <button class="secondary-button" data-action="more_tests">Request more tests</button>
+            <button class="secondary-button" data-action="reject">Reject</button>
+            <button class="primary-button" data-action="approve">Approve</button>
+        </div>
+    </div>
+
+    <script src="skillops_console.js"></script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+suite_id: cross_company_guard_v1
+suite_type: guardrail
+frozen: false
+purpose: Guard against overfitting to a single company or a single disclosure style.
+used_for:
+  - promotion_gate
+  - cross_company_generalization_check
+  - reviewer_confidence
+source_artifacts:
+  core_protected_reference: configs/eval_suites/core_protected_v1.yaml
+cases:
+  - case_group: lotus_mini10
+    company: Lotus Technology
+    count: 10
+    role: non_zeekr_guard
+  - case_group: nvidia_mini10
+    company: NVIDIA
+    count: 10
+    role: non_zeekr_guard
+  - case_group: zeekr_holdout_subset
+    company: Zeekr
+    count: 20
+    role: target_company_regression_guard
+admission_policy:
+  owner: myz
+  change_control: append_or_version_with_review
+  new_cases: Prefer adding new companies or filing styles to v2 rather than only adding more Zeekr cases.
+  pass_condition: no cross-company regression and no company-boundary leakage
+notes:
+  - This suite can overlap with core_protected_v1, but it has a different interpretation: generalization guard rather than headline accuracy table.

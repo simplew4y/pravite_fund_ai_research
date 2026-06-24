@@ -1,0 +1,190 @@
+{
+  "demo_id": "skillops_vertical_slice_20260605",
+  "title": "Human-Governed SkillOps Vertical Slice for SEC QA",
+  "loop": [
+    "Question",
+    "Retrieval",
+    "Grep Probe",
+    "Evidence Preview",
+    "Failure Diagnosis",
+    "Skill Candidate Proposal",
+    "Regression Gate"
+  ],
+  "steps": [
+    {
+      "step": "Step 1",
+      "name": "Skill Registry",
+      "summary": "Wrapped existing SEC-specific patches as governed skill cards with status, scope, risk, and eval metadata.",
+      "artifacts": [
+        {
+          "path": "configs/skill_cards/",
+          "exists": true,
+          "kind": "directory"
+        },
+        {
+          "path": "reports/skill_registry_report.md",
+          "exists": true,
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "step": "Step 2",
+      "name": "Grep Evidence Probe",
+      "summary": "Added structured lexical evidence anchors: exact phrase, regex, metric alias, period phrase, and nearby number.",
+      "artifacts": [
+        {
+          "path": "src/grep/grep_probe.py",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/GREP_PROBE_STEP2_REPORT_20260605.md",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/grep_probe_step2_20260605/lotus_q1_probe_report.md",
+          "exists": true,
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "step": "Step 3",
+      "name": "Evidence Preview",
+      "summary": "Unified retrieval chunks, grep anchors, final answer, and skill traces into auditable JSON/Markdown previews.",
+      "artifacts": [
+        {
+          "path": "src/preview/evidence_preview.py",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/EVIDENCE_PREVIEW_STEP3_REPORT_20260605.md",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/evidence_preview_step3_20260605/lotus_q1_success_preview.md",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/evidence_preview_step3_20260605/nvidia_q15_source_conflict_preview.md",
+          "exists": true,
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "step": "Step 4",
+      "name": "Failure Explainer",
+      "summary": "Added rule-based failure diagnosis over evidence previews and run rows.",
+      "artifacts": [
+        {
+          "path": "configs/failure_taxonomy.yaml",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "src/diagnosis/failure_explainer.py",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/FAILURE_EXPLAINER_STEP4_REPORT_20260605.md",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/failure_explainer_step4_20260605/nvidia_q15_source_conflict_failure_report.md",
+          "exists": true,
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "step": "Step 5",
+      "name": "Skill Candidate Proposal",
+      "summary": "Generated proposal-only YAML/Markdown candidate skills from FailureReport without writing production code.",
+      "artifacts": [
+        {
+          "path": "src/diagnosis/skill_candidate_generator.py",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/SKILL_CANDIDATE_STEP5_REPORT_20260605.md",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/skill_candidate_step5_20260605/nvidia_q15_skill_candidates.md",
+          "exists": true,
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "step": "Step 6",
+      "name": "Regression Gate",
+      "summary": "Added conservative gate decisions over proposals and eval summaries; candidates stay proposed without human review.",
+      "artifacts": [
+        {
+          "path": "src/skillops/gate_runner.py",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/REGRESSION_GATE_STEP6_REPORT_20260605.md",
+          "exists": true,
+          "kind": "file"
+        },
+        {
+          "path": "test/colm/retrieval/skill_candidate_step6_20260605/nvidia_q15_gate_decisions.md",
+          "exists": true,
+          "kind": "file"
+        }
+      ]
+    }
+  ],
+  "case_studies": [
+    {
+      "name": "Success Control: Lotus Revenue Question",
+      "qid": "lotus_gen_01",
+      "role": "Correct answer with aligned retrieval and grep anchors",
+      "result": "Failure explainer returns no_failure_detected; no skill proposal is generated.",
+      "artifacts": [
+        "test/colm/retrieval/evidence_preview_step3_20260605/lotus_q1_success_preview.md",
+        "test/colm/retrieval/failure_explainer_step4_20260605/lotus_q1_success_failure_report.md",
+        "test/colm/retrieval/skill_candidate_step5_20260605/lotus_q1_success_skill_candidates.md"
+      ],
+      "interpretation": "This case shows the loop does not hallucinate failures or propose unnecessary skills for a clean successful answer."
+    },
+    {
+      "name": "Failure/Repair: NVIDIA FY2025 Export-Control Source Conflict",
+      "qid": "qa_kp_000015",
+      "role": "Previously incorrect answer repaired by source-conflict skill and diagnosed by Failure Explainer",
+      "result": "Failure explainer classifies source_conflict with 0.95 confidence; proposal generator emits two proposed skills.",
+      "artifacts": [
+        "test/colm/retrieval/evidence_preview_step3_20260605/nvidia_q15_source_conflict_preview.md",
+        "test/colm/retrieval/failure_explainer_step4_20260605/nvidia_q15_source_conflict_failure_report.md",
+        "test/colm/retrieval/skill_candidate_step5_20260605/nvidia_q15_skill_candidates.md",
+        "test/colm/retrieval/skill_candidate_step6_20260605/nvidia_q15_gate_decisions.md"
+      ],
+      "interpretation": "This case demonstrates the research loop: evidence preview exposes the issue, diagnosis classifies it, candidate generation proposes bounded fixes, and the gate keeps them proposed until review."
+    }
+  ],
+  "benchmark_context": [
+    "Cross-company v1.1: 40/40 correct, weighted score 5.0.",
+    "Companies: Zeekr, Lotus Technology, NVIDIA"
+  ],
+  "known_gaps": [
+    "The loop currently summarizes existing run artifacts; it is not yet a single end-to-end command over arbitrary new questions.",
+    "Failure explainer is rule-based and should later be evaluated for diagnosis precision/recall.",
+    "Grep probe is a lexical audit side-channel, not an answerer; aliases and Chinese-English expansion need systematic company-profile support.",
+    "Regression gate uses protected-set summaries and manual-review flags; full implementation-specific reruns are still future work.",
+    "Candidate proposals are proposal-only by design and require human review before implementation."
+  ]
+}

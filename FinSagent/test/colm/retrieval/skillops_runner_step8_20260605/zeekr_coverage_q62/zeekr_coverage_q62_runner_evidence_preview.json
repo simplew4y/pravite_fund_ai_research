@@ -1,0 +1,165 @@
+{
+  "preview_id": "zeekr_coverage_q62_runner",
+  "qid": "qa_kp_62",
+  "question": "极氪在全球的销售网络？",
+  "answer": "截至2024年12月31日，极氪全球共有538家线下销售和服务网点，其中中国467家、海外71家，整体采用直营/DTC模式。2024财年披露还显示，全球销售和营销设施相关资本性支出约为人民币17.154亿元，用于支持销售服务网络扩张。",
+  "retrieval": [
+    {
+      "rank": 1,
+      "retriever": "FAISS",
+      "score": 0.5220651626586914,
+      "source": "20F_20250320.json",
+      "page": "38",
+      "date_published": "2025-03-20",
+      "snippet": "The offline sales and service network consists of Zeekr Center, Zeekr Space, Zeekr Delivery Center, and Zeekr House. As of December 31, 2024, Zeekr had a total of 467 offline sales and service centers in China and 71 offline locations overseas. Zeekr plans to further expand its physical sales and service network. This planned expansion may not have the desired effect of increasing sales and enhancing brand recognition in a cost-efficient manner. Zeekr may need to invest significant capital and management resources to operate existing direct stores and open new ones, and there can be no assurance that Zeekr will be able to improve the operational efficiency of its direct stores.",
+      "metadata": {
+        "global_id": 1103,
+        "doc_id": "6e71f16b3cccc609bb6cf9b9948ca78819a9e4817f8702db79736557e966e906",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.5633
+      }
+    },
+    {
+      "rank": 2,
+      "retriever": "FAISS",
+      "score": 0.47754910588264465,
+      "source": "20F_20250320.json",
+      "page": "121",
+      "date_published": "2025-03-20",
+      "snippet": "Zeekr adopts a customer-oriented and go-to-market philosophy. Zeekr's professional, efficient in-house sales and marketing team is in charge of Zeekr's direct-to-consumer (DTC) sales network, especially in key aspects such as site selection, construction, and operation of Zeekr's sales centers, as well as a series of delivery and after-sales services. Zeekr is committed to building a DTC sales model to provide customers with a full lifecycle superior experience and value-added services. Led by professionals with extensive experience, Zeekr had 7,134 members in its sales and marketing team as of December 31, 2024, among which 87.9% of Zeekr's sales and marketing team had extensive backgrou...",
+      "metadata": {
+        "global_id": 1294,
+        "doc_id": "947bed67c3d292b535f9ab0acb8d049ba78e743e5444e4396f867e5c724fa0b9",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.3133
+      }
+    },
+    {
+      "rank": 3,
+      "retriever": "PageIndex",
+      "score": 16.340334222003815,
+      "source": "6K_20250515.json",
+      "page": "2",
+      "date_published": "2025-05-15",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250515.pdf Date: 2025-05-15 Pages: 3-3 Title: SIGNATURE Summary: The partial document is a signature page from a regulatory filing under the Securities Exchange Act of 1934, indicating that Zeekr Intelligent Technology Holding Limited has authorized the submission of the report. It includes the signature, name, title (Chief Executive Officer), and date (May 15, 2025) of Conghui An, who signed on behalf of the company. [Mapped page chunk] Pursuant to the requirements of the Securities Exchange Act of 1934, Zeekr has duly caused this report to be signed on its behalf by the undersigned, thereunto duly authorized. Date: May 15, 2025 ZEEKR Intelli...",
+      "metadata": {
+        "global_id": 2866,
+        "doc_id": "0a05a5920f1c6d012b6767d7157495311e32c5fc1b01493a1947e57d70ac97ae"
+      }
+    },
+    {
+      "rank": 4,
+      "retriever": "PageIndex",
+      "score": 15.943073401053095,
+      "source": "6K_20250515.json",
+      "page": "8",
+      "date_published": "2025-05-15",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250515.pdf Date: 2025-05-15 Pages: 9-9 Title: About Zeekr Group Summary: The partial document provides key financial and operational updates for Zeekr Group for the first quarter of 2025. It highlights significant improvements in Non-GAAP net loss per share and per American Depositary Share (ADS) compared to both the first quarter of 2024 and the fourth quarter of 2024, indicating reduced losses. The company reported RMB9,898 million (US$1,364 million) in cash and cash equivalents plus restricted cash as of March 31, 2025. An upcoming earnings conference call is scheduled for May 15, 2025, with details on registration and webcast access provid...",
+      "metadata": {
+        "global_id": 2882,
+        "doc_id": "f812e47e45699b460d8883a9563083c61ed7501317ec0f9f76e8f9dc3e5fb99c"
+      }
+    },
+    {
+      "rank": 5,
+      "retriever": "FAISS",
+      "score": 0.4667391777038574,
+      "source": "F1_20230201.json",
+      "page": "59",
+      "date_published": "2023-02-01",
+      "snippet": "It is uncertain when the final regulation will be issued and take effect, how it will be enacted, interpreted and implemented, and whether or to what extent it will affect Zeekr. The scope of business operations and financing activities that are subject to such draft regulations and the implementation thereof is not yet clear. In addition, on December 28, 2021, the Cyberspace Administration of China (CAC) and several other regulatory administrations jointly promulgated the revised Cybersecurity Review Measures, which became effective on February 15, 2022, and supersede and replace the Cybersecurity Review Measures previously promulgated on April 13, 2020. The Cybersecurity Review Measures...",
+      "metadata": {
+        "global_id": 5551,
+        "doc_id": "7c383b3be31ddecb22de67c7c6ce4fc849b01bbde0e8a737324dff6bae693ef1"
+      }
+    },
+    {
+      "rank": 6,
+      "retriever": "FAISS",
+      "score": 0.463772714138031,
+      "source": "F1_20240320.json",
+      "page": "158",
+      "date_published": "2024-03-20",
+      "snippet": "Zeekr adopts a customer-oriented and go-to-market philosophy. Zeekr's professional, efficient in-house sales and marketing team is in charge of Zeekr's direct-to-consumer (DTC) sales network, especially in key aspects such as site selection, construction, and operation of Zeekr's sales centers, as well as a series of delivery and after-sales services. Zeekr is committed to building a DTC sales model to provide customers with a full lifecycle superior experience and value-added services. As of December 31, 2023, approximately 84.8% of Zeekr's sales and marketing team had extensive backgrounds in the automobile and retail industries. Zeekr's sales network consists of ZEEKR Center, ZEEKR Spa...",
+      "metadata": {
+        "global_id": 12298,
+        "doc_id": "db2e0b140d1ee84a3399979506d049da715a375f79f6d17bcc414c54bdda68ef"
+      }
+    },
+    {
+      "rank": 7,
+      "retriever": "Table",
+      "score": 0.47709232568740845,
+      "source": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250729/tables/F1_20231124_table_reconstructed.json",
+      "page": "295",
+      "date_published": "",
+      "snippet": "<table> <thead> <tr> <th colspan=\"4\">Year Ended December 31, 2020</th> </tr> <tr> <th></th> <th>China</th> <th>Europe</th> <th>Other</th> </tr> <tr> <th></th> <th>RMB</th> <th>RMB</th> <th>RMB</th> </tr> </thead> <tbody> <tr> <td>Vehicle</td> <td>—</td> <td>—</td> <td>—</td> </tr> <tr> <td>Batteries and other components</td> <td>362,888</td> <td>13,429</td> <td>—</td> </tr> <tr> <td>Research and development and others</td> <td>2,404,676</td> <td>352,771</td> <td>51,301</td> </tr> <tr> <td><strong>Total</strong></td> <td><strong>2,767,564</strong></td> <td><strong>366,200</strong></td> <td><strong>51,301</strong></td> </tr> </tbody> </table> <table> <thead> <tr> <th colspan=\"4\">Year Ended...",
+      "metadata": {
+        "content_type": "table"
+      }
+    },
+    {
+      "rank": 8,
+      "retriever": "Table",
+      "score": 0.47330814599990845,
+      "source": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250729/tables/F1_20220712_table_reconstructed.json",
+      "page": "262",
+      "date_published": "",
+      "snippet": "<table> <thead> <tr> <th colspan=\"4\">Year Ended December 31, 2020</th> </tr> <tr> <th></th> <th>China</th> <th>Europe</th> <th>Other</th> </tr> <tr> <th></th> <th>RMB</th> <th>RMB</th> <th>RMB</th> </tr> </thead> <tbody> <tr> <td>Vehicle</td> <td>—</td> <td>—</td> <td>—</td> </tr> <tr> <td>Batteries and other components</td> <td>362,888</td> <td>13,429</td> <td>—</td> </tr> <tr> <td>Research and development</td> <td>2,404,676</td> <td>352,771</td> <td>51,301</td> </tr> <tr> <td><strong>Total</strong></td> <td><strong>2,767,564</strong></td> <td><strong>366,200</strong></td> <td><strong>51,301</strong></td> </tr> </tbody> </table> <table> <thead> <tr> <th colspan=\"4\">Year Ended December 31...",
+      "metadata": {
+        "content_type": "table"
+      }
+    }
+  ],
+  "grep_probe": {
+    "question": "极氪在全球的销售网络？",
+    "query_terms": [],
+    "metric_aliases": {},
+    "period_terms": [],
+    "anchors": [],
+    "files_scanned": 80,
+    "metadata": {
+      "case_id": "zeekr_coverage_q62_runner"
+    }
+  },
+  "skill_traces": [
+    {
+      "skill_id": "table_evidence_verifier",
+      "triggered": false,
+      "trigger_reason": "NO_TABLE_FACTS",
+      "output_decision": "no_action",
+      "supporting_source": null,
+      "audit_notes": []
+    },
+    {
+      "skill_id": "company_profile_boundary",
+      "triggered": false,
+      "trigger_reason": "out_of_scope",
+      "output_decision": "no_action",
+      "supporting_source": null,
+      "audit_notes": [
+        "fact=None"
+      ]
+    },
+    {
+      "skill_id": "answer_coverage",
+      "triggered": true,
+      "trigger_reason": "coverage repair for global_sales_network",
+      "output_decision": "repair_applied",
+      "supporting_source": null,
+      "audit_notes": [
+        "fact={'fact_id': 'zeekr_global_sales_network', 'intent': 'global_sales_network', 'answer_en': 'As of December 31, 2024, Zeekr had 538 offline sales and service outlets globally, including 467 in China and 71 overseas, operating mainly through a direct-to-consumer model. The 2024 disclosures also tie this network expansion to FY2024 capital expenditure for global sales and marketing facilities of RMB 1.7154 billion, or RMB 17.154 yi.', 'answer_zh': '截至2024年12月31日，极氪全球共有538家线下销售和服务网点，其中中国467家、海外71家，整体采用直营/DTC模式。2024财年披露还显示，全球销售和营销设施相关资本性支出约为人民币17.154亿元，用于支持销售服务网络扩张。'}"
+      ]
+    }
+  ],
+  "audit_notes": [
+    "retrieval_chunks_previewed=8",
+    "grep_anchors_previewed=0",
+    "triggered_skills=answer_coverage"
+  ],
+  "metadata": {
+    "retrieved_chunk_count": 15,
+    "total_time": 64.078,
+    "retrieval_profile": "conservative"
+  }
+}

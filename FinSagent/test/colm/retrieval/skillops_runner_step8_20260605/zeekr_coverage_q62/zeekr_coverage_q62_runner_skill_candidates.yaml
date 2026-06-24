@@ -1,0 +1,41 @@
+proposals:
+- candidate_id: qa_kp_62_answer_coverage_guard
+  candidate_skill_name: answer_coverage_guard
+  observed_failures:
+  - 'answer_coverage_failure (medium): Answer coverage repair trace triggered. Evidence:
+    {''skill_id'': ''answer_coverage'', ''triggered'': True, ''trigger_reason'': ''coverage
+    repair for global_sales_network'', ''output_decision'': ''repair_applied'', ''supporting_source'':
+    None, ''audit_notes'': ["fact={''fact_id'': ''zeekr_global_sales_network'', ''intent'':
+    ''global_sales_network'', ''answer_en'': ''As of December 31, 2024, Zeekr had
+    538 offline sales and service outlets globally, including 467 in China and 71
+    overseas, operating mainly through a direct-to-consumer model. The 2024 disclosures
+    also tie this network expansion to FY2024 capital expenditure for global sales
+    and marketing facilities of RMB 1.7154 billion, or RMB 17.154 yi.'', ''answer_zh'':
+    ''截至2024年12月31日，极氪全球共有538家线下销售和服务网点，其中中国467家、海外71家，整体采用直营/DTC模式。2024财年披露还显示，全球销售和营销设施相关资本性支出约为人民币17.154亿元，用于支持销售服务网络扩张。''}"]}'
+  - 'answer_coverage_failure (medium): Coverage repair was applied, indicating the
+    original answer missed a required key point. Evidence: {''fact_id'': ''zeekr_global_sales_network'',
+    ''intent'': ''global_sales_network'', ''answer_en'': ''As of December 31, 2024,
+    Zeekr had 538 offline sales and service outlets globally, including 467 in China
+    and 71 overseas, operating mainly through a direct-to-consumer model. The 2024
+    disclosures also tie this network expansion to FY2024 capital expenditure for
+    global sales and marketing facilities of RMB 1.7154 billion, or RMB 17.154 yi.'',
+    ''answer_zh'': ''截至2024年12月31日，极氪全球共有538家线下销售和服务网点，其中中国467家、海外71家，整体采用直营/DTC模式。2024财年披露还显示，全球销售和营销设施相关资本性支出约为人民币17.154亿元，用于支持销售服务网络扩张。''}'
+  failure_types:
+  - answer_coverage_failure
+  hypothesis: Answers can include the core fact but omit required comparison or boundary
+    key points.
+  proposed_trigger: Judge/key-point diff indicates missing key points while answer
+    contains core entity/metric.
+  proposed_action: Require a coverage checklist before finalization and propose guarded
+    coverage repair only with supporting evidence.
+  risks:
+  - Can become answer-memorization if key points are copied into global rules.
+  required_tests:
+  - Human review confirms added coverage is evidence-backed.
+  - No regression on concise-answer questions.
+  suggested_status: proposed
+  source_failure_report: test/colm/retrieval/skillops_runner_step8_20260605/zeekr_coverage_q62/zeekr_coverage_q62_runner_failure_report.json
+  human_review_required: true
+  notes: ''
+  metadata:
+    qid: qa_kp_62

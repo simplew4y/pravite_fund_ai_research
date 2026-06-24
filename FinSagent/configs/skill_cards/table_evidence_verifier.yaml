@@ -1,0 +1,35 @@
+skill_id: table_evidence_verifier
+version: "0.1.0"
+name: Deterministic Table Evidence Verifier
+scope: "Verifies and canonicalizes high-confidence numeric/table answers using extracted table facts, including delivery, gross margin, cash balance, revenue stream, and capitalization cases."
+failure_types:
+  - table_alignment_error
+  - metric_alias_error
+  - answer_coverage_failure
+trigger: "Question asks for numeric SEC table facts and retrieved or fallback chunks contain table evidence."
+inputs:
+  - question
+  - generated_answer
+  - retrieved_chunks
+  - reconstructed_table_chunks
+outputs:
+  - verification_result
+  - repaired_answer
+  - quant_skill_hints
+  - skill_trace
+risks:
+  - "Renderer coverage is intentionally partial and may leave unsupported table types unchanged."
+  - "Canonicalization can look rigid if the answer requires qualitative interpretation."
+eval_sets:
+  - zeekr_small30
+  - zeekr_holdout20
+  - final_stack_validation_20260603
+status: promoted
+owner: myz
+last_reviewed: "2026-06-05"
+implementation_refs:
+  - src/utils/table_fact_verifier.py
+  - src/utils/table_answer_repair.py
+  - src/utils/table_answer_gate.py
+notes: "This is the main deterministic numeric verifier used to reduce harmful self-check behavior on table questions."
+

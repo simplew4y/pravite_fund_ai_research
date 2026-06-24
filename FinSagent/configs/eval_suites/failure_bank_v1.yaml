@@ -1,0 +1,43 @@
+suite_id: failure_bank_v1_seed
+suite_type: evolving_failure_bank
+frozen: false
+purpose: Preserve confirmed failures and repairs so they do not recur.
+used_for:
+  - failure_regression
+  - skill_candidate_evidence
+  - postmortem_tracking
+cases:
+  - failure_type: source_conflict
+    seed_case: nvidia_q15_source_conflict_runner
+    source_suite: skillops_demo_v1_6
+    status: seeded
+  - failure_type: period_mismatch
+    seed_case: nvidia_period_mismatch_runner
+    source_suite: skillops_demo_v1_6
+    status: seeded
+  - failure_type: table_alignment_error
+    seed_case: zeekr_table_q100_runner
+    source_suite: skillops_demo_v1_6
+    status: seeded
+  - failure_type: profile_boundary_error
+    seed_case: zeekr_profile_q48_runner
+    source_suite: skillops_demo_v1_6
+    status: seeded
+  - failure_type: answer_coverage_failure
+    seed_case: zeekr_coverage_q62_runner
+    source_suite: skillops_demo_v1_6
+    status: seeded
+admission_policy:
+  owner: myz
+  change_control: append_only_with_review
+  new_cases: Add only after a failure is manually confirmed and assigned a taxonomy label.
+  required_fields:
+    - failure_type
+    - source_question
+    - observed_bad_answer
+    - expected_behavior
+    - evidence_pointer
+    - reviewer
+  pass_condition: no recurrence of confirmed failures on protected reruns
+notes:
+  - The failure bank is allowed to evolve; protected accuracy sets should stay frozen.

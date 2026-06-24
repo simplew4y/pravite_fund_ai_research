@@ -1,0 +1,28 @@
+[
+  {
+    "qid": "qa_kp_100",
+    "question": "What was Zeekr's gross margin in the first quarter of 2024?",
+    "generated_answer": "The answer depends on selecting the correct table row, column, unit, and source period. The audit trace marks this as a deterministic table-alignment repair case.",
+    "retrieved_chunks": [
+      {
+        "retriever": "demo_stable_input",
+        "score": 1.0,
+        "page_content": "Zeekr first quarter 2024 gross margin requires deterministic table row, column, unit, and period alignment.",
+        "metadata": {
+          "source": "zeekr_demo_stable_input",
+          "filename": "zeekr_demo_stable_input",
+          "page_number": "demo",
+          "date_published": "2024-03-31"
+        }
+      }
+    ],
+    "retrieved_chunk_count": 1,
+    "table_repair_applied": true,
+    "table_repair_reason": "deterministic source-precedence gross-margin repair for 2024 Q1",
+    "table_repair_verification": {
+      "status": "attached",
+      "note": "Stable demo audit trace for table_alignment_error diagnosis."
+    },
+    "demo_case_role": "audit_trace_demo"
+  }
+]

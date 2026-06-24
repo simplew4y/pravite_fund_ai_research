@@ -1,0 +1,11 @@
+qid,qa_type,answer_type,n_keypoints,kp_matched,kp_partial,kp_missing,kp_incorrect,kp_coverage_ratio,judge_verdict,passed
+qa_kp_000000,unknown,generated_answer,1,1,0,0,0,1.0,CORRECT,True
+qa_kp_000009,unknown,generated_answer,1,1,0,0,0,1.0,CORRECT,True
+qa_kp_000014,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True
+qa_kp_000015,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True
+qa_kp_000018,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True
+qa_kp_000022,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True
+qa_kp_000024,unknown,generated_answer,3,3,0,0,0,1.0,CORRECT,True
+qa_kp_000026,unknown,generated_answer,1,1,0,0,0,1.0,CORRECT,True
+qa_kp_000027,unknown,generated_answer,1,1,0,0,0,1.0,CORRECT,True
+qa_kp_000005,unknown,generated_answer,2,2,0,0,0,1.0,CORRECT,True

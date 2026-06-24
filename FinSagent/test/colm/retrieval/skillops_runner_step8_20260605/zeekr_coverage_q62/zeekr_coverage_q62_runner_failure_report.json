@@ -1,0 +1,31 @@
+{
+  "qid": "qa_kp_62",
+  "question": "极氪在全球的销售网络？",
+  "primary_failure_type": "answer_coverage_failure",
+  "confidence": 0.8300000000000001,
+  "signals": [
+    {
+      "failure_type": "answer_coverage_failure",
+      "severity": "medium",
+      "evidence": "{'skill_id': 'answer_coverage', 'triggered': True, 'trigger_reason': 'coverage repair for global_sales_network', 'output_decision': 'repair_applied', 'supporting_source': None, 'audit_notes': [\"fact={'fact_id': 'zeekr_global_sales_network', 'intent': 'global_sales_network', 'answer_en': 'As of December 31, 2024, Zeekr had 538 offline sales and service outlets globally, including 467 in China and 71 overseas, operating mainly through a direct-to-consumer model. The 2024 disclosures also tie this network expansion to FY2024 capital expenditure for global sales and marketing facilities of RMB 1.7154 billion, or RMB 17.154 yi.', 'answer_zh': '截至2024年12月31日，极氪全球共有538家线下销售和服务网点，其中中国467家、海外71家，整体采用直营/DTC模式。2024财年披露还显示，全球销售和营销设施相关资本性支出约为人民币17.154亿元，用于支持销售服务网络扩张。'}\"]}",
+      "rationale": "Answer coverage repair trace triggered."
+    },
+    {
+      "failure_type": "answer_coverage_failure",
+      "severity": "medium",
+      "evidence": "{'fact_id': 'zeekr_global_sales_network', 'intent': 'global_sales_network', 'answer_en': 'As of December 31, 2024, Zeekr had 538 offline sales and service outlets globally, including 467 in China and 71 overseas, operating mainly through a direct-to-consumer model. The 2024 disclosures also tie this network expansion to FY2024 capital expenditure for global sales and marketing facilities of RMB 1.7154 billion, or RMB 17.154 yi.', 'answer_zh': '截至2024年12月31日，极氪全球共有538家线下销售和服务网点，其中中国467家、海外71家，整体采用直营/DTC模式。2024财年披露还显示，全球销售和营销设施相关资本性支出约为人民币17.154亿元，用于支持销售服务网络扩张。'}",
+      "rationale": "Coverage repair was applied, indicating the original answer missed a required key point."
+    }
+  ],
+  "suggested_next_action": "Compare answer against key points and consider a guarded coverage skill proposal.",
+  "audit_notes": [
+    "rule_based_explainer",
+    "signals=2"
+  ],
+  "metadata": {
+    "preview_id": "zeekr_coverage_q62_runner",
+    "retrieved_chunk_count": 15,
+    "grep_anchor_count": 0,
+    "skill_trace_count": 3
+  }
+}

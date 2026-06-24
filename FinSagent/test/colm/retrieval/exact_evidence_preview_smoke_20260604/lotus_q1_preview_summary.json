@@ -1,0 +1,74 @@
+{
+  "source_output": "test/colm/retrieval/exact_evidence_preview_smoke_20260604/lotus_q1_preview.json",
+  "qid": "lotus_gen_01",
+  "question": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023?",
+  "has_exact_evidence_preview": true,
+  "terms": [
+    "Lotus",
+    "Technology",
+    "revenue",
+    "nine",
+    "months",
+    "ended",
+    "September",
+    "30",
+    "2024",
+    "period",
+    "2023"
+  ],
+  "hit_count": 3,
+  "top_hits": [
+    {
+      "path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121.json",
+      "score": 11.0,
+      "matched_terms": [
+        "Lotus",
+        "Technology",
+        "revenue",
+        "nine",
+        "months",
+        "ended",
+        "September",
+        "30",
+        "2024",
+        "period",
+        "2023"
+      ],
+      "snippet": "alating operating and net losses, alongside a decline in gross margins for goods sold.\"}, {\"id\": 13, \"content\": \"Key Financial Results The table below summarizes key preliminary financial results for Lotus Technology for the first nine months ended September 30, 2024. (in millions of U.S. dollars, unaudited)\", \"page_number\": 5, \"type\": \"text\", \"title_summary\": \"title: Financial Highlights for the First Nine Months of 2024 \\nsummary: **Comprehensive Summary of Financial Highlights for the First Nine Months of 2024**\\n\\nFor the first nine months of 2024, the company achieved total revenues of $653 million, reflecting a remarkable 105% increase compared to $318 million during the same period in"
+    },
+    {
+      "path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121_ppt.json",
+      "score": 10.0,
+      "matched_terms": [
+        "Lotus",
+        "revenue",
+        "nine",
+        "months",
+        "ended",
+        "September",
+        "30",
+        "2024",
+        "period",
+        "2023"
+      ],
+      "snippet": "2024, as Series Pre-A and Series A redeemable convertible preferred shares were fully converted or reclassified. The shareholders' deficit attributable to ordinary shareholders was $371,044,000 as of September 30, 2024, showing an improvement from a deficit of $1,205,299,000 at the end of 2023.\", \"type\": \"slide\"}, {\"id\": 27, \"page_number\": 40, \"content\": \"This reflects better equity conditions due to increased additional paid-in capital, which surged to $1,857,225,000 from $358,187,000.\", \"type\": \"slide\"}, {\"id\": 28, \"page_number\": 41, \"content\": \"For the nine months ended September 30, 2024, Lotus reported a revenue of $652,823,000, a significant increase from $317,941,000 for the same peri"
+    },
+    {
+      "path": "/root/autodl-tmp/RAG_Agent_data/2025_04/final_jsons/Lotus_F-3_20250304_final.json",
+      "score": 10.0,
+      "matched_terms": [
+        "Lotus",
+        "Technology",
+        "revenue",
+        "nine",
+        "months",
+        "September",
+        "30",
+        "2024",
+        "period",
+        "2023"
+      ],
+      "snippet": "in revenues, which reached $652.8 million in 2024 compared to $317.9 million in 2023, the company faced escalating costs and operating expenses. This resulted in a net loss of $666.5 million for the nine months ending September 30, 2024, up from a loss of $526.5 million in the same period the previous year. The operating loss was significant, driven by rising expenses and interest costs, even as gross profit improved due to higher sales.\\n\\nThe company’s shareholders' equity also declined from $610.9 million to $550.2 million, indicating challenges in maintaining equity value amid increasing liabilities. The accumulated deficit grew, reflecting ongoing operational losses or heavy investments"
+    }
+  ]
+}

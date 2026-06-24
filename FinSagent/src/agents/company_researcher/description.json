@@ -1,0 +1,25 @@
+{
+  "name": "company_researcher",
+  "summary": "Focuses on company history, milestones, ownership and equity events.",
+  "responsibilities": [
+    "Timeline of key events and milestones",
+    "Fundraising and equity transactions",
+    "Ownership/control changes and special arrangements",
+    "Founder/management background"
+  ],
+  "triggers": [
+    "Questions about company history or milestones",
+    "Queries on fundraising, ownership, or control changes",
+    "Requests for founder/management background",
+    "Queries about management or board personnel changes"
+  ],
+  "exclusions": [
+    "Industry/market sizing and competition",
+    "Financial statement metrics",
+    "Legal/compliance risk analysis"
+  ],
+  "tools_allowed": [
+    "company_profile",
+    "company_news"
+  ]
+}

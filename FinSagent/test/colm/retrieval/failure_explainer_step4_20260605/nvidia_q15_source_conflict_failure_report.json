@@ -1,0 +1,55 @@
+{
+  "qid": "qa_kp_000015",
+  "question": "NVIDIA在2025年如何描述出口管制对中国Data Center业务的影响？",
+  "primary_failure_type": "source_conflict",
+  "confidence": 0.95,
+  "signals": [
+    {
+      "failure_type": "source_conflict",
+      "severity": "high",
+      "evidence": "{'filename': '20250126_10-K_base_final.json', 'matched_phrase': 'Data Center revenue in China grew in fiscal year 2025'}",
+      "rationale": "source_conflict skill trace triggered, indicating conflicting retrieved source periods or interpretations."
+    },
+    {
+      "failure_type": "period_mismatch",
+      "severity": "high",
+      "evidence": "period_source_conflict_nvidia_fy2025_export_control",
+      "rationale": "The repair reason indicates a period/source conflict for a period-specific question."
+    },
+    {
+      "failure_type": "source_conflict",
+      "severity": "high",
+      "evidence": "{'filename': '20250126_10-K_base_final.json', 'matched_phrase': 'Data Center revenue in China grew in fiscal year 2025'}",
+      "rationale": "Run row indicates period_source_conflict repair was applied."
+    },
+    {
+      "failure_type": "period_mismatch",
+      "severity": "high",
+      "evidence": "H20, 2026财年, 2025年4月9日, 45亿美元, 实质上",
+      "rationale": "A 2025-period question is associated with later H20/FY2026/April 2025 disclosure markers."
+    },
+    {
+      "failure_type": "wrong_source",
+      "severity": "medium",
+      "evidence": "20251026_10-Q_base_final.json, 20251026_10-Q_base_final.json, 20250427_10-Q_base_final.json",
+      "rationale": "Top retrieval preview contains later filings that may conflict with the requested period framing."
+    },
+    {
+      "failure_type": "wrong_source",
+      "severity": "medium",
+      "evidence": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/filtered_pdf_processed_table/Lotus 20-F 20250430_table_reconstructed.json, /root/autodl-tmp/RAG_Agent_data/lotus/20250701/filtered_pdf_processed_table/Lotus 424B3 20240925_table_reconstructed.json",
+      "rationale": "Retrieval preview includes sources from a different company corpus."
+    }
+  ],
+  "suggested_next_action": "Keep or generalize period-aware source arbitration; verify that period-compatible evidence is present before repair.",
+  "audit_notes": [
+    "rule_based_explainer",
+    "signals=6"
+  ],
+  "metadata": {
+    "preview_id": "nvidia_q15_source_conflict_repair",
+    "retrieved_chunk_count": 23,
+    "grep_anchor_count": 12,
+    "skill_trace_count": 1
+  }
+}

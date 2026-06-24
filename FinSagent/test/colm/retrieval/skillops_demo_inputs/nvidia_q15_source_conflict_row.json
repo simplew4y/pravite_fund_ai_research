@@ -1,0 +1,30 @@
+[
+  {
+    "qid": "qa_kp_000015",
+    "question": "How did NVIDIA describe the impact of export controls on its China Data Center business in fiscal year 2025?",
+    "generated_answer": "NVIDIA described export controls as affecting its ability to sell certain Data Center products into China. The audit trace marks this as a source-conflict case because later disclosures can introduce conflicting period framing.",
+    "retrieved_chunks": [
+      {
+        "retriever": "demo_stable_input",
+        "score": 1.0,
+        "page_content": "NVIDIA fiscal year 2025 disclosures describe export controls as affecting China Data Center sales and creating source-period conflict risk when later disclosures are mixed in.",
+        "metadata": {
+          "source": "nvidia_demo_stable_input",
+          "filename": "nvidia_demo_stable_input",
+          "page_number": "demo",
+          "date_published": "2025-01-26"
+        }
+      }
+    ],
+    "retrieved_chunk_count": 1,
+    "period_source_conflict_repair_applied": true,
+    "period_source_conflict_repair_reason": "period-aware source arbitration for fiscal year 2025 export-control question",
+    "period_source_conflict_supporting_source": {
+      "company": "NVIDIA",
+      "filing_period": "FY2025",
+      "issue": "later disclosure conflict risk",
+      "note": "Stable demo trace for source_conflict diagnosis."
+    },
+    "demo_case_role": "audit_trace_demo"
+  }
+]

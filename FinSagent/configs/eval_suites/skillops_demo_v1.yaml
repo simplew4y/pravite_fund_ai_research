@@ -1,0 +1,44 @@
+suite_id: skillops_demo_v1_6
+suite_type: reproducible_demo
+frozen: true
+purpose: Demonstrate the SkillOps audit/evolution loop from stable demo rows.
+used_for:
+  - paper_skillops_case_table
+  - clean_rerun_check
+  - workflow_demo
+runner:
+  command: PYTHONPATH=src python -m skillops.demo_benchmark_runner --case_manifest configs/skillops_demo_cases.json --out_dir test/colm/retrieval/skillops_demo_benchmark_rerun
+  expected_status: pass
+  expected_mismatch_count: 0
+cases:
+  - case_id: lotus_q1_success_runner
+    row_json: test/colm/retrieval/skillops_demo_inputs/lotus_q1_success_row.json
+    expected_primary_failure_type: no_failure_detected
+    role: success_control
+  - case_id: nvidia_q15_source_conflict_runner
+    row_json: test/colm/retrieval/skillops_demo_inputs/nvidia_q15_source_conflict_row.json
+    expected_primary_failure_type: source_conflict
+    role: audit_trace_demo
+  - case_id: nvidia_period_mismatch_runner
+    row_json: test/colm/retrieval/skillops_demo_inputs/nvidia_period_mismatch_row.json
+    expected_primary_failure_type: period_mismatch
+    role: failure_taxonomy_demo
+  - case_id: zeekr_table_q100_runner
+    row_json: test/colm/retrieval/skillops_demo_inputs/zeekr_table_q100_row.json
+    expected_primary_failure_type: table_alignment_error
+    role: audit_trace_demo
+  - case_id: zeekr_profile_q48_runner
+    row_json: test/colm/retrieval/skillops_demo_inputs/zeekr_profile_q48_row.json
+    expected_primary_failure_type: profile_boundary_error
+    role: audit_trace_demo
+  - case_id: zeekr_coverage_q62_runner
+    row_json: test/colm/retrieval/skillops_demo_inputs/zeekr_coverage_q62_row.json
+    expected_primary_failure_type: answer_coverage_failure
+    role: audit_trace_demo
+admission_policy:
+  owner: myz
+  change_control: frozen_after_v1
+  new_cases: Add only to a v2 demo suite unless the current v1 case is broken.
+  pass_condition: all expected primary failure types reproduced
+notes:
+  - This suite is not a statistical accuracy benchmark.

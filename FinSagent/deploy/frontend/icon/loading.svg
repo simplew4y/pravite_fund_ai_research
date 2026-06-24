@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="FinSagent loading">
+  <title>FinSagent loading</title>
+
+  <g fill="none" stroke="#cc785c" stroke-width="3" stroke-linecap="round">
+    <animateTransform
+      attributeName="transform"
+      type="rotate"
+      dur="2s"
+      repeatCount="indefinite"
+      keyTimes="0; .44; .78; 1"
+      values="0 24 24; 0 24 24; 360 24 24; 360 24 24"
+      calcMode="spline"
+      keySplines=".45 0 .2 1; .45 0 .2 1; .45 0 .2 1"
+    />
+
+    <line x1="24" y1="8" x2="24" y2="16">
+      <animate
+        attributeName="y2"
+        dur="2s"
+        repeatCount="indefinite"
+        keyTimes="0; .18; .38; .76; .92; 1"
+        values="16; 16; 24; 24; 16; 16"
+        calcMode="spline"
+        keySplines=".45 0 .2 1; .45 0 .2 1; .45 0 .2 1; .45 0 .2 1; .45 0 .2 1"
+      />
+    </line>
+
+    <line x1="40" y1="24" x2="32" y2="24">
+      <animate
+        attributeName="x2"
+        dur="2s"
+        repeatCount="indefinite"
+        keyTimes="0; .18; .38; .76; .92; 1"
+        values="32; 32; 24; 24; 32; 32"
+        calcMode="spline"
+        keySplines=".45 0 .2 1; .45 0 .2 1; .45 0 .2 1; .45 0 .2 1; .45 0 .2 1"
+      />
+    </line>
+
+    <line x1="24" y1="40" x2="24" y2="32">
+      <animate
+        attributeName="y2"
+        dur="2s"
+        repeatCount="indefinite"
+        keyTimes="0; .18; .38; .76; .92; 1"
+        values="32; 32; 24; 24; 32; 32"
+        calcMode="spline"
+        keySplines=".45 0 .2 1; .45 0 .2 1; .45 0 .2 1; .45 0 .2 1; .45 0 .2 1"
+      />
+    </line>
+
+    <line x1="8" y1="24" x2="16" y2="24">
+      <animate
+        attributeName="x2"
+        dur="2s"
+        repeatCount="indefinite"
+        keyTimes="0; .18; .38; .76; .92; 1"
+        values="16; 16; 24; 24; 16; 16"
+        calcMode="spline"
+        keySplines=".45 0 .2 1; .45 0 .2 1; .45 0 .2 1; .45 0 .2 1; .45 0 .2 1"
+      />
+    </line>
+  </g>
+</svg>

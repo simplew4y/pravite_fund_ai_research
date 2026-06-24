@@ -1,0 +1,22 @@
+[
+  {
+    "qid": "lotus_gen_01",
+    "question": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023?",
+    "generated_answer": "For the nine months ended September 30, 2024, Lotus Technology revenue increased compared with the same period in 2023. This row is a success-control input for the SkillOps demo suite.",
+    "retrieved_chunks": [
+      {
+        "retriever": "demo_stable_input",
+        "score": 1.0,
+        "page_content": "Lotus Technology revenue for the nine months ended September 30, 2024 increased compared with the same period in 2023.",
+        "metadata": {
+          "source": "lotus_demo_stable_input",
+          "filename": "lotus_demo_stable_input",
+          "page_number": "demo",
+          "date_published": "2024-09-30"
+        }
+      }
+    ],
+    "retrieved_chunk_count": 1,
+    "demo_case_role": "success_control"
+  }
+]

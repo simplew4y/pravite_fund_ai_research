@@ -1,0 +1,327 @@
+{
+  "preview_id": "zeekr_table_q100_runner",
+  "qid": "qa_kp_100",
+  "question": "极氪2024年一季度毛利率",
+  "answer": "按极氪2024年6月11日披露的一季度业绩，极氪2024年第一季度毛利率为11.8%。",
+  "retrieval": [
+    {
+      "rank": 1,
+      "retriever": "PageIndex",
+      "score": 40.213878973137,
+      "source": "6K_20250515.json",
+      "page": "6",
+      "date_published": "2025-05-15",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250515.pdf Date: 2025-05-15 Pages: 7-7 Title: Cost of Revenues and Gross Margin Summary: The partial document provides a detailed financial performance overview for the first quarter of 2025, comparing results year-over-year (Q1 2024) and quarter-over-quarter (Q4 2024). Key points include: - **Vehicle Sales Revenue**: Increased by 16.1% year-over-year due to higher new model delivery volumes, despite lower average selling prices from shifts in product mix and pricing strategy; decreased by 38.4% quarter-over-quarter primarily due to seasonal declines in delivery volume. - **Other Sales and Services Revenue**: Declined by 45.2% year-over-year a...",
+      "metadata": {
+        "global_id": 2877,
+        "doc_id": "f91b731c169c2440477fe73c1217f2139a06c46dd76744d35440598550ebf259",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.15
+      }
+    },
+    {
+      "rank": 2,
+      "retriever": "PageIndex",
+      "score": 38.94724146924612,
+      "source": "6K_20250515.json",
+      "page": "4",
+      "date_published": "2025-05-15",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250515.pdf Date: 2025-05-15 Pages: 5-5 Title: Delivery Update Summary: The partial document outlines key financial results and recent operational developments for the first quarter of 2025. It reports a net loss of RMB763 million (US$105 million), reflecting a 60.2% year-over-year improvement but a 21.3% quarter-over-quarter deterioration. Adjusted net loss (non-GAAP) was RMB640 million (US$88 million), showing similar trends. Vehicle sales totaled RMB19,096 million, up 16.1% year-over-year but down 38.4% quarter-over-quarter, with breakdowns for Zeekr and Lynk & Co brands. Both vehicle margin and gross margin improved compared to prior period...",
+      "metadata": {
+        "global_id": 2872,
+        "doc_id": "a30ac01c4acedbad6b0321b024fc158ffab858ad133b6789a8d8b77e826d070d",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.15
+      }
+    },
+    {
+      "rank": 3,
+      "retriever": "PageIndex",
+      "score": 38.25722718033267,
+      "source": "6K_20250515.json",
+      "page": "7",
+      "date_published": "2025-05-15",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250515.pdf Date: 2025-05-15 Pages: 7-8 Title: Operating Expenses Summary: The partial document provides a detailed financial performance overview for the first quarter of 2025, comparing results year-over-year (Q1 2024) and quarter-over-quarter (Q4 2024). Key points include: - **Vehicle Sales Revenue**: Increased by 16.1% year-over-year due to higher new model delivery volumes, partially offset by lower average selling prices from product mix and pricing changes; decreased by 38.4% quarter-over-quarter due to seasonal declines in delivery volume. - **Other Sales and Services Revenue**: Declined significantly both year-over-year (45.2%) and qua...",
+      "metadata": {
+        "global_id": 2878,
+        "doc_id": "44a59bdc306b32f6def2a74e13934630cd3a70786b207768824d5fdf154ab687",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.15
+      }
+    },
+    {
+      "rank": 4,
+      "retriever": "PageIndex",
+      "score": 35.44221954983087,
+      "source": "6K_20240611.json",
+      "page": "3",
+      "date_published": "2024-06-11",
+      "snippet": "[PageIndex structural summary] Document: 6K_20240611.pdf Date: 2024-06-11 Pages: 4-4 Title: Operating Highlights for the First Quarter of 2024 Summary: The partial document presents ZEEKR Intelligent Technology Holding Limited’s unaudited financial and operational results for the first quarter of 2024. Key points include a year-over-year 117% increase in vehicle deliveries, totaling 33,059 units, though this represents a decline from the previous quarter. Financial highlights show significant year-over-year growth: vehicle sales rose 73.0% to RMB8,174.1 million, total revenues increased 71.0% to RMB14,736.8 million, gross profit surged 154.9% to RMB1,739.4 million, and gross margin improv...",
+      "metadata": {
+        "global_id": 2635,
+        "doc_id": "c056a9bcc8cafa0cfb8d7b477c513a571df4462b1a283435e75fd88aaff2556c"
+      }
+    },
+    {
+      "rank": 5,
+      "retriever": "PageIndex",
+      "score": 37.4941364442567,
+      "source": "6K_20240611.json",
+      "page": "5",
+      "date_published": "2024-06-11",
+      "snippet": "[PageIndex structural summary] Document: 6K_20240611.pdf Date: 2024-06-11 Pages: 6-7 Title: Revenues Summary: The partial document highlights ZEEKR’s strong operational and financial performance in the first quarter of 2024. Key points include record-high vehicle deliveries of 33,059 units (up 117% year-over-year), positioning ZEEKR as the top-selling brand in China’s premium battery electric vehicle segment (priced over RMB 200,000). Financially, total revenues rose 71.0% year-over-year to RMB14,736.8 million, with gross profit surging 154.9% and gross margin improving to 11.8%. Vehicle margin increased to 14.0%, driven by procurement cost savings. Revenue growth was fueled by higher veh...",
+      "metadata": {
+        "global_id": 2642,
+        "doc_id": "a4ebfe743bfdb7ba18f58075455052f9db95d26d6010d1435503eb1706018431"
+      }
+    },
+    {
+      "rank": 6,
+      "retriever": "PageIndex",
+      "score": 38.071428930210935,
+      "source": "6K_20240611.json",
+      "page": "6",
+      "date_published": "2024-06-11",
+      "snippet": "[PageIndex structural summary] Document: 6K_20240611.pdf Date: 2024-06-11 Pages: 7-7 Title: Cost of Revenues and Gross Margin Summary: The partial document provides a detailed financial overview of the company's performance for the first quarter of 2024 compared to the same period in 2023 and the fourth quarter of 2023. It highlights a significant year-over-year and quarter-over-quarter decline in revenues from research and development services and other services, primarily due to reduced sales to related parties. Despite this, gross profit and gross margin improved year-over-year, driven by higher vehicle margins resulting from lower auto parts and material costs, though both declined qu...",
+      "metadata": {
+        "global_id": 2646,
+        "doc_id": "07d4959e9262f08b1aa58664b2a8e3991a5a8d3d051c4fa6b1bf85b666f10135"
+      }
+    },
+    {
+      "rank": 7,
+      "retriever": "PageIndex",
+      "score": 35.22503134497025,
+      "source": "6K_20240821.json",
+      "page": "3",
+      "date_published": "2024-08-21",
+      "snippet": "[PageIndex structural summary] Document: 6K_20240821.pdf Date: 2024-08-21 Pages: 4-4 Title: Exhibit 99.1 Summary: The partial document presents ZEEKR Intelligent Technology Holding Limited’s unaudited financial and operational results for the second quarter of 2024. Key highlights include a 100% year-over-year increase in total vehicle deliveries, reaching 54,811 units. Financially, the company reported significant growth: vehicle sales rose 59.0% year-over-year and 64.4% quarter-over-quarter to RMB13,438.2 million; total revenues increased by 58.4% year-over-year and 36.0% quarter-over-quarter to RMB20,040.1 million; gross profit surged 122.5% year-over-year and 98.3% quarter-over-quarte...",
+      "metadata": {
+        "global_id": 2669,
+        "doc_id": "472b994ef40a6b3155a1442a5508f636e46bde1635e3e2de180d44a26a7fdbf8"
+      }
+    },
+    {
+      "rank": 8,
+      "retriever": "PageIndex",
+      "score": 38.464500328269196,
+      "source": "6K_20241114.json",
+      "page": "4",
+      "date_published": "2024-11-14",
+      "snippet": "[PageIndex structural summary] Document: 6K_20241114.pdf Date: 2024-11-14 Pages: 5-5 Title: Key Financial Results Summary: The partial document outlines key financial results and recent operational developments for a company (likely ZEEKR) in the third quarter of 2024. Financial highlights include a net loss of RMB1,139.1 million, which improved year-over-year by 21.7% and quarter-over-quarter by 37.0%. Adjusted net loss (non-GAAP) was RMB1,092.6 million, showing a 23.4% year-over-year improvement but a 26.3% quarter-over-quarter increase. Vehicle sales rose significantly—up 42.0% year-over-year and 7.2% quarter-over-quarter—to RMB14,401.3 million, though vehicle margin declined slightly...",
+      "metadata": {
+        "global_id": 2737,
+        "doc_id": "fe210e78c5ef09ce0e42d2e360e7fcf625a07b65f554ae0bef5bdf196dfcf4e8"
+      }
+    }
+  ],
+  "grep_probe": {
+    "question": "极氪2024年一季度毛利率",
+    "query_terms": [
+      "gross margin",
+      "2024"
+    ],
+    "metric_aliases": {},
+    "period_terms": [],
+    "anchors": [
+      {
+        "anchor_type": "nearby_number",
+        "text": "2301,",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-KA_20241114/base_remove_empty_similarity_results.json",
+        "start": 62,
+        "end": 68,
+        "snippet": "For the month of November 2024 Date: November 14, 2024 Room 2301, Building 1, Dadao Wangchao Shangwu Center, Yingfeng Street, Xiaoshan District, Hangzhou, Zhejiang Province, China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "2024",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "001",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_final.json",
+        "start": 50,
+        "end": 54,
+        "snippet": "For the month of June 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I can assist you in creating a summary, but I need more specific details about the content or topics you want summarized for Ju",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "2024",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "001",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_processed_chunked.json",
+        "start": 50,
+        "end": 54,
+        "snippet": "For the month of June 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I can assist you in creating a summary, but I need more specific details about the content or topics you want summarized for Ju",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "2024",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "001",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_final.json",
+        "start": 50,
+        "end": 54,
+        "snippet": "For the month of June 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I can assist you with a summary for June 2024, but I need more specific information about the topics or events you're intereste",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "2024",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "001",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_processed_chunked.json",
+        "start": 50,
+        "end": 54,
+        "snippet": "For the month of June 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I can assist you with a summary for June 2024, but I need more specific information about the topics or events you're intereste",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "2024",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "001",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240701/base_final.json",
+        "start": 50,
+        "end": 54,
+        "snippet": "For the month of July 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I apologize for the confusion, but I need more specific details to assist you effectively. Are you seeking a summary of events,",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "2024",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "001",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240701/base_processed_chunked.json",
+        "start": 50,
+        "end": 54,
+        "snippet": "For the month of July 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I apologize for the confusion, but I need more specific details to assist you effectively. Are you seeking a summary of events,",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "2024",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "001",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-KA_20241114/base_final.json",
+        "start": 54,
+        "end": 58,
+        "snippet": "For the month of November 2024 Commission File Number: 001-42042 title: REPORT OF FOREIGN PRIVATE ISSUER PURSUANT TO RULE 13a-16 OR 15d-16 UNDER THE SECURITIES EXCHANGE ACT OF 1934 summary: I am unable to provide summaries or insights on events or information from November 2024, as my knowledge is limited to data av",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "2024",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "2024",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_remove_empty_similarity_results.json",
+        "start": 226,
+        "end": 230,
+        "snippet": "No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer For the month of June 2024 Date: June 3, 2024",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "2024",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240603/base_remove_empty_similarity_results.json",
+        "start": 246,
+        "end": 250,
+        "snippet": "No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer For the month of June 2024 Date: June 3, 2024",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "2024",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_remove_empty_similarity_results.json",
+        "start": 226,
+        "end": 230,
+        "snippet": "No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer For the month of June 2024 Date: June 11, 2024",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "2024",
+        "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_6-K_20240611/base_remove_empty_similarity_results.json",
+        "start": 247,
+        "end": 251,
+        "snippet": "No. 1388 Minshan Road Xinqi Street, Beilun District Ningbo, Zhejiang People’s Republic of China (Address of Principal Executive Office) By: /s/ Conghui An Name:Conghui An Title: Chief Executive Officer For the month of June 2024 Date: June 11, 2024",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      }
+    ],
+    "files_scanned": 80,
+    "metadata": {
+      "case_id": "zeekr_table_q100_runner"
+    }
+  },
+  "skill_traces": [
+    {
+      "skill_id": "table_evidence_verifier",
+      "triggered": true,
+      "trigger_reason": "deterministic source-precedence gross-margin repair for 2024 Q1",
+      "output_decision": "repair_applied",
+      "supporting_source": null,
+      "audit_notes": [
+        "verification_attached"
+      ]
+    },
+    {
+      "skill_id": "company_profile_boundary",
+      "triggered": false,
+      "trigger_reason": "out_of_scope",
+      "output_decision": "no_action",
+      "supporting_source": null,
+      "audit_notes": [
+        "fact=None"
+      ]
+    },
+    {
+      "skill_id": "answer_coverage",
+      "triggered": false,
+      "trigger_reason": "out_of_scope",
+      "output_decision": "no_action",
+      "supporting_source": null,
+      "audit_notes": [
+        "fact=None"
+      ]
+    }
+  ],
+  "audit_notes": [
+    "retrieval_chunks_previewed=8",
+    "grep_anchors_previewed=12",
+    "triggered_skills=table_evidence_verifier"
+  ],
+  "metadata": {
+    "retrieved_chunk_count": 14,
+    "total_time": 33.546,
+    "retrieval_profile": null
+  }
+}

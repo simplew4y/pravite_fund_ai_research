@@ -1,0 +1,452 @@
+{
+  "registry_version": "2026-06-03.v1",
+  "project": "FinSAgent PageIndex Hybrid",
+  "purpose": "Track reusable SEC RAG skills, validation evidence, risk level, and stopping boundaries so optimization does not devolve into local benchmark patching.",
+  "global_boundary_policy": {
+    "default_iteration_budget_per_skill": 2,
+    "promotion_requirements": [
+      "Protected regression set must not regress.",
+      "Cross-company sanity set must not regress.",
+      "The skill must improve a named failure bucket or a documented target case.",
+      "The fix must be explainable from retrieved evidence or deterministic table facts.",
+      "Fresh rotating diagnostics are required before broad promotion when the skill was derived from old failures.",
+      "Blind holdout remains untouched until final validation."
+    ],
+    "stop_conditions": [
+      "Stop after two consecutive iterations without target improvement.",
+      "Stop when the next fix requires company-specific fact registry entries rather than a general skill.",
+      "Stop when the improvement only comes from judge-noisy cases without deterministic evidence.",
+      "Stop when protected or cross-company gates regress.",
+      "Stop when adding one skill creates a composition conflict with an existing promoted skill.",
+      "Stop when the failure bucket is saturated and move to the next highest-risk bucket."
+    ],
+    "auto_approval_policy": {
+      "eligible": "Low-risk deterministic verifier or renderer with no retrieval-side change and clean gates.",
+      "review_required": "Any retrieval-policy, date-cutoff, abstention, fact-registry, or cross-skill composition change.",
+      "blocked": "Any change that hard-codes benchmark answers, hides uncertainty, or weakens protected gates."
+    }
+  },
+  "validation_sets": {
+    "protected_regression": {
+      "name": "Zeekr small30",
+      "path": "test/colm/retrieval/subquery_cap2_small30_20260530/small30_coverage_repaired_v1.json",
+      "role": "Protect the known-good target-company sanity set."
+    },
+    "development_diagnostic": {
+      "name": "Zeekr holdout20 diagnostic",
+      "path": "test/colm/retrieval/holdout20_cap2_20260531/holdout20_coverage_repaired_v1.json",
+      "role": "Expose remaining high-risk failure buckets; not a final blind leaderboard."
+    },
+    "cross_company_sanity": {
+      "name": "NVIDIA mini10",
+      "path": "test/colm/retrieval/nvidia_mini10_cap2_20260601/mini10.json",
+      "role": "Check that target-company skills do not become brittle Zeekr-only behavior."
+    },
+    "rotating_diagnostic_pool": {
+      "name": "Skill evolution rotating diagnostics",
+      "path": "test/colm/retrieval/skill_evolution_testsets_20260602/rotating_diagnostic_candidates.json",
+      "role": "Refresh failure discovery and reduce overfitting to old diagnostics."
+    },
+    "blind_holdout_pool": {
+      "name": "Skill evolution blind holdout candidates",
+      "path": "test/colm/retrieval/skill_evolution_testsets_20260602/blind_holdout_candidates.json",
+      "role": "Reserved final validation; do not use for skill generation."
+    }
+  },
+  "skills": [
+    {
+      "id": "pageindex_hybrid_retrieval_v1",
+      "name": "PageIndex Hybrid Retrieval",
+      "type": "retrieval_architecture",
+      "status": "frozen_baseline",
+      "risk": "medium",
+      "auto_approval": "review_required",
+      "goal": "Use structural page/node evidence with hybrid retrieval and rescue so SEC answers receive enough source context.",
+      "trigger_conditions": [
+        "SEC filing QA",
+        "long document evidence",
+        "tables and adjacent narrative are both likely needed"
+      ],
+      "primary_files": [
+        "test/colm/retrieval/run_rescue_e2e_sample.py",
+        "config/production_pageindex_fast.yaml"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/PAGEINDEX_STAGE_FREEZE_REPORT_20260601.md",
+        "test/colm/retrieval/PAGEINDEX_HYBRID_FULLRUN_PPT_REPORT_20260525.md"
+      ],
+      "promotion_evidence": [
+        "Target-company small30 reached 30/30 under the current fast chain.",
+        "NVIDIA mini10 sanity reached 9/10 and exposed a period-boundary issue rather than total retrieval collapse."
+      ],
+      "boundary": "Do not keep changing the main retrieval architecture unless protected plus rotating diagnostics show a repeated cross-bucket failure that cannot be handled by a narrower skill."
+    },
+    {
+      "id": "parameter_slimming_cap2_v1",
+      "name": "Parameter Slimming / Cap2 Runtime Control",
+      "type": "engineering_cost_control",
+      "status": "promoted_guarded",
+      "risk": "low",
+      "auto_approval": "eligible",
+      "goal": "Reduce latency/cost while preserving the target-company correctness envelope.",
+      "trigger_conditions": [
+        "default evaluation run",
+        "cost-sensitive validation",
+        "protected regression must remain stable"
+      ],
+      "primary_files": [
+        "config/production_pageindex_fast.yaml",
+        "test/colm/retrieval/run_rescue_e2e_sample.py"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/subquery_cap2_small30_20260530/standard_validation_coverage_v1_judge/judge/summary.json",
+        "test/colm/retrieval/HUMAN_AUDIT_CAP2_SMALL30_20260531.md"
+      ],
+      "promotion_evidence": [
+        "small30 remained 30/30 after slimming.",
+        "Runtime became reportable at roughly one minute per question on the protected set."
+      ],
+      "boundary": "Stop slimming once protected correctness stays stable but additional reductions risk context loss; future work should profile before cutting more retrieval evidence."
+    },
+    {
+      "id": "period_cutoff_backfill_v1",
+      "name": "Period-Aware Cutoff and Backfill",
+      "type": "retrieval_policy",
+      "status": "promoted_guarded",
+      "risk": "medium",
+      "auto_approval": "review_required",
+      "goal": "Prevent future leakage and recover period-correct evidence for historical SEC questions.",
+      "trigger_conditions": [
+        "question names a quarter/year",
+        "retrieved later filing may override historical period",
+        "company event timeline has newer documents than the asked period"
+      ],
+      "primary_files": [
+        "test/colm/retrieval/run_rescue_e2e_sample.py",
+        "config/production_pageindex_fast.yaml"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/PAGEINDEX_NEXT_PHASE_RUNBOOK_20260528.md",
+        "test/colm/retrieval/NVIDIA_MINI10_SANITY_REPORT_20260601.md"
+      ],
+      "promotion_evidence": [
+        "Period-boundary failures were observed on Zeekr and NVIDIA.",
+        "The mode is guarded because latest-information questions can legitimately need newer filings."
+      ],
+      "boundary": "Do not make cutoff stricter globally; keep it trigger-based and require review when a question does not specify a time boundary."
+    },
+    {
+      "id": "coverage_repair_v1",
+      "name": "Answer Coverage Repair",
+      "type": "post_generation_repair",
+      "status": "promoted_guarded",
+      "risk": "medium",
+      "auto_approval": "review_required",
+      "goal": "Repair recurring partial-answer omissions without changing evidence retrieval.",
+      "trigger_conditions": [
+        "answer is factually consistent but misses a known required key point",
+        "repair fact can be sourced from existing evidence or a narrow deterministic rule"
+      ],
+      "primary_files": [
+        "test/colm/retrieval/apply_answer_coverage_repair.py",
+        "src/utils/answer_coverage_repair.py"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/holdout20_cap2_20260531/standard_validation_coverage_v1_judge/judge/summary.json",
+        "test/colm/retrieval/HOLDOUT20_CAP2_FAILURE_ANALYSIS_20260531.md"
+      ],
+      "promotion_evidence": [
+        "Useful for partial omissions, but it is more judge-sensitive than deterministic table facts."
+      ],
+      "boundary": "Do not expand into a broad company factbook until all general retrieval/table/period skills have been exercised."
+    },
+    {
+      "id": "period_answer_coverage_v1",
+      "name": "Period Answer Coverage Repair",
+      "type": "post_generation_repair",
+      "status": "candidate_promote",
+      "risk": "medium",
+      "auto_approval": "review_required",
+      "goal": "Repair period-specific partial answers where the core fact is correct but required USD, YoY/QoQ, or period context is omitted.",
+      "trigger_conditions": [
+        "question names an explicit year or quarter",
+        "question names a supported metric such as net profit/loss, R&D expense, or delivery volume",
+        "the missing item is a stable auditable period fact rather than a disputed metric definition"
+      ],
+      "primary_files": [
+        "src/utils/answer_coverage_repair.py",
+        "test/colm/retrieval/apply_answer_coverage_repair.py"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/PERIOD_ANSWER_COVERAGE_SKILL_V1_20260603.md",
+        "test/colm/retrieval/skill_evolution_rotating_run_20260603/period_coverage_skill_v1/target4_judge/summary.json",
+        "test/colm/retrieval/skill_evolution_rotating_run_20260603/period_coverage_skill_v1/full_validation/judge/summary.json",
+        "test/colm/retrieval/skill_evolution_rotating_run_20260603/period_coverage_skill_v1/full_validation/answer_gate_numeric_audit.json",
+        "test/colm/retrieval/skill_registry_validation_after_period_coverage_20260603/SKILL_REGISTRY_VALIDATION.md"
+      ],
+      "promotion_evidence": [
+        "Targeted period cases q93, q94, q95, and q98 moved from 4 PARTIAL to 4 CORRECT.",
+        "Rotating20 moved from 8C/7P/5I after component mix to 12C/2P/6I after period coverage.",
+        "The only added incorrect in the judge rerun was q129, which was untouched by this skill and belongs to capitalization-table line-item reasoning.",
+        "Numeric gate remained 19 ALLOW / 1 REVIEW; the single review remains the known q129 capitalization case.",
+        "Registry protection validation after the source change found 52/52 artifacts and gate flow PASS."
+      ],
+      "boundary": "Do not broaden into a Zeekr factbook. Exclude disputed metric definitions such as q85, and prefer structural table/filing extraction before adding more curated coverage facts."
+    },
+    {
+      "id": "table_verification_v1",
+      "name": "Deterministic Table Verification and Repair",
+      "type": "deterministic_verifier",
+      "status": "promoted_guarded",
+      "risk": "low",
+      "auto_approval": "eligible",
+      "goal": "Verify and repair high-risk table-derived answers using parsed SEC table facts.",
+      "trigger_conditions": [
+        "cash balance",
+        "quarterly R&D expenses",
+        "quarterly revenue breakdown",
+        "revenue contribution",
+        "delivery volume breakdown"
+      ],
+      "primary_files": [
+        "src/utils/table_fact_verifier.py",
+        "src/utils/table_answer_gate.py",
+        "src/utils/table_answer_repair.py"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/TABLE_VERIFICATION_SKILL_V1_20260603.md",
+        "test/colm/retrieval/skill_evolution_mvp_20260602/table_skill_v1/holdout20_table_repaired_v1_judge/judge/summary.json",
+        "test/colm/retrieval/skill_evolution_mvp_20260602/table_skill_v1/small30_table_gate_v1.json",
+        "test/colm/retrieval/skill_evolution_mvp_20260602/table_skill_v1/nvidia_mini10_table_gate_v1.json"
+      ],
+      "promotion_evidence": [
+        "holdout20 moved from about 5C/4P/11I to 9C/3P/8I in one judge rerun.",
+        "Repaired q57, q78, and q84 to table-gate PASS.",
+        "small30 gate remained 30/30 ALLOW.",
+        "NVIDIA mini10 gate remained 10/10 ALLOW."
+      ],
+      "boundary": "Only add new table fact types when they are structurally detectable across filings. Do not hard-code isolated answer text.",
+      "decision_history": [
+        {
+          "applied_at": "2026-06-03T12:52:17",
+          "mode": "auto_guarded",
+          "from_status": "candidate_promote",
+          "to_status": "promoted_guarded",
+          "source_card_id": "skill-card::table_verification_v1",
+          "reason": "eligible low-risk guarded promotion",
+          "gate_flow_status": "PASS"
+        }
+      ],
+      "last_decision": {
+        "applied_at": "2026-06-03T12:52:17",
+        "mode": "auto_guarded",
+        "from_status": "candidate_promote",
+        "to_status": "promoted_guarded",
+        "source_card_id": "skill-card::table_verification_v1",
+        "reason": "eligible low-risk guarded promotion",
+        "gate_flow_status": "PASS"
+      }
+    },
+    {
+      "id": "source_conflict_v1",
+      "name": "Source Conflict / Discrepancy Reporting",
+      "type": "deterministic_verifier",
+      "status": "promoted_guarded",
+      "risk": "low",
+      "auto_approval": "eligible",
+      "goal": "Detect incompatible filing bases and answer with explicit discrepancy reporting instead of forcing one reconciled number.",
+      "trigger_conditions": [
+        "delivery volume breakdown",
+        "monthly table and separate quarterly table disagree",
+        "same-looking metric appears under different reporting bases"
+      ],
+      "primary_files": [
+        "src/utils/table_fact_verifier.py",
+        "src/utils/table_answer_gate.py",
+        "src/utils/table_answer_repair.py"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/SOURCE_CONFLICT_SKILL_V1_20260603.md",
+        "test/colm/retrieval/skill_evolution_mvp_20260602/source_conflict_skill_v1/q51_v2_judge/judge/summary.json",
+        "test/colm/retrieval/skill_evolution_mvp_20260602/source_conflict_skill_v1/small30_gate_v2.json",
+        "test/colm/retrieval/skill_evolution_mvp_20260602/source_conflict_skill_v1/nvidia_mini10_gate_v2.json"
+      ],
+      "promotion_evidence": [
+        "q51 target judge moved to CORRECT after v2 wording.",
+        "small30 gate remained 30/30 ALLOW.",
+        "NVIDIA mini10 gate remained 10/10 ALLOW.",
+        "The repair states the filing mismatch instead of hiding it."
+      ],
+      "boundary": "Keep this skill discrepancy-focused. Do not use it to choose benchmark-preferred numbers unless both conflicting sources are shown.",
+      "decision_history": [
+        {
+          "applied_at": "2026-06-03T12:52:17",
+          "mode": "auto_guarded",
+          "from_status": "candidate_promote",
+          "to_status": "promoted_guarded",
+          "source_card_id": "skill-card::source_conflict_v1",
+          "reason": "eligible low-risk guarded promotion",
+          "gate_flow_status": "PASS"
+        }
+      ],
+      "last_decision": {
+        "applied_at": "2026-06-03T12:52:17",
+        "mode": "auto_guarded",
+        "from_status": "candidate_promote",
+        "to_status": "promoted_guarded",
+        "source_card_id": "skill-card::source_conflict_v1",
+        "reason": "eligible low-risk guarded promotion",
+        "gate_flow_status": "PASS"
+      }
+    },
+    {
+      "id": "component_mix_table_v1",
+      "name": "Component Mix Table Verification and Repair",
+      "type": "deterministic_verifier",
+      "status": "promoted_guarded",
+      "risk": "low",
+      "auto_approval": "eligible",
+      "goal": "Verify and repair annual cost-of-revenues and R&D expense component-mix answers using parsed SEC table rows.",
+      "trigger_conditions": [
+        "cost of revenues mix across years",
+        "vehicle sales cost as a driver of total cost growth",
+        "R&D outsourcing versus employee compensation mix",
+        "annual component table with RMB values and percentage columns"
+      ],
+      "primary_files": [
+        "src/utils/table_fact_verifier.py",
+        "src/utils/table_answer_repair.py"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/COMPONENT_MIX_TABLE_SKILL_V1_20260603.md",
+        "test/colm/retrieval/skill_evolution_rotating_run_20260603/component_mix_skill_v1e/target_judge/summary.json",
+        "test/colm/retrieval/skill_evolution_rotating_run_20260603/component_mix_skill_v1e/full_validation/judge/summary.json",
+        "test/colm/retrieval/skill_evolution_rotating_run_20260603/component_mix_skill_v1e/full_validation/answer_gate_numeric_audit.json",
+        "test/colm/retrieval/skill_registry_validation_after_component_mix_20260603/SKILL_REGISTRY_VALIDATION.md"
+      ],
+      "promotion_evidence": [
+        "q134 and q135 targeted judge reached 2/2 CORRECT after deterministic repair.",
+        "rotating20 improved from 6C/7P/7I to 8C/7P/5I.",
+        "rotating20 gate improved from 18 ALLOW / 2 REVIEW to 19 ALLOW / 1 REVIEW.",
+        "protected small30, development diagnostic, and NVIDIA mini10 lightweight gates remained PASS."
+      ],
+      "boundary": "Only use annual component-mix tables with structurally detectable RMB and percentage columns. Exclude interim tables and do not broaden into a company fact registry.",
+      "decision_history": [
+        {
+          "applied_at": "2026-06-03T12:52:17",
+          "mode": "auto_guarded",
+          "from_status": "candidate_promote",
+          "to_status": "promoted_guarded",
+          "source_card_id": "skill-card::component_mix_table_v1",
+          "reason": "eligible low-risk guarded promotion",
+          "gate_flow_status": "PASS"
+        }
+      ],
+      "last_decision": {
+        "applied_at": "2026-06-03T12:52:17",
+        "mode": "auto_guarded",
+        "from_status": "candidate_promote",
+        "to_status": "promoted_guarded",
+        "source_card_id": "skill-card::component_mix_table_v1",
+        "reason": "eligible low-risk guarded promotion",
+        "gate_flow_status": "PASS"
+      }
+    },
+    {
+      "id": "learning_rescue_scorer_v0",
+      "name": "Learning-Based Rescue Scorer",
+      "type": "learned_ranker",
+      "status": "offline_candidate",
+      "risk": "medium",
+      "auto_approval": "review_required",
+      "goal": "Replace hand-written rescue scoring with a trained candidate scorer after enough labeled failures exist.",
+      "trigger_conditions": [
+        "retrieval candidates include both correct and distracting evidence",
+        "rule-based rescue cannot reliably rank evidence"
+      ],
+      "primary_files": [
+        "test/colm/retrieval/export_rescue_training_data.py",
+        "test/colm/retrieval/train_rescue_scorer.py"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/skill_evolution_mvp_20260602/skill_proposals.md"
+      ],
+      "promotion_evidence": [
+        "Offline scorer exists as a candidate; it should not be promoted until rotating diagnostics and cross-company validation are run."
+      ],
+      "boundary": "Do not put a learned scorer into the main chain only because it improves one diagnostic bucket. Require separate train/dev split and cross-company validation."
+    },
+    {
+      "id": "fact_registry_v0",
+      "name": "Company Fact Registry",
+      "type": "company_specific_memory",
+      "status": "backlog",
+      "risk": "high",
+      "auto_approval": "review_required",
+      "goal": "Store narrow high-value company facts only after general skills stop yielding meaningful gains.",
+      "trigger_conditions": [
+        "profile facts repeatedly fail despite correct evidence retrieval",
+        "facts are stable and client-relevant",
+        "manual or audited extraction is available"
+      ],
+      "primary_files": [],
+      "evidence_artifacts": [
+        "test/colm/retrieval/HOLDOUT20_CAP2_FAILURE_ANALYSIS_20260531.md"
+      ],
+      "promotion_evidence": [
+        "Not promoted. This is intentionally delayed to avoid turning the system into a Zeekr-only factbook too early."
+      ],
+      "boundary": "Use only after current general skills are frozen and only as a separately measurable optional layer."
+    },
+    {
+      "id": "skill_evolution_mvp_v1",
+      "name": "Skill Evolution MVP",
+      "type": "meta_workflow",
+      "status": "candidate_promote",
+      "risk": "medium",
+      "auto_approval": "review_required",
+      "goal": "Analyze failures, propose skill candidates, refresh testsets, and run promotion gates.",
+      "trigger_conditions": [
+        "new judge results are available",
+        "a candidate skill is proposed",
+        "a validation report is needed"
+      ],
+      "primary_files": [
+        "test/colm/retrieval/skill_evolution_analyzer.py",
+        "test/colm/retrieval/skill_evolution_gate.py",
+        "test/colm/retrieval/build_skill_evolution_testsets.py"
+      ],
+      "evidence_artifacts": [
+        "test/colm/retrieval/SKILL_EVOLUTION_MVP_20260602.md",
+        "test/colm/retrieval/skill_evolution_mvp_20260602/promotion_gate/promotion_gate.md",
+        "test/colm/retrieval/skill_evolution_testsets_20260602/testset_refresh_report.md"
+      ],
+      "promotion_evidence": [
+        "Existing analyzer, gate, and testset refresh create the basis for a future frontend."
+      ],
+      "boundary": "The meta-workflow should propose and validate skills; it should not auto-edit production code without a promotion decision."
+    }
+  ],
+  "next_recommended_steps": [
+    {
+      "priority": "P0",
+      "step": "Generate a single registry report from this manifest.",
+      "exit_criteria": "A reviewer can see which skills are active, guarded, candidate, or backlog in one page."
+    },
+    {
+      "priority": "P0",
+      "step": "Wire the registry into promotion gate output.",
+      "exit_criteria": "Every candidate skill has a status, risk level, evidence artifacts, and a stop rule."
+    },
+    {
+      "priority": "P1",
+      "step": "Add a small CLI runner for skill evolution.",
+      "exit_criteria": "One command can analyze failures, update candidate cards, and render a report without changing production code."
+    },
+    {
+      "priority": "P2",
+      "step": "Build a minimal frontend over the manifest.",
+      "exit_criteria": "User can approve, reject, or pause skill candidates with validation evidence visible."
+    }
+  ]
+}

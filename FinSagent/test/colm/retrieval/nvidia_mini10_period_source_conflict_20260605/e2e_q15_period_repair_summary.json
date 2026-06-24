@@ -1,0 +1,14 @@
+{
+  "run_id": "nvidia_mini10_period_source_conflict_20260605_e2e_q15",
+  "question_id": "qa_kp_000015",
+  "question": "NVIDIA在2025年如何描述出口管制对中国Data Center业务的影响？",
+  "period_source_conflict_repair_applied": true,
+  "repair_reason": "period_source_conflict_nvidia_fy2025_export_control",
+  "supporting_source": {
+    "filename": "20250126_10-K_base_final.json",
+    "matched_phrase": "Data Center revenue in China grew in fiscal year 2025"
+  },
+  "answer_summary": "The repaired answer uses NVIDIA FY2025 10-K framing: export controls constrained China Data Center product mix and share, but NVIDIA offered compliant alternatives, ramped China-designed products that did not require export-control licenses, and China Data Center revenue grew in fiscal year 2025. Later H20/FY2026 disclosures are explicitly separated as later-period evidence.",
+  "output_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/e2e_q15_period_repair.json"
+}
+

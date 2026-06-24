@@ -1,0 +1,74 @@
+{
+  "run_id": "skillops_demo_benchmark_20260605",
+  "suite_id": "skillops_demo_benchmark_20260605",
+  "case_manifest": "configs/skillops_demo_cases.json",
+  "generated_at_utc": "2026-06-05T13:10:48.457402+00:00",
+  "case_count": 5,
+  "mismatch_count": 0,
+  "mismatches": [],
+  "case_summaries": [
+    {
+      "case_id": "lotus_q1_success_runner",
+      "label": "Lotus success control",
+      "qid": "lotus_gen_01",
+      "primary_failure_type": "no_failure_detected",
+      "expected_primary_failure_type": "no_failure_detected",
+      "proposal_count": 0,
+      "gate_decisions": [],
+      "summary_path": "test/colm/retrieval/skillops_demo_benchmark_20260605/lotus_q1_success_runner/lotus_q1_success_runner_summary.json"
+    },
+    {
+      "case_id": "nvidia_q15_source_conflict_runner",
+      "label": "NVIDIA source conflict",
+      "qid": "qa_kp_000015",
+      "primary_failure_type": "source_conflict",
+      "expected_primary_failure_type": "source_conflict",
+      "proposal_count": 2,
+      "gate_decisions": [
+        "proposed",
+        "proposed"
+      ],
+      "summary_path": "test/colm/retrieval/skillops_demo_benchmark_20260605/nvidia_q15_source_conflict_runner/nvidia_q15_source_conflict_runner_summary.json"
+    },
+    {
+      "case_id": "zeekr_table_q100_runner",
+      "label": "Zeekr table alignment",
+      "qid": "qa_kp_100",
+      "primary_failure_type": "table_alignment_error",
+      "expected_primary_failure_type": "table_alignment_error",
+      "proposal_count": 2,
+      "gate_decisions": [
+        "proposed",
+        "proposed"
+      ],
+      "summary_path": "test/colm/retrieval/skillops_demo_benchmark_20260605/zeekr_table_q100_runner/zeekr_table_q100_runner_summary.json"
+    },
+    {
+      "case_id": "zeekr_profile_q48_runner",
+      "label": "Zeekr profile boundary",
+      "qid": "qa_kp_48",
+      "primary_failure_type": "profile_boundary_error",
+      "expected_primary_failure_type": "profile_boundary_error",
+      "proposal_count": 1,
+      "gate_decisions": [
+        "proposed"
+      ],
+      "summary_path": "test/colm/retrieval/skillops_demo_benchmark_20260605/zeekr_profile_q48_runner/zeekr_profile_q48_runner_summary.json"
+    },
+    {
+      "case_id": "zeekr_coverage_q62_runner",
+      "label": "Zeekr answer coverage",
+      "qid": "qa_kp_62",
+      "primary_failure_type": "answer_coverage_failure",
+      "expected_primary_failure_type": "answer_coverage_failure",
+      "proposal_count": 1,
+      "gate_decisions": [
+        "proposed"
+      ],
+      "summary_path": "test/colm/retrieval/skillops_demo_benchmark_20260605/zeekr_coverage_q62_runner/zeekr_coverage_q62_runner_summary.json"
+    }
+  ],
+  "suite_report_json": "test/colm/retrieval/skillops_demo_benchmark_20260605/skillops_demo_suite_report.json",
+  "suite_report_md": "test/colm/retrieval/skillops_demo_benchmark_20260605/skillops_demo_suite_report.md",
+  "status": "pass"
+}

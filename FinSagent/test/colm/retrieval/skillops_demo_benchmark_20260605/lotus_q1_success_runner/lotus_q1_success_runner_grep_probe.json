@@ -1,0 +1,335 @@
+{
+  "question": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023?",
+  "query_terms": [
+    "Lotus",
+    "revenue",
+    "nine",
+    "months",
+    "September",
+    "30",
+    "2024",
+    "2023"
+  ],
+  "metric_aliases": {
+    "revenue": [
+      "revenue",
+      "revenues",
+      "total revenue",
+      "net revenue",
+      "sales"
+    ]
+  },
+  "period_terms": [
+    "nine months ended September 30",
+    "2024",
+    "2023"
+  ],
+  "anchors": [
+    {
+      "anchor_type": "period_phrase",
+      "text": "nine months ended September 30",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_mini10.json",
+      "start": 42,
+      "end": 72,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 317.9 million US dollars for the same nine-month period in 2023. This me",
+      "confidence_hint": 0.8,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "period_phrase",
+      "text": "nine months ended September 30",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_profile_repair_check.json",
+      "start": 42,
+      "end": 72,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 317.9 million US dollars for the same nine-month period in 2023. This me",
+      "confidence_hint": 0.8,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "period_phrase",
+      "text": "nine months ended September 30",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v2_judge/results.json",
+      "start": 42,
+      "end": 72,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology rev",
+      "confidence_hint": 0.8,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "period_phrase",
+      "text": "nine months ended September 30",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v3_judge/results.json",
+      "start": 42,
+      "end": 72,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology rev",
+      "confidence_hint": 0.8,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "metric_alias",
+      "text": "revenue",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_mini10.json",
+      "start": 26,
+      "end": 33,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 317.9 million US dollars for the",
+      "confidence_hint": 0.75,
+      "metadata": {
+        "metric": "revenue"
+      }
+    },
+    {
+      "anchor_type": "metric_alias",
+      "text": "revenue",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_profile_repair_check.json",
+      "start": 26,
+      "end": 33,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 317.9 million US dollars for the",
+      "confidence_hint": 0.75,
+      "metadata": {
+        "metric": "revenue"
+      }
+    },
+    {
+      "anchor_type": "metric_alias",
+      "text": "revenue",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v2_judge/results.json",
+      "start": 26,
+      "end": 33,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended S",
+      "confidence_hint": 0.75,
+      "metadata": {
+        "metric": "revenue"
+      }
+    },
+    {
+      "anchor_type": "metric_alias",
+      "text": "revenue",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v3_judge/results.json",
+      "start": 26,
+      "end": 33,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended S",
+      "confidence_hint": 0.75,
+      "metadata": {
+        "metric": "revenue"
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "8 million",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_judge/results.json",
+      "start": 52,
+      "end": 61,
+      "snippet": "Lotus Technology reported total revenue of about US.8 million for the nine months ended September 30, 2024, compared with about US.9 million for the same period in 2023. This shows revenue more than doubled year over year, while the company still remained loss-making. Lotus Technology reported total revenue of about US.",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "9 million",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_judge/results.json",
+      "start": 131,
+      "end": 140,
+      "snippet": "Lotus Technology reported total revenue of about US.8 million for the nine months ended September 30, 2024, compared with about US.9 million for the same period in 2023. This shows revenue more than doubled year over year, while the company still remained loss-making. Lotus Technology reported total revenue of about US.8 million for the nine months ended September 30, 2024, compared with about US.",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "652.8 million",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_mini10.json",
+      "start": 214,
+      "end": 227,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 317.9 million US dollars for the same nine-month period in 2023. This means revenue was about 105% higher year over year, or more than doubled. In Lotus Technology filings, delivery or delivered vehicles means invoiced deliveri",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "652.8 million",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_profile_repair_check.json",
+      "start": 214,
+      "end": 227,
+      "snippet": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 317.9 million US dollars for the same nine-month period in 2023. This means revenue was about 105% higher year over year, or more than doubled. In Lotus Technology filings, delivery or delivered vehicles means invoiced deliveri",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2.587 billion",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_mini10.json",
+      "start": 1164,
+      "end": 1177,
+      "snippet": "tribution of four models: Eletre, Emira, Evija, and Emeya. At December 31, 2023, Lotus Technology reported unrestricted cash of about 418.9 million US dollars and total current assets of about 883.7 million US dollars. Lotus Technology total assets were about 2.587 billion US dollars as of September 30, 2024, compared with about 1.585 billion US dollars as of December 31, 2023. Lotus Technology is described as a Cayman Islands holding company operating through subsidiaries in China and Europe. Its restructuring...",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "sales",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "1.585 billion",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_mini10.json",
+      "start": 1235,
+      "end": 1248,
+      "snippet": "31, 2023, Lotus Technology reported unrestricted cash of about 418.9 million US dollars and total current assets of about 883.7 million US dollars. Lotus Technology total assets were about 2.587 billion US dollars as of September 30, 2024, compared with about 1.585 billion US dollars as of December 31, 2023. Lotus Technology is described as a Cayman Islands holding company operating through subsidiaries in China and Europe. Its restructuring eliminated the previous VIE structure, so the current structure is not...",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "sales",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "317.9 million",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_mini10.jsonl",
+      "start": 335,
+      "end": 348,
+      "snippet": "revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023?\", \"ground_truth_answer\": \"For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 317.9 million US dollars for the same nine-month period in 2023. This means revenue was about 105% higher year over year, or more than doubled.\", \"key_points\": [\"nine months ended September 30 2024 revenue about 652.8 million US dollars\", \"same period 2023...",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2.587 billion",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_profile_repair_check.json",
+      "start": 1164,
+      "end": 1177,
+      "snippet": "tribution of four models: Eletre, Emira, Evija, and Emeya. At December 31, 2023, Lotus Technology reported unrestricted cash of about 418.9 million US dollars and total current assets of about 883.7 million US dollars. Lotus Technology total assets were about 2.587 billion US dollars as of September 30, 2024, compared with about 1.585 billion US dollars as of December 31, 2023. Lotus Technology is described as a Cayman Islands holding company operating through subsidiaries in China and Europe. Its restructuring...",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "sales",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v3_judge/details.csv",
+      "start": 121,
+      "end": 126,
+      "snippet": "qid,qa_type,answer_type,n_keypoints,kp_matched,kp_partial,kp_missing,kp_incorrect,kp_coverage_ratio,judge_verdict,passed lotus_gen_01,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True lotus_gen_02,unknown,generated_answer,2,2,0,0,0,1.0,CORRECT,True",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v3_judge/details.csv",
+      "start": 186,
+      "end": 191,
+      "snippet": "qid,qa_type,answer_type,n_keypoints,kp_matched,kp_partial,kp_missing,kp_incorrect,kp_coverage_ratio,judge_verdict,passed lotus_gen_01,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True lotus_gen_02,unknown,generated_answer,2,2,0,0,0,1.0,CORRECT,True",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v2_judge/details.csv",
+      "start": 121,
+      "end": 126,
+      "snippet": "qid,qa_type,answer_type,n_keypoints,kp_matched,kp_partial,kp_missing,kp_incorrect,kp_coverage_ratio,judge_verdict,passed lotus_gen_01,unknown,generated_answer,4,1,0,1,2,0.25,INCORRECT,False lotus_gen_02,unknown,generated_answer,5,2,0,3,0,0.4,PARTIAL,False",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v2_judge/details.csv",
+      "start": 190,
+      "end": 195,
+      "snippet": "qid,qa_type,answer_type,n_keypoints,kp_matched,kp_partial,kp_missing,kp_incorrect,kp_coverage_ratio,judge_verdict,passed lotus_gen_01,unknown,generated_answer,4,1,0,1,2,0.25,INCORRECT,False lotus_gen_02,unknown,generated_answer,5,2,0,3,0,0.4,PARTIAL,False",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_judge/details.csv",
+      "start": 121,
+      "end": 126,
+      "snippet": "qid,qa_type,answer_type,n_keypoints,kp_matched,kp_partial,kp_missing,kp_incorrect,kp_coverage_ratio,judge_verdict,passed lotus_gen_01,unknown,generated_answer,4,0,0,1,3,0.0,INCORRECT,False lotus_gen_02,unknown,generated_answer,5,1,0,3,1,0.2,INCORRECT,False",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_judge/details.csv",
+      "start": 189,
+      "end": 194,
+      "snippet": "qid,qa_type,answer_type,n_keypoints,kp_matched,kp_partial,kp_missing,kp_incorrect,kp_coverage_ratio,judge_verdict,passed lotus_gen_01,unknown,generated_answer,4,0,0,1,3,0.0,INCORRECT,False lotus_gen_02,unknown,generated_answer,5,1,0,3,1,0.2,INCORRECT,False",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "1.585 billion",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_profile_repair_check.json",
+      "start": 1235,
+      "end": 1248,
+      "snippet": "31, 2023, Lotus Technology reported unrestricted cash of about 418.9 million US dollars and total current assets of about 883.7 million US dollars. Lotus Technology total assets were about 2.587 billion US dollars as of September 30, 2024, compared with about 1.585 billion US dollars as of December 31, 2023. Lotus Technology is described as a Cayman Islands holding company operating through subsidiaries in China and Europe. Its restructuring eliminated the previous VIE structure, so the current structure is not...",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "sales",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "652.8 million",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v2_judge/results.json",
+      "start": 347,
+      "end": 360,
+      "snippet": "did it compare with the same period in 2023? What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023? For the nine months ended September 30, 2024, Lotus Technology revenue was about 652.8 million US dollars, compared with about 291.9 million US dollars for the same nine-month period in 2023. This means revenue more than doubled year over year, although the company still reported a net loss. For the nine months ended September 30, 2024,...",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$317.9 million",
+      "source_path": "test/colm/retrieval/lotus_mini10_generalization_20260604/smoke2_v2_judge/results.json",
+      "start": 1484,
+      "end": 1498,
+      "snippet": "Lotus’s 424B3 document on November 21, 2024 (Page 11), where total revenues are presented in thousands of U.S. dollars. The generated answer correctly states the 2024 revenue as $652.8 million, matching the gold answer. However, it reports the 2023 revenue as $317.9 million instead of the correct $291.9 million from the gold answer. This discrepancy leads to an incorrect year-over-year growth calculation (105% vs. the actual ~123.6% based on 291.9 → 652.8). Additionally, the generated answer omits the key point...",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "revenues",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    }
+  ],
+  "files_scanned": 28,
+  "metadata": {
+    "case_id": "lotus_q1_success_runner"
+  }
+}

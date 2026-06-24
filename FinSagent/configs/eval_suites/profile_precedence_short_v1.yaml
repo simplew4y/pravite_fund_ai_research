@@ -1,0 +1,39 @@
+suite_id: profile_precedence_short_v1
+suite_type: deterministic_skill_short
+frozen: false
+purpose: Guard the answer-guardrail migration by testing that profile precedence skills trigger only when evidence and scope are sufficient.
+used_for:
+  - profile_skill_regression
+  - legacy_fallback_off_gate
+  - answer_guardrail_migration
+runner: test/colm/retrieval/run_profile_precedence_regression.py
+cases:
+  - case_id: zeekr_annual_net_loss_conflict_positive
+    company: Zeekr
+    skill_type: annual_net_loss_statement_precedence
+    expected_behavior: repair a conflicting full-year net-loss answer using annual consolidated net-loss evidence
+  - case_id: zeekr_annual_net_loss_correct_noop
+    company: Zeekr
+    skill_type: annual_net_loss_statement_precedence
+    expected_behavior: do not overwrite an answer that already states the annual net-loss line and year-over-year narrowing
+  - case_id: zeekr_annual_net_loss_missing_evidence_noop
+    company: Zeekr
+    skill_type: annual_net_loss_statement_precedence
+    expected_behavior: with legacy fallback disabled, do not repair when annual net-loss evidence is missing
+  - case_id: nvidia_fy2025_direct_customer_conflict_positive
+    company: NVIDIA
+    skill_type: annual_direct_customer_table_precedence
+    expected_behavior: repair a misleading annual direct-customer answer using FY2025 direct-customer table evidence
+  - case_id: nvidia_fy2025_direct_customer_correct_noop
+    company: NVIDIA
+    skill_type: annual_direct_customer_table_precedence
+    expected_behavior: do not overwrite an answer that already includes Direct Customers A/B/C and 12/11/11 percentages
+  - case_id: nvidia_q1_direct_customer_scope_negative
+    company: NVIDIA
+    skill_type: annual_direct_customer_table_precedence
+    expected_behavior: do not apply annual direct-customer repair to a first-quarter question even if annual evidence is nearby
+admission_policy:
+  owner: myz
+  change_control: append_with_targeted_review
+  new_cases: Add positive and negative examples whenever a profile precedence skill changes.
+  pass_condition: all positives trigger the expected skill and all no-op/scope-negative cases remain unchanged

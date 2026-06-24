@@ -1,0 +1,32 @@
+skill_id: source_conflict
+version: "0.1.0"
+name: Period/Source Conflict Repair
+scope: "Repairs answers that use later conflicting disclosures for a period-specific SEC question when period-compatible evidence is already retrieved."
+failure_types:
+  - source_conflict
+  - period_mismatch
+  - wrong_source
+trigger: "Generated answer contains later-period leakage markers and retrieved evidence contains a period-compatible source."
+inputs:
+  - question
+  - generated_answer
+  - retrieved_chunks
+outputs:
+  - repaired_answer
+  - supporting_source
+  - repair_reason
+  - skill_trace
+risks:
+  - "Initial implementation is intentionally narrow and may not generalize to all fiscal-period conflicts."
+  - "Bad trigger patterns could suppress legitimate later-period context."
+eval_sets:
+  - nvidia_mini10_period_source_conflict_20260605
+  - cross_company_benchmark_v1_1
+status: promoted
+owner: myz
+last_reviewed: "2026-06-05"
+implementation_refs:
+  - src/utils/period_source_conflict_repair.py
+  - test/colm/retrieval/run_rescue_e2e_sample.py
+notes: "First guarded example of period-aware source arbitration; validated on the only NVIDIA cross-company miss."
+

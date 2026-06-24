@@ -1,0 +1,30 @@
+skill_id: evidence_rescue_scorer
+version: "0.1.0"
+name: Evidence Rescue Scorer
+scope: "Scores candidate evidence for rescue retrieval when the initial retrieval set may miss key table, date, or source anchors."
+failure_types:
+  - retrieval_miss
+  - source_conflict
+  - table_alignment_error
+trigger: "Retrieval confidence is low or risk calibration suggests missing key evidence."
+inputs:
+  - question
+  - candidate_chunks
+  - retrieval_scores
+outputs:
+  - rescue_scores
+  - selected_rescue_chunks
+  - skill_trace
+risks:
+  - "Learning-based scorer can overfit if trained on a narrow diagnostic set."
+  - "Must be evaluated on cross-company protected sets before promotion."
+eval_sets:
+  - rescue_scorer_v1_smoke_20260531
+  - cross_company_benchmark_v1_1
+status: experimental
+owner: myz
+last_reviewed: "2026-06-05"
+implementation_refs:
+  - src/utils/evidence_rescue_scorer.py
+notes: "Keep as experimental until cross-company and holdout gates show stable benefit."
+

@@ -137,3 +137,21 @@
 ```text
 私募投研资料证据化与研究辅助 Demo
 ```
+
+## 代码目录
+
+当前仓库采用 monorepo 方式保存协作文档和相关代码：
+
+```text
+FinSagent/   主系统代码：本地资料库、Agentic RAG、证据问答、memory 原型
+finrobot/    金融分析工具箱：财务数据、估值分析、报告生成能力
+docs/        模块设计文档
+test/        各模块独立测试与验证材料
+```
+
+注意：
+
+```text
+原 FinSagent / finrobot 的嵌套 .git 元数据已移出工作目录；
+本仓库以顶层 Git 作为唯一协作入口。
+```

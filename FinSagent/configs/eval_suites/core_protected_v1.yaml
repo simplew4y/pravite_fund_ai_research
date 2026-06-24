@@ -1,0 +1,36 @@
+suite_id: core_protected_v1_40
+suite_type: fixed_protected
+frozen: true
+purpose: Regression and comparability suite for answer correctness.
+used_for:
+  - promotion_gate
+  - paper_accuracy_table
+  - regression_comparability
+source_artifacts:
+  benchmark_summary: test/colm/retrieval/cross_company_benchmark_v1_1_20260605/cross_company_benchmark_v1_1_summary.json
+current_result:
+  total_cases: 40
+  correct: 40
+  partial: 0
+  incorrect: 0
+  weighted_correctness_score: 5.0
+cases:
+  - case_group: zeekr_core20
+    company: Zeekr
+    count: 20
+    role: target_company_regression
+  - case_group: lotus_mini10
+    company: Lotus Technology
+    count: 10
+    role: cross_company_generalization
+  - case_group: nvidia_mini10
+    company: NVIDIA
+    count: 10
+    role: cross_company_generalization
+admission_policy:
+  owner: myz
+  change_control: frozen_after_v1
+  new_cases: Do not append directly; create core_protected_v2 if the protected set changes.
+  pass_condition: no incorrect answers and no unreviewed partial regressions
+notes:
+  - This suite is the main accuracy evidence, not the SkillOps taxonomy demo.

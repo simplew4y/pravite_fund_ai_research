@@ -1,0 +1,25 @@
+# SkillOps Vertical Slice Case Summary
+
+- Case ID: `nvidia_q15_source_conflict_runner`
+- QID: `qa_kp_000015`
+- Primary failure type: `source_conflict`
+- Failure confidence: 0.95
+- Proposal count: 2
+- Gate decisions: ['proposed', 'proposed']
+
+## Question
+
+NVIDIA在2025年如何描述出口管制对中国Data Center业务的影响？
+
+## Artifacts
+
+- grep_probe_json: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_grep_probe.json`
+- evidence_preview_json: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_evidence_preview.json`
+- evidence_preview_md: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_evidence_preview.md`
+- failure_report_json: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_failure_report.json`
+- failure_report_md: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_failure_report.md`
+- skill_candidates_yaml: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_skill_candidates.yaml`
+- skill_candidates_md: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_skill_candidates.md`
+- gate_eval_summary_json: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_gate_eval_summary.json`
+- gate_decisions_yaml: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_gate_decisions.yaml`
+- gate_decisions_md: `test/colm/retrieval/skillops_runner_step7_20260605/nvidia_q15_source_conflict/nvidia_q15_source_conflict_runner_gate_decisions.md`

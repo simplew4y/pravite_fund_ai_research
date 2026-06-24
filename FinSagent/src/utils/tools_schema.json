@@ -1,0 +1,164 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "get_stock_price",
+      "description": "Look up by a company ticker, then get the current stock price.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', 'ZK'"
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "get_ipo_info",
+      "description": "Look up IPO information by stock ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "company_profile",
+      "description": "Retrieve a public company's profile using a stock ticker symbol, including company name, ticker, country, currency, exchange, industry, IPO date, market capitalization, shares outstanding, website, phone number, and logo URL.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "company_news",
+      "description": "Get recent company news headlines and summaries by stock ticker symbol over a date range.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          },
+          "from_date": {
+            "type": "string",
+            "description": "Optional start date in YYYY-MM-DD format."
+          },
+          "to_date": {
+            "type": "string",
+            "description": "Optional end date in YYYY-MM-DD format."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of news items to return."
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "basic_financials",
+      "description": "Get company basic financials, including snapshot metrics such as eps, margin, enterprise value, P/E ratio, past-52-week stock price high/low etc; and annual/quaterly metrics",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', 'ZK'"
+          },
+          "metric": {
+            "type": "string",
+            "description": "Metric type. Can be 1 of the following values: all(here means 'all' is the only availible value of this parameter til now)"
+          }
+        },
+        "required": [
+          "symbol",
+          "metric"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "stock_snapshot",
+      "description": "Get a compact stock market snapshot by stock ticker symbol, including current price, one-month move, market cap, PE, and 52-week range.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "price_history",
+      "description": "Get historical OHLCV price data from Yahoo Finance by stock ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The stock ticker symbol, e.g., 'AAPL', 'LOT', or 'ZK'"
+          },
+          "period": {
+            "type": "string",
+            "description": "History window such as '5d', '1mo', '3mo', '6mo', '1y', or '5y'."
+          },
+          "interval": {
+            "type": "string",
+            "description": "Sampling interval such as '1d', '1wk', or '1mo'."
+          },
+          "max_points": {
+            "type": "integer",
+            "description": "Maximum number of returned rows."
+          }
+        },
+        "required": [
+          "symbol"
+        ]
+      }
+    }
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "eval_summary_id": "lotus_q1_success_gate_eval_20260605",
+  "protected_sets_passed": true,
+  "regression_count": 0,
+  "protected_sets": [
+    {
+      "name": "lotus_q1_success_control",
+      "result": "no_failure_detected"
+    }
+  ],
+  "manual_review_status": "not_applicable",
+  "notes": "Success/control case: no skill candidate proposal should enter the gate.",
+  "per_candidate": {}
+}
+

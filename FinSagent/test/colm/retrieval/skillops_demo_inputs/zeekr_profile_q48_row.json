@@ -1,0 +1,29 @@
+[
+  {
+    "qid": "qa_kp_48",
+    "question": "Does Zeekr use a VIE structure?",
+    "generated_answer": "Zeekr should be described using disclosed company-structure evidence rather than an over-generalized China ADR/VIE assumption. The audit trace marks this as a profile-boundary case.",
+    "retrieved_chunks": [
+      {
+        "retriever": "demo_stable_input",
+        "score": 1.0,
+        "page_content": "Zeekr company profile evidence should distinguish a Cayman Islands holding-company structure from an explicitly disclosed VIE operating structure.",
+        "metadata": {
+          "source": "zeekr_demo_stable_input",
+          "filename": "zeekr_demo_stable_input",
+          "page_number": "demo",
+          "date_published": "2025-03-20"
+        }
+      }
+    ],
+    "retrieved_chunk_count": 1,
+    "profile_repair_applied": true,
+    "profile_repair_reason": "profile fact repair for vie_structure",
+    "profile_repair_fact": {
+      "fact_id": "zeekr_vie_structure",
+      "intent": "vie_structure",
+      "answer_en": "Based on the demo trace, Zeekr is treated as a Cayman Islands holding-company structure rather than an explicitly disclosed VIE operating structure."
+    },
+    "demo_case_role": "audit_trace_demo"
+  }
+]

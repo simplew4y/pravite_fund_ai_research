@@ -1,0 +1,306 @@
+{
+  "preview_id": "zeekr_profile_q48_runner",
+  "qid": "qa_kp_48",
+  "question": "极氪是否采用VIE架构？",
+  "answer": "关于极氪是否采用VIE（可变利益实体）架构的问题，现有公开文件呈现出一定程度的矛盾与不确定性，尚无法得出明确结论。\n\n一方面，部分文件确实使用了“VIE-like structure”（类VIE结构）的表述。例如，极氪于2023年11月9日提交的F-1初步招股说明书指出，其开曼群岛控股公司主要通过中国境内的子公司运营，并通过香港和英属维尔京群岛的中间实体，以类似VIE的结构进行运作。此外，2025年7月15日的一份协议中，“子公司”的定义明确包括“根据美国通用会计准则（GAAP）或香港财务报告准则（HKFRS）被极氪或吉利作为可变利益实体合并的实体”。2025年3月20日的20-F年度报告也提到投资者通过开曼群岛控股公司间接持有权益，并披露了与中国监管相关的风险，这类措辞通常出现在典型VIE架构的披露中。\n\n另一方面，多份文件又强调极氪对其中国运营实体采取的是直接股权控制模式。例如，2024年5月3日的F-1文件说明，其全资中国子公司“浙江极氪”系通过外商直接投资设立，属于外商投资企业（FIE），而非通过并购境内企业或采用合同控制方式。相关材料反复描述境外母公司通过股权出资或贷款方式直接持股，并未披露VIE架构中常见的控制机制，如独家服务协议、股权质押、委托投票权或名义股东协议等。同时，这些文件引用的是国家外汇管理局（SAFE）关于跨境资金流动的规定，而未涉及商务部（MOFCOM）或工信部（MIIT）对VIE结构通常要求的审批程序。\n\n值得注意的是，尽管2025年3月20日的20-F文件在附属协议定义中包含“通过合同或其他方式控制”的措辞，但该条款仅出现在特定协议的定义部分，并无证据显示极氪实际以此方式控制其中国运营实体。综合来看，极氪的控股结构以开曼群岛公司为顶层，其中国子公司被描述为直接持股的外商投资企业；公司在财务报表层面可能将某些实体按照GAAP或HKFRS标准作为VIE进行会计合并，但并未明确列出具体哪些实体属于此类，也未披露典型的VIE合同安排。\n\n因此，基于目前可获得的信息，极氪的整体架构更倾向于以直接股权控制为主的外商投资企业模式，但由于部分文件使用“VIE-like”表述且缺乏对控制机制的完整披露，不能完全排除其在局部或会计意义上存在VIE安排的可能性。是否构成严格法律意义上的VIE架构，仍有待依赖未公开的组织架构图、实际控制协议以及中国法律顾问的具体意见才能最终确认。",
+  "retrieval": [
+    {
+      "rank": 1,
+      "retriever": "PageIndex",
+      "score": 18.91911479688501,
+      "source": "F1_20240412.json",
+      "page": "260",
+      "date_published": "2024-04-12",
+      "snippet": "[PageIndex structural summary] Document: F1_20240412.pdf Date: 2024-04-12 Pages: 261-262 Title: Leases Summary: The partial document outlines key accounting policies of Zeekr Intelligent Technology Holding Limited for the years ended December 31, 2021, 2022, and 2023. It covers: (1) Government subsidies, distinguishing between specific purpose grants (treated as reductions to asset costs upon completion) and general purpose subsidies (recognized as other operating income upon receipt); (2) Taxation, including current and deferred tax accounting under ASC 740, recognition of uncertain tax positions, and treatment of interest and penalties; (3) Leases, detailing classification as operating...",
+      "metadata": {
+        "global_id": 13545,
+        "doc_id": "139d1705eed176ff0b2528fc4378b2837ee45121e1cfa1cd0f67551c74d98b20",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.04
+      }
+    },
+    {
+      "rank": 2,
+      "retriever": "BM25",
+      "score": 6.060035705566406,
+      "source": "13D_20250715_2.json",
+      "page": "82",
+      "date_published": "2025-07-15",
+      "snippet": "(nnn) “Subsidiary” means, when used with reference to any Person, (i) of which such party or any other Subsidiary of such party is a general or managing partner, or (ii) the outstanding voting securities or interests of which, having by their terms ordinary voting power to elect a majority of the Board of Directors or others performing similar functions with respect to such corporation or other organization, are directly or indirectly owned or controlled by such party or by any one or more of its Subsidiaries or (iii) which Zeekr or Geely, as applicable, consolidates in its consolidated financial statements as a variable interest entity in accordance with GAAP or HKFRS (as applicable); pr...",
+      "metadata": {
+        "global_id": 312,
+        "doc_id": "294fceb35ca21522d34ba2d9058c82288a41bd2ccc597599ce1a039f739a92ab",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 0.975
+      }
+    },
+    {
+      "rank": 3,
+      "retriever": "BM25",
+      "score": 5.66319465637207,
+      "source": "13D_20250715.json",
+      "page": "84",
+      "date_published": "2025-07-15",
+      "snippet": "[No changes were made as the original text contains no ambiguous pronouns or context-dependent terms requiring replacement based on the provided reference context.] (nnn) “Subsidiary” means, when used with reference to any Person, (i) of which such party or any other Subsidiary of such party is a general or managing partner, or (ii) the outstanding voting securities or interests of which, having by their terms ordinary voting power to elect a majority of the Board of Directors or others performing similar functions with respect to such corporation or other organization, are directly or indirectly owned or controlled by such party or by any one or more of its Subsidiaries or (iii) which Ze...",
+      "metadata": {
+        "global_id": 946,
+        "doc_id": "38626cf6b0ffbbf3b290a59c6f630dc6f96811bfa29f6d91d5c4d59a1e393255",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 0.975
+      }
+    },
+    {
+      "rank": 4,
+      "retriever": "PageIndex",
+      "score": 19.810858173979682,
+      "source": "20F_20250320.json",
+      "page": "6",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 7-7 Title: ITEM 2. OFFER STATISTICS AND EXPECTED TIMETABLE Summary: The partial document outlines key information about ZEEKR Intelligent Technology’s holding company structure, emphasizing that it operates through subsidiaries in China and that investors hold indirect equity interests via a Cayman Islands entity. It highlights significant risks associated with this structure, including potential future Chinese regulatory restrictions on foreign ownership that could disrupt operations or devalue securities. The text also details legal and operational risks tied to operating in China, such as evolving regulat...",
+      "metadata": {
+        "global_id": 1031,
+        "doc_id": "970b0706c978b5a8897404539d9f338e7eaed4c17300bd1ddef30cea7cb12261"
+      }
+    },
+    {
+      "rank": 5,
+      "retriever": "PageIndex",
+      "score": 19.413000741941246,
+      "source": "20F_20250320.json",
+      "page": "176",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 174-176 Title: Leases Summary: The partial document provides detailed notes from the combined and consolidated financial statements of Zeekr Intelligent Technology Holding Limited for the years ended December 31, 2022, 2023, and 2024. It covers three main areas: (1) Intangible assets, including software and trademarks, with their net carrying amounts, accumulated amortization, annual amortization expenses, and projected future amortization; (2) Land use rights, detailing their net value, amortization expenses, and expected annual amortization; and (3) Leases, outlining operating lease costs, variable lease p...",
+      "metadata": {
+        "global_id": 1416,
+        "doc_id": "f5c29b65193d27e2561e96751bbbe4f0f630467bde021ca701e778f5de311b95"
+      }
+    },
+    {
+      "rank": 6,
+      "retriever": "PageIndex",
+      "score": 17.526214075035224,
+      "source": "20F_20250320.json",
+      "page": "176",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 177-178 Title: Borrowings Summary: The partial document covers key financial disclosures from Zeekr Intelligent Technology Holding Limited’s notes to the combined and consolidated financial statements for the years ended December 31, 2022, 2023, and 2024. It details the company’s long-term equity investment in Zhejiang Haohan, including acquisition terms, subsequent capital injections, share of income/loss under the equity method, and confirmation of no impairment. The section on borrowings outlines both short-term and long-term debt, listing specific bank loans obtained between 2021 and 2024, their amounts,...",
+      "metadata": {
+        "global_id": 1420,
+        "doc_id": "245ee5ea4a9821fbb4ff14a11b2e2431c2296d23c78c4f2354162baf4ac54931"
+      }
+    },
+    {
+      "rank": 7,
+      "retriever": "PageIndex",
+      "score": 20.349397330143624,
+      "source": "20F_20250320.json",
+      "page": "239",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 239-239 Title: 21.3 The Parties agree that, for purposes of this Agreement, Affiliate means, with respect to an entity, any entity that controls or is controlled by, directly or indirectly through one or more intermediate subjects, or is directly or indirectly under common control of the third party with, the entity. The aforementioned “control” means having the right to directly manage or have decision-making power over the management of an entity by: (a) directly or indirectly owning more than 50% of the voting shares, registered capital or equity of the entity, (b) The right to appoint a majority of the m...",
+      "metadata": {
+        "global_id": 1552,
+        "doc_id": "8f194d602df11eaecfa90d28345c5f33bccdcb7a236657ae715fedc078331aa5"
+      }
+    },
+    {
+      "rank": 8,
+      "retriever": "PageIndex",
+      "score": 17.622513217357536,
+      "source": "424B4_20240510.json",
+      "page": "269",
+      "date_published": "2024-05-10",
+      "snippet": "[PageIndex structural summary] Document: 424B4_20240510.pdf Date: 2024-05-10 Pages: 270-271 Title: Intangible assets, net Summary: The partial document presents key financial disclosures from Zeekr Intelligent Technology Holding Limited’s notes to the combined and consolidated financial statements for the years ended December 31, 2021, 2022, and 2023. It details the composition and changes in property, plant and equipment (including depreciation expenses), intangible assets (including amortization expenses and future amortization estimates), land use rights (with associated amortization), and lease arrangements. The lease section outlines operating and short-term lease costs, treatment of...",
+      "metadata": {
+        "global_id": 2561,
+        "doc_id": "18e08a0109134f87a6919c67ca410c55ba4252ea4b0bd10dd3a1f652526a5791"
+      }
+    }
+  ],
+  "grep_probe": {
+    "question": "极氪是否采用VIE架构？",
+    "query_terms": [
+      "VIE"
+    ],
+    "metric_aliases": {},
+    "period_terms": [],
+    "anchors": [
+      {
+        "anchor_type": "nearby_number",
+        "text": "42.13",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+        "start": 488,
+        "end": 494,
+        "snippet": "judge evaluated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8 | What kind of services does Zeekr provide other than vehicle sales? | CORRECT | 44; Waymo; 2024; RMB | | 4 | qa_kp_3 | Is Zeekr operating under VIE structure? | CORRECT | VIE; 2024 | | 5 | qa_kp_4 | 极氪的车在哪里生产？ | CORRECT |...",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "19.1",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+        "start": 495,
+        "end": 500,
+        "snippet": "valuated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8 | What kind of services does Zeekr provide other than vehicle sales? | CORRECT | 44; Waymo; 2024; RMB | | 4 | qa_kp_3 | Is Zeekr operating under VIE structure? | CORRECT | VIE; 2024 | | 5 | qa_kp_4 | 极氪的车在哪里生产？ | CORRECT | 2024 |...",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "118",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+        "start": 1080,
+        "end": 1084,
+        "snippet": "eekr have? | CORRECT | Mobileye; Waymo; 2024 | | 7 | qa_kp_7 | 吉利为什么要私有化极氪？ | CORRECT | 2024 | | 8 | qa_kp_39 | 极氪的股权架构？ | CORRECT | 2024 | | 9 | qa_kp_83 | 极氪2024年四季度的销量 | CORRECT | 2024 | | 10 | qa_kp_99 | 极氪2023年四季度毛利率 | CORRECT | 19.1; 2024 | | 11 | qa_kp_118 | Between Zeekr’s actual and pro forma figures as of June 30, 2023, did the improvement in total capitalization come more from higher paid-in capital than from changes in accumulated deficit? | CORRECT | 44; RMB | | 12 | qa_kp_133 | Is it reasonable to...",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "19.1",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+        "start": 1053,
+        "end": 1058,
+        "snippet": "driving partnerships does Zeekr have? | CORRECT | Mobileye; Waymo; 2024 | | 7 | qa_kp_7 | 吉利为什么要私有化极氪？ | CORRECT | 2024 | | 8 | qa_kp_39 | 极氪的股权架构？ | CORRECT | 2024 | | 9 | qa_kp_83 | 极氪2024年四季度的销量 | CORRECT | 2024 | | 10 | qa_kp_99 | 极氪2023年四季度毛利率 | CORRECT | 19.1; 2024 | | 11 | qa_kp_118 | Between Zeekr’s actual and pro forma figures as of June 30, 2023, did the improvement in total capitalization come more from higher paid-in capital than from changes in accumulated deficit? | CORRECT | 44; RMB | | 12 | qa_kp...",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "0,0,0,0,,",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+        "start": 339,
+        "end": 348,
+        "snippet": "nt,required_count,missing_required_count,present_required_count,missing_required,reasons,question qa_kp_1,1,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪在中国的销售网络？ qa_kp_2,2,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的产品矩阵？ qa_kp_3,3,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,Is Zeekr operating under VIE structure? qa_kp_4,4,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,...",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "0,0,0,0,,",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+        "start": 448,
+        "end": 457,
+        "snippet": "LLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪在中国的销售网络？ qa_kp_2,2,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的产品矩阵？ qa_kp_3,3,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,Is Zeekr operating under VIE structure? qa_kp_4,4,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的车在哪里生产？ qa_kp_5,5,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,...",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "0,0,0,0,,",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+        "start": 588,
+        "end": 597,
+        "snippet": "BLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的产品矩阵？ qa_kp_3,3,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,Is Zeekr operating under VIE structure? qa_kp_4,4,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的车在哪里生产？ qa_kp_5,5,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的毛利水平？ qa_kp_6,6,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact patt...",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "nearby_number",
+        "text": "0,0,0,0,,",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.csv",
+        "start": 699,
+        "end": 708,
+        "snippet": "E_FACTS,,0,0,0,0,,no supported table-fact pattern detected,Is Zeekr operating under VIE structure? qa_kp_4,4,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的车在哪里生产？ qa_kp_5,5,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,极氪的毛利水平？ qa_kp_6,6,ALLOW,none,out_of_scope,NO_TABLE_FACTS,,0,0,0,0,,no supported table-fact pattern detected,What kind of autonomous driving partnerships does Zeekr have? qa_kp_7,7,ALLOW,none,out_of_scope,NO...",
+        "confidence_hint": 0.78,
+        "metadata": {
+          "near_term": "VIE",
+          "has_metric_context": false,
+          "has_period_context": false
+        }
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "VIE",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+        "start": 6400,
+        "end": 6403,
+        "snippet": "kr is incorporated as ZEEKR Intelligent Technology Holding Limited, an exempted company in the Cayman Islands, which holds no direct operations and conducts business through onshore Chinese subsidiaries—a setup frequently seen in offshore listings that employ VIE structures due to foreign ownership restrictions in Ch ... ## 5. 极氪的车在哪里生产？ - QID: qa_kp_4 - Judge verdict: CORRECT - Key points matched: 5/5 - Key points: - 极氪汽车主要在极氪工厂、成都工厂和眉山工厂生产 - 极氪工厂生产极氪001、极氪001 FR、极氪009 - 成都工厂生产极氪X - 眉山工厂生产高端轿车 - 生产基于与吉利集团",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "VIE",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+        "start": 4822,
+        "end": 4825,
+        "snippet": "ing arrangements. For charging, Zeekr supplies home chargers (7kW/11kW units with remote start and sharing capabilities), operates its own ZEEKR Power network—746 stations as of June 30, 2023, featuring ultra, super, and ... ## 4. Is Zeekr operating under VIE structure? - QID: qa_kp_3 - Judge verdict: CORRECT - Key points matched: 4/4 - Key points: - Zeekr operates under a holding company structure - The parent company, Zeekr Intelligent Technology Holding Limited, is incorporated in the Cayman Islands - Bu",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "VIE",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+        "start": 10800,
+        "end": 10803,
+        "snippet": ".7%股份 - CEO安聪慧持有2.7%股份 - 员工持股平台Gagk Innovation Limited持有2.4%股份 - 富达管理研究公司持有1.1%股份 Answer excerpt: 截至2025年5月7日（在数据截止日2025年5月15日前的最新披露），极氪（Zeekr）的股权架构显示，创始人李书福通过其控制的一系列实体合计持有极氪约76.8%的已发行普通股，对应1,950,996,860股，基于截至2024年12月31日的总股本2,541,971,138股计算。这些实体包括：Luckview Group Limited（持股1,668,996,860股，占65.7%）、GHGK Innovation Limited（2.22亿股，占8.7%）、宁波吉控企业管理有限公司（2.82亿股，占11.1%）以及宁波吉控集聚企业管理合伙企业（2.22亿股，占8.7%）。所有相关方对所持股份均拥有共同的投票权和处置权，未报告任何单独权力。 其中，Geely Automobile Holdings Limited（吉利汽车控股有限公司）通过其全资子公司Luckview Group Limited直接持有1,668",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      },
+      {
+        "anchor_type": "exact_phrase",
+        "text": "VIE",
+        "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+        "start": 43657,
+        "end": 43660,
+        "snippet": "scope of the provided reference. While some structural details align (Cayman parent, Chinese/HK subsidiaries), the core claim about VIE-related disclosures directly conflicts with the gold answer’s assertion that the structure does *not* explicitly mention a VIE. 极氪的股权结构如下： 1. **Geely Automobile Holdings Limited（吉利汽车控股）**持有166,899,686股，占总股本的65.7%。 2. **GHGK Innovation Limited（吉利控股关联实体）**持有22,200,000股，占总股本的8.7%。 3. **Cong Hui An（安聪慧，CEO）**持有6,800,000股，占总股本的2.7%。 4. **Gagk Innovation Limited（员工持股平台）**持有6,000,000",
+        "confidence_hint": 0.65,
+        "metadata": {}
+      }
+    ],
+    "files_scanned": 17,
+    "metadata": {
+      "case_id": "zeekr_profile_q48_runner"
+    }
+  },
+  "skill_traces": [
+    {
+      "skill_id": "company_profile_boundary",
+      "triggered": true,
+      "trigger_reason": "profile fact repair for vie_structure",
+      "output_decision": "repair_applied",
+      "supporting_source": null,
+      "audit_notes": [
+        "fact={'fact_id': 'zeekr_vie_structure', 'intent': 'vie_structure', 'answer_zh': '基于披露，极氪更准确地说是 Cayman Islands 控股公司架构，而不是明确披露的 VIE 运营架构。'}"
+      ]
+    }
+  ],
+  "audit_notes": [
+    "retrieval_chunks_previewed=8",
+    "grep_anchors_previewed=12",
+    "triggered_skills=company_profile_boundary"
+  ],
+  "metadata": {
+    "retrieved_chunk_count": 62,
+    "total_time": 176.944,
+    "retrieval_profile": null
+  }
+}

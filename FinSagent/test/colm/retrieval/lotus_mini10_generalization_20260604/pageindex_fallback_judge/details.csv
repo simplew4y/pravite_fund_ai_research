@@ -1,0 +1,11 @@
+qid,qa_type,answer_type,n_keypoints,kp_matched,kp_partial,kp_missing,kp_incorrect,kp_coverage_ratio,judge_verdict,passed
+lotus_gen_01,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True
+lotus_gen_10,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True
+lotus_gen_02,unknown,generated_answer,2,2,0,0,0,1.0,CORRECT,True
+lotus_gen_03,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True
+lotus_gen_04,unknown,generated_answer,2,2,0,0,0,1.0,CORRECT,True
+lotus_gen_05,unknown,generated_answer,5,5,0,0,0,1.0,CORRECT,True
+lotus_gen_06,unknown,generated_answer,2,2,0,0,0,1.0,CORRECT,True
+lotus_gen_07,unknown,generated_answer,2,2,0,0,0,1.0,CORRECT,True
+lotus_gen_08,unknown,generated_answer,5,2,2,1,0,0.4,CORRECT,True
+lotus_gen_09,unknown,generated_answer,4,4,0,0,0,1.0,CORRECT,True

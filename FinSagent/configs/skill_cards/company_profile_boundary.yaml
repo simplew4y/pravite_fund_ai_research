@@ -1,0 +1,30 @@
+skill_id: company_profile_boundary
+version: "0.1.0"
+name: Company Profile Boundary Repair
+scope: "Handles stable corporate-profile facts such as headquarters, holding structure, ownership chain, service boundary, and business profile when retrieval snippets are noisy."
+failure_types:
+  - profile_boundary_error
+  - wrong_source
+  - answer_coverage_failure
+trigger: "Question asks for stable company profile or corporate-structure facts covered by reviewed profile facts."
+inputs:
+  - question
+  - generated_answer
+outputs:
+  - repaired_answer
+  - profile_fact_id
+  - cutoff
+  - skill_trace
+risks:
+  - "Highest overfitting risk among current skills; should remain company-profile metadata, not answer memorization."
+  - "Needs cross-company adaptation before being presented as a general mechanism."
+eval_sets:
+  - zeekr_holdout20
+  - blind_holdout20_validation
+status: promoted
+owner: myz
+last_reviewed: "2026-06-05"
+implementation_refs:
+  - src/utils/profile_fact_repair.py
+notes: "Keep this skill explicitly bounded. Future work should move reusable parts into company_profiles and client_policies."
+

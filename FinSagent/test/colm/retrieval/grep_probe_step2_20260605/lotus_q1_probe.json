@@ -1,0 +1,333 @@
+{
+  "question": "What was Lotus Technology revenue for the nine months ended September 30, 2024, and how did it compare with the same period in 2023?",
+  "query_terms": [
+    "Lotus",
+    "revenue",
+    "nine",
+    "months",
+    "September",
+    "30",
+    "2024",
+    "2023"
+  ],
+  "metric_aliases": {
+    "revenue": [
+      "revenue",
+      "revenues",
+      "total revenue",
+      "net revenue",
+      "sales"
+    ]
+  },
+  "period_terms": [
+    "nine months ended September 30",
+    "2024",
+    "2023"
+  ],
+  "anchors": [
+    {
+      "anchor_type": "period_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121_ppt.json",
+      "start": 28,
+      "end": 32,
+      "snippet": "In the first nine months of 2024, Lotus delivered over 7,600 vehicles, marking a 136% increase compared to the same period in 2023, when 3,221 vehicles were delivered. The third quarter alone saw 2,755 vehicles delivered, a 54% increase over the 1,782 vehicles delivered in Q3 2023. Total rev",
+      "confidence_hint": 0.8,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "period_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/first_half_final.json",
+      "start": 106,
+      "end": 110,
+      "snippet": "How was Lotus Technology's performance in the first half of the year? Total revenue for the first half of 2024 was $398 million, representing a year-on-year increase of 206%. Lotus Technology's Average Selling Price (ASP) remained above $100,000, achieving growth far exceeding the industry and luxury car segment. Lotus Technology's gross margin for the first half of t",
+      "confidence_hint": 0.8,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "period_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/Lotus_424B3_20240529_final.json",
+      "start": 125,
+      "end": 129,
+      "snippet": "This prospectus supplement is being filed to update and supplement the information contained in the prospectus dated May 27, 2024 (as supplemented or amended from time to time, the “Prospectus”), which forms a part of Lotus Technology Inc.'s Registration Statement on Form F-1 (Registration No. 333-279108), as amended and supplemented, with the information contained in Lotus Technology I",
+      "confidence_hint": 0.8,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "period_phrase",
+      "text": "2024",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/Lotus_424B3_20240624_final.json",
+      "start": 125,
+      "end": 129,
+      "snippet": "This prospectus supplement is being filed to update and supplement the information contained in the prospectus dated May 27, 2024 (as supplemented or amended from time to time, the “Prospectus”), which forms a part of Lotus Technology Inc.'s Registration Statement on Form F-1 (Registration No. 333-279108), as amended and supplemented, with the information contained in Lotus Technology I",
+      "confidence_hint": 0.8,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "metric_alias",
+      "text": "revenue",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/first_half_final.json",
+      "start": 76,
+      "end": 83,
+      "snippet": "How was Lotus Technology's performance in the first half of the year? Total revenue for the first half of 2024 was $398 million, representing a year-on-year increase of 206%. Lotus Technology's Average Selling Price (ASP) remained above $100,000, achieving growth far exceeding the industry and luxury car segment. Lotus Technology's gross mar",
+      "confidence_hint": 0.75,
+      "metadata": {
+        "metric": "revenue"
+      }
+    },
+    {
+      "anchor_type": "metric_alias",
+      "text": "total revenue",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/first_half_final.json",
+      "start": 70,
+      "end": 83,
+      "snippet": "How was Lotus Technology's performance in the first half of the year? Total revenue for the first half of 2024 was $398 million, representing a year-on-year increase of 206%. Lotus Technology's Average Selling Price (ASP) remained above $100,000, achieving growth far exceeding the industry and luxury car segment. Lotus Technology's gross mar",
+      "confidence_hint": 0.75,
+      "metadata": {
+        "metric": "revenue"
+      }
+    },
+    {
+      "anchor_type": "metric_alias",
+      "text": "revenues",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121.json",
+      "start": 20711,
+      "end": 20719,
+      "snippet": "us reached approximately \\$130 million for Lotus intelligent driving solutions following earlier agreements with multiple auto conglomerates such as Farizon and a top Japanese tier-one supplier. Financial Highlights for the First Nine Months of 2024 ● Total revenues for the first nine months of 2024 were \\$653 million, a 105% YoY increase. ● Sales of goods were \\$624 million, a 104% YoY increase. ● Service revenues were \\$29 million, a 129% YoY increase. ● Gross margin for the first nine months was 9%, versu",
+      "confidence_hint": 0.75,
+      "metadata": {
+        "metric": "revenue"
+      }
+    },
+    {
+      "anchor_type": "metric_alias",
+      "text": "revenues",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/20250422.json",
+      "start": 14684,
+      "end": 14692,
+      "snippet": "%$ of total deliveries with nearly $90 \\%$ YoY growth. In the fourth quarter of 2024, the Company started to deliver Emeya in Malaysia, Thailand, Singapore, UAE and Philippines Deliveries1 by Model Type Financial Highlights for the Full Year of 2024 ● Total revenues: \\$924 million, reflecting a $3 6 \\%$ YoY increase. ● Sales of goods: \\$891 million, up $3 5 \\%$ YoY. ● Service revenues: \\$33 million, a $7 7 \\%$ YoY increase. ● Gross margin: $3 \\%$ , as compared with $1 5 \\%$ in 2023. ● Gross margin of sales of",
+      "confidence_hint": 0.75,
+      "metadata": {
+        "metric": "revenue"
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "7,600",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121_ppt.json",
+      "start": 55,
+      "end": 61,
+      "snippet": "In the first nine months of 2024, Lotus delivered over 7,600 vehicles, marking a 136% increase compared to the same period in 2023, when 3,221 vehicles were delivered. The third quarter alone saw 2,755 vehicles delivered, a 54% increase over the 1,782 vehicles delivered in Q3 2023. Total revenue for the first nine month",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "136%",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121_ppt.json",
+      "start": 81,
+      "end": 85,
+      "snippet": "In the first nine months of 2024, Lotus delivered over 7,600 vehicles, marking a 136% increase compared to the same period in 2023, when 3,221 vehicles were delivered. The third quarter alone saw 2,755 vehicles delivered, a 54% increase over the 1,782 vehicles delivered in Q3 2023. Total revenue for the first nine months of 2024 amounted to $6",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$398 million",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/first_half_final.json",
+      "start": 115,
+      "end": 127,
+      "snippet": "How was Lotus Technology's performance in the first half of the year? Total revenue for the first half of 2024 was $398 million, representing a year-on-year increase of 206%. Lotus Technology's Average Selling Price (ASP) remained above $100,000, achieving growth far exceeding the industry and luxury car segment. Lotus Technology's gross margin for the first half of this year was 13%,",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "3,221",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121_ppt.json",
+      "start": 137,
+      "end": 143,
+      "snippet": "In the first nine months of 2024, Lotus delivered over 7,600 vehicles, marking a 136% increase compared to the same period in 2023, when 3,221 vehicles were delivered. The third quarter alone saw 2,755 vehicles delivered, a 54% increase over the 1,782 vehicles delivered in Q3 2023. Total revenue for the first nine months of 2024 amounted to $653 million, representing an impressive 105% year-on-year g",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "206%",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/first_half_final.json",
+      "start": 169,
+      "end": 173,
+      "snippet": "How was Lotus Technology's performance in the first half of the year? Total revenue for the first half of 2024 was $398 million, representing a year-on-year increase of 206%. Lotus Technology's Average Selling Price (ASP) remained above $100,000, achieving growth far exceeding the industry and luxury car segment. Lotus Technology's gross margin for the first half of this year was 13%, compared to 5% in the same period of 2023. I",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2,755",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121_ppt.json",
+      "start": 196,
+      "end": 202,
+      "snippet": "In the first nine months of 2024, Lotus delivered over 7,600 vehicles, marking a 136% increase compared to the same period in 2023, when 3,221 vehicles were delivered. The third quarter alone saw 2,755 vehicles delivered, a 54% increase over the 1,782 vehicles delivered in Q3 2023. Total revenue for the first nine months of 2024 amounted to $653 million, representing an impressive 105% year-on-year growth from the $318 million reported in the same period of",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "54%",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121_ppt.json",
+      "start": 224,
+      "end": 227,
+      "snippet": "In the first nine months of 2024, Lotus delivered over 7,600 vehicles, marking a 136% increase compared to the same period in 2023, when 3,221 vehicles were delivered. The third quarter alone saw 2,755 vehicles delivered, a 54% increase over the 1,782 vehicles delivered in Q3 2023. Total revenue for the first nine months of 2024 amounted to $653 million, representing an impressive 105% year-on-year growth from the $318 million reported in the same period of 2023. In the third quarte",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "Lotus",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$3",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/20250422.json",
+      "start": 14960,
+      "end": 14963,
+      "snippet": "million, reflecting a $3 6 \\%$ YoY increase. ● Sales of goods: \\$891 million, up $3 5 \\%$ YoY. ● Service revenues: \\$33 million, a $7 7 \\%$ YoY increase. ● Gross margin: $3 \\%$ , as compared with $1 5 \\%$ in 2023. ● Gross margin of sales of goods: $3 \\%$ , versus $14 \\%$ in 2023. ● Gross margin of service revenues: $1 7 \\% .$ , versus $3 6 \\%$ in 2023. ● Operating loss: \\$786 million, a $7 \\%$ YoY increase. ● Net loss: \\$1,107 million, a $48 \\%$ YoY increase. ● Adjusted net loss (non-GAAP): \\$1",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "revenues",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/Lotus_F-3_20250304.json",
+      "start": 0,
+      "end": 5,
+      "snippet": "Lotus Technology, Inc. (Exact name of registrant as specified in its charter) Not Applicable (Translation of Lotus Technology, Inc.'s name into English) By: /s/ Qingfeng Feng Name: Qingfeng Feng Title: Director and Chief Executive Officer of Lotus Technology, I",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/20240506_final.json",
+      "start": 0,
+      "end": 5,
+      "snippet": "Lotus Technology Inc. (Exact name of registrant as specified in its charter) Cayman Islands (State or other jurisdiction of incorporation or organization) Not Applicable (Lotus Technology Inc. Employer Identification Number) No. 800 Century Avenue Pudong District,",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/1121.json",
+      "start": 0,
+      "end": 5,
+      "snippet": "Lotus Technology Inc. has 15,037,030 American Depositary Shares underlying warrants, 680,957,495 American Depositary Shares, and 5,486,784 warrants to purchase ordinary shares. This prospectus supplement is being filed to update and supplement the information conta",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/Lotus_6-K_20250408_final.json",
+      "start": 9708,
+      "end": 9713,
+      "snippet": "and uncertainties, which are outlined in the company's SEC filings. The information is accurate as of the release date, and Lotus Tech will not update these forward-looking statements unless legally obligated. For investor inquiries, please contact ir@$group-lotus.com.",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/Lotus_424B3_20250115_final.json",
+      "start": 13326,
+      "end": 13331,
+      "snippet": "th the U.S. Securities and Exchange Commission. The information provided is accurate as of the release date, and Lotus Tech is not obligated to update any forward-looking statements unless legally mandated. For investor inquiries, please reach out to ir@group-lotus.com.",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "Lotus",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/Lotus_6-K_20250114_final.json",
+      "start": 7804,
+      "end": 7809,
+      "snippet": "and uncertainties, which are further explained in the Company's SEC filings. The information is accurate as of the release date, and Lotus Tech will not update these forward-looking statements unless legally obligated. For investor inquiries, contact ir@group-lotus.com.",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$1",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/20250422.json",
+      "start": 15032,
+      "end": 15035,
+      "snippet": "million, up $3 5 \\%$ YoY. ● Service revenues: \\$33 million, a $7 7 \\%$ YoY increase. ● Gross margin: $3 \\%$ , as compared with $1 5 \\%$ in 2023. ● Gross margin of sales of goods: $3 \\%$ , versus $14 \\%$ in 2023. ● Gross margin of service revenues: $1 7 \\% .$ , versus $3 6 \\%$ in 2023. ● Operating loss: \\$786 million, a $7 \\%$ YoY increase. ● Net loss: \\$1,107 million, a $48 \\%$ YoY increase. ● Adjusted net loss (non-GAAP): \\$1,075 million, a $43 \\%$ YoY increase. ● Adjusted EBITDA (non-GAAP): l",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "revenues",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$14",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/20250422.json",
+      "start": 14976,
+      "end": 14980,
+      "snippet": "ing a $3 6 \\%$ YoY increase. ● Sales of goods: \\$891 million, up $3 5 \\%$ YoY. ● Service revenues: \\$33 million, a $7 7 \\%$ YoY increase. ● Gross margin: $3 \\%$ , as compared with $1 5 \\%$ in 2023. ● Gross margin of sales of goods: $3 \\%$ , versus $14 \\%$ in 2023. ● Gross margin of service revenues: $1 7 \\% .$ , versus $3 6 \\%$ in 2023. ● Operating loss: \\$786 million, a $7 \\%$ YoY increase. ● Net loss: \\$1,107 million, a $48 \\%$ YoY increase. ● Adjusted net loss (non-GAAP): \\$1,075 million, a $",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "revenues",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$3",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/final_meta/20250422.json",
+      "start": 14879,
+      "end": 14882,
+      "snippet": "del Type Financial Highlights for the Full Year of 2024 ● Total revenues: \\$924 million, reflecting a $3 6 \\%$ YoY increase. ● Sales of goods: \\$891 million, up $3 5 \\%$ YoY. ● Service revenues: \\$33 million, a $7 7 \\%$ YoY increase. ● Gross margin: $3 \\%$ , as compared with $1 5 \\%$ in 2023. ● Gross margin of sales of goods: $3 \\%$ , versus $14 \\%$ in 2023. ● Gross margin of service revenues: $1 7 \\% .$ , versus $3 6 \\%$ in 2023. ● Operating loss: \\$786 million, a $7 \\%$ YoY increase. ● Net loss",
+      "confidence_hint": 0.94,
+      "metadata": {
+        "near_term": "revenues",
+        "has_metric_context": true,
+        "has_period_context": true
+      }
+    }
+  ],
+  "files_scanned": 54,
+  "metadata": {}
+}

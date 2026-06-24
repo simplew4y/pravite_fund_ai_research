@@ -1,0 +1,40 @@
+{
+  "report_id": "skillops_paper_report_20260605",
+  "title": "Human-Governed SkillOps for SEC Filing QA",
+  "core_loop": [
+    "Question",
+    "Retrieval",
+    "Grep Evidence Probe",
+    "Evidence Preview",
+    "Failure Diagnosis",
+    "Skill Candidate Proposal",
+    "Staging/Promotion Gate"
+  ],
+  "cross_company_benchmark_v1_1": {
+    "companies": ["Zeekr", "Lotus Technology", "NVIDIA"],
+    "evaluated_qas": 40,
+    "correct": 40,
+    "partial": 0,
+    "incorrect": 0,
+    "weighted_correctness_score": 5.0
+  },
+  "case_suite": {
+    "case_count": 6,
+    "clean_rerun_status": "pass",
+    "expected_type_mismatches": 0,
+    "failure_type_counts": {
+      "no_failure_detected": 1,
+      "source_conflict": 1,
+      "period_mismatch": 1,
+      "answer_coverage_failure": 1,
+      "profile_boundary_error": 1,
+      "table_alignment_error": 1
+    }
+  },
+  "main_artifacts": {
+    "paper_report": "reports/skillops_paper_report_20260605.md",
+    "vertical_slice_report": "reports/skillops_vertical_slice_report_20260605.md",
+    "demo_benchmark_manifest": "test/colm/retrieval/skillops_demo_benchmark_20260605/skillops_demo_benchmark_manifest.md",
+    "reproducibility_note": "reports/skillops_reproducibility_note_20260605.md"
+  }
+}

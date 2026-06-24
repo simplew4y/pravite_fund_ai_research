@@ -1,0 +1,34 @@
+{
+  "proposals": [
+    {
+      "candidate_id": "qa_kp_48_company_profile_boundary_guard",
+      "candidate_skill_name": "company_profile_boundary_guard",
+      "observed_failures": [
+        "profile_boundary_error (medium): Profile boundary repair trace triggered. Evidence: {'skill_id': 'company_profile_boundary', 'triggered': True, 'trigger_reason': 'profile fact repair for vie_structure', 'output_decision': 'repair_applied', 'supporting_source': None, 'audit_notes': [\"fact={'fact_id': 'zeekr_vie_structure', 'intent': 'vie_structure', 'answer_zh': '基于披露，极氪更准确地说是 Cayman Islands 控股公司架构，而不是明确披露的 VIE 运营架构。'}\"]}"
+      ],
+      "failure_types": [
+        "profile_boundary_error"
+      ],
+      "hypothesis": "Stable company-profile questions fail when noisy snippets or latest-event evidence cause the answer to overstate corporate structure, ownership, headquarters, or business-boundary facts.",
+      "proposed_trigger": "Question asks for corporate profile, holding structure, VIE status, headquarters, relationship boundary, or target market, and retrieval evidence is noisy or profile repair trace is triggered.",
+      "proposed_action": "Route the answer through reviewed company-profile metadata with explicit cutoff/scope, while preserving retrieved evidence and preventing global answer memorization.",
+      "risks": [
+        "Highest overfitting risk if profile facts are used as hidden answers instead of scoped metadata.",
+        "Company-specific profile metadata must not leak into cross-company runs.",
+        "Needs manual review for each company profile card before promotion."
+      ],
+      "required_tests": [
+        "Profile-boundary questions pass on Zeekr protected set.",
+        "Lotus and NVIDIA sanity cases do not trigger Zeekr-specific profile facts.",
+        "Company profile card clearly separates aliases/metadata from answer facts."
+      ],
+      "suggested_status": "proposed",
+      "source_failure_report": "test/colm/retrieval/skillops_demo_benchmark_20260605/zeekr_profile_q48_runner/zeekr_profile_q48_runner_failure_report.json",
+      "human_review_required": true,
+      "notes": "This proposal is intentionally scoped to audited company-profile metadata, not a global factbook.",
+      "metadata": {
+        "qid": "qa_kp_48"
+      }
+    }
+  ]
+}

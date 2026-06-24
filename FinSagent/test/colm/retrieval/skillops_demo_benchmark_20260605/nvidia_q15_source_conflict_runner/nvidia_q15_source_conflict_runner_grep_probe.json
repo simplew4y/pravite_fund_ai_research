@@ -1,0 +1,349 @@
+{
+  "question": "NVIDIA在2025年如何描述出口管制对中国Data Center业务的影响？",
+  "query_terms": [
+    "export controls",
+    "export control",
+    "license",
+    "China",
+    "Chinese",
+    "Data Center",
+    "NVIDIA",
+    "2025",
+    "Data",
+    "Center"
+  ],
+  "metric_aliases": {},
+  "period_terms": [],
+  "anchors": [
+    {
+      "anchor_type": "nearby_number",
+      "text": "025",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/e2e_q15_period_repair_summary.json",
+      "start": 35,
+      "end": 39,
+      "snippet": "The repaired answer uses NVIDIA FY2025 10-K framing: export controls constrained China Data Center product mix and share, but NVIDIA offered compliant alternatives, ramped China-designed products that did not require export-control licenses, and China Data Center revenue grew in fiscal year 2025. L",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export controls",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "026",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/e2e_q15_period_repair_summary.json",
+      "start": 311,
+      "end": 315,
+      "snippet": ": export controls constrained China Data Center product mix and share, but NVIDIA offered compliant alternatives, ramped China-designed products that did not require export-control licenses, and China Data Center revenue grew in fiscal year 2025. Later H20/FY2026 disclosures are explicitly separated as later-period evidence.",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export controls",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$5.5",
+      "source_path": "test/colm/retrieval/nvidia_mini10_cap2_20260601/judge/results.json",
+      "start": 5027,
+      "end": 5031,
+      "snippet": "有所放松，中国自身的监管措施仍可能构成持续障碍，而反复变动的出口管制规则也增加了合规负担，扰乱供应链和客户需求交付。 The generated answer directly contradicts key points from the gold answer. Specifically, it claims NVIDIA is “substantially excluded” from China’s data center market and reports declining revenue (Q1: $5.5B → Q2: $2.8B), implying a drop in 2025, whereas the gold answer states that China Data Center revenue *grew* in FY2025. It also fails to mention that NVIDIA introduced new products that do not require export licenses or pre-shipment approvals—instead,...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "license",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "8.01",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.json",
+      "start": 5250,
+      "end": 5255,
+      "snippet": "if the Form 8-K filing is intended to simultaneously satisfy the filing obligation of NVIDIA Corporation under any of the following provisions: title: nvidia > 20250113_8-K summary: NVIDIA Corporation filed a Form 8-K on January 13, 2025, reporting under Item 8.01 that the U.S. Government submitted the Interim Final Rule “Export Control Framework for Artificial Intelligence Diffusion” for publication in the Federal Register, which was subsequently published on January 15, 2025. NVIDIA utilizes a fabless and cont...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export control",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "29,600",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.json",
+      "start": 10577,
+      "end": 10584,
+      "snippet": "logy from third parties. Its worldwide activities are subject to U.S. and foreign government regulations. In sustainability, NVIDIA plans to build Earth-2, a digital twin of the Earth for climate change prediction and mitigation. The company had approximately 29,600 employees globally as of fiscal year 2024, with the majority in research and development, and its Compensation Committee oversees human capital management policies. NVIDIA pioneered accelerated computing to help solve the most challenging computation...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "license",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$4.5 billion",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.json",
+      "start": 27304,
+      "end": 27316,
+      "snippet": "ns worldwide, with a primary focus on U.S. government export restrictions targeting AI-related semiconductors. These controls have increasingly limited NVIDIA's ability to sell products like the A100, H100, and H20 to China and other countries, resulting in a $4.5 billion charge for excess inventory and potentially foreclosing the company from China's data center market. The shifting and expanding export rules create compliance burdens, harm NVIDIA's competitive position by benefiting foreign competitors, and ri...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "China",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "32449",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.json",
+      "start": 2014,
+      "end": 2019,
+      "snippet": "and \"Graphics,\" as described in Note 15 of the Notes to Condensed Consolidated Financial Statements. Headquartered in Santa Clara, California, NVIDIA was incorporated in California in April 1993 and reincorporated in Delaware in April 1998. title: nvidia > cd532449-4dc3-404a-a999-25e7b2e8c246 > PART I. FINANCIAL INFORMATION > ITEM 2. MANAGEMENT’S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS > Overview > Our Company and Our Businesses summary: NVIDIA, incorporated in California in 1993...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "-404",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.json",
+      "start": 2024,
+      "end": 2028,
+      "snippet": "ics,\" as described in Note 15 of the Notes to Condensed Consolidated Financial Statements. Headquartered in Santa Clara, California, NVIDIA was incorporated in California in April 1993 and reincorporated in Delaware in April 1998. title: nvidia > cd532449-4dc3-404a-a999-25e7b2e8c246 > PART I. FINANCIAL INFORMATION > ITEM 2. MANAGEMENT’S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS > Overview > Our Company and Our Businesses summary: NVIDIA, incorporated in California in 1993 and reinc...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Data",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "NVIDIA",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/judge/results.json",
+      "start": 0,
+      "end": 6,
+      "snippet": "NVIDIA属于半导体行业，采用无晶圆厂（fabless）商业模式，专注于产品设计、质量保证、营销和客户支持，而将晶圆制造、封装和测试等生产环节外包给第三方供应商。其核心业务围绕加速计算和人工智能技术展开，源于1999年发明的GPU。 公司主要通过两个可报告经营分部开展业务：“Compute & Networking”（计算与网络）和“Graphics”（图形）。其中，“Compute & Networking”分部包括数据中心加速计算平台、端到端网络平台（如Quantum InfiniBand和Spectrum Ether",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "NVIDIA",
+      "source_path": "test/colm/retrieval/nvidia_mini10_cap2_20260601/judge/results.json",
+      "start": 0,
+      "end": 6,
+      "snippet": "NVIDIA属于半导体行业，采用无晶圆厂（fabless）商业模式，专注于产品设计、质量保证、营销和客户支持，而将晶圆制造、封装和测试等生产环节外包给第三方供应商。其核心业务围绕加速计算和人工智能技术展开，源于1999年发明的GPU。 公司主要通过两个可报告经营分部开展业务：“Compute & Networking”（计算与网络）和“Graphics”（图形）。其中，“Compute & Networking”分部包括数据中心加速计算平台、端到端网络平台（如Quantum InfiniBand和Spectrum Ether",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "NVIDIA",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/e2e_q15_period_repair_summary.json",
+      "start": 25,
+      "end": 31,
+      "snippet": "The repaired answer uses NVIDIA FY2025 10-K framing: export controls constrained China Data Center product mix and share, but NVIDIA offered compliant alternatives, ramped China-designed products that did not require export-control licenses, and China Data Center revenue grew in fiscal year",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2025",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/e2e_q15_period_repair_summary.json",
+      "start": 34,
+      "end": 38,
+      "snippet": "The repaired answer uses NVIDIA FY2025 10-K framing: export controls constrained China Data Center product mix and share, but NVIDIA offered compliant alternatives, ramped China-designed products that did not require export-control licenses, and China Data Center revenue grew in fiscal year 2025.",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "export control",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/e2e_q15_period_repair_summary.json",
+      "start": 53,
+      "end": 67,
+      "snippet": "The repaired answer uses NVIDIA FY2025 10-K framing: export controls constrained China Data Center product mix and share, but NVIDIA offered compliant alternatives, ramped China-designed products that did not require export-control licenses, and China Data Center revenue grew in fiscal year 2025. Later H20/FY2026 disclosures",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "export controls",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/e2e_q15_period_repair_summary.json",
+      "start": 53,
+      "end": 68,
+      "snippet": "The repaired answer uses NVIDIA FY2025 10-K framing: export controls constrained China Data Center product mix and share, but NVIDIA offered compliant alternatives, ramped China-designed products that did not require export-control licenses, and China Data Center revenue grew in fiscal year 2025. Later H20/FY2026 disclosures a",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "8.01",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 7517,
+      "end": 7522,
+      "snippet": "ly satisfy the filing obligation of NVIDIA Corporation under any of the following provisions:\", \"metadata\": {\"global_id\": 0, \"title_summary\": \"title: nvidia > 20250113_8-K\\nsummary: NVIDIA Corporation filed a Form 8-K on January 13, 2025, reporting under Item 8.01 that the U.S. Government submitted the Interim Final Rule “Export Control Framework for Artificial Intelligence Diffusion” for publication in the Federal Register, which was subsequently published on January 15, 2025.\", \"page_number\": 0, \"doc_id\": \"7fa...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export control",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "50708",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 7775,
+      "end": 7780,
+      "snippet": "m 8.01 that the U.S. Government submitted the Interim Final Rule “Export Control Framework for Artificial Intelligence Diffusion” for publication in the Federal Register, which was subsequently published on January 15, 2025.\", \"page_number\": 0, \"doc_id\": \"7fa750708ca8fb0b2d2726c14da545c25d99622da873b02c48a09461260ae225\", \"date_published\": \"2025-01-13\", \"filename\": \"20250113_8-K_base_final.json\"}, \"bundle_id\": 12}, {\"retriever\": \"BM25\", \"score\": 0.0, \"page_content\": \"NVIDIA utilizes a fabless and contracting manu...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export control",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "726",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 7790,
+      "end": 7793,
+      "snippet": "U.S. Government submitted the Interim Final Rule “Export Control Framework for Artificial Intelligence Diffusion” for publication in the Federal Register, which was subsequently published on January 15, 2025.\", \"page_number\": 0, \"doc_id\": \"7fa750708ca8fb0b2d2726c14da545c25d99622da873b02c48a09461260ae225\", \"date_published\": \"2025-01-13\", \"filename\": \"20250113_8-K_base_final.json\"}, \"bundle_id\": 12}, {\"retriever\": \"BM25\", \"score\": 0.0, \"page_content\": \"NVIDIA utilizes a fabless and contracting manufacturing strate...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export control",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "9622",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 7806,
+      "end": 7810,
+      "snippet": "submitted the Interim Final Rule “Export Control Framework for Artificial Intelligence Diffusion” for publication in the Federal Register, which was subsequently published on January 15, 2025.\", \"page_number\": 0, \"doc_id\": \"7fa750708ca8fb0b2d2726c14da545c25d99622da873b02c48a09461260ae225\", \"date_published\": \"2025-01-13\", \"filename\": \"20250113_8-K_base_final.json\"}, \"bundle_id\": 12}, {\"retriever\": \"BM25\", \"score\": 0.0, \"page_content\": \"NVIDIA utilizes a fabless and contracting manufacturing strategy, whereby NVID...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export control",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "9461260",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 7823,
+      "end": 7830,
+      "snippet": "terim Final Rule “Export Control Framework for Artificial Intelligence Diffusion” for publication in the Federal Register, which was subsequently published on January 15, 2025.\", \"page_number\": 0, \"doc_id\": \"7fa750708ca8fb0b2d2726c14da545c25d99622da873b02c48a09461260ae225\", \"date_published\": \"2025-01-13\", \"filename\": \"20250113_8-K_base_final.json\"}, \"bundle_id\": 12}, {\"retriever\": \"BM25\", \"score\": 0.0, \"page_content\": \"NVIDIA utilizes a fabless and contracting manufacturing strategy, whereby NVIDIA employs and p...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export control",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "0.0",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 7963,
+      "end": 7967,
+      "snippet": "ently published on January 15, 2025.\", \"page_number\": 0, \"doc_id\": \"7fa750708ca8fb0b2d2726c14da545c25d99622da873b02c48a09461260ae225\", \"date_published\": \"2025-01-13\", \"filename\": \"20250113_8-K_base_final.json\"}, \"bundle_id\": 12}, {\"retriever\": \"BM25\", \"score\": 0.0, \"page_content\": \"NVIDIA utilizes a fabless and contracting manufacturing strategy, whereby NVIDIA employs and partners with key suppliers for all phases of the manufacturing process, including wafer fabrication, assembly, testing, and packaging. NVIDI...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "export control",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "29,600",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 13521,
+      "end": 13528,
+      "snippet": "logy from third parties. Its worldwide activities are subject to U.S. and foreign government regulations. In sustainability, NVIDIA plans to build Earth-2, a digital twin of the Earth for climate change prediction and mitigation. The company had approximately 29,600 employees globally as of fiscal year 2024, with the majority in research and development, and its Compensation Committee oversees human capital management policies.\", \"page_number\": 4, \"global_id\": 2502, \"date_published\": \"\", \"filename\": \"1cbe8fe7-e0...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "license",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "$4.5 billion",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 32961,
+      "end": 32973,
+      "snippet": "ns worldwide, with a primary focus on U.S. government export restrictions targeting AI-related semiconductors. These controls have increasingly limited NVIDIA's ability to sell products like the A100, H100, and H20 to China and other countries, resulting in a $4.5 billion charge for excess inventory and potentially foreclosing the company from China's data center market. The shifting and expanding export rules create compliance burdens, harm NVIDIA's competitive position by benefiting foreign competitors, and ri...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "China",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "0.650924563407898",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 544476,
+      "end": 544494,
+      "snippet": "voring domestic competitors, could further disrupt supply chains, reduce demand, and materially harm NVIDIA’s business, operating results, and financial condition.\", \"filename\": \"20251026_10-Q_base_final.json\"}, \"bundle_id\": 4}, {\"retriever\": \"FAISS\", \"score\": 0.650924563407898, \"page_content\": \"In October 2023, the USG announced new and updated licensing requirements that became effective in nvidia's fourth quarter of fiscal year 2024 for exports to China and Country Groups D1, D4, and D5 (including but not lim...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "Chinese",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "025",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 339,
+      "end": 343,
+      "snippet": "ustry or main business area does NVIDIA belong to?\"], \"ground_truth_answer\": \"NVIDIA主要属于半导体与加速计算/AI计算平台领域。公司披露其平台战略将硬件、系统、软件、算法、库和服务结合，并以GPU、网络和软件栈服务多个终端市场。\", \"category\": \"company_profile\", \"difficulty\": \"easy\", \"answer_type\": \"text\", \"source_doc\": \"NVIDIA FY2025 Form 10-K\", \"evidence_hint\": \"Business / platform strategy section\", \"requires_calculation\": false, \"eval_focus\": \"general company profile retrieval\", \"qid\": \"qa_kp_000000\", \"answer\": \"NVIDIA属于半导体行业，采用无晶圆厂（fabless）商业模式，专注于产品设计、质量保证、营销和客户支持，而将晶圆制造、封装和测试等...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "NVIDIA",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "000000",
+      "source_path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/mini10_period_repaired.jsonl",
+      "start": 508,
+      "end": 514,
+      "snippet": ": \"company_profile\", \"difficulty\": \"easy\", \"answer_type\": \"text\", \"source_doc\": \"NVIDIA FY2025 Form 10-K\", \"evidence_hint\": \"Business / platform strategy section\", \"requires_calculation\": false, \"eval_focus\": \"general company profile retrieval\", \"qid\": \"qa_kp_000000\", \"answer\": \"NVIDIA属于半导体行业，采用无晶圆厂（fabless）商业模式，专注于产品设计、质量保证、营销和客户支持，而将晶圆制造、封装和测试等生产环节外包给第三方供应商。其核心业务围绕加速计算和人工智能技术展开，源于1999年发明的GPU。\\n\\n公司主要通过两个可报告经营分部开展业务：“Compute & Networking”（计算与网络）和“Graphics”（图形）。其中，“Compute & Networking”分部包括数据中心加速计算平台、端到端网络平台（如Qu...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2025",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    }
+  ],
+  "files_scanned": 15,
+  "metadata": {
+    "case_id": "nvidia_q15_source_conflict_runner"
+  }
+}

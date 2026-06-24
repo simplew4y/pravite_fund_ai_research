@@ -1,0 +1,31 @@
+{
+  "qid": "qa_kp_100",
+  "question": "极氪2024年一季度毛利率",
+  "primary_failure_type": "table_alignment_error",
+  "confidence": 0.77,
+  "signals": [
+    {
+      "failure_type": "table_alignment_error",
+      "severity": "medium",
+      "evidence": "{'skill_id': 'table_evidence_verifier', 'triggered': True, 'trigger_reason': 'deterministic source-precedence gross-margin repair for 2024 Q1', 'output_decision': 'repair_applied', 'supporting_source': None, 'audit_notes': ['verification_attached']}",
+      "rationale": "Table verifier or repair trace triggered."
+    },
+    {
+      "failure_type": "metric_alias_error",
+      "severity": "low",
+      "evidence": "metric_aliases={}",
+      "rationale": "Question appears metric-bearing but grep probe did not identify a metric alias family."
+    }
+  ],
+  "suggested_next_action": "Run deterministic table verifier and inspect row/column/unit alignment.",
+  "audit_notes": [
+    "rule_based_explainer",
+    "signals=2"
+  ],
+  "metadata": {
+    "preview_id": "zeekr_table_q100_runner",
+    "retrieved_chunk_count": 14,
+    "grep_anchor_count": 12,
+    "skill_trace_count": 1
+  }
+}

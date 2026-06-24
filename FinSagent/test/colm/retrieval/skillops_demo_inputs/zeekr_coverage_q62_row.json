@@ -1,0 +1,29 @@
+[
+  {
+    "qid": "qa_kp_62",
+    "question": "What was Zeekr's global sales network?",
+    "generated_answer": "Zeekr's sales network answer must cover both China and overseas outlets. The audit trace marks this as an answer-coverage repair case.",
+    "retrieved_chunks": [
+      {
+        "retriever": "demo_stable_input",
+        "score": 1.0,
+        "page_content": "Zeekr global sales network coverage should include 538 offline sales and service outlets globally, including 467 in China and 71 overseas.",
+        "metadata": {
+          "source": "zeekr_demo_stable_input",
+          "filename": "zeekr_demo_stable_input",
+          "page_number": "demo",
+          "date_published": "2024-12-31"
+        }
+      }
+    ],
+    "retrieved_chunk_count": 1,
+    "coverage_repair_applied": true,
+    "coverage_repair_reason": "coverage repair for global_sales_network",
+    "coverage_repair_fact": {
+      "fact_id": "zeekr_global_sales_network",
+      "intent": "global_sales_network",
+      "answer_en": "As of December 31, 2024, Zeekr had 538 offline sales and service outlets globally, including 467 in China and 71 overseas."
+    },
+    "demo_case_role": "audit_trace_demo"
+  }
+]

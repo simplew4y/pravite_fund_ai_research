@@ -1,0 +1,151 @@
+{
+  "preview_id": "zeekr_coverage_q62_runner",
+  "qid": "qa_kp_62",
+  "question": "极氪在全球的销售网络？",
+  "answer": "截至2025年5月15日，极氪（Zeekr）在全球的销售网络仍主要基于其直营（direct-to-consumer, DTC）模式，通过自建的线下零售与服务体系开展业务，涵盖ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种门店类型。该模式贯穿品牌体验、车辆配置（通过Zeekr APP）、交付及售后服务的全用户生命周期，并同时适用于中国及海外市场。\n\n在门店数量方面，最新被多方证据一致支持的公开数据仍为截至2023年12月31日的统计：中国境内设有24家ZEEKR Center、240家ZEEKR Space、31家ZEEKR Delivery Center和45家ZEEKR House；海外仅有2家ZEEKR Center。尽管有部分信息提及“截至2024年12月31日，极氪在中国运营467家线下网点、海外71家”，但自2024年1月1日至2025年5月15日期间，公司并未披露按设施类型或地理区域细分的更新后的全球门店数量或具体分布，因此该说法缺乏可靠佐证。\n\n就地理覆盖而言，中国是唯一被明确证实设有极氪自营销售渠道的地区，相关门店多位于城市核心商圈或购物中心。虽然财务数据显示，截至2023年底，极氪已实现来自欧洲（车辆销售收入44,315千元人民币）及其他地区（978,101千元人民币）的收入，表明已有国际交付行为，但现有公开资料并未说明这些海外市场是否设有极氪自有品牌门店或服务设施，也未披露具体国家名单或本地分销伙伴信息。尽管投资者关系联系方式列出了中国和美国，但未确认在美国或其他国家存在实际销售运营实体。\n\n极氪的客户以终端消费者（B2C）为主，同时也开展部分B2B业务，如电池及零部件供应、研发服务等，但后者客户细节未被具体说明。公司强调不依赖传统经销商体系，所有零售触点均为自有或直接管理。\n\n在战略协同方面，极氪隶属于吉利控股集团（持股约65.2%），并于2025年2月14日完成对领克（Lynk & Co）的战略整合，后者成为其间接非全资子公司，形成双品牌全球架构。整合后，极氪集团全球用户基数已超过190万，双方正通过共享平台与渠道资源强化国际市场布局。此外，公司正借助吉利控股集团现有的国际分销体系加速出海，并同步推进ZEEKR Energy 800V超快充网络的海外建设。2024年第四季度销售、一般及行政（SG&A）费用的增长部分归因于全球线下渠道扩展及新车型营销，其中员工薪酬增加明确关联“全球线下渠道扩展”。\n\n技术合作方面，极氪与英伟达（用于Lynk & Co 900的DRIVE AGX Thor平台）、高通（智能座舱开发）、Mobileye、宁德时代（CATL）及Waymo等存在战略合作，但这些合作主要聚焦于技术、供应链或特定项目（如Robotaxi），并不构成销售网络中的分销角色。截至2025年5月15日，没有任何公开证据列出极氪在海外市场的具体本地分销商或第三方零售合作伙伴。\n\n需注意的是，极氪自身亦指出，其全球销售网络扩张“可能无法以具成本效益的方式提升销量或品牌认知”，并面临新车型若未能满足消费者预期、出现生产延迟或成本超支等风险。此外，受中国《网络安全法》《数据安全法》及《个人信息保护法》等法规约束，公司在数据合规方面存在潜在法律、财务和声誉风险。地缘政治因素（如中美关系）也可能间接影响其国际业务拓展进程。",
+  "retrieval": [
+    {
+      "rank": 1,
+      "retriever": "FAISS",
+      "score": 0.6442555785179138,
+      "source": "424B4_20240510.json",
+      "page": "40",
+      "date_published": "2024-05-10",
+      "snippet": "The offline sales and service network consists of ZEEKR Center, ZEEKR Space, ZEEKR Delivery Center, and ZEEKR House. As of December 31, 2023, Zeekr had 24 ZEEKR Centers, 240 ZEEKR Spaces, 31 ZEEKR Delivery Centers, and 45 ZEEKR Houses in China, and two ZEEKR Centers overseas. Zeekr plans to further expand its physical sales and service network. This planned expansion may not have the desired effect of increasing sales and enhancing brand recognition in a cost-efficient manner. Zeekr may need to invest significant capital and management resources to operate existing direct stores and open new ones, and there can be no assurance that Zeekr will be able to improve the operational efficiency...",
+      "metadata": {
+        "global_id": 1831,
+        "doc_id": "3f3a72a201642309975e0fb3670444cbb0a24c20a04dc5d54a73b8405c4ac5e3",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.0433
+      }
+    },
+    {
+      "rank": 2,
+      "retriever": "FAISS",
+      "score": 0.6431536078453064,
+      "source": "F1_20240425.json",
+      "page": "39",
+      "date_published": "2024-04-25",
+      "snippet": "The offline sales and service network consists of ZEEKR Center, ZEEKR Space, ZEEKR Delivery Center, and ZEEKR House. As of December 31, 2023, Zeekr had 24 ZEEKR Centers, 240 ZEEKR Spaces, 31 ZEEKR Delivery Centers, and 45 ZEEKR Houses in China, and two ZEEKR Centers overseas. Zeekr plans to further expand its physical sales and service network. This planned expansion may not have the desired effect of increasing sales and enhancing Zeekr's brand recognition in a cost-efficient manner. Zeekr may need to invest significant capital and management resources to operate existing direct stores and open new ones, and there can be no assurance that Zeekr will be able to improve the operational eff...",
+      "metadata": {
+        "global_id": 13762,
+        "doc_id": "5f6dbdb4a4af2a1e99031a7e0e7d156943a31c62a57be335e35a73bdd0ae5b2d",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.0433
+      }
+    },
+    {
+      "rank": 3,
+      "retriever": "PageIndex",
+      "score": 24.610862805266553,
+      "source": "20F_20250320.json",
+      "page": "22",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 20F_20250320.pdf Date: 2025-03-20 Pages: 23-23 Title: We may not be able to maintain and enhance our strategic relationships with our strategic partners. Summary: The partial document outlines key risks and operational considerations related to data privacy, strategic partnerships, and physical sales network expansion for a company that manufactures battery electric vehicles (BEVs). It emphasizes compliance with Chinese data privacy laws—including the Cybersecurity Law, Data Security Law, Personal Information Protection Law, and automobile-specific data regulations—and describes the company’s data handling practices, such as obtaining user consent,...",
+      "metadata": {
+        "global_id": 1060,
+        "doc_id": "8088f8a582596d3ddfbcc2070bef24c659fc0c4f1515e5bdb0daa68ce139ae82",
+        "evidence_rescue": true,
+        "evidence_rescue_score": 1.0167
+      }
+    },
+    {
+      "rank": 4,
+      "retriever": "PageIndex",
+      "score": 25.248717451285913,
+      "source": "6K_20250320_2.json",
+      "page": "6",
+      "date_published": "2025-03-20",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250320_2.pdf Date: 2025-03-20 Pages: 7-7 Title: Delivery Update Summary: The partial document outlines recent developments at Zeekr Group in early 2025, highlighting key milestones across deliveries, strategic transactions, product launches, and executive commentary. It reports vehicle delivery figures for January and February 2025, including the impact of the completed acquisition of Lynk & Co, which contributed to a combined total of 31,277 deliveries in February. The document notes Zeekr’s participation in CES 2025, where it showcased advancements in smart cockpit systems, autonomous driving, charging infrastructure, and next-generation mob...",
+      "metadata": {
+        "global_id": 2799,
+        "doc_id": "05ea2e6f936e844817a4abf1392dac6c80f61c20dd50e1bb5920e0005f258389"
+      }
+    },
+    {
+      "rank": 5,
+      "retriever": "PageIndex",
+      "score": 25.545228784784783,
+      "source": "6K_20250501.json",
+      "page": "3",
+      "date_published": "2025-05-01",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250501.pdf Date: 2025-05-01 Pages: 4-4 Title: Exhibit 99.1 Summary: The partial document is a press release from Zeekr Group announcing its vehicle delivery results for April 2025. It reports a total of 41,316 vehicles delivered across its Zeekr and Lynk & Co brands, reflecting a 1.5% month-over-month increase, supported by over 1.9 million users. Key product updates include the launch of the Zeekr 7GT in China—a high-performance shooting brake with advanced e-motors—and the unveiling of the Zeekr 9X, the brand’s first hybrid luxury SUV, set for global release in Q3 2025. Additionally, Lynk & Co began deliveries of the Lynk & Co 900, a six-sea...",
+      "metadata": {
+        "global_id": 2839,
+        "doc_id": "b60fc545830f5c2af727f93e81d96e02b0bdcbd7c3f2e10a87ab13549dd75413"
+      }
+    },
+    {
+      "rank": 6,
+      "retriever": "PageIndex",
+      "score": 25.054960875820566,
+      "source": "6K_20250501.json",
+      "page": "4",
+      "date_published": "2025-05-01",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250501.pdf Date: 2025-05-01 Pages: 5-5 Title: Investor Relations Contact Summary: The partial document provides contact information for investor relations and media inquiries for ZEEKR Intelligent Technology Holding Limited. It lists separate contacts for China and the United States, including email addresses and phone numbers, with Piacente Financial Communications serving as the investor relations representative in both regions. A global media contact email is also provided. [Mapped page chunk] In China: ZEEKR Intelligent Technology Holding Limited Investor Relations Email: ir@zeekrlife.com Piacente Financial Communications Tel: +86-10-6508-...",
+      "metadata": {
+        "global_id": 2842,
+        "doc_id": "8f0098b001adada770c1eec38d9e7239297f28b984719dba7711164f9132c342"
+      }
+    },
+    {
+      "rank": 7,
+      "retriever": "PageIndex",
+      "score": 26.10454028027436,
+      "source": "6K_20250515.json",
+      "page": "2",
+      "date_published": "2025-05-15",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250515.pdf Date: 2025-05-15 Pages: 3-3 Title: SIGNATURE Summary: The partial document is a signature page from a regulatory filing under the Securities Exchange Act of 1934, indicating that Zeekr Intelligent Technology Holding Limited has authorized the submission of the report. It includes the signature, name, title (Chief Executive Officer), and date (May 15, 2025) of Conghui An, who signed on behalf of the company. [Mapped page chunk] Pursuant to the requirements of the Securities Exchange Act of 1934, Zeekr has duly caused this report to be signed on its behalf by the undersigned, thereunto duly authorized. Date: May 15, 2025 ZEEKR Intelli...",
+      "metadata": {
+        "global_id": 2866,
+        "doc_id": "0a05a5920f1c6d012b6767d7157495311e32c5fc1b01493a1947e57d70ac97ae"
+      }
+    },
+    {
+      "rank": 8,
+      "retriever": "PageIndex",
+      "score": 23.15841582049726,
+      "source": "6K_20250515.json",
+      "page": "3",
+      "date_published": "2025-05-15",
+      "snippet": "[PageIndex structural summary] Document: 6K_20250515.pdf Date: 2025-05-15 Pages: 4-5 Title: Financial Highlights for the First Quarter of 2025 Summary: The partial document provides Zeekr Group’s unaudited financial and operational results for the first quarter of 2025. Key points include: total vehicle deliveries of 114,011 units, a 21.1% year-over-year increase, with breakdowns for Zeekr (41,403 units, +25.2% YoY) and Lynk & Co (72,608 units, +18.9% YoY, 52.4% NEVs). Financial highlights show vehicle sales of RMB19,096 million (+16.1% YoY, –38.4% QoQ), total revenues of RMB22,019 million (+1.1% YoY, –37.8% QoQ), and improved gross margin of 19.1% (up from 16.3% in Q1 2024). Vehicle marg...",
+      "metadata": {
+        "global_id": 2867,
+        "doc_id": "f825e88428053925f4bfee77d687868a187c0caa944c8be072e02fa361b38b8c"
+      }
+    }
+  ],
+  "grep_probe": {
+    "question": "极氪在全球的销售网络？",
+    "query_terms": [],
+    "metric_aliases": {},
+    "period_terms": [],
+    "anchors": [],
+    "files_scanned": 17,
+    "metadata": {
+      "case_id": "zeekr_coverage_q62_runner"
+    }
+  },
+  "skill_traces": [
+    {
+      "skill_id": "answer_coverage",
+      "triggered": true,
+      "trigger_reason": "coverage repair for global_sales_network",
+      "output_decision": "repair_applied",
+      "supporting_source": null,
+      "audit_notes": [
+        "fact={'fact_id': 'zeekr_global_sales_network', 'intent': 'global_sales_network', 'answer_zh': '截至2024年12月31日，极氪全球共有538家线下销售和服务网点，其中中国467家、海外71家。'}"
+      ]
+    }
+  ],
+  "audit_notes": [
+    "retrieval_chunks_previewed=8",
+    "grep_anchors_previewed=0",
+    "triggered_skills=answer_coverage"
+  ],
+  "metadata": {
+    "retrieved_chunk_count": 48,
+    "total_time": 181.68,
+    "retrieval_profile": null
+  }
+}

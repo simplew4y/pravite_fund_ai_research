@@ -1,0 +1,24 @@
+{
+  "case_id": "zeekr_table_q100_runner",
+  "qid": "qa_kp_100",
+  "question": "极氪2024年一季度毛利率",
+  "primary_failure_type": "table_alignment_error",
+  "failure_confidence": 0.77,
+  "proposal_count": 2,
+  "gate_decisions": [
+    "proposed",
+    "proposed"
+  ],
+  "artifacts": {
+    "grep_probe_json": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_grep_probe.json",
+    "evidence_preview_json": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_evidence_preview.json",
+    "evidence_preview_md": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_evidence_preview.md",
+    "failure_report_json": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_failure_report.json",
+    "failure_report_md": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_failure_report.md",
+    "skill_candidates_yaml": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_skill_candidates.yaml",
+    "skill_candidates_md": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_skill_candidates.md",
+    "gate_eval_summary_json": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_gate_eval_summary.json",
+    "gate_decisions_yaml": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_gate_decisions.yaml",
+    "gate_decisions_md": "test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_gate_decisions.md"
+  }
+}

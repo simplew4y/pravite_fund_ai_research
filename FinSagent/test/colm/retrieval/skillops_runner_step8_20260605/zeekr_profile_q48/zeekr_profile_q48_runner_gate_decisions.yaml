@@ -1,0 +1,15 @@
+decisions:
+- candidate_id: qa_kp_48_company_profile_boundary_guard
+  decision: proposed
+  reviewer: myz
+  rationale: Candidate remains proposed until protected-set and manual-review gates
+    pass.
+  eval_summary:
+    eval_summary_id: zeekr_profile_q48_runner_default_gate_eval
+    protected_sets_passed: false
+    regression_count: 0
+    manual_review_status: not_yet_reviewed
+    notes: Default runner eval summary. Replace with protected-set results before
+      approving implementation.
+  required_followups:
+  - Complete protected-set evaluation and manual review.

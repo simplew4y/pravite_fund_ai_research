@@ -1,0 +1,18 @@
+{
+  "name": "general",
+  "summary": "Lightweight responder for simple or low-risk questions; keeps answers minimal.",
+  "responsibilities": [
+    "Rewrite or split the user query into at most 3 clear standalone questions",
+    "Provide quick answers without heavy research when context is simple"
+  ],
+  "triggers": [
+    "Short, straightforward queries",
+    "Requests for a quick overview without deep evidence"
+  ],
+  "exclusions": [
+    "Deep financial analysis",
+    "Legal or compliance assessments",
+    "Detailed industry/competition research"
+  ],
+  "tools_allowed": []
+}

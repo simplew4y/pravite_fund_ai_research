@@ -1,0 +1,43 @@
+failure_types:
+  retrieval_miss:
+    description: "Relevant evidence appears absent from retrieved chunks or grep anchors."
+    typical_signals:
+      - "few or no retrieval chunks"
+      - "grep finds key anchors outside retrieved evidence"
+      - "metric/source terms missing from retrieval preview"
+  wrong_source:
+    description: "Answer relies on an incompatible filing, source date, company, or document type."
+    typical_signals:
+      - "top evidence comes from a filing outside the requested source scope"
+      - "retrieved source company does not match the question company"
+  period_mismatch:
+    description: "Answer mixes or substitutes evidence from the wrong fiscal/calendar period."
+    typical_signals:
+      - "question asks for a specific period but answer contains later-period disclosures"
+      - "retrieved chunks include later filings that dominate period-specific evidence"
+  table_alignment_error:
+    description: "Numeric answer uses the wrong table row, column, unit, or subtotal."
+    typical_signals:
+      - "answer number appears near a different metric"
+      - "table verifier reports conflicting or unsupported table facts"
+  metric_alias_error:
+    description: "System fails to map the user's metric wording to filing-specific aliases."
+    typical_signals:
+      - "metric alias anchors absent"
+      - "retrieval uses related but different metric names"
+  answer_coverage_failure:
+    description: "Answer contains the core fact but misses required comparisons or key points."
+    typical_signals:
+      - "some key points absent from generated answer"
+      - "coverage repair skill triggers"
+  source_conflict:
+    description: "Multiple retrieved sources support conflicting interpretations and the system chooses or mixes the wrong one."
+    typical_signals:
+      - "source_conflict skill trace triggers"
+      - "retrieval preview contains both period-compatible and later conflicting sources"
+  profile_boundary_error:
+    description: "Stable company profile, corporate structure, or boundary fact is over-inferred from noisy snippets."
+    typical_signals:
+      - "profile repair skill triggers"
+      - "answer overstates company structure or relationship"
+

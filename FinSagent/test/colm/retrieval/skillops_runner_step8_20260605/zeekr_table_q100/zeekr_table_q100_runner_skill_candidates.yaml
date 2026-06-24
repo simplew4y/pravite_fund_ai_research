@@ -1,0 +1,51 @@
+proposals:
+- candidate_id: qa_kp_100_table_alignment_guard
+  candidate_skill_name: table_alignment_guard
+  observed_failures:
+  - 'table_alignment_error (medium): Table verifier or repair trace triggered. Evidence:
+    {''skill_id'': ''table_evidence_verifier'', ''triggered'': True, ''trigger_reason'':
+    ''deterministic source-precedence gross-margin repair for 2024 Q1'', ''output_decision'':
+    ''repair_applied'', ''supporting_source'': None, ''audit_notes'': [''verification_attached'']}'
+  failure_types:
+  - table_alignment_error
+  hypothesis: Numeric failures often come from using the wrong table row, column,
+    unit, or subtotal.
+  proposed_trigger: Numeric SEC question with table evidence and verifier conflict
+    or unsupported answer number.
+  proposed_action: Run deterministic row/column/unit verification before final answer
+    acceptance.
+  risks:
+  - May leave complex derived calculations unresolved.
+  - Requires robust table extraction quality.
+  required_tests:
+  - No regression on protected numeric set.
+  - Manual review of verifier traces for at least 10 table questions.
+  suggested_status: proposed
+  source_failure_report: test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_failure_report.json
+  human_review_required: true
+  notes: ''
+  metadata:
+    qid: qa_kp_100
+- candidate_id: qa_kp_100_metric_alias_profile
+  candidate_skill_name: metric_alias_profile
+  observed_failures:
+  - 'metric_alias_error (low): Question appears metric-bearing but grep probe did
+    not identify a metric alias family. Evidence: metric_aliases={}'
+  failure_types:
+  - metric_alias_error
+  hypothesis: Company filings use metric aliases that are not captured by generic
+    question terms.
+  proposed_trigger: Metric-bearing question with missing or weak metric alias anchors.
+  proposed_action: Generate or update company profile metric aliases from filing headings
+    and table labels.
+  risks:
+  - Could over-expand aliases and retrieve semantically nearby but wrong metrics.
+  required_tests:
+  - Alias additions improve retrieval on diagnostic examples without reducing precision
+    on holdout metrics.
+  suggested_status: proposed
+  source_failure_report: test/colm/retrieval/skillops_runner_step8_20260605/zeekr_table_q100/zeekr_table_q100_runner_failure_report.json
+  human_review_required: true
+  notes: ''
+  metadata:
+    qid: qa_kp_100

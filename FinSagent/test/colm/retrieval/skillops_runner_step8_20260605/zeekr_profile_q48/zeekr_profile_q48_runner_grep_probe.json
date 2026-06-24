@@ -1,0 +1,340 @@
+{
+  "question": "极氪是否采用VIE架构？",
+  "query_terms": [
+    "VIE"
+  ],
+  "metric_aliases": {},
+  "period_terms": [],
+  "anchors": [
+    {
+      "anchor_type": "nearby_number",
+      "text": "192",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base.json",
+      "start": 21545,
+      "end": 21552,
+      "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "204",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base.json",
+      "start": 21632,
+      "end": 21639,
+      "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "192",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_final.json",
+      "start": 42168,
+      "end": 42175,
+      "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "204",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_final.json",
+      "start": 42255,
+      "end": 42262,
+      "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "192",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_processed_chunked.json",
+      "start": 42168,
+      "end": 42175,
+      "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "204",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_processed_chunked.json",
+      "start": 42255,
+      "end": 42262,
+      "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "192",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty.json",
+      "start": 21545,
+      "end": 21552,
+      "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "204",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty.json",
+      "start": 21632,
+      "end": 21639,
+      "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base.json",
+      "start": 14014,
+      "end": 14017,
+      "snippet": "omplete and correct. SIGNATURE Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/CEO and executive director Date: 03/24/2025 Geely Automobile Holdings Limited Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 Luckview Group Limited",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base_remove_empty.json",
+      "start": 13954,
+      "end": 13957,
+      "snippet": "omplete and correct. SIGNATURE Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/CEO and executive director Date: 03/24/2025 Geely Automobile Holdings Limited Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 Luckview Group Limited",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base_remove_empty_deduped.json",
+      "start": 13662,
+      "end": 13665,
+      "snippet": "omplete and correct. SIGNATURE Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/CEO and executive director Date: 03/24/2025 Geely Automobile Holdings Limited Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 Luckview Group Limited",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base_final.json",
+      "start": 25636,
+      "end": 25639,
+      "snippet": "25 title: Geely Automobile Holdings Limited summary: On March 24, 2025, Gui Sheng Yue, who serves as the CEO and executive director, signed an important document. Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 title: Luckview Group Limited summary: The document, dated March 24, 2025, is signed by Gui Sheng Yue, the Director.",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D1_20250320/base_processed_chunked.json",
+      "start": 25636,
+      "end": 25639,
+      "snippet": "25 title: Geely Automobile Holdings Limited summary: On March 24, 2025, Gui Sheng Yue, who serves as the CEO and executive director, signed an important document. Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 03/24/2025 title: Luckview Group Limited summary: The document, dated March 24, 2025, is signed by Gui Sheng Yue, the Director.",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "VIE",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_13D_20250103/base.json",
+      "start": 29037,
+      "end": 29040,
+      "snippet": "and belief, I certify that the information set forth in this statement is true, complete and correct. SIGNATURE Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/CEO and executive director Date: 01/02/2025 Geely Automobile Holdings Limited Luckview Group Limited Geely Automobile Holdings Limited Signature: /s/ Gui Sheng Yue Name/Title: Gui Sheng Yue/Director Date: 01/02/2025 Geely Automobile Holdings Limited",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "192",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty_deduped.json",
+      "start": 21545,
+      "end": 21552,
+      "snippet": "ship with Geely Group 92 Management’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "204",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty_deduped.json",
+      "start": 21632,
+      "end": 21639,
+      "snippet": "and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statem",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "193",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base.json",
+      "start": 21582,
+      "end": 21589,
+      "snippet": "t’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 I",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "212",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base.json",
+      "start": 21672,
+      "end": 21679,
+      "snippet": "y Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statements ​F-1 BofA Securities We have not",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "193",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_final.json",
+      "start": 42205,
+      "end": 42212,
+      "snippet": "t’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 I",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "193",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_processed_chunked.json",
+      "start": 42205,
+      "end": 42212,
+      "snippet": "t’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 I",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "193",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty.json",
+      "start": 21582,
+      "end": 21589,
+      "snippet": "t’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 I",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "212",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty.json",
+      "start": 21672,
+      "end": 21679,
+      "snippet": "y Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statements ​F-1 BofA Securities We have not",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "193",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty_deduped.json",
+      "start": 21582,
+      "end": 21589,
+      "snippet": "t’s Discussion and Analysis of Financial Condition and Results of Operations 95 Industry Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 I",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "212",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base_remove_empty_deduped.json",
+      "start": 21672,
+      "end": 21679,
+      "snippet": "y Overview ​118 Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statements ​F-1 BofA Securities We have not",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "214",
+      "source_path": "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250605/finals/Zeekr_424B4_20240510/base.json",
+      "start": 21689,
+      "end": 21696,
+      "snippet": "Business ​127 Regulation ​160 Management ​182 Principal Shareholders ​190 Related-Party Transactions ​192 Description of Share Capital ​193 Description of American Depositary Shares ​204 Shares Eligible for Future Sale ​212 Taxation ​214 Underwriting ​220 Expenses Relating to this Offering ​233 Legal Matters ​234 Experts ​235 Where You Can Find Additional Information ​236 Index to Combined and Consolidated Financial Statements ​F-1 BofA Securities We have not authorized anyone",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "VIE",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    }
+  ],
+  "files_scanned": 80,
+  "metadata": {
+    "case_id": "zeekr_profile_q48_runner"
+  }
+}

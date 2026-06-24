@@ -1,0 +1,57 @@
+{
+  "index_dir": "/root/autodl-tmp/RAG_Agent_data/lotus/20250701/database_lotus/pageindex",
+  "index_type": "PageIndex-compatible manual PDF fallback",
+  "structure_files": 8,
+  "runtime_loaded_nodes": 1958,
+  "available": true,
+  "files": [
+    {
+      "file": "Lotus 20-F 20240422_structure.json",
+      "bytes": 681233,
+      "builder": "manual_pdf_fallback",
+      "pages": 450
+    },
+    {
+      "file": "Lotus 20-F 20250430_structure.json",
+      "bytes": 474713,
+      "builder": "manual_pdf_fallback",
+      "pages": 311
+    },
+    {
+      "file": "Lotus 424B3 20240112_structure.json",
+      "bytes": 1077362,
+      "builder": "manual_pdf_fallback",
+      "pages": 693
+    },
+    {
+      "file": "Lotus 424B3 20241121_structure.json",
+      "bytes": 30009,
+      "builder": "manual_pdf_fallback",
+      "pages": 43
+    },
+    {
+      "file": "Lotus 6-K 20240222_structure.json",
+      "bytes": 8628,
+      "builder": "manual_pdf_fallback",
+      "pages": 6
+    },
+    {
+      "file": "Lotus 6-K 20240223_structure.json",
+      "bytes": 9782,
+      "builder": "manual_pdf_fallback",
+      "pages": 7
+    },
+    {
+      "file": "Lotus 6-K 20240408_structure.json",
+      "bytes": 30010,
+      "builder": "manual_pdf_fallback",
+      "pages": 51
+    },
+    {
+      "file": "Lotus 6-K 20250530_structure.json",
+      "bytes": 4502,
+      "builder": "manual_pdf_fallback",
+      "pages": 3
+    }
+  ]
+}

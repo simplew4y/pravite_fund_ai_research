@@ -1,0 +1,30 @@
+skill_id: exact_evidence_probe
+version: "0.1.0"
+name: Exact Evidence Probe
+scope: "Uses grep-style lexical matching to produce auditable evidence snippets for concrete question terms."
+failure_types:
+  - retrieval_miss
+  - metric_alias_error
+  - source_conflict
+trigger: "Question contains concrete terms, metrics, dates, product names, or entity names suitable for lexical probing."
+inputs:
+  - question
+  - filing_roots
+outputs:
+  - exact_terms
+  - evidence_hits
+  - matched_terms
+  - snippets
+risks:
+  - "Lexical hits can be noisy and should not directly answer questions."
+  - "Exact matching misses paraphrases and filing-specific aliases without pattern expansion."
+eval_sets:
+  - exact_evidence_preview_smoke_20260604
+  - lotus_mini10_generalization_20260604
+status: experimental
+owner: myz
+last_reviewed: "2026-06-05"
+implementation_refs:
+  - src/utils/exact_evidence_preview.py
+notes: "This is the seed for the new grep evidence probe. It should be reframed as Evidence Preview / Audit Preview in reports."
+

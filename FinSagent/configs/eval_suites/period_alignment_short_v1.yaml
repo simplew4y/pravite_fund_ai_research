@@ -1,0 +1,41 @@
+suite_id: period_alignment_short_v1
+suite_type: targeted_skill_short
+frozen: false
+purpose: Test period-aware retrieval, cutoff, and leakage detection without running a large benchmark.
+used_for:
+  - targeted_short_gate
+  - period_skill_regression
+  - failure_explainer_precision_check
+cases:
+  - case_id: nvidia_period_mismatch_demo
+    company: NVIDIA
+    intent: should_detect_period_mismatch
+    row_json: test/colm/retrieval/skillops_demo_inputs/nvidia_period_mismatch_row.json
+    expected_behavior: detect FY2026/H20/April 2025 leakage for FY2025 question
+  - case_id: nvidia_source_conflict_demo
+    company: NVIDIA
+    intent: should_detect_source_conflict
+    row_json: test/colm/retrieval/skillops_demo_inputs/nvidia_q15_source_conflict_row.json
+    expected_behavior: identify source conflict separately from pure period mismatch
+  - case_id: lotus_success_control
+    company: Lotus Technology
+    intent: should_not_trigger_period_mismatch
+    row_json: test/colm/retrieval/skillops_demo_inputs/lotus_q1_success_row.json
+    expected_behavior: no failure detected
+  - case_id: zeekr_table_alignment_control
+    company: Zeekr
+    intent: should_not_confuse_table_repair_with_period_mismatch
+    row_json: test/colm/retrieval/skillops_demo_inputs/zeekr_table_q100_row.json
+    expected_behavior: table_alignment_error remains primary
+planned_cases:
+  - intent: quarter_mismatch_positive
+    company: Zeekr or Lotus Technology
+    status: planned
+  - intent: no_explicit_period_negative
+    company: any
+    status: planned
+admission_policy:
+  owner: myz
+  change_control: append_with_targeted_review
+  new_cases: Add short positive and negative examples when period skills change.
+  pass_condition: period positives trigger and negative/control cases do not over-trigger

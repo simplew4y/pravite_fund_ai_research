@@ -1,0 +1,341 @@
+{
+  "question": "极氪2024年一季度毛利率",
+  "query_terms": [
+    "gross margin",
+    "2024"
+  ],
+  "metric_aliases": {},
+  "period_terms": [],
+  "anchors": [
+    {
+      "anchor_type": "nearby_number",
+      "text": "467",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge/results.json",
+      "start": 23,
+      "end": 26,
+      "snippet": "截至2024年12月31日，极氪在中国拥有总计467个线下销售和服务中心，覆盖了ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种形式。极氪计划进一步扩展其线下销售和服务网络，以提升品牌影响力和用户体验。这些中心不仅为用户提供车辆展示和试驾服务，还涵盖了交付和售后支持，确保用户在整个购车生命周期中都能享受到优质服务。极氪的销售网络布局充分体现了其以用户为中心的理念，致力于为用户提供全方位的便捷体验。 以上信息基于2025年3月20日之前的知识。 截至2024年12月31日，极氪在中国拥有总计4",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "467",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+      "start": 23,
+      "end": 26,
+      "snippet": "截至2024年12月31日，极氪在中国拥有总计467个线下销售和服务中心，覆盖了ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种形式。极氪计划进一步扩展其线下销售和服务网络，以提升品牌影响力和用户体验。这些中心不仅为用户提供车辆展示和试驾服务，还涵盖了交付和售后支持，确保用户在整个购车生命周期中都能享受到优质服务。极氪的销售网络布局充分体现了其以用户为中心的理念，致力于为用户提供全方位的便捷体验。 以上信息基于2025年3月20日之前的知识。 截至2024年12月31日，极氪在中国拥有总计4",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "467",
+      "source_path": "test/colm/retrieval/diagnostic_testsets_20260526/zeekr_small_30_diagnostic.json",
+      "start": 23,
+      "end": 26,
+      "snippet": "截至2024年12月31日，极氪在中国拥有总计467个线下销售和服务中心，覆盖了ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种形式。极氪计划进一步扩展其线下销售和服务网络，以提升品牌影响力和用户体验。这些中心不仅为用户提供车辆展示和试驾服务，还涵盖了交付和售后支持，确保用户在整个购车生命周期中都能享受到优质服务。极氪的销售网络布局充分体现了其以用户为中心的理念，致力于为用户提供全方位的便捷体验。 以上信息基于2025年3月20日之前的知识。 截至2024年12月31日，极氪在中国拥有总计4",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "467",
+      "source_path": "test/colm/retrieval/diagnostic_testsets_20260526/zeekr_large_100_regression.json",
+      "start": 23,
+      "end": 26,
+      "snippet": "截至2024年12月31日，极氪在中国拥有总计467个线下销售和服务中心，覆盖了ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种形式。极氪计划进一步扩展其线下销售和服务网络，以提升品牌影响力和用户体验。这些中心不仅为用户提供车辆展示和试驾服务，还涵盖了交付和售后支持，确保用户在整个购车生命周期中都能享受到优质服务。极氪的销售网络布局充分体现了其以用户为中心的理念，致力于为用户提供全方位的便捷体验。 以上信息基于2025年3月20日之前的知识。 截至2024年12月31日，极氪在中国拥有总计4",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "467",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 56,
+      "end": 59,
+      "snippet": "截至2025年5月15日，极氪在中国的销售网络最新可确认的数据仍为截至2024年12月31日的官方统计：全国共有467家线下销售与服务中心。这些网点由四种类型组成——极氪中心（Zeekr Center）、极氪空间（Zeekr Space）、极氪交付中心（Zeekr Delivery Center）和极氪之家（Zeekr House），主要布局于购物中心或城市核心区域，以强化品牌高端形象并支持纯电动车销售。相较2023年12月31日的340家网点（包括24家极氪中心、240家极氪空间、31家交付中心和45家极氪之家），2024年全年净新增127家。 尽管极氪在2025年3月20日发布的文件中明确表示“计划进一步扩展其线下销售与服务",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "340",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 218,
+      "end": 221,
+      "snippet": "截至2025年5月15日，极氪在中国的销售网络最新可确认的数据仍为截至2024年12月31日的官方统计：全国共有467家线下销售与服务中心。这些网点由四种类型组成——极氪中心（Zeekr Center）、极氪空间（Zeekr Space）、极氪交付中心（Zeekr Delivery Center）和极氪之家（Zeekr House），主要布局于购物中心或城市核心区域，以强化品牌高端形象并支持纯电动车销售。相较2023年12月31日的340家网点（包括24家极氪中心、240家极氪空间、31家交付中心和45家极氪之家），2024年全年净新增127家。 尽管极氪在2025年3月20日发布的文件中明确表示“计划进一步扩展其线下销售与服务网络”，且截至2025年3月31日公司拥有98.98亿元人民币的现金储备以支撑扩张，但从2025年1月1日至5月15日期间，公司并未在任何公开披露（包括2025年第一季度财报、5月1日及5月15日的新闻稿）中提供关于销售网点数量、构成或地理分布的更新信息。同期的公开内容主要聚焦于新产品发布（如极氪7GT）、月度交付数据（例",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "240",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 235,
+      "end": 238,
+      "snippet": "截至2025年5月15日，极氪在中国的销售网络最新可确认的数据仍为截至2024年12月31日的官方统计：全国共有467家线下销售与服务中心。这些网点由四种类型组成——极氪中心（Zeekr Center）、极氪空间（Zeekr Space）、极氪交付中心（Zeekr Delivery Center）和极氪之家（Zeekr House），主要布局于购物中心或城市核心区域，以强化品牌高端形象并支持纯电动车销售。相较2023年12月31日的340家网点（包括24家极氪中心、240家极氪空间、31家交付中心和45家极氪之家），2024年全年净新增127家。 尽管极氪在2025年3月20日发布的文件中明确表示“计划进一步扩展其线下销售与服务网络”，且截至2025年3月31日公司拥有98.98亿元人民币的现金储备以支撑扩张，但从2025年1月1日至5月15日期间，公司并未在任何公开披露（包括2025年第一季度财报、5月1日及5月15日的新闻稿）中提供关于销售网点数量、构成或地理分布的更新信息。同期的公开内容主要聚焦于新产品发布（如极氪7GT）、月度交付数据（例如2025年4月交付13,727辆",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "130",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 244,
+      "end": 248,
+      "snippet": "# Boss Quick Demo Pack - PageIndex Hybrid RAG Purpose: quick representative questions to demonstrate current full-run accuracy. All listed judged rows are CORRECT in the full judge output. Full-run summary: generated 132/132; judge evaluated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 |",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge/results.json",
+      "start": 2,
+      "end": 6,
+      "snippet": "截至2024年12月31日，极氪在中国拥有总计467个线下销售和服务中心，覆盖了ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种形式。极氪计划进一步扩展其线下销售和服务网络，以提升品牌影响力和用户体验。这些中心不仅为用户提供车辆展示和试驾服务，还涵盖了交付和售后支持，确保用户在整个购车生命周期中都能享受到优质服务。极氪的销售网络布局充分体现了其以用户为中心的理念，致力于为用户提供全方位的便捷体验。 以上信息基于2025年3月20日之前的知识。 截至20",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+      "start": 2,
+      "end": 6,
+      "snippet": "截至2024年12月31日，极氪在中国拥有总计467个线下销售和服务中心，覆盖了ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种形式。极氪计划进一步扩展其线下销售和服务网络，以提升品牌影响力和用户体验。这些中心不仅为用户提供车辆展示和试驾服务，还涵盖了交付和售后支持，确保用户在整个购车生命周期中都能享受到优质服务。极氪的销售网络布局充分体现了其以用户为中心的理念，致力于为用户提供全方位的便捷体验。 以上信息基于2025年3月20日之前的知识。 截至20",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "test/colm/retrieval/diagnostic_testsets_20260526/zeekr_small_30_diagnostic.json",
+      "start": 2,
+      "end": 6,
+      "snippet": "截至2024年12月31日，极氪在中国拥有总计467个线下销售和服务中心，覆盖了ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种形式。极氪计划进一步扩展其线下销售和服务网络，以提升品牌影响力和用户体验。这些中心不仅为用户提供车辆展示和试驾服务，还涵盖了交付和售后支持，确保用户在整个购车生命周期中都能享受到优质服务。极氪的销售网络布局充分体现了其以用户为中心的理念，致力于为用户提供全方位的便捷体验。 以上信息基于2025年3月20日之前的知识。 截至20",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "test/colm/retrieval/diagnostic_testsets_20260526/zeekr_large_100_regression.json",
+      "start": 2,
+      "end": 6,
+      "snippet": "截至2024年12月31日，极氪在中国拥有总计467个线下销售和服务中心，覆盖了ZEEKR Center、ZEEKR Space、ZEEKR Delivery Center和ZEEKR House等多种形式。极氪计划进一步扩展其线下销售和服务网络，以提升品牌影响力和用户体验。这些中心不仅为用户提供车辆展示和试驾服务，还涵盖了交付和售后支持，确保用户在整个购车生命周期中都能享受到优质服务。极氪的销售网络布局充分体现了其以用户为中心的理念，致力于为用户提供全方位的便捷体验。 以上信息基于2025年3月20日之前的知识。 截至20",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 35,
+      "end": 39,
+      "snippet": "截至2025年5月15日，极氪在中国的销售网络最新可确认的数据仍为截至2024年12月31日的官方统计：全国共有467家线下销售与服务中心。这些网点由四种类型组成——极氪中心（Zeekr Center）、极氪空间（Zeekr Space）、极氪交付中心（Zeekr Delivery Center）和极氪之家（Zeekr House），主要布局于购物中心或城市核心区域，以强化品牌高端形象并支持纯电动车销售。相较2023年12月31日的340家网点（包括24家极氪中心、240家极氪空间、31家交付中心和45家极氪之家），2024年全年净新增127家。 尽管极氪在2025年3月20日发布的文件中",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "exact_phrase",
+      "text": "2024",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/judge_small30_qidaware_20260528/results.json",
+      "start": 58570,
+      "end": 58574,
+      "snippet": ",123 vehicles. The quarterly breakdown is as follows: - **Q1 2024**: 33,059 vehicles - **Q2 2024**: 54,811 vehicles - **Q3 2024**: 55,003 vehicles - **Q4 2024**: 79,250 vehicles This information is based on knowledge available before 2025-05-15. In 2024, Zeekr delivered a total of 222,123 vehicles. The quarterly breakdown is as follows: - **Q1 2024**: 33,059 vehicles - **Q2 2024**: 54,811 vehicles - **Q3 2024**: 55,003 vehicles - **Q4 2024**: 79,250 vehicles This information is based on knowledge",
+      "confidence_hint": 0.65,
+      "metadata": {}
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "42.13",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 488,
+      "end": 494,
+      "snippet": "judge evaluated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8 | What kind of services does Zeekr provide other than vehicle sales? | CORRECT | 44; Waymo; 2024; RMB | | 4 | qa_kp_3 | Is Zeekr operating under VIE structure? | CORRECT | VIE; 2024 | | 5 | qa_kp_4 | 极氪的车在哪里生产？ | CORRECT |...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "19.1",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 495,
+      "end": 500,
+      "snippet": "valuated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8 | What kind of services does Zeekr provide other than vehicle sales? | CORRECT | 44; Waymo; 2024; RMB | | 4 | qa_kp_3 | Is Zeekr operating under VIE structure? | CORRECT | VIE; 2024 | | 5 | qa_kp_4 | 极氪的车在哪里生产？ | CORRECT | 2024 |...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "72.9%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 13806,
+      "end": 13811,
+      "snippet": "ts. In 2024, Zeekr delivered 222,123 vehicles—a year-over-year increase of 87%—bringing its cumulative deliveries to 418,756 by year-end. Its revenue grew substantially from RMB6.5 billion in 2021 to RMB51.7 billion in 2023, with vehicle sales accounting for 72.9% of 2024 revenue. Gross profit margin improved from 13.3% in 2023 to 16.4% in 2024, driven by procurement savings and a favorable product mix, while vehicle gross margin reached 17.3% in Q4 2024. Despite strong top-line growth, the company has reported...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "gross margin",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "2.8",
+      "source_path": "test/colm/retrieval/diagnostic_testsets_20260526/zeekr_small_30_diagnostic.json",
+      "start": 25446,
+      "end": 25450,
+      "snippet": "her delivery volumes, improved pricing strategies, and procurement savings. The information is based on knowledge available before 2025-03-20. As of the first quarter of 2025, Zeekr's gross margin was reported at 19.1%, reflecting a year-over-year increase of 2.8 points and a quarter-over-quarter increase of 1.1 points. This improvement was driven by enhanced platform synergies, disciplined supply chain management, and optimized research and development efforts following the full integration of Zeekr and Lynk &...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "gross margin",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "130,",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 262,
+      "end": 267,
+      "snippet": "Boss Quick Demo Pack - PageIndex Hybrid RAG Purpose: quick representative questions to demonstrate current full-run accuracy. All listed judged rows are CORRECT in the full judge output. Full-run summary: generated 132/132; judge evaluated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "5.0",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 306,
+      "end": 309,
+      "snippet": "Purpose: quick representative questions to demonstrate current full-run accuracy. All listed judged rows are CORRECT in the full judge output. Full-run summary: generated 132/132; judge evaluated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8 | What kind of services does Zeekr provide oth",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "467",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/BOSS_QUICK_DEMO_PACK_20260525.md",
+      "start": 439,
+      "end": 443,
+      "snippet": "ge output. Full-run summary: generated 132/132; judge evaluated 130 rows; CORRECT 130, PARTIAL 0, INCORRECT 0; Likert average 5.0/5.0. | # | QID | Question | Judge | Key answer signals | | --- | --- | --- | --- | --- | | 1 | qa_kp_1 | 极氪在中国的销售网络？ | CORRECT | 467; 2024 | | 2 | qa_kp_5 | 极氪的毛利水平？ | CORRECT | 42.13; 19.1; 2024 | | 3 | qa_kp_8 | What kind of services does Zeekr provide other than vehicle sales? | CORRECT | 44; Waymo; 2024; RMB | | 4 | qa_kp_3 | Is Zeekr operating under VIE structure? | CORRECT | VIE...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "2024",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "MB51.7 billion",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 13748,
+      "end": 13762,
+      "snippet": "erations into Southeast Asia and other international markets. In 2024, Zeekr delivered 222,123 vehicles—a year-over-year increase of 87%—bringing its cumulative deliveries to 418,756 by year-end. Its revenue grew substantially from RMB6.5 billion in 2021 to RMB51.7 billion in 2023, with vehicle sales accounting for 72.9% of 2024 revenue. Gross profit margin improved from 13.3% in 2023 to 16.4% in 2024, driven by procurement savings and a favorable product mix, while vehicle gross margin reached 17.3% in Q4 2024....",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "gross margin",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "13.3%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 13863,
+      "end": 13868,
+      "snippet": "r-year increase of 87%—bringing its cumulative deliveries to 418,756 by year-end. Its revenue grew substantially from RMB6.5 billion in 2021 to RMB51.7 billion in 2023, with vehicle sales accounting for 72.9% of 2024 revenue. Gross profit margin improved from 13.3% in 2023 to 16.4% in 2024, driven by procurement savings and a favorable product mix, while vehicle gross margin reached 17.3% in Q4 2024. Despite strong top-line growth, the company has reported net losses in all years through 2023 due to high researc...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "gross margin",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "16.4%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 13880,
+      "end": 13885,
+      "snippet": "f 87%—bringing its cumulative deliveries to 418,756 by year-end. Its revenue grew substantially from RMB6.5 billion in 2021 to RMB51.7 billion in 2023, with vehicle sales accounting for 72.9% of 2024 revenue. Gross profit margin improved from 13.3% in 2023 to 16.4% in 2024, driven by procurement savings and a favorable product mix, while vehicle gross margin reached 17.3% in Q4 2024. Despite strong top-line growth, the company has reported net losses in all years through 2023 due to high research and development...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "gross margin",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    },
+    {
+      "anchor_type": "nearby_number",
+      "text": "17.3%",
+      "source_path": "test/colm/retrieval/e2e_rescue_full_20260524_160443/answer_gate.json",
+      "start": 13989,
+      "end": 13994,
+      "snippet": "illion in 2021 to RMB51.7 billion in 2023, with vehicle sales accounting for 72.9% of 2024 revenue. Gross profit margin improved from 13.3% in 2023 to 16.4% in 2024, driven by procurement savings and a favorable product mix, while vehicle gross margin reached 17.3% in Q4 2024. Despite strong top-line growth, the company has reported net losses in all years through 2023 due to high research and development (R&D) and selling, general, and administrative (SG&A) expenses, although these losses are narrowing; Non-GAA...",
+      "confidence_hint": 0.78,
+      "metadata": {
+        "near_term": "gross margin",
+        "has_metric_context": false,
+        "has_period_context": false
+      }
+    }
+  ],
+  "files_scanned": 17,
+  "metadata": {
+    "case_id": "zeekr_table_q100_runner"
+  }
+}

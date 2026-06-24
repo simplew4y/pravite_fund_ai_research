@@ -1,0 +1,8 @@
+{
+  "eval_summary_id": "zeekr_profile_q48_runner_default_gate_eval",
+  "protected_sets_passed": false,
+  "regression_count": 0,
+  "manual_review_status": "not_yet_reviewed",
+  "notes": "Default runner eval summary. Replace with protected-set results before approving implementation.",
+  "per_candidate": {}
+}
