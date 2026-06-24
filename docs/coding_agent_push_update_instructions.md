@@ -54,9 +54,20 @@ chengjingyi/evidence-schema/20260624-excel-adapter
 1. 模块代码或模块设计文档
 2. README.md 中对应负责人的更新记录
 3. README.md 中“模块进度看板”的状态
+4. test/ 下对应模块目录中的测试、fixture、验证脚本或验证说明
 ```
 
 如果只改代码不更新 README，视为不完整提交。
+如果只改功能不补充对应测试目录内容，也视为不完整提交。
+
+模块测试目录：
+
+```text
+雷雷   -> test/project_db/
+廖     -> test/research_memory/
+朝龙   -> test/memo_generation/
+程景逸 -> test/evidence_schema/
+```
 
 ## 4. README 更新格式
 
@@ -79,7 +90,7 @@ done
 示例：
 
 ```markdown
-| 2026-06-24 | 实现 QA 写入 messages.jsonl 和 qa_messages 表。 | `src/research_memory/qa_writer.py`, `README.md` | 运行 `pytest tests/research_memory/test_qa_writer.py`，确认重启后可查回 QA。 | in_progress |
+| 2026-06-24 | 实现 QA 写入 messages.jsonl 和 qa_messages 表。 | `src/research_memory/qa_writer.py`, `test/research_memory/test_qa_writer.py`, `README.md` | 运行 `pytest test/research_memory/test_qa_writer.py`，确认重启后可查回 QA。 | in_progress |
 ```
 
 同时更新 README 的“模块进度看板”：
@@ -262,4 +273,3 @@ memo 核心结论没有 citation 且没有 needs_review
 ```
 
 如果某次实现不能维护这条链路，需要在 README 中标记为 `blocked` 或 `needs_review`，不能假装完成。
-
