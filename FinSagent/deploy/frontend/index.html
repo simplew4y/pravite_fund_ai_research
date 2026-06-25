@@ -1485,6 +1485,179 @@
             transform: translateX(20px);
         }
 
+        /* Report Generation Toggle */
+        .report-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--color-secondary-text);
+        }
+        .report-toggle-label {
+            font-weight: 500;
+        }
+        .report-generate-btn {
+            display: none;
+            padding: 6px 16px;
+            border: 1px solid rgba(11, 87, 208, 0.3);
+            border-radius: 999px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+            white-space: nowrap;
+        }
+        .report-generate-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+        .report-generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .report-toggle-container.active .report-generate-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Report Preview Modal */
+        .report-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        .report-modal-overlay.active {
+            display: flex;
+        }
+        .report-modal {
+            background: #fff;
+            border-radius: 16px;
+            width: 90vw;
+            max-width: 1100px;
+            height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: reportModalIn 0.25s ease;
+        }
+        @keyframes reportModalIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .report-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--color-border);
+            background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+        }
+        .report-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .report-modal-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .report-modal-btn {
+            padding: 6px 14px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--color-text);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .report-modal-btn:hover {
+            background: var(--color-chat-bg);
+            border-color: var(--color-primary);
+        }
+        .report-modal-btn.primary {
+            background: var(--color-primary);
+            color: #fff;
+            border-color: var(--color-primary);
+        }
+        .report-modal-btn.primary:hover {
+            opacity: 0.9;
+        }
+        .report-modal-close {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            border-radius: 50%;
+            background: transparent;
+            cursor: pointer;
+            color: var(--color-secondary-text);
+            font-size: 20px;
+            transition: background 0.15s ease;
+        }
+        .report-modal-close:hover {
+            background: rgba(0, 0, 0, 0.08);
+        }
+        .report-modal-body {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+        .report-modal-body iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .report-modal-loading {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: #fff;
+        }
+        .report-loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e2e8f0;
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .report-loading-text {
+            font-size: 14px;
+            color: var(--color-secondary-text);
+        }
+        .report-loading-progress {
+            font-size: 12px;
+            color: var(--color-primary);
+            max-width: 400px;
+            text-align: center;
+        }
+
         /* --- 文档上传（Chrome 下载列表风格浮层）--- */
         .header-right {
             display: flex;
@@ -1942,6 +2115,14 @@
                         <span class="preview-toggle-label">⚡ 预览模式 (Preview)</span>
                         <div class="toggle-switch active" id="preview-toggle" onclick="togglePreviewMode()"></div>
                     </div>
+                    <div class="report-toggle-container" id="report-toggle-container">
+                        <span class="report-toggle-label">📊 报告生成</span>
+                        <div class="toggle-switch" id="report-toggle" onclick="toggleReportMode()"></div>
+                        <button class="report-generate-btn" id="report-generate-btn" onclick="generateReport()">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span>生成报告</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1974,9 +2155,199 @@
         </div>
     </div>
 
+    <!-- Report Preview Modal -->
+    <div class="report-modal-overlay" id="report-modal-overlay">
+        <div class="report-modal">
+            <div class="report-modal-header">
+                <div class="report-modal-title">
+                    <span style="font-size: 20px;">📊</span>
+                    <span id="report-modal-title-text">Equity Research Report</span>
+                </div>
+                <div class="report-modal-actions">
+                    <button class="report-modal-btn" id="report-modal-print-btn" onclick="printReport()">打印 / 保存PDF</button>
+                    <button class="report-modal-btn" id="report-modal-open-btn" onclick="openReportInNewTab()">新窗口打开</button>
+                    <button class="report-modal-close" onclick="closeReportModal()">&times;</button>
+                </div>
+            </div>
+            <div class="report-modal-body">
+                <div class="report-modal-loading" id="report-modal-loading">
+                    <div class="report-loading-spinner"></div>
+                    <div class="report-loading-text" id="report-loading-text">正在生成研究报告...</div>
+                    <div class="report-loading-progress" id="report-loading-progress"></div>
+                </div>
+                <iframe id="report-iframe" style="display:none;" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+            </div>
+        </div>
+    </div>
+
 <script src="avatar.js"></script>
 <script src="ui.js"></script>
 <script src="ingest_panel.js"></script>
+<script>
+    // ── Report Generation Logic ──────────────────────────────────────────
+    let reportModeEnabled = false;
+    let currentReportUrl = null;
+
+    function toggleReportMode() {
+        reportModeEnabled = !reportModeEnabled;
+        const toggle = document.getElementById('report-toggle');
+        const container = document.getElementById('report-toggle-container');
+        if (reportModeEnabled) {
+            toggle.classList.add('active');
+            container.classList.add('active');
+        } else {
+            toggle.classList.remove('active');
+            container.classList.remove('active');
+        }
+    }
+
+    function getCompanyNameFromSession() {
+        // Try to extract company name from the current session title or chat context
+        const titleEl = document.getElementById('main-header-title-text');
+        if (titleEl) {
+            const title = titleEl.textContent || '';
+            // If the title contains a company-like name, use it
+            if (title && title !== '新对话') {
+                return title.trim();
+            }
+        }
+        return '';
+    }
+
+    function inferTickerFromName(name) {
+        if (!name) return 'UNKNOWN';
+        // Common mappings
+        const known = {
+            'nvidia': 'NVDA', 'apple': 'AAPL', 'microsoft': 'MSFT',
+            'google': 'GOOGL', 'alphabet': 'GOOGL', 'amazon': 'AMZN',
+            'meta': 'META', 'facebook': 'META', 'tesla': 'TSLA',
+            'byd': 'BYD', 'geely': 'GELY', 'zeekr': 'ZK',
+            'nio': 'NIO', 'xpeng': 'XPEV', 'li auto': 'LI',
+            'tencent': 'TCEHY', 'alibaba': 'BABA', 'jd': 'JD',
+            'baidu': 'BIDU', 'pdd': 'PDD', 'netease': 'NTES',
+            '理想': 'LI', '蔚来': 'NIO', '小鹏': 'XPEV',
+            '比亚迪': 'BYD', '吉利': 'GELY', '极氪': 'ZK',
+            '英伟达': 'NVDA', '苹果': 'AAPL', '微软': 'MSFT',
+            '腾讯': 'TCEHY', '阿里巴巴': 'BABA', '百度': 'BIDU',
+        };
+        const lower = name.toLowerCase();
+        for (const [key, ticker] of Object.entries(known)) {
+            if (lower.includes(key)) return ticker;
+        }
+        // Fallback: first 4 uppercase chars
+        return name.substring(0, 4).toUpperCase();
+    }
+
+    async function generateReport() {
+        const companyName = getCompanyNameFromSession();
+        if (!companyName || companyName === '新对话') {
+            alert('请先在对话中讨论一家公司，然后再生成的报告。');
+            return;
+        }
+
+        const ticker = inferTickerFromName(companyName);
+        const btn = document.getElementById('report-generate-btn');
+        btn.disabled = true;
+
+        // Show modal with loading
+        showReportModal();
+        updateReportProgress('正在检索证据并生成报告，请耐心等待...');
+
+        try {
+            const resp = await fetch('/memo/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    company_name: companyName,
+                    company_ticker: ticker,
+                }),
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+
+            const data = await resp.json();
+            currentReportUrl = data.html_url;
+
+            updateReportProgress('报告生成完成，正在加载预览...');
+
+            // Load the report in the iframe
+            const iframe = document.getElementById('report-iframe');
+            const loading = document.getElementById('report-modal-loading');
+
+            iframe.onload = () => {
+                loading.style.display = 'none';
+                iframe.style.display = 'block';
+                document.getElementById('report-modal-title-text').textContent =
+                    `${companyName} (${ticker}) - Equity Research Report`;
+            };
+
+            iframe.src = data.html_url;
+
+        } catch (err) {
+            console.error('Report generation failed:', err);
+            updateReportProgress('❌ 生成失败: ' + err.message);
+            const loading = document.getElementById('report-modal-loading');
+            loading.querySelector('.report-loading-spinner').style.display = 'none';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    function showReportModal() {
+        const overlay = document.getElementById('report-modal-overlay');
+        const loading = document.getElementById('report-modal-loading');
+        const iframe = document.getElementById('report-iframe');
+        loading.style.display = 'flex';
+        loading.querySelector('.report-loading-spinner').style.display = 'block';
+        iframe.style.display = 'none';
+        iframe.src = '';
+        overlay.classList.add('active');
+    }
+
+    function closeReportModal() {
+        const overlay = document.getElementById('report-modal-overlay');
+        overlay.classList.remove('active');
+        const iframe = document.getElementById('report-iframe');
+        iframe.src = '';
+        currentReportUrl = null;
+    }
+
+    function updateReportProgress(text) {
+        const el = document.getElementById('report-loading-progress');
+        if (el) el.textContent = text;
+    }
+
+    function printReport() {
+        const iframe = document.getElementById('report-iframe');
+        try {
+            iframe.contentWindow.print();
+        } catch (e) {
+            alert('无法直接打印，请使用"新窗口打开"功能。');
+        }
+    }
+
+    function openReportInNewTab() {
+        if (currentReportUrl) {
+            window.open(currentReportUrl, '_blank');
+        }
+    }
+
+    // Close modal on overlay click
+    document.getElementById('report-modal-overlay').addEventListener('click', function(e) {
+        if (e.target === this) closeReportModal();
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const overlay = document.getElementById('report-modal-overlay');
+            if (overlay.classList.contains('active')) closeReportModal();
+        }
+    });
+</script>
 <script src="session_sidebar.js"></script>
 <script src="chat.js"></script>
 </body>

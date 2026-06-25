@@ -136,6 +136,8 @@ def _path_counts_toward_rag_busy(path: str) -> bool:
         return True
     if path.startswith("/pdf/"):
         return True
+    if path.startswith("/memo/"):
+        return True
     return False
 
 
@@ -922,6 +924,14 @@ async def get_metadata(collection_name: str, doc_id: str):
 from session_routes import router as session_router
 
 app.include_router(session_router)
+
+
+# ============================================================
+# Memo / Report Generation Routes
+# ============================================================
+from memo_routes import router as memo_router
+
+app.include_router(memo_router)
 
 
 # ============================================================
