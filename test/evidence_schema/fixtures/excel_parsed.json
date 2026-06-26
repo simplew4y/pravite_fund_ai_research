@@ -1,0 +1,20 @@
+[
+  {
+    "sheet": "DCF",
+    "cell": "E12",
+    "value": "16.5%",
+    "formula": "=E11/E10",
+    "number_format": "0.0%",
+    "range": "B10:H20",
+    "upstream_cells": ["E10", "E11"]
+  },
+  {
+    "sheet": "DCF",
+    "cell": "E20",
+    "value": "120.0",
+    "formula": "=SUM(E12:E19)",
+    "number_format": "0.0",
+    "range": "B10:H20",
+    "upstream_cells": ["E12", "E13"]
+  }
+]

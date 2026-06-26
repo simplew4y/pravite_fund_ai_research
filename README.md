@@ -7,7 +7,7 @@
 | 雷雷 | Project DB / Company Collection / Analyst Space 总体 DB 结构 | [project_db_and_personal_memory_design.md](docs/project_db_and_personal_memory_design.md) | [test/project_db/](test/project_db/) | 初始设计完成，待实现 | 10% |
 | 廖 | Research Memory | [research_memory_design.md](docs/research_memory_design.md) | [test/research_memory/](test/research_memory/) | 初始设计完成，待实现 | 10% |
 | 朝龙 | Memo Generation | [memo_generation_design.md](docs/memo_generation_design.md) | [test/memo_generation/](test/memo_generation/) | 初始设计完成，待实现 | 10% |
-| 程景逸 | Evidence Schema / Citation / Provenance | [evidence_schema_design.md](docs/evidence_schema_design.md) | [test/evidence_schema/](test/evidence_schema/) | 初始设计完成，待实现 | 10% |
+| 程景逸 | Evidence Schema / Citation / Provenance | [evidence_schema_design.md](docs/evidence_schema_design.md) | [test/evidence_schema/](test/evidence_schema/) | 第一阶段实现完成，待与 DB 对齐 | 40% |
 
 ## 测试目录要求
 
@@ -95,6 +95,8 @@
 |---|---|---|---|---|
 | 2026-06-24 | 创建 Evidence Schema 与溯源设计文档。 | `docs/evidence_schema_design.md` | 文档已覆盖各文档类型 evidence 格式、citation schema、追溯测试。 | done |
 | 2026-06-24 | 新增模块测试目录要求。 | `README.md`, `test/evidence_schema/README.md` | 确认 Evidence Schema 后续测试统一归档到 `test/evidence_schema/`。 | done |
+| 2026-06-25 | 实现第一阶段：统一 Evidence/Location/Citation schema、稳定 ID、PDF/Excel adapter、normalizer、render_citation_display、追溯 repository（内存版）。 | `src/evidence_schema/*`, `test/evidence_schema/*`, `README.md` | 运行 `pytest test/evidence_schema/`（11 passed）；给定 evidence_id 可定位原文件，Excel 返回 sheet/cell/value/formula，新版本入库不破坏旧 citation。 | review |
+| 2026-06-26 | Excel adapter 兼容 `file`/`file_name`，`upstream_cells`/`number_format` 改为可选；新增 canonical block 测试；第一阶段提交分支送审。 | `src/evidence_schema/adapters/excel_adapter.py`, `test/evidence_schema/test_excel_evidence.py`, `README.md` | 运行 `pytest test/evidence_schema/`（13 passed）。 | review |
 
 ## 模块进度看板
 
@@ -103,7 +105,7 @@
 | Project DB | 雷雷 | 固化 SQLite schema、目录结构和 repository API。 | `test/project_db/` | 输出第一版 schema.sql、初始化脚本和 DB 回溯测试。 | 暂无 |
 | Research Memory | 廖 | QA 后完整写入原文、facts、citations、audit，并进入语义索引。 | `test/research_memory/` | 实现最小 QA memory 闭环和对应测试 fixture。 | OpenViking 接入方案待确认 |
 | Memo Generation | 朝龙 | 固定模板 memo + evidence pack + citation gate。 | `test/memo_generation/` | 实现 memo 最小端到端 demo 和 citation gate 测试。 | 依赖 Evidence Schema 和 Memory API |
-| Evidence Schema | 程景逸 | 统一 evidence/citation/provenance schema。 | `test/evidence_schema/` | 实现 PDF 和 Excel 两个最小 adapter 及 location 渲染测试。 | 需要和 DB schema 对齐 |
+| Evidence Schema | 程景逸 | 统一 evidence/citation/provenance schema。 | `test/evidence_schema/` | 与雷雷对齐 collection.db 字段后接入 SQLite repository；补 PPT/Word/Markdown/QA/Memo adapter。 | 需要和 DB schema 对齐（见 `test/evidence_schema/README.md` 对齐清单） |
 
 ## 员工 Coding Agent 更新规范
 

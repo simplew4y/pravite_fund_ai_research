@@ -1,0 +1,22 @@
+[
+  {
+    "page_no": 42,
+    "section": "Management Discussion",
+    "text": "The gross margin decreased primarily due to product mix and pricing pressure.",
+    "bbox": [10, 120, 580, 720],
+    "paragraph_no": 18,
+    "block_type": "paragraph"
+  },
+  {
+    "page_no": 7,
+    "section": "Business Overview",
+    "text": "Zeekr is a premium electric vehicle brand under Geely.",
+    "block_type": "paragraph"
+  },
+  {
+    "page_no": 9,
+    "section": "Empty",
+    "text": "   ",
+    "block_type": "paragraph"
+  }
+]
