@@ -1542,9 +1542,9 @@
         .report-modal {
             background: #fff;
             border-radius: 16px;
-            width: 90vw;
-            max-width: 1100px;
-            height: 85vh;
+            width: 96vw;
+            max-width: 1600px;
+            height: 90vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -1620,11 +1620,179 @@
             flex: 1;
             overflow: hidden;
             position: relative;
+            display: flex;
         }
-        .report-modal-body iframe {
+        .report-modal-left {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            border-right: 1px solid #e2e8f0;
+        }
+        .report-modal-left iframe {
             width: 100%;
             height: 100%;
             border: none;
+        }
+        .report-modal-right {
+            width: 320px;
+            min-width: 320px;
+            overflow-y: auto;
+            background: #f8fafc;
+            padding: 16px;
+            font-size: 13px;
+        }
+        .report-token-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .report-token-header {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1e293b;
+            border-bottom: 2px solid #6366f1;
+            padding-bottom: 8px;
+            margin-bottom: 4px;
+        }
+        .report-token-summary {
+            background: #fff;
+            border-radius: 10px;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+        }
+        .report-token-summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+        .report-token-summary-label {
+            color: #64748b;
+            font-size: 12px;
+        }
+        .report-token-summary-value {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 13px;
+        }
+        .report-token-step {
+            background: #fff;
+            border-radius: 8px;
+            padding: 10px 12px;
+            border: 1px solid #e2e8f0;
+            transition: border-color 0.2s ease;
+        }
+        .report-token-step.active {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+        }
+        .report-token-step.done {
+            opacity: 0.85;
+            cursor: pointer;
+        }
+        .report-token-step.done:hover {
+            opacity: 1;
+            border-color: #6366f1;
+        }
+        .report-token-step-title {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 12px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .report-token-step-toggle {
+            margin-left: auto;
+            font-size: 10px;
+            color: #94a3b8;
+            transition: transform 0.2s ease;
+        }
+        .report-token-step.expanded .report-token-step-toggle {
+            transform: rotate(180deg);
+        }
+        .report-token-step-expandable {
+            display: none;
+            margin-top: 8px;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 8px;
+        }
+        .report-token-step.expanded .report-token-step-expandable {
+            display: block;
+        }
+        .report-token-qa-block {
+            margin-bottom: 8px;
+        }
+        .report-token-qa-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #6366f1;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 3px;
+        }
+        .report-token-qa-content {
+            font-size: 11px;
+            color: #475569;
+            line-height: 1.5;
+            background: #f8fafc;
+            border-radius: 6px;
+            padding: 6px 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .report-token-cost-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 2px 0;
+        }
+        .report-token-cost-label {
+            color: #64748b;
+        }
+        .report-token-cost-value {
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .report-token-step-status {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+        .report-token-step-status.pending {
+            background: #f1f5f9;
+            color: #94a3b8;
+        }
+        .report-token-step-status.running {
+            background: #eef2ff;
+            color: #6366f1;
+        }
+        .report-token-step-status.done {
+            background: #ecfdf5;
+            color: #059669;
+        }
+        .report-token-step-detail {
+            font-size: 11px;
+            color: #64748b;
+            display: flex;
+            justify-content: space-between;
+        }
+        .report-token-bar {
+            height: 4px;
+            background: #f1f5f9;
+            border-radius: 2px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .report-token-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            border-radius: 2px;
+            transition: width 0.3s ease;
         }
         .report-modal-loading {
             position: absolute;
@@ -2164,18 +2332,41 @@
                     <span id="report-modal-title-text">Equity Research Report</span>
                 </div>
                 <div class="report-modal-actions">
-                    <button class="report-modal-btn" id="report-modal-print-btn" onclick="printReport()">打印 / 保存PDF</button>
+                    <button class="report-modal-btn" id="report-modal-print-btn" onclick="printReport()">🖨️ 打印</button>
+                    <button class="report-modal-btn" id="report-modal-download-btn" onclick="downloadReport()">⬇️ 保存PDF</button>
                     <button class="report-modal-btn" id="report-modal-open-btn" onclick="openReportInNewTab()">新窗口打开</button>
                     <button class="report-modal-close" onclick="closeReportModal()">&times;</button>
                 </div>
             </div>
             <div class="report-modal-body">
-                <div class="report-modal-loading" id="report-modal-loading">
-                    <div class="report-loading-spinner"></div>
-                    <div class="report-loading-text" id="report-loading-text">正在生成研究报告...</div>
-                    <div class="report-loading-progress" id="report-loading-progress"></div>
+                <div class="report-modal-left">
+                    <div class="report-modal-loading" id="report-modal-loading">
+                        <div class="report-loading-spinner"></div>
+                        <div class="report-loading-text" id="report-loading-text">正在生成研究报告...</div>
+                        <div class="report-loading-progress" id="report-loading-progress"></div>
+                    </div>
+                    <iframe id="report-iframe" style="display:none;" sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox"></iframe>
                 </div>
-                <iframe id="report-iframe" style="display:none;" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+                <div class="report-modal-right" id="report-modal-right">
+                    <div class="report-token-panel" id="report-token-panel">
+                        <div class="report-token-header">📊 Token 用量分析</div>
+                        <div class="report-token-summary" id="report-token-summary">
+                            <div class="report-token-summary-row">
+                                <span class="report-token-summary-label">Prompt Tokens</span>
+                                <span class="report-token-summary-value" id="report-total-prompt">0</span>
+                            </div>
+                            <div class="report-token-summary-row">
+                                <span class="report-token-summary-label">Completion Tokens</span>
+                                <span class="report-token-summary-value" id="report-total-completion">0</span>
+                            </div>
+                            <div class="report-token-summary-row">
+                                <span class="report-token-summary-label">Total Tokens</span>
+                                <span class="report-token-summary-value" id="report-total-tokens">0</span>
+                            </div>
+                        </div>
+                        <div id="report-token-steps"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -2249,6 +2440,14 @@
         const btn = document.getElementById('report-generate-btn');
         btn.disabled = true;
 
+        // Clear previous report state so showReportModal shows loading
+        currentReportUrl = null;
+        const iframe = document.getElementById('report-iframe');
+        iframe.src = '';
+
+        // Reset token panel
+        resetTokenPanel();
+
         // Show modal with loading
         showReportModal();
         updateReportProgress('正在检索证据并生成报告，请耐心等待...');
@@ -2268,24 +2467,34 @@
                 throw new Error(err.detail || `HTTP ${resp.status}`);
             }
 
-            const data = await resp.json();
-            currentReportUrl = data.html_url;
+            // Read SSE stream
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
 
-            updateReportProgress('报告生成完成，正在加载预览...');
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
 
-            // Load the report in the iframe
-            const iframe = document.getElementById('report-iframe');
-            const loading = document.getElementById('report-modal-loading');
+                // Process complete SSE events (separated by \n\n)
+                const events = buffer.split('\n\n');
+                buffer = events.pop(); // keep incomplete chunk
 
-            iframe.onload = () => {
-                loading.style.display = 'none';
-                iframe.style.display = 'block';
-                document.getElementById('report-modal-title-text').textContent =
-                    `${companyName} (${ticker}) - Equity Research Report`;
-            };
-
-            iframe.src = data.html_url;
-
+                for (const evtStr of events) {
+                    const lines = evtStr.trim().split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const evt = JSON.parse(line.slice(6));
+                                handleReportEvent(evt, companyName, ticker);
+                            } catch (e) {
+                                console.warn('Failed to parse SSE event:', line);
+                            }
+                        }
+                    }
+                }
+            }
         } catch (err) {
             console.error('Report generation failed:', err);
             updateReportProgress('❌ 生成失败: ' + err.message);
@@ -2296,23 +2505,217 @@
         }
     }
 
+    function handleReportEvent(evt, companyName, ticker) {
+        switch (evt.type) {
+            case 'start':
+                updateReportProgress(`开始生成报告: ${evt.company} (${evt.ticker})，共 ${evt.total_sections} 个章节...`);
+                break;
+            case 'section_start':
+                updateReportProgress(`[${evt.step}/${evt.total}] 检索证据: ${evt.section}...`);
+                addTokenStep(evt.section, evt.step, evt.total);
+                break;
+            case 'section_retrieved':
+                updateReportProgress(`[${evt.step}/${evt.total}] 生成文本: ${evt.section}... (检索到 ${evt.chunks} 个证据片段)`);
+                break;
+            case 'section_done':
+                updateReportProgress(`[${evt.step}/${evt.total}] ✅ ${evt.section} 完成 (${evt.chars} 字符)`);
+                updateTokenStep(evt.section, evt.prompt_tokens, evt.completion_tokens, evt.total_tokens, evt.chars, evt.prompt, evt.response);
+                break;
+            case 'metrics_start':
+                updateReportProgress('提取财务指标...');
+                addTokenStep('metrics_extraction', 0, 0, true);
+                break;
+            case 'metrics_done':
+                updateReportProgress('✅ 财务指标提取完成');
+                updateTokenStep('metrics_extraction', evt.prompt_tokens, evt.completion_tokens, evt.total_tokens, 0, evt.prompt, evt.response);
+                break;
+            case 'rendering':
+                updateReportProgress('渲染 HTML 报告...');
+                break;
+            case 'complete':
+                updateReportProgress('✅ 报告生成完成！');
+                break;
+            case 'result':
+                currentReportUrl = evt.html_url;
+                updateReportProgress('报告生成完成，正在加载预览...');
+                // Load the report in the iframe
+                const iframe = document.getElementById('report-iframe');
+                const loading = document.getElementById('report-modal-loading');
+                iframe.onload = () => {
+                    loading.style.display = 'none';
+                    iframe.style.display = 'block';
+                    document.getElementById('report-modal-title-text').textContent =
+                        `${companyName} (${ticker}) - Equity Research Report`;
+                };
+                iframe.src = evt.html_url;
+                break;
+            case 'error':
+                updateReportProgress('❌ ' + evt.detail);
+                const loadingEl = document.getElementById('report-modal-loading');
+                loadingEl.querySelector('.report-loading-spinner').style.display = 'none';
+                break;
+        }
+    }
+
+    // ── Token Panel Functions ──────────────────────────────────────────────
+    let tokenStepsData = {};
+
+    function resetTokenPanel() {
+        tokenStepsData = {};
+        document.getElementById('report-total-prompt').textContent = '0';
+        document.getElementById('report-total-completion').textContent = '0';
+        document.getElementById('report-total-tokens').textContent = '0';
+        document.getElementById('report-token-steps').innerHTML = '';
+    }
+
+    function addTokenStep(section, step, total, isExtra) {
+        const container = document.getElementById('report-token-steps');
+        const div = document.createElement('div');
+        div.className = 'report-token-step active';
+        div.id = `token-step-${section}`;
+        const label = section.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        div.innerHTML = `
+            <div class="report-token-step-title">
+                <span>${isExtra ? '🔧' : '📝'} ${label}</span>
+                <span class="report-token-step-status running">运行中</span>
+                <span class="report-token-step-toggle">▼</span>
+            </div>
+            <div class="report-token-step-detail">
+                <span>等待中...</span>
+            </div>
+            <div class="report-token-bar"><div class="report-token-bar-fill" style="width:0%"></div></div>
+            <div class="report-token-step-expandable"></div>
+        `;
+        container.appendChild(div);
+    }
+
+    function updateTokenStep(section, promptTokens, completionTokens, totalTokens, chars, promptText, responseText) {
+        const div = document.getElementById(`token-step-${section}`);
+        if (!div) return;
+        div.classList.remove('active');
+        div.classList.add('done');
+        const status = div.querySelector('.report-token-step-status');
+        status.className = 'report-token-step-status done';
+        status.textContent = '完成';
+        const detail = div.querySelector('.report-token-step-detail');
+        detail.innerHTML = `
+            <span>P: ${formatTokens(promptTokens)}</span>
+            <span>C: ${formatTokens(completionTokens)}</span>
+            <span>T: ${formatTokens(totalTokens)}</span>
+        `;
+        // Animate bar
+        tokenStepsData[section] = totalTokens;
+        const maxTokens = Math.max(...Object.values(tokenStepsData), 1);
+        const bar = div.querySelector('.report-token-bar-fill');
+        bar.style.width = `${(totalTokens / maxTokens) * 100}%`;
+
+        // Build expandable detail: cost breakdown + Q/A
+        const expandable = div.querySelector('.report-token-step-expandable');
+        if (expandable) {
+            const truncatedPrompt = (promptText || '').substring(0, 2000);
+            const truncatedResponse = (responseText || '').substring(0, 3000);
+            expandable.innerHTML = `
+                <div class="report-token-qa-block">
+                    <div class="report-token-qa-label">💰 花费明细</div>
+                    <div class="report-token-cost-row">
+                        <span class="report-token-cost-label">输入 (Prompt)</span>
+                        <span class="report-token-cost-value">${promptTokens.toLocaleString()} tokens</span>
+                    </div>
+                    <div class="report-token-cost-row">
+                        <span class="report-token-cost-label">输出 (Completion)</span>
+                        <span class="report-token-cost-value">${completionTokens.toLocaleString()} tokens</span>
+                    </div>
+                    <div class="report-token-cost-row">
+                        <span class="report-token-cost-label">总计 (Total)</span>
+                        <span class="report-token-cost-value">${totalTokens.toLocaleString()} tokens</span>
+                    </div>
+                    <div class="report-token-cost-row">
+                        <span class="report-token-cost-label">输出字符数</span>
+                        <span class="report-token-cost-value">${(chars || 0).toLocaleString()} chars</span>
+                    </div>
+                </div>
+                <div class="report-token-qa-block">
+                    <div class="report-token-qa-label">❓ Q — 提示词</div>
+                    <div class="report-token-qa-content">${escapeHtml(truncatedPrompt)}</div>
+                </div>
+                <div class="report-token-qa-block">
+                    <div class="report-token-qa-label">💡 A — 回答</div>
+                    <div class="report-token-qa-content">${escapeHtml(truncatedResponse)}</div>
+                </div>
+            `;
+        }
+
+        // Toggle expand/collapse on click
+        div.querySelector('.report-token-step-title').onclick = (e) => {
+            div.classList.toggle('expanded');
+        };
+
+        // Update summary totals
+        updateTokenSummary();
+    }
+
+    function updateTokenSummary() {
+        let totalP = 0, totalC = 0, totalT = 0;
+        const steps = document.querySelectorAll('.report-token-step.done .report-token-step-detail');
+        steps.forEach(detail => {
+            const spans = detail.querySelectorAll('span');
+            if (spans.length >= 3) {
+                totalP += parseTokens(spans[0].textContent);
+                totalC += parseTokens(spans[1].textContent);
+                totalT += parseTokens(spans[2].textContent);
+            }
+        });
+        document.getElementById('report-total-prompt').textContent = formatTokens(totalP);
+        document.getElementById('report-total-completion').textContent = formatTokens(totalC);
+        document.getElementById('report-total-tokens').textContent = formatTokens(totalT);
+    }
+
+    function formatTokens(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+        return String(n);
+    }
+
+    function parseTokens(text) {
+        const s = text.trim().replace(/[^\d.KM]/g, '');
+        if (s.endsWith('M')) return Math.round(parseFloat(s) * 1000000);
+        if (s.endsWith('K')) return Math.round(parseFloat(s) * 1000);
+        return parseInt(s) || 0;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     function showReportModal() {
         const overlay = document.getElementById('report-modal-overlay');
         const loading = document.getElementById('report-modal-loading');
         const iframe = document.getElementById('report-iframe');
-        loading.style.display = 'flex';
-        loading.querySelector('.report-loading-spinner').style.display = 'block';
-        iframe.style.display = 'none';
-        iframe.src = '';
+
+        // If we already have a report loaded, show it directly without loading state
+        if (currentReportUrl) {
+            loading.style.display = 'none';
+            iframe.style.display = 'block';
+            // Re-load the iframe if it was cleared
+            if (!iframe.src || iframe.src === 'about:blank') {
+                iframe.src = currentReportUrl;
+            }
+        } else {
+            loading.style.display = 'flex';
+            loading.querySelector('.report-loading-spinner').style.display = 'block';
+            iframe.style.display = 'none';
+            iframe.src = '';
+        }
         overlay.classList.add('active');
     }
 
     function closeReportModal() {
         const overlay = document.getElementById('report-modal-overlay');
         overlay.classList.remove('active');
-        const iframe = document.getElementById('report-iframe');
-        iframe.src = '';
-        currentReportUrl = null;
+        // Keep currentReportUrl and iframe content so reopening shows the report
+        // Don't clear iframe.src — just hide the modal
     }
 
     function updateReportProgress(text) {
@@ -2323,15 +2726,49 @@
     function printReport() {
         const iframe = document.getElementById('report-iframe');
         try {
+            if (!iframe.src || iframe.src === 'about:blank' || !currentReportUrl) {
+                alert('报告尚未加载，请先生成报告。');
+                return;
+            }
+            iframe.contentWindow.focus();
             iframe.contentWindow.print();
         } catch (e) {
-            alert('无法直接打印，请使用"新窗口打开"功能。');
+            console.error('Print failed:', e);
+            if (currentReportUrl) {
+                const w = window.open(currentReportUrl, '_blank');
+                if (w) {
+                    w.onload = () => { w.print(); };
+                } else {
+                    alert('无法直接打印，请使用"新窗口打开"功能。');
+                }
+            } else {
+                alert('无法打印，请先生成报告。');
+            }
         }
+    }
+
+    function downloadReport() {
+        if (!currentReportUrl) {
+            alert('报告尚未加载，请先生成报告。');
+            return;
+        }
+        // Convert HTML URL to PDF URL
+        const pdfUrl = currentReportUrl.replace('/memo/report/', '/memo/pdf/');
+        // Trigger download of the PDF
+        const a = document.createElement('a');
+        a.href = pdfUrl;
+        const filename = pdfUrl.split('/').pop().replace('.html', '.pdf') || 'report.pdf';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
     }
 
     function openReportInNewTab() {
         if (currentReportUrl) {
-            window.open(currentReportUrl, '_blank');
+            // Open PDF version in new tab
+            const pdfUrl = currentReportUrl.replace('/memo/report/', '/memo/pdf/');
+            window.open(pdfUrl, '_blank');
         }
     }
 

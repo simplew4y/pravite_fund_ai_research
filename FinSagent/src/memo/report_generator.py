@@ -25,7 +25,7 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -234,18 +234,113 @@ async def _generate_section_text(
     session_manager: Any,
     prompt: str,
     max_tokens: int = 2048,
-) -> str:
-    """Generate text using the FinSagent LLM via SessionManager."""
+) -> tuple:
+    """Generate text using the FinSagent LLM via SessionManager.
+    Returns (text, token_usage_dict).
+    """
     try:
         resp = await session_manager.call_llm_async(
             [{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=max_tokens,
         )
-        return resp.choices[0].message.content.strip()
+        text = resp.choices[0].message.content.strip()
+        usage = {}
+        if hasattr(resp, 'usage') and resp.usage:
+            usage = {
+                "prompt_tokens": resp.usage.prompt_tokens or 0,
+                "completion_tokens": resp.usage.completion_tokens or 0,
+                "total_tokens": resp.usage.total_tokens or 0,
+            }
+        return text, usage
     except Exception as e:
         logger.error(f"LLM text generation failed: {e}")
-        return ""
+        return "", {}
+
+
+_METRICS_EXTRACTION_PROMPT = (
+    "You are a financial data extraction assistant. From the following evidence and generated analysis about {company_name} ({ticker}), "
+    "extract or estimate the key financial metrics. If a metric is explicitly mentioned in the evidence, use that value. "
+    "If not directly mentioned but can be reasonably estimated from the available data, provide your best estimate. "
+    "Only use null if there is absolutely no relevant data to estimate the metric.\n\n"
+    "Return ONLY a valid JSON object with these exact keys:\n"
+    '  "share_price": most recent stock price mentioned (e.g. "$120.50")\n'
+    '  "target_price": analyst target price if mentioned (e.g. "$150.00")\n'
+    '  "market_cap": market capitalization (e.g. "$3.0T" or "$3000B")\n'
+    '  "fwd_pe": forward P/E ratio (e.g. "35.2")\n'
+    '  "pb_ratio": price-to-book ratio (e.g. "45.6")\n'
+    '  "roe": return on equity (e.g. "85.2%")\n'
+    '  "dividend_yield": dividend yield (e.g. "0.03%")\n'
+    '  "week_52_range": 52-week price range (e.g. "$75.61 - $140.76")\n'
+    '  "sector": company sector/industry (e.g. "Semiconductors")\n'
+    '  "revenue_growth": most recent revenue growth rate (e.g. "262%")\n'
+    '  "ebitda_margin": EBITDA margin if available (e.g. "65.3%")\n'
+    '  "eps": earnings per share (e.g. "$12.30")\n\n'
+    "Return ONLY the JSON object, no other text.\n\n"
+    "Evidence:\n{evidence}\n\n"
+    "Generated Analysis:\n{analysis}"
+)
+
+
+async def _extract_financial_metrics(
+    session_manager: Any,
+    company_name: str,
+    company_ticker: str,
+    all_chunks: List[Dict[str, Any]],
+    sections: Dict[str, str],
+) -> tuple:
+    """Use LLM to extract key financial metrics from retrieved evidence and generated analysis.
+    Returns (metrics_dict, token_usage_dict, prompt_text, response_text).
+    """
+    evidence_text = _format_evidence_for_prompt(all_chunks, max_chars=8000)
+    # Combine generated section texts as additional context for metric extraction
+    analysis_parts = []
+    for key in ["major_takeaways", "valuation_overview", "investment_overview", "company_overview"]:
+        text = sections.get(key, "")
+        if text:
+            analysis_parts.append(f"### {key.replace('_', ' ').title()}\n{text}")
+    analysis_text = "\n\n".join(analysis_parts)[:8000]
+    prompt = _METRICS_EXTRACTION_PROMPT.format(
+        company_name=company_name,
+        ticker=company_ticker,
+        evidence=evidence_text,
+        analysis=analysis_text,
+    )
+
+    try:
+        resp = await session_manager.call_llm_async(
+            [{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=512,
+        )
+        raw = resp.choices[0].message.content.strip()
+        usage = {}
+        if hasattr(resp, 'usage') and resp.usage:
+            usage = {
+                "prompt_tokens": resp.usage.prompt_tokens or 0,
+                "completion_tokens": resp.usage.completion_tokens or 0,
+                "total_tokens": resp.usage.total_tokens or 0,
+            }
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+
+        metrics = json.loads(raw)
+        # Convert nulls to "N/A" strings
+        result = {}
+        for k, v in metrics.items():
+            result[k] = str(v) if v is not None else "N/A"
+        logger.info(f"[Memo] Extracted metrics: {result}")
+        return result, usage, prompt, raw
+    except json.JSONDecodeError as e:
+        logger.warning(f"[Memo] Failed to parse metrics JSON: {e}\nRaw: {raw[:200]}")
+        return {}, usage if 'usage' in dir() else {}, prompt, raw if 'raw' in dir() else ''
+    except Exception as e:
+        logger.warning(f"[Memo] Financial metrics extraction failed: {e}")
+        return {}, {}, prompt, ''
 
 
 async def generate_report(
@@ -264,6 +359,7 @@ async def generate_report(
     roe: str = "N/A",
     dividend_yield: str = "N/A",
     week_52_range: str = "N/A",
+    progress_callback: Optional[Callable] = None,
 ) -> Dict[str, Any]:
     """
     Generate a full equity research report.
@@ -275,12 +371,22 @@ async def generate_report(
         session_manager: FinSagent SessionManager with call_llm_async
         config: FinSagent config dict (from production.yaml)
         output_dir: Directory to save HTML report. Defaults to FinSagent/reports/
+        progress_callback: Optional async callback(event_dict) called at each step.
 
     Returns:
-        Dict with: report_id, html_path, sections (dict of section_key -> text)
+        Dict with: report_id, html_path, sections (dict of section_key -> text),
+                   token_usage (list of per-step usage dicts)
     """
     report_id = uuid.uuid4().hex[:12]
     query_time = datetime.now()
+    token_usage_log: List[Dict[str, Any]] = []
+
+    async def _emit(event: Dict[str, Any]):
+        if progress_callback:
+            try:
+                await progress_callback(event)
+            except Exception:
+                pass
 
     # Determine output directory
     if not output_dir:
@@ -289,22 +395,28 @@ async def generate_report(
     os.makedirs(output_dir, exist_ok=True)
 
     logger.info(f"[Memo] Starting report generation for {company_name} ({company_ticker}), report_id={report_id}")
+    await _emit({"type": "start", "report_id": report_id, "company": company_name, "ticker": company_ticker,
+                 "total_sections": len(SECTION_DEFINITIONS)})
 
     # ── Step 1: Retrieve evidence and generate each section ─────────────────
     sections: Dict[str, str] = {}
     all_chunks: List[Dict[str, Any]] = []
 
-    for sec_def in SECTION_DEFINITIONS:
+    for idx, sec_def in enumerate(SECTION_DEFINITIONS):
         key = sec_def["key"]
         retrieval_query = sec_def["retrieval_query"].format(
             company_name=company_name,
             ticker=company_ticker,
         )
         logger.info(f"[Memo] Retrieving evidence for section '{key}'...")
+        await _emit({"type": "section_start", "section": key, "step": idx + 1,
+                     "total": len(SECTION_DEFINITIONS), "phase": "retrieval"})
 
         chunks = await _retrieve_evidence(rag, retrieval_query, query_time)
         all_chunks.extend(chunks)
         logger.info(f"[Memo]   Retrieved {len(chunks)} chunks for '{key}'")
+        await _emit({"type": "section_retrieved", "section": key, "step": idx + 1,
+                     "total": len(SECTION_DEFINITIONS), "chunks": len(chunks), "phase": "generation"})
 
         evidence_text = _format_evidence_for_prompt(chunks)
         prompt = sec_def["prompt"].format(
@@ -314,7 +426,20 @@ async def generate_report(
         )
 
         logger.info(f"[Memo]   Generating text for '{key}'...")
-        text = await _generate_section_text(session_manager, prompt)
+        text, usage = await _generate_section_text(session_manager, prompt)
+        if usage:
+            token_usage_log.append({"section": key, **usage})
+            await _emit({"type": "section_done", "section": key, "step": idx + 1,
+                         "total": len(SECTION_DEFINITIONS), "chars": len(text),
+                         "prompt_tokens": usage.get("prompt_tokens", 0),
+                         "completion_tokens": usage.get("completion_tokens", 0),
+                         "total_tokens": usage.get("total_tokens", 0),
+                         "prompt": prompt, "response": text})
+        else:
+            await _emit({"type": "section_done", "section": key, "step": idx + 1,
+                         "total": len(SECTION_DEFINITIONS), "chars": len(text),
+                         "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
+                         "prompt": prompt, "response": text})
         if not text:
             text = f"Analysis for {company_name} is not available due to insufficient evidence."
             logger.warning(f"[Memo]   Empty text for '{key}', using fallback")
@@ -322,9 +447,74 @@ async def generate_report(
         sections[key] = text
         logger.info(f"[Memo]   ✅ '{key}' generated ({len(text)} chars)")
 
-    # ── Step 2: Build report data dict for FinRobot template ────────────────
+    # ── Step 2: Extract financial metrics from evidence via LLM ────────────
+    logger.info("[Memo] Extracting financial metrics from evidence...")
+    await _emit({"type": "metrics_start", "phase": "metrics_extraction"})
+    extracted, metrics_usage, metrics_prompt, metrics_response = await _extract_financial_metrics(
+        session_manager, company_name, company_ticker, all_chunks, sections,
+    )
+    if metrics_usage:
+        token_usage_log.append({"section": "metrics_extraction", **metrics_usage})
+    await _emit({"type": "metrics_done",
+                 "prompt_tokens": metrics_usage.get("prompt_tokens", 0),
+                 "completion_tokens": metrics_usage.get("completion_tokens", 0),
+                 "total_tokens": metrics_usage.get("total_tokens", 0),
+                 "prompt": metrics_prompt, "response": metrics_response})
+
+    # Merge: use extracted values where available, fall back to provided defaults
+    def _metric(key: str, default: str) -> str:
+        val = extracted.get(key)
+        if val is None or val == "null" or val == "N/A" or val == "None":
+            return default if default != "N/A" else "—"
+        return str(val)
+
+    share_price = _metric("share_price", share_price)
+    target_price = _metric("target_price", target_price)
+    market_cap = _metric("market_cap", market_cap)
+    fwd_pe = _metric("fwd_pe", fwd_pe)
+    pb_ratio = _metric("pb_ratio", pb_ratio)
+    roe = _metric("roe", roe)
+    dividend_yield = _metric("dividend_yield", dividend_yield)
+    week_52_range = _metric("week_52_range", week_52_range)
+    sector = _metric("sector", sector)
+
+    # Build revenue key figures from extracted metrics
+    revenue_key_figures = {}
+    if extracted.get("revenue_growth") and extracted["revenue_growth"] not in ("N/A", "None", None):
+        revenue_key_figures["Revenue Growth (YoY)"] = extracted["revenue_growth"]
+    if extracted.get("ebitda_margin") and extracted["ebitda_margin"] not in ("N/A", "None", None):
+        revenue_key_figures["EBITDA Margin"] = extracted["ebitda_margin"]
+
+    eps_key_figures = {}
+    if extracted.get("eps") and extracted["eps"] not in ("N/A", "None", None):
+        eps_key_figures["EPS"] = extracted["eps"]
+    if fwd_pe != "—":
+        eps_key_figures["Forward P/E"] = fwd_pe
+
+    logger.info(f"[Memo] Metrics resolved: price={share_price}, target={target_price}, sector={sector}")
+
+    # ── Step 3: Build report data dict for FinRobot template ────────────────
     report_date = datetime.now().strftime("%B %d, %Y")
-    rating = _derive_rating(share_price, target_price, "N/A")
+
+    # Parse target price: handle ranges like "$130–$150" by taking the midpoint
+    def _parse_price(s):
+        if not s or s == "—":
+            return None
+        try:
+            # Extract first number from strings like "$120.50" or "$130–$150"
+            nums = re.findall(r'[\d,.]+', s.replace(',', ''))
+            if nums:
+                return float(nums[0])
+        except (ValueError, IndexError):
+            pass
+        return None
+
+    sp = _parse_price(share_price)
+    tp = _parse_price(target_price)
+    if sp and tp:
+        rating = _derive_rating(sp, tp, "Hold")
+    else:
+        rating = "Hold"
     rating_color_class = get_rating_color_class(rating)
 
     # Build source citations from all retrieved chunks
@@ -366,9 +556,9 @@ async def generate_report(
 
         # Revenue/EPS analysis text (derived)
         "revenue_analysis_text": sections.get("major_takeaways", "")[:200] + "..." if len(sections.get("major_takeaways", "")) > 200 else sections.get("major_takeaways", ""),
-        "eps_analysis_text": "Earnings analysis based on retrieved evidence.",
-        "revenue_key_figures": {},
-        "eps_key_figures": {},
+        "eps_analysis_text": sections.get("valuation_overview", "")[:200] + "..." if len(sections.get("valuation_overview", "")) > 200 else sections.get("valuation_overview", ""),
+        "revenue_key_figures": revenue_key_figures,
+        "eps_key_figures": eps_key_figures,
 
         # Chart paths (empty — no FMP charts)
         "revenue_chart_path": "",
@@ -388,8 +578,24 @@ async def generate_report(
         "enhanced_news": {},
         "retail_sentiment": {},
         "valuation_analysis": {},
-        "technical_indicators": {},
+        "technical_indicators": {
+            "overall_signal": "N/A",
+            "ma_signal": "N/A",
+            "rsi_signal": "N/A",
+            "macd_signal_label": "N/A",
+            "volume_signal": "N/A",
+        },
         "enhanced_charts": {},
+        # Provide share_price and 52w_range so the advanced charts fallback
+        # shows actual values instead of N/A for Current Price and 52W Range
+        "share_price": share_price,
+        "company_ticker": company_ticker,
+        "52w_range": week_52_range,
+        "week_52_range": week_52_range,
+        "stock_price_chart_path": "",
+        "technical_indicators_path": "",
+        "financial_radar_path": "",
+        "cash_flow_chart_path": "",
 
         # Meta
         "research_source": "FinSagent AI Equity Research",
@@ -408,6 +614,7 @@ async def generate_report(
 
     # ── Step 3: Render HTML using FinRobot professional template ────────────
     logger.info("[Memo] Rendering professional HTML report...")
+    await _emit({"type": "rendering", "phase": "html_render"})
     html_content = render_professional_html_report(report_data)
 
     html_path = os.path.join(output_dir, f"Equity_Report_{company_ticker}_{report_id}.html")
@@ -426,9 +633,20 @@ async def generate_report(
         "sections": sections,
         "evidence_count": len(all_chunks),
         "evidence_sources": sorted(source_set),
+        "token_usage": token_usage_log,
     }
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    # Compute totals
+    total_prompt = sum(u.get("prompt_tokens", 0) for u in token_usage_log)
+    total_completion = sum(u.get("completion_tokens", 0) for u in token_usage_log)
+    total_tokens = sum(u.get("total_tokens", 0) for u in token_usage_log)
+    await _emit({"type": "complete", "html_path": html_path,
+                 "total_prompt_tokens": total_prompt,
+                 "total_completion_tokens": total_completion,
+                 "total_tokens": total_tokens,
+                 "token_usage_log": token_usage_log})
 
     return {
         "report_id": report_id,
@@ -437,4 +655,5 @@ async def generate_report(
         "sections": sections,
         "evidence_count": len(all_chunks),
         "evidence_sources": sorted(source_set),
+        "token_usage": token_usage_log,
     }
