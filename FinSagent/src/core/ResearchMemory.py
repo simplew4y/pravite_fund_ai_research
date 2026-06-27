@@ -240,6 +240,34 @@ class ResearchMemory(MemoryManager):
         finally:
             conn.close()
 
+        # ── Phase 2: 文件系统写入 (不阻塞) ──
+        try:
+            # 格式化回答尾部附加引用
+            if citations and cit_ids:
+                cit_lines = ["\n\n**引用：**"]
+                for i, c in enumerate(citations):
+                    display = c.get("display") or c.get("doc_id", "")
+                    if c.get("page"):
+                        display += f" p.{c['page']}"
+                    cit_lines.append(f"- {cit_ids[i]}: {display}")
+                answer_display = answer + "\n".join(cit_lines)
+            else:
+                answer_display = answer
+
+            self.append_session_message(
+                session_id, "user", question,
+                metadata={"message_id": msg_user_id},
+            )
+            self.append_session_message(
+                session_id, "assistant", answer_display,
+                metadata={
+                    "message_id": msg_asst_id,
+                    "citation_ids": cit_ids,
+                },
+            )
+        except Exception:
+            pass  # 文件系统写入失败不阻塞
+
         return {"ok": True, "message_id": msg_asst_id, "citation_ids": cit_ids}
 
     # ── 查询 ───────────────────────────────────────

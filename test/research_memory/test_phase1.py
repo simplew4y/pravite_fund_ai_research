@@ -134,3 +134,40 @@ class TestPhase1SqliteCore:
 
         trail = mm2.get_audit("sess_test_001")
         assert len(trail) > 0
+
+    # ── Phase 2: 文件系统 ──
+
+    def test_messages_jsonl_exists(self, mm, sample_turn):
+        """写入后 messages.jsonl 存在且有 2 条消息。"""
+        mm.record_turn(**sample_turn)
+        msgs = mm.get_session_messages("sess_test_001")
+        assert len(msgs) == 2
+        assert msgs[0]["role"] == "user"
+        assert msgs[1]["role"] == "assistant"
+
+    def test_content_md_exists(self, mm, sample_turn):
+        """写入后 content.md 存在且包含问答内容。"""
+        mm.record_turn(**sample_turn)
+        content = mm.read_memory("fin://sessions/sess_test_001", "L2")
+        assert "极氪" in content
+        assert "15.2%" in content
+
+    def test_content_md_has_citations(self, mm, sample_turn):
+        """content.md 中包含引用信息。"""
+        mm.record_turn(**sample_turn)
+        content = mm.read_memory("fin://sessions/sess_test_001", "L2")
+        assert "引用" in content
+        assert "年报.pdf" in content
+
+    def test_overview_md_exists(self, mm, sample_turn):
+        """写入后 .overview.md 存在。"""
+        mm.record_turn(**sample_turn)
+        session_path = mm._uri_to_path("fin://sessions/sess_test_001")
+        overview = (session_path / ".overview.md").read_text(encoding="utf-8")
+        assert "极氪" in overview or "15.2%" in overview
+
+    def test_abstract_md_exists(self, mm, sample_turn):
+        """写入后 .abstract.md 存在。"""
+        mm.record_turn(**sample_turn)
+        abstract = mm.read_memory("fin://sessions/sess_test_001", "L0")
+        assert len(abstract) > 0
