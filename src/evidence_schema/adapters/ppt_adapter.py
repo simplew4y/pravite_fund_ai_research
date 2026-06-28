@@ -1,13 +1,12 @@
-"""PDF parsed blocks -> pdf_page_section evidence.
+"""PPT parsed blocks -> ppt_slide evidence.
 
-Expected parsed block (produced by a PDF parser such as mineru, not here):
+Expected parsed block (produced by a PPT parser such as python-pptx):
     {
-      "page_no": 42,                # or "page" / "page_index"
-      "section": "Management Discussion",
-      "text": "The gross margin decreased primarily due to ...",
-      "bbox": [10, 120, 580, 720],
-      "paragraph_no": 18,           # or "paragraph"
-      "block_type": "paragraph"
+      "slide_no": 12,               # or "slide"
+      "shape_id": "title 1",        # optional, or "shape"
+      "text": "Zeekr targets 25% gross margin by 2026.",
+      "notes": "speaker note ...",  # optional, or "note"
+      "block_type": "title"         # optional
     }
 
 Upstream field names are not finalized, so each field is read through a set
@@ -22,8 +21,8 @@ from ..schema import Evidence, EvidenceLocation, EvidenceType
 from .base import AdapterContext, BaseEvidenceAdapter, pick
 
 
-class PdfEvidenceAdapter(BaseEvidenceAdapter):
-    evidence_type = EvidenceType.PDF_PAGE_SECTION.value
+class PptEvidenceAdapter(BaseEvidenceAdapter):
+    evidence_type = EvidenceType.PPT_SLIDE.value
 
     def adapt(
         self,
@@ -37,17 +36,21 @@ class PdfEvidenceAdapter(BaseEvidenceAdapter):
                 continue
             location = EvidenceLocation(
                 evidence_id="",
-                file_name=pick(block, "file_name", "file") or ctx.file_name,
-                page_no=pick(block, "page_no", "page", "page_index"),
-                section=pick(block, "section"),
-                paragraph_no=pick(block, "paragraph_no", "paragraph"),
-                bbox_json=pick(block, "bbox", "bbox_json"),
+                file_name=pick(block, "file", "file_name") or ctx.file_name,
+                slide_no=pick(block, "slide_no", "slide"),
+                shape_id=pick(block, "shape_id", "shape"),
             )
+            content_json: dict[str, Any] = {}
+            notes = pick(block, "notes", "note")
+            if notes:
+                content_json["notes"] = notes
             metadata: dict[str, Any] = {}
             block_type = pick(block, "block_type")
             if block_type:
                 metadata["block_type"] = block_type
             evidences.append(
-                self._build_evidence(ctx, text, location, metadata=metadata)
+                self._build_evidence(
+                    ctx, text, location, content_json=content_json, metadata=metadata
+                )
             )
         return evidences

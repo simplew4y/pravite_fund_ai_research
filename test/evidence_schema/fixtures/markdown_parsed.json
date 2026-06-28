@@ -1,0 +1,19 @@
+[
+  {
+    "heading": "毛利率趋势",
+    "text": "近三年毛利率从 19% 降至 16.5%。",
+    "frontmatter": {"company": "zeekr"},
+    "tags": ["#估值", "#毛利率"],
+    "wikilinks": ["[[Zeekr DCF]]"],
+    "block_type": "paragraph"
+  },
+  {
+    "heading": "结论",
+    "text": "维持中性评级。",
+    "block_type": "paragraph"
+  },
+  {
+    "heading": "空块",
+    "text": ""
+  }
+]

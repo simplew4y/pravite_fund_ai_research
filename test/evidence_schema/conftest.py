@@ -32,6 +32,31 @@ def excel_blocks():
 
 
 @pytest.fixture
+def ppt_blocks():
+    return _load("ppt_parsed.json")
+
+
+@pytest.fixture
+def word_blocks():
+    return _load("word_parsed.json")
+
+
+@pytest.fixture
+def markdown_blocks():
+    return _load("markdown_parsed.json")
+
+
+@pytest.fixture
+def qa_blocks():
+    return _load("qa_parsed.json")
+
+
+@pytest.fixture
+def memo_blocks():
+    return _load("memo_parsed.json")
+
+
+@pytest.fixture
 def outputs_dir():
     OUTPUTS.mkdir(parents=True, exist_ok=True)
     return OUTPUTS

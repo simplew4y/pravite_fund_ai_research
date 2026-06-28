@@ -9,9 +9,13 @@ from evidence_schema import (
     Evidence,
     EvidenceLocation,
     EvidenceValidationError,
+    MarkdownEvidenceAdapter,
     PdfEvidenceAdapter,
+    PptEvidenceAdapter,
+    WordEvidenceAdapter,
     normalize_evidence,
     normalize_many,
+    render_citation_display,
     validate_evidence,
 )
 
@@ -77,3 +81,90 @@ def test_validation_requires_location():
     )
     with pytest.raises(EvidenceValidationError):
         normalize_evidence(bad)
+
+
+def _ctx_for(file_name: str):
+    return AdapterContext(
+        doc_id="doc_001", version_id="ver_001", file_name=file_name
+    )
+
+
+def test_ppt_blocks_become_unified_evidence(ppt_blocks):
+    ctx = _ctx_for("Investor_Day.pptx")
+    evidences = normalize_many(PptEvidenceAdapter().adapt(ppt_blocks, ctx))
+    assert len(evidences) == 2  # blank slide dropped
+    e = next(e for e in evidences if e.location.slide_no == 12)
+    assert e.evidence_type == "ppt_slide"
+    assert e.content_json["notes"].startswith("Driven by scale")
+    assert render_citation_display(e) == "Investor_Day.pptx, slide 12"
+
+
+def test_word_blocks_keep_heading_path_and_labels(word_blocks):
+    ctx = _ctx_for("meeting_minutes.docx")
+    evidences = normalize_many(WordEvidenceAdapter().adapt(word_blocks, ctx))
+    assert len(evidences) == 2  # blank paragraph dropped
+    e = next(e for e in evidences if e.location.paragraph_no == 18)
+    assert e.evidence_type == "word_section"
+    assert e.location.location_json["heading_path"] == ["管理层问答", "毛利率"]
+    assert e.metadata_json["labels"] == ["观点"]
+    assert (
+        render_citation_display(e)
+        == "meeting_minutes.docx, 管理层问答 > 毛利率, paragraph 18"
+    )
+
+
+def test_markdown_blocks_keep_obsidian_fields(markdown_blocks):
+    ctx = _ctx_for("zeekr_profitability.md")
+    evidences = normalize_many(MarkdownEvidenceAdapter().adapt(markdown_blocks, ctx))
+    assert len(evidences) == 2  # empty block dropped
+    e = next(e for e in evidences if e.location.heading == "毛利率趋势")
+    assert e.evidence_type == "markdown_block"
+    assert e.location.location_json["tags"] == ["#估值", "#毛利率"]
+    assert e.location.location_json["frontmatter"] == {"company": "zeekr"}
+    assert e.location.location_json["wikilinks"] == ["[[Zeekr DCF]]"]
+    assert render_citation_display(e) == "zeekr_profitability.md, #毛利率趋势"
+
+
+# --- field alias contract tests (upstream field names not finalized) ---------
+
+
+def test_pdf_page_alias_maps_to_page_no():
+    ctx = _ctx_for("a.pdf")
+    block = {"page": 7, "section": "MD&A", "text": "gross margin fell"}
+    e = normalize_many(PdfEvidenceAdapter().adapt([block], ctx))[0]
+    assert e.location.page_no == 7
+    assert render_citation_display(e) == "a.pdf, p.7, MD&A"
+
+
+def test_ppt_slide_alias_maps_to_slide_no():
+    ctx = _ctx_for("d.pptx")
+    block = {"slide": 5, "text": "25% gross margin target", "note": "scale effects"}
+    e = normalize_many(PptEvidenceAdapter().adapt([block], ctx))[0]
+    assert e.location.slide_no == 5
+    assert e.content_json["notes"] == "scale effects"
+    assert render_citation_display(e) == "d.pptx, slide 5"
+
+
+def test_word_heading_and_paragraph_aliases():
+    ctx = _ctx_for("m.docx")
+    block = {"headings": ["管理层问答", "毛利率"], "paragraph": 18, "text": "承压"}
+    e = normalize_many(WordEvidenceAdapter().adapt([block], ctx))[0]
+    assert e.location.paragraph_no == 18
+    assert e.location.location_json["heading_path"] == ["管理层问答", "毛利率"]
+    assert render_citation_display(e) == "m.docx, 管理层问答 > 毛利率, paragraph 18"
+
+
+def test_markdown_alias_fields():
+    ctx = _ctx_for("z.md")
+    block = {
+        "heading": "毛利率趋势",
+        "text": "...",
+        "front_matter": {"company": "zeekr"},
+        "tag": ["#估值"],
+        "links": ["[[Zeekr DCF]]"],
+    }
+    e = normalize_many(MarkdownEvidenceAdapter().adapt([block], ctx))[0]
+    assert e.location.location_json["frontmatter"] == {"company": "zeekr"}
+    assert e.location.location_json["tags"] == ["#估值"]
+    assert e.location.location_json["wikilinks"] == ["[[Zeekr DCF]]"]
+    assert render_citation_display(e) == "z.md, #毛利率趋势"

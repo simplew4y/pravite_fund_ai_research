@@ -1,0 +1,22 @@
+[
+  {
+    "memo_id": "memo_001",
+    "section_id": "thesis",
+    "heading": "核心观点",
+    "content": "极氪具备规模化降本能力，长期毛利率有上行空间。",
+    "section_type": "thesis"
+  },
+  {
+    "memo_id": "memo_001",
+    "section_id": "valuation",
+    "heading": "估值假设摘要",
+    "content": "DCF 目标价基于 12% 折现率与 3% 永续增长。",
+    "section_type": "valuation"
+  },
+  {
+    "memo_id": "memo_001",
+    "section_id": "blank",
+    "heading": "空段",
+    "content": ""
+  }
+]

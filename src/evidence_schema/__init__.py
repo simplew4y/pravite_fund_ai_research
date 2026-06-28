@@ -11,8 +11,14 @@ from .adapters import (
     AdapterContext,
     BaseEvidenceAdapter,
     ExcelEvidenceAdapter,
+    MarkdownEvidenceAdapter,
+    MemoEvidenceAdapter,
     PdfEvidenceAdapter,
+    PptEvidenceAdapter,
+    QaEvidenceAdapter,
+    WordEvidenceAdapter,
 )
+from .citation_gate import CitationGateResult, check_citation_quality
 from .display import render_citation_display
 from .ids import make_citation_id, make_evidence_id, make_location_id, now_iso
 from .normalizer import (
@@ -57,12 +63,20 @@ __all__ = [
     "BaseEvidenceAdapter",
     "PdfEvidenceAdapter",
     "ExcelEvidenceAdapter",
+    "PptEvidenceAdapter",
+    "WordEvidenceAdapter",
+    "MarkdownEvidenceAdapter",
+    "QaEvidenceAdapter",
+    "MemoEvidenceAdapter",
     "ADAPTER_REGISTRY",
     # normalizer
     "validate_evidence",
     "normalize_evidence",
     "normalize_many",
     "EvidenceValidationError",
+    # citation gate
+    "check_citation_quality",
+    "CitationGateResult",
     # display + repository
     "render_citation_display",
     "build_citation",

@@ -8,14 +8,17 @@ optional enhancements.
 Expected block (canonical, matches the retrieval-time evidence chain):
     {
       "file": "Tesla_valuation_model.xlsx",   # or "file_name"
-      "sheet": "DCF",
-      "range": "B10:H20",
+      "sheet": "DCF",                          # or "sheet_name"
+      "range": "B10:H20",                      # or "cell_range"
       "cell": "E12",
       "value": "16.5%",
       "formula": "=E11/E10",
       "number_format": "0.0%",                 # optional
-      "upstream_cells": ["E10", "E11"]         # optional
+      "upstream_cells": ["E10", "E11"]         # optional, never required
     }
+
+Upstream field names are not finalized, so each field is read through a set
+of aliases (see ASSUMPTIONS in test/evidence_schema/README.md).
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..schema import Evidence, EvidenceLocation, EvidenceType
-from .base import AdapterContext, BaseEvidenceAdapter
+from .base import AdapterContext, BaseEvidenceAdapter, pick
 
 
 class ExcelEvidenceAdapter(BaseEvidenceAdapter):
@@ -36,27 +39,27 @@ class ExcelEvidenceAdapter(BaseEvidenceAdapter):
     ) -> list[Evidence]:
         evidences: list[Evidence] = []
         for block in parsed_blocks:
-            sheet = block.get("sheet")
-            cell = block.get("cell")
-            value = block.get("value")
-            formula = block.get("formula")
+            sheet = pick(block, "sheet", "sheet_name")
+            cell = pick(block, "cell")
+            value = pick(block, "value")
+            formula = pick(block, "formula")
             content_text = self._content_text(sheet, cell, value, formula)
             content_json: dict[str, Any] = {
                 "value": value,
                 "formula": formula,
             }
-            number_format = block.get("number_format")
+            number_format = pick(block, "number_format")
             if number_format is not None:
                 content_json["number_format"] = number_format
-            upstream_cells = block.get("upstream_cells")
+            upstream_cells = pick(block, "upstream_cells")
             if upstream_cells:
                 content_json["upstream_cells"] = upstream_cells
             location = EvidenceLocation(
                 evidence_id="",
-                file_name=block.get("file") or block.get("file_name") or ctx.file_name,
+                file_name=pick(block, "file", "file_name") or ctx.file_name,
                 sheet_name=sheet,
                 cell=cell,
-                cell_range=block.get("range"),
+                cell_range=pick(block, "range", "cell_range"),
                 formula=formula,
                 location_json={"value": value} if value is not None else {},
             )

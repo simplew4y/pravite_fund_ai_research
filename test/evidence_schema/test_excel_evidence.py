@@ -89,3 +89,46 @@ def test_excel_canonical_block_file_field_and_no_enhancements():
     # absent optional enhancements -> keys simply not present, still valid
     assert "upstream_cells" not in e12.content_json
     assert "number_format" not in e12.content_json
+
+
+def test_excel_file_and_file_name_are_interchangeable():
+    """Upstream may emit `file` or `file_name`; both must resolve identically."""
+    base = {
+        "sheet": "DCF",
+        "range": "B10:H20",
+        "cell": "E12",
+        "value": "16.5%",
+        "formula": "=E11/E10",
+    }
+    with_file = ExcelEvidenceAdapter().adapt([{**base, "file": "m.xlsx"}], _ctx())[0]
+    with_file_name = ExcelEvidenceAdapter().adapt(
+        [{**base, "file_name": "m.xlsx"}], _ctx()
+    )[0]
+    assert with_file.location.file_name == "m.xlsx"
+    assert with_file_name.location.file_name == "m.xlsx"
+    # same logical cell -> same deterministic evidence_id regardless of alias
+    assert with_file.evidence_id == with_file_name.evidence_id
+
+
+def test_excel_core_field_aliases_resolve():
+    """`sheet_name` / `cell_range` aliases map onto the canonical fields."""
+    block = {
+        "file_name": "m.xlsx",
+        "sheet_name": "DCF",
+        "cell_range": "B10:H20",
+        "cell": "E12",
+        "value": "16.5%",
+        "formula": "=E11/E10",
+    }
+    e12 = normalize_many(ExcelEvidenceAdapter().adapt([block], _ctx()))[0]
+    assert e12.location.sheet_name == "DCF"
+    assert e12.location.cell_range == "B10:H20"
+    assert render_citation_display(e12) == "m.xlsx, DCF!E12, formula = E11/E10"
+
+
+def test_excel_upstream_cells_never_required():
+    """A minimal block without upstream_cells/number_format still validates."""
+    block = {"file": "m.xlsx", "sheet": "DCF", "cell": "E12", "value": "1"}
+    e12 = normalize_many(ExcelEvidenceAdapter().adapt([block], _ctx()))[0]
+    assert "upstream_cells" not in e12.content_json
+    assert e12.content_json["value"] == "1"

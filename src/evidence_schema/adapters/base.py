@@ -13,6 +13,19 @@ from ..ids import make_evidence_id, make_location_id, now_iso
 from ..schema import Evidence, EvidenceLocation
 
 
+def pick(block: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    """Return the first present, non-None value among alias keys.
+
+    Upstream parser field names are not finalized (see test README), so
+    adapters look up several aliases (e.g. page / page_no / page_index)
+    instead of hard-coding one key.
+    """
+    for key in keys:
+        if key in block and block[key] is not None:
+            return block[key]
+    return default
+
+
 @dataclass
 class AdapterContext:
     """Stable identity + shared metadata injected by the ingest pipeline."""
