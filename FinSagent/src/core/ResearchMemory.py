@@ -272,6 +272,174 @@ class ResearchMemory(MemoryManager):
 
     # ── 查询 ───────────────────────────────────────
 
+    def retrieve(
+        self, query: str, top_k: int = 5
+    ) -> List[Dict[str, Any]]:
+        """两层检索（精确 + 语义）并合并排序。
+
+        Args:
+            query: 查询文本
+            top_k: 返回条数
+
+        Returns:
+            [{content, score, tier, source}, ...]
+        """
+        exact = self._search_exact(query, top_k * 2)
+        semantic = self._search_semantic(query, top_k * 2)
+        return self._merge(exact, semantic, top_k)
+
+    def retrieve_for_prompt(
+        self, query: str, top_k: int = 5
+    ) -> str:
+        """检索并格式化为 prompt 注入段。
+
+        Returns:
+            "[Related History]\\n📌 xxx\\n🔗 xxx" 或 ""（无结果）
+        """
+        items = self.retrieve(query, top_k)
+        if not items:
+            return ""
+
+        parts = ["[Related History]"]
+        for item in items:
+            prefix = "📌" if item["tier"] == "exact" else "🔗"
+            parts.append(f"{prefix} {item['content']}")
+        return "\n".join(parts)
+
+    # ── 内部检索 ───────────────────────────────────
+
+    def _search_exact(
+        self, query: str, limit: int
+    ) -> List[Dict[str, Any]]:
+        """FTS5 + facts 表精确检索。"""
+        results: List[Dict[str, Any]] = []
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+
+        try:
+            # facts 表精确匹配
+            cur = conn.execute(
+                """SELECT entity, metric, value, unit, period, source_ref, created_at
+                   FROM facts
+                   WHERE metric LIKE ? OR entity = ?
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (f"%{query}%", self._extract_entity(query), limit),
+            )
+            for r in cur.fetchall():
+                results.append({
+                    "content": (
+                        f"{r['entity']} {r['metric']}: "
+                        f"{r['value']}{r['unit']} ({r['period']})"
+                    ),
+                    "score": 1.0,
+                    "tier": "exact",
+                    "source": r["source_ref"] or f"fact/{r['created_at'][:10]}",
+                })
+
+            # FTS5 全文匹配（memory_fts 由 MemoryManager 维护）
+            words = [w for w in query.split() if w.strip()]
+            if words:
+                fts_query = " OR ".join(f"{w}*" for w in words)
+                cur = conn.execute(
+                    """SELECT uri, abstract
+                       FROM memory_fts
+                       WHERE memory_fts MATCH ?
+                       ORDER BY rank
+                       LIMIT ?""",
+                    (fts_query, limit),
+                )
+                for r in cur.fetchall():
+                    results.append({
+                        "content": r["abstract"] or r["uri"],
+                        "score": 0.95,
+                        "tier": "exact",
+                        "source": r["uri"],
+                    })
+        except Exception:
+            pass  # FTS5 语法错误忽略
+        finally:
+            conn.close()
+
+        return results
+
+    def _search_semantic(
+        self, query: str, limit: int
+    ) -> List[Dict[str, Any]]:
+        """语义检索（Phase 5 实现）。"""
+        if not self._embed:
+            return []
+        q_emb = self._embed(query)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT uri, abstract, embedding FROM memory_index "
+            "WHERE embedding IS NOT NULL"
+        ).fetchall()
+        conn.close()
+
+        scored = []
+        for r in rows:
+            if not r["embedding"]:
+                continue
+            emb = json.loads(r["embedding"])
+            score = self._cosine_similarity(q_emb, emb)
+            if score > 0.3:
+                scored.append({
+                    "content": r["abstract"] or r["uri"],
+                    "score": score,
+                    "tier": "semantic",
+                    "source": r["uri"],
+                })
+
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:limit]
+
+    @staticmethod
+    def _merge(
+        exact: List[Dict[str, Any]],
+        semantic: List[Dict[str, Any]],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        """精确优先合并，语义结果降权。"""
+        seen: set = set()
+        merged: List[Dict[str, Any]] = []
+
+        for item in exact:
+            key = item["source"][:60]
+            if key not in seen:
+                merged.append(item)
+                seen.add(key)
+
+        for item in semantic:
+            key = item["source"][:60]
+            if key not in seen and len(merged) < top_k * 2:
+                item["score"] *= 0.7
+                merged.append(item)
+                seen.add(key)
+
+        merged.sort(key=lambda x: x["score"], reverse=True)
+        return merged[:top_k]
+
+    @staticmethod
+    def _extract_entity(query: str) -> str:
+        """简单实体提取（P0 版，后续可用 LLM）。"""
+        import re
+        known = re.findall(
+            r"极氪|蔚来|小鹏|理想|比亚迪|特斯拉|宁德时代|腾讯|阿里|茅台|招行|平安",
+            query,
+        )
+        return known[0] if known else ""
+
+    @staticmethod
+    def _cosine_similarity(
+        a: List[float], b: List[float]
+    ) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        na = sum(x * x for x in a) ** 0.5
+        nb = sum(x * x for x in b) ** 0.5
+        return dot / (na * nb) if na * nb else 0
+
     def get_facts(
         self,
         entity: str,

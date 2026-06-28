@@ -171,3 +171,52 @@ class TestPhase1SqliteCore:
         mm.record_turn(**sample_turn)
         abstract = mm.read_memory("fin://sessions/sess_test_001", "L0")
         assert len(abstract) > 0
+
+    # ── Phase 3: 检索 ──
+
+    def test_retrieve_facts_exact(self, mm, sample_turn):
+        """facts 表精确匹配优先。"""
+        mm.record_turn(**sample_turn)
+        items = mm.retrieve("毛利率")
+        assert len(items) > 0
+        assert items[0]["tier"] == "exact"
+        assert "15.2%" in items[0]["content"]
+
+    def test_retrieve_facts_by_entity(self, mm, sample_turn):
+        """按 entity 名称检索。"""
+        mm.record_turn(**sample_turn)
+        items = mm.retrieve("极氪")
+        assert len(items) > 0
+
+    def test_retrieve_empty(self, mm):
+        """无匹配返回空列表。"""
+        items = mm.retrieve("不存在的关键词")
+        assert items == []
+
+    def test_retrieve_top_k(self, mm, sample_turn):
+        """top_k 控制返回数量。"""
+        mm.record_turn(**sample_turn)
+        mm.record_turn(**dict(sample_turn, session_id="sess_002",
+                              question="蔚来毛利率？", answer="12.1%",
+                              facts=[{"entity": "蔚来", "metric": "毛利率", "value": "12.1%", "period": "FY2024"}]))
+        items = mm.retrieve("毛利率", top_k=1)
+        assert len(items) == 1
+
+    def test_retrieve_for_prompt_format(self, mm, sample_turn):
+        """retrieve_for_prompt 返回正确格式。"""
+        mm.record_turn(**sample_turn)
+        prompt = mm.retrieve_for_prompt("毛利率")
+        assert prompt.startswith("[Related History]")
+        assert "📌" in prompt
+
+    def test_retrieve_for_prompt_empty(self, mm):
+        """无匹配返回空字符串。"""
+        prompt = mm.retrieve_for_prompt("不存在")
+        assert prompt == ""
+
+    def test_retrieve_facts_before_fts(self, mm, sample_turn):
+        """facts 表结果排在 FTS5 前面。"""
+        mm.record_turn(**sample_turn)
+        items = mm.retrieve("毛利率")
+        if len(items) >= 2:
+            assert items[0]["score"] >= items[1]["score"]
