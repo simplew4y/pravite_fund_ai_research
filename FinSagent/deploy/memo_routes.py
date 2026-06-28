@@ -268,8 +268,19 @@ async def serve_report_pdf(ticker: str, filename: str):
                   or os.path.getmtime(pdf_path) < os.path.getmtime(html_path))
     if need_regen:
         try:
-            from weasyprint import HTML
-            HTML(filename=html_path).write_pdf(pdf_path)
+            from weasyprint import HTML, CSS
+            # Read HTML and inject print-specific overrides
+            with open(html_path, "r", encoding="utf-8") as _f:
+                html_content = _f.read()
+
+            # Remove external resource links that timeout in WeasyPrint
+            import re as _re
+            html_content = _re.sub(r'<script[^>]*cdn\.tailwindcss\.com[^>]*></script>', '', html_content)
+            html_content = _re.sub(r'<link[^>]*fonts\.googleapis\.com[^>]*/>', '', html_content)
+
+            # Use base_url so relative image paths resolve correctly
+            base_url = f"file://{os.path.dirname(html_path)}/"
+            HTML(string=html_content, base_url=base_url).write_pdf(pdf_path)
             logger.info(f"[Memo] PDF generated: {pdf_path}")
         except Exception as e:
             logger.error(f"[Memo] PDF generation failed: {e}")

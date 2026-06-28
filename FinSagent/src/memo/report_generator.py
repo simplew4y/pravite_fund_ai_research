@@ -183,7 +183,9 @@ SECTION_DEFINITIONS = [
 
 
 def _format_evidence_for_prompt(chunks: List[Dict[str, Any]], max_chars: int = 12000) -> str:
-    """Format retrieved chunks into a text block for the LLM prompt."""
+    """Format retrieved chunks into a text block for the LLM prompt.
+    Each chunk is labeled [Evidence N] so the LLM can cite it.
+    """
     parts = []
     total = 0
     for i, chunk in enumerate(chunks, 1):
@@ -206,12 +208,87 @@ def _format_evidence_for_prompt(chunks: List[Dict[str, Any]], max_chars: int = 1
     return "\n---\n".join(parts) if parts else "No evidence retrieved."
 
 
+# Suffix appended to every section prompt to enforce inline citations
+_CITATION_INSTRUCTION = (
+    "\n\nIMPORTANT: You MUST cite your sources inline using [1], [2], etc. "
+    "after every factual claim, data point, or conclusion derived from the evidence. "
+    "For example: 'NVIDIA's revenue grew 262% [1] driven by data center demand [2].' "
+    "Place the citation immediately after the relevant sentence or data point. "
+    "Every paragraph must contain at least one citation."
+)
+
+
+def _build_sources_list(chunks: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Build a list of source references from evidence chunks.
+    Returns list of {index, source, page, date, snippet}.
+    """
+    sources = []
+    for i, chunk in enumerate(chunks, 1):
+        meta = chunk.get("metadata", {})
+        # Try multiple source field names used across different RAG backends
+        source = (
+            meta.get("source_file")
+            or meta.get("filename")
+            or meta.get("pageindex_doc_name")
+            or meta.get("doc_id")
+            or meta.get("source")
+            or "unknown"
+        )
+        # For page: try multiple field names
+        page = (
+            meta.get("page_idx")
+            or meta.get("page_number")
+            or meta.get("pageindex_node_page")
+            or ""
+        )
+        date = (
+            meta.get("date_published")
+            or meta.get("published_date")
+            or ""
+        )
+        snippet = chunk.get("page_content", "").strip()[:300]
+        sources.append({
+            "index": i,
+            "source": source,
+            "page": str(page) if page else "",
+            "date": str(date) if date else "",
+            "snippet": snippet,
+        })
+    return sources
+
+
+def _process_citations(text: str, chunks: List[Dict[str, Any]]) -> tuple:
+    """Post-process LLM output to convert [EN] citations to HTML footnotes.
+    Returns (html_text_with_footnotes, sources_list).
+    """
+    sources = _build_sources_list(chunks)
+
+    # Convert [1], [2] etc. to superscript footnote links
+    # Also handle legacy [E1] format from older prompts
+    def _replace_cite(m):
+        raw = m.group(1)
+        nums = [n.strip().lstrip("E") for n in raw.split(",") if n.strip()]
+        supers = []
+        for n in nums:
+            n = n.strip()
+            if n.isdigit():
+                supers.append(f'<sup class="citation-ref" data-evidence="{n}">[{n}]</sup>')
+        return "".join(supers)
+
+    # Match [1], [2], [1,2], [1, 2] and also legacy [E1], [E1,E2]
+    processed = re.sub(r'\[E?(\d+(?:\s*,\s*E?\d+)*)\]', _replace_cite, text)
+
+    return processed, sources
+
+
 async def _retrieve_evidence(
     rag: Any,
     query: str,
     query_time: datetime,
 ) -> List[Dict[str, Any]]:
-    """Retrieve evidence chunks from RAG."""
+    """Retrieve evidence chunks from RAG.
+    Falls back to unranked retrieval if the reranker is unavailable.
+    """
     loop = asyncio.get_running_loop()
 
     def _do_retrieve():
@@ -219,13 +296,31 @@ async def _retrieve_evidence(
             result = rag.retrieve(query, query_time)
             if isinstance(result, dict):
                 return result.get("final_chunks", [])
-            # legacy tuple: (context, chunks, time_info)
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 return result[1]
             return []
         except Exception as e:
             logger.warning(f"Evidence retrieval failed for query '{query[:50]}...': {e}")
-            return []
+            # Fallback: retrieve directly from the retriever without reranking
+            try:
+                retriever = rag.rag_manager._retrievers[0]
+                raw_chunks = retriever.invoke(query)
+                # Convert to standard dict format if needed
+                fallback = []
+                for ch in raw_chunks[:10]:
+                    if isinstance(ch, dict):
+                        fallback.append(ch)
+                    else:
+                        # LangChain Document object
+                        fallback.append({
+                            "page_content": getattr(ch, "page_content", str(ch)),
+                            "metadata": getattr(ch, "metadata", {}),
+                        })
+                logger.info(f"Fallback retrieval returned {len(fallback)} chunks (no rerank)")
+                return fallback
+            except Exception as e2:
+                logger.error(f"Fallback retrieval also failed: {e2}")
+                return []
 
     return await loop.run_in_executor(None, _do_retrieve)
 
@@ -400,6 +495,7 @@ async def generate_report(
 
     # ── Step 1: Retrieve evidence and generate each section ─────────────────
     sections: Dict[str, str] = {}
+    section_sources: Dict[str, List[Dict[str, str]]] = {}
     all_chunks: List[Dict[str, Any]] = []
 
     for idx, sec_def in enumerate(SECTION_DEFINITIONS):
@@ -424,9 +520,22 @@ async def generate_report(
             ticker=company_ticker,
             evidence=evidence_text,
         )
+        # Only add citation instruction when there are actual evidence chunks
+        if chunks:
+            prompt += _CITATION_INSTRUCTION
+        else:
+            prompt += "\n\nNote: No evidence was retrieved for this section. Do NOT use [1], [2] style citations. Clearly state that evidence was not available."
 
         logger.info(f"[Memo]   Generating text for '{key}'...")
         text, usage = await _generate_section_text(session_manager, prompt)
+
+        # Post-process: convert [EN] citations to HTML footnotes, build sources list
+        processed_text, sources = _process_citations(text, chunks)
+        # If no chunks were retrieved, strip any hallucinated citations
+        if not chunks:
+            processed_text = re.sub(r'<sup class="citation-ref"[^>]*>\[\d+\]</sup>', '', processed_text)
+        section_sources[key] = sources
+
         if usage:
             token_usage_log.append({"section": key, **usage})
             await _emit({"type": "section_done", "section": key, "step": idx + 1,
@@ -441,11 +550,11 @@ async def generate_report(
                          "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
                          "prompt": prompt, "response": text})
         if not text:
-            text = f"Analysis for {company_name} is not available due to insufficient evidence."
+            processed_text = f"Analysis for {company_name} is not available due to insufficient evidence."
             logger.warning(f"[Memo]   Empty text for '{key}', using fallback")
 
-        sections[key] = text
-        logger.info(f"[Memo]   ✅ '{key}' generated ({len(text)} chars)")
+        sections[key] = processed_text
+        logger.info(f"[Memo]   ✅ '{key}' generated ({len(text)} chars, {len(sources)} sources)")
 
     # ── Step 2: Extract financial metrics from evidence via LLM ────────────
     logger.info("[Memo] Extracting financial metrics from evidence...")
@@ -610,6 +719,7 @@ async def generate_report(
         "closing_price_date": report_date,
         "logo_image_path": "",
         "report_generated_time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "section_sources": section_sources,
     }
 
     # ── Step 3: Render HTML using FinRobot professional template ────────────
@@ -633,6 +743,7 @@ async def generate_report(
         "sections": sections,
         "evidence_count": len(all_chunks),
         "evidence_sources": sorted(source_set),
+        "section_sources": section_sources,
         "token_usage": token_usage_log,
     }
     with open(meta_path, "w", encoding="utf-8") as f:
