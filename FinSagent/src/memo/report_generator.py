@@ -182,9 +182,48 @@ SECTION_DEFINITIONS = [
 ]
 
 
+def _html_table_to_text(html: str) -> str:
+    """Convert an HTML table to plain-text rows for LLM consumption.
+    Merges adjacent $ / number cells and produces 'label: value1 | value2' lines.
+    """
+    import re as _re
+    # Remove thead/tbody wrappers
+    html = _re.sub(r'</?(thead|tbody|table)\b[^>]*>', '', html)
+    # Split into rows
+    rows = _re.split(r'</?tr\b[^>]*>', html)
+    lines = []
+    for row in rows:
+        cells = _re.findall(r'<t[dh]\b[^>]*>(.*?)</t[dh]>', row, _re.DOTALL)
+        if not cells:
+            continue
+        # Clean cells
+        cells = [_re.sub(r'<[^>]+>', '', c).strip().replace('&nbsp;', ' ').replace('&amp;', '&') for c in cells]
+        # Merge "$" cells with the following number cell
+        merged = []
+        i = 0
+        while i < len(cells):
+            if cells[i] == '$' and i + 1 < len(cells):
+                merged.append(f"${cells[i+1]}")
+                i += 2
+            else:
+                merged.append(cells[i])
+                i += 1
+        # Skip empty rows
+        merged = [c for c in merged if c]
+        if merged:
+            label = merged[0]
+            values = merged[1:]
+            if values:
+                lines.append(f"{label}: {' | '.join(values)}")
+            else:
+                lines.append(label)
+    return "\n".join(lines)
+
+
 def _format_evidence_for_prompt(chunks: List[Dict[str, Any]], max_chars: int = 12000) -> str:
     """Format retrieved chunks into a text block for the LLM prompt.
     Each chunk is labeled [Evidence N] so the LLM can cite it.
+    HTML table chunks are converted to plain text for better LLM comprehension.
     """
     parts = []
     total = 0
@@ -194,6 +233,9 @@ def _format_evidence_for_prompt(chunks: List[Dict[str, Any]], max_chars: int = 1
         source = meta.get("source_file") or meta.get("source") or "unknown"
         page = meta.get("page_idx") or meta.get("page_number") or ""
         date = meta.get("date_published") or ""
+        # Convert HTML tables to readable text
+        if meta.get("content_type") == "table" and "<table" in content.lower():
+            content = _html_table_to_text(content)
         header = f"[Evidence {i}] Source: {source}"
         if page:
             header += f" | Page: {page}"
@@ -438,6 +480,317 @@ async def _extract_financial_metrics(
         return {}, {}, prompt, ''
 
 
+# ── Generic structured-JSON extraction helper ───────────────────────────────
+async def _extract_json(
+    session_manager: Any,
+    prompt: str,
+    max_tokens: int = 1024,
+) -> tuple:
+    """Call the LLM and parse its response as JSON.
+    Returns (parsed_obj_or_None, usage_dict, raw_text).
+    """
+    raw = ""
+    usage = {}
+    try:
+        resp = await session_manager.call_llm_async(
+            [{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=max_tokens,
+        )
+        raw = resp.choices[0].message.content.strip()
+        if hasattr(resp, "usage") and resp.usage:
+            usage = {
+                "prompt_tokens": resp.usage.prompt_tokens or 0,
+                "completion_tokens": resp.usage.completion_tokens or 0,
+                "total_tokens": resp.usage.total_tokens or 0,
+            }
+        # Strip markdown code fences
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[-1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+        raw = raw.strip()
+        # Extract the first JSON object/array if extra prose surrounds it
+        m = re.search(r'(\{.*\}|\[.*\])', raw, re.DOTALL)
+        json_str = m.group(1) if m else raw
+        return json.loads(json_str), usage, raw
+    except json.JSONDecodeError as e:
+        logger.warning(f"[Memo] JSON parse failed: {e}\nRaw: {raw[:200]}")
+        return None, usage, raw
+    except Exception as e:
+        logger.warning(f"[Memo] JSON extraction failed: {e}")
+        return None, usage, raw
+
+
+# ── Financial statements extraction ──────────────────────────────────────────
+_FINANCIAL_STATEMENTS_PROMPT = (
+    "You are a financial data extraction assistant. From the following evidence (drawn from "
+    "{company_name} ({ticker}) SEC filings such as 10-K/10-Q/8-K), extract ALL reported financial "
+    "statement line items that appear in the evidence. Prioritize the MOST RECENT annual or "
+    "quarterly figures. Use ONLY numbers that actually appear in the evidence. For each line "
+    "item, include the [Evidence N] number it came from as the citation.\n\n"
+    "Return ONLY a valid JSON object with this exact structure:\n"
+    "{{\n"
+    '  "period_current": "most recent period label (e.g. \\"FY2025\\" or \\"Q2 FY2026\\")",\n'
+    '  "period_prior": "prior period label (e.g. \\"FY2024\\" or \\"Q2 FY2025\\")",\n'
+    '  "income_statement": [\n'
+    '    {{"metric": "Revenue", "current": "$130.5B", "prior": "$60.9B", "citation": 1}},\n'
+    '    {{"metric": "Cost of Revenue", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Gross Profit", "current": "...", "prior": "...", "citation": 2}},\n'
+    '    {{"metric": "Operating Expenses", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Operating Income", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Net Income", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Diluted EPS", "current": "...", "prior": "...", "citation": 0}}\n'
+    "  ],\n"
+    '  "cash_flow": [\n'
+    '    {{"metric": "Operating Cash Flow", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Capital Expenditures", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Free Cash Flow", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Cash & Equivalents", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Total Debt", "current": "...", "prior": "...", "citation": 0}},\n'
+    '    {{"metric": "Stockholders Equity", "current": "...", "prior": "...", "citation": 0}}\n'
+    "  ],\n"
+    '  "key_ratios": {{\n'
+    '    "revenue_growth": "YoY % change", "gross_margin": "gross profit / revenue %",\n'
+    '    "operating_margin": "operating income / revenue %", "net_margin": "net income / revenue %",\n'
+    '    "roe": "net income / stockholders equity %", "eps": "diluted EPS $",\n'
+    '    "market_cap": "...", "fwd_pe": "...", "pb_ratio": "...",\n'
+    '    "dividend_yield": "...", "week_52_range": "...", "share_price": "...", "target_price": "..."\n'
+    "  }}\n"
+    "}}\n\n"
+    "IMPORTANT: Extract as many line items as the evidence supports. Look carefully for cash flow "
+    "statement data (operating cash flow, capital expenditures, free cash flow), balance sheet "
+    "items (cash, debt, stockholders equity), and calculated ratios (ROE = net income / "
+    "stockholders equity, margins = line item / revenue, net margin = net income / revenue). "
+    "Include any metric where the evidence provides a number, even if you must compute a ratio "
+    "from two reported numbers. Do NOT use \"...\" or \"unknown\" as values — only put actual "
+    "numbers or omit the field entirely.\n\n"
+    "Omit any line item or ratio where the evidence has NO value (do not invent numbers). "
+    "Set citation to the [Evidence N] integer, or 0 if unknown.\n\n"
+    "Evidence:\n{evidence}"
+)
+
+
+async def _extract_financial_statements(
+    session_manager: Any,
+    company_name: str,
+    company_ticker: str,
+    chunks: List[Dict[str, Any]],
+) -> tuple:
+    """Extract structured financial statement data from evidence.
+    Returns (data_dict, usage, prompt, raw).
+    """
+    # Prioritize chunks that contain financial-statement keywords so the LLM
+    # sees the most relevant evidence even within the char budget.
+    fin_keywords = (
+        "revenue", "income", "gross profit", "operating", "net income", "eps",
+        "cash flow", "operating cash", "free cash", "capital expend",
+        "stockholders equity", "total debt", "balance sheet", "fiscal",
+        "million", "billion", "$", "margin", "roe", "assets", "liabilities",
+    )
+    def _fin_score(chunk):
+        text = (chunk.get("page_content", "") or "").lower()
+        meta = chunk.get("metadata", {})
+        # Table chunks contain structured financial data — give them priority
+        is_table = meta.get("content_type") == "table"
+        kw_score = sum(1 for kw in fin_keywords if kw in text)
+        return (10 if is_table else 0) + kw_score
+    sorted_chunks = sorted(chunks, key=_fin_score, reverse=True)
+    evidence_text = _format_evidence_for_prompt(sorted_chunks, max_chars=25000)
+    prompt = _FINANCIAL_STATEMENTS_PROMPT.format(
+        company_name=company_name, ticker=company_ticker, evidence=evidence_text,
+    )
+    data, usage, raw = await _extract_json(session_manager, prompt, max_tokens=2000)
+    return (data or {}), usage, prompt, raw
+
+
+_PLACEHOLDER_VALUES = {None, "", "N/A", "null", "None", "...", "…", "—", "-", "unknown", "Unknown"}
+
+
+def _is_real_value(v) -> bool:
+    """True if v is a real extracted value (not a placeholder)."""
+    if v is None:
+        return False
+    s = str(v).strip()
+    return s not in _PLACEHOLDER_VALUES and s.strip(".") != ""
+
+
+def _build_financial_table_html(rows: List[Dict[str, Any]], period_current: str,
+                                period_prior: str) -> str:
+    """Build an HTML financial table from a list of {metric, current, prior, citation}."""
+    valid = [r for r in rows if _is_real_value(r.get("current"))]
+    if not valid:
+        return ""
+    head = (
+        '<table style="width:100%; border-collapse:collapse; font-size:0.85rem;">'
+        '<thead><tr style="border-bottom:2px solid #e2e8f0;">'
+        '<th style="text-align:left; padding:0.5rem 0.4rem; color:#64748b; font-weight:600;">Metric</th>'
+        f'<th style="text-align:right; padding:0.5rem 0.4rem; color:#64748b; font-weight:600;">{period_current or "Current"}</th>'
+        f'<th style="text-align:right; padding:0.5rem 0.4rem; color:#64748b; font-weight:600;">{period_prior or "Prior"}</th>'
+        '</tr></thead><tbody>'
+    )
+    body = ""
+    for r in valid:
+        metric = str(r.get("metric", ""))
+        cur = str(r.get("current", ""))
+        pri = str(r.get("prior", "")) if r.get("prior") not in (None, "", "null") else "—"
+        cit = r.get("citation", 0)
+        cit_html = (f'<sup class="citation-ref" data-evidence="{cit}">[{cit}]</sup>'
+                    if cit and str(cit).isdigit() and int(cit) > 0 else "")
+        body += (
+            '<tr style="border-bottom:1px solid #f1f5f9;">'
+            f'<td style="padding:0.45rem 0.4rem; color:#334155;">{metric}{cit_html}</td>'
+            f'<td style="padding:0.45rem 0.4rem; text-align:right; color:#0f172a; font-weight:600;">{cur}</td>'
+            f'<td style="padding:0.45rem 0.4rem; text-align:right; color:#64748b;">{pri}</td>'
+            '</tr>'
+        )
+    return head + body + '</tbody></table>'
+
+
+# ── Catalysts extraction ─────────────────────────────────────────────────────
+_CATALYST_PROMPT = (
+    "You are an equity research analyst. From the following evidence about {company_name} "
+    "({ticker}), identify forward-looking catalysts: product launches, management guidance, "
+    "upcoming events, partnerships, capacity expansions, or regulatory milestones. Use ONLY "
+    "information present in the evidence.\n\n"
+    "Return ONLY a valid JSON object:\n"
+    "{{\n"
+    '  "summary": "1-2 sentence overview of the catalyst landscape (with [N] citations)",\n'
+    '  "top_catalysts": [\n'
+    '    {{"event_type": "Product Launch", "description": "...", "sentiment": "positive", '
+    '"impact_level": "high", "citation": 1}},\n'
+    '    {{"event_type": "Guidance", "description": "...", "sentiment": "neutral", '
+    '"impact_level": "medium", "citation": 2}}\n'
+    "  ]\n"
+    "}}\n\n"
+    "sentiment must be one of: positive, negative, neutral. impact_level one of: high, medium, low. "
+    "Return 3-6 catalysts max. If no catalysts found in evidence, return "
+    '{{"summary": "", "top_catalysts": []}}.\n\n'
+    "Evidence:\n{evidence}"
+)
+
+
+async def _extract_catalysts(
+    session_manager: Any, company_name: str, company_ticker: str,
+    chunks: List[Dict[str, Any]],
+) -> tuple:
+    """Extract catalyst_analysis dict from evidence."""
+    evidence_text = _format_evidence_for_prompt(chunks, max_chars=9000)
+    prompt = _CATALYST_PROMPT.format(
+        company_name=company_name, ticker=company_ticker, evidence=evidence_text,
+    )
+    data, usage, raw = await _extract_json(session_manager, prompt, max_tokens=1200)
+    return (data or {}), usage, prompt, raw
+
+
+# ── Sensitivity / valuation-range extraction ─────────────────────────────────
+_SENSITIVITY_PROMPT = (
+    "You are an equity research analyst. From the following evidence about {company_name} "
+    "({ticker}), summarize the key sensitivities and risk factors that could materially affect "
+    "the company's financial outlook. This includes: revenue concentration risks, margin "
+    "sensitivities (pricing, supply chain, competition), customer or segment dependency, "
+    "regulatory risks, and macro factors. Use ONLY the evidence.\n\n"
+    "Return ONLY a valid JSON object:\n"
+    "{{\n"
+    '  "summary": "2-4 sentence narrative of the main sensitivities (with [N] citations)",\n'
+    '  "confidence_intervals": {{\n'
+    '    "Revenue Outlook": {{"low": "bear case or downside risk", "high": "bull case or upside driver"}},\n'
+    '    "Margin Outlook": {{"low": "margin pressure scenario", "high": "margin expansion scenario"}}\n'
+    "  }}\n"
+    "}}\n\n"
+    "If the evidence has no usable sensitivity information, return "
+    '{{"summary": "", "confidence_intervals": {{}}}}.\n\n'
+    "Evidence:\n{evidence}"
+)
+
+
+async def _extract_sensitivity(
+    session_manager: Any, company_name: str, company_ticker: str,
+    chunks: List[Dict[str, Any]],
+) -> tuple:
+    """Extract sensitivity_analysis dict from valuation evidence."""
+    evidence_text = _format_evidence_for_prompt(chunks, max_chars=15000)
+    prompt = _SENSITIVITY_PROMPT.format(
+        company_name=company_name, ticker=company_ticker, evidence=evidence_text,
+    )
+    data, usage, raw = await _extract_json(session_manager, prompt, max_tokens=1000)
+    return (data or {}), usage, prompt, raw
+
+
+# ── Peer comparison extraction ───────────────────────────────────────────────
+_PEER_PROMPT = (
+    "You are an equity research analyst. From the following evidence about {company_name} "
+    "({ticker}), identify ALL named peer/competitor companies and ANY financial comparison "
+    "metrics mentioned (revenue, margins, market cap, EBITDA, EV/EBITDA, growth rates, market "
+    "share). Also include peers mentioned in the compensation committee peer group or competitive "
+    "landscape discussion. Use ONLY the evidence.\n\n"
+    "Return ONLY a valid JSON object:\n"
+    "{{\n"
+    '  "peers": [\n'
+    '    {{"name": "AMD", "metric": "EV/EBITDA", "value": "...", "citation": 1}},\n'
+    '    {{"name": "Intel", "metric": "EBITDA Margin", "value": "...", "citation": 2}}\n'
+    "  ]\n"
+    "}}\n\n"
+    "If a numeric value is not given for a peer, you may still list the peer with value \"—\". "
+    "Return at most 8 rows. If no peers found, return {{\"peers\": []}}.\n\n"
+    "Evidence:\n{evidence}"
+)
+
+
+async def _extract_peers(
+    session_manager: Any, company_name: str, company_ticker: str,
+    chunks: List[Dict[str, Any]],
+) -> tuple:
+    """Extract peer comparison rows from evidence."""
+    peer_keywords = (
+        "competitor", "peer", "comparison", "versus", "compared",
+        "amd", "intel", "broadcom", "qualcomm", "marvell", "tsmc",
+        "samsung", "google", "microsoft", "amazon", "oracle",
+        "market share", "competitive", "landscape", "compensation committee",
+    )
+    def _peer_score(chunk):
+        text = (chunk.get("page_content", "") or "").lower()
+        return sum(1 for kw in peer_keywords if kw in text)
+    sorted_chunks = sorted(chunks, key=_peer_score, reverse=True)
+    evidence_text = _format_evidence_for_prompt(sorted_chunks, max_chars=20000)
+    prompt = _PEER_PROMPT.format(
+        company_name=company_name, ticker=company_ticker, evidence=evidence_text,
+    )
+    data, usage, raw = await _extract_json(session_manager, prompt, max_tokens=900)
+    return (data or {}), usage, prompt, raw
+
+
+def _build_peer_table_html(peers: List[Dict[str, Any]]) -> str:
+    """Build an HTML peer comparison table from a list of {name, metric, value, citation}."""
+    valid = [p for p in peers if p.get("name")]
+    if not valid:
+        return ""
+    head = (
+        '<table style="width:100%; border-collapse:collapse; font-size:0.85rem;">'
+        '<thead><tr style="border-bottom:2px solid #e2e8f0;">'
+        '<th style="text-align:left; padding:0.5rem 0.4rem; color:#64748b; font-weight:600;">Peer</th>'
+        '<th style="text-align:left; padding:0.5rem 0.4rem; color:#64748b; font-weight:600;">Metric</th>'
+        '<th style="text-align:right; padding:0.5rem 0.4rem; color:#64748b; font-weight:600;">Value</th>'
+        '</tr></thead><tbody>'
+    )
+    body = ""
+    for p in valid:
+        name = str(p.get("name", ""))
+        metric = str(p.get("metric", "—"))
+        value = str(p.get("value", "—")) or "—"
+        cit = p.get("citation", 0)
+        cit_html = (f'<sup class="citation-ref" data-evidence="{cit}">[{cit}]</sup>'
+                    if cit and str(cit).isdigit() and int(cit) > 0 else "")
+        body += (
+            '<tr style="border-bottom:1px solid #f1f5f9;">'
+            f'<td style="padding:0.45rem 0.4rem; color:#0f172a; font-weight:600;">{name}</td>'
+            f'<td style="padding:0.45rem 0.4rem; color:#334155;">{metric}{cit_html}</td>'
+            f'<td style="padding:0.45rem 0.4rem; text-align:right; color:#0f172a;">{value}</td>'
+            '</tr>'
+        )
+    return head + body + '</tbody></table>'
+
+
 async def generate_report(
     company_name: str,
     company_ticker: str,
@@ -570,6 +923,72 @@ async def generate_report(
                  "total_tokens": metrics_usage.get("total_tokens", 0),
                  "prompt": metrics_prompt, "response": metrics_response})
 
+    # ── Step 2b: Extract structured financials / catalysts / sensitivity / peers ──
+    # Retrieve focused evidence for financial statements and catalysts, then run
+    # parallel structured extractions. All data comes from our own RAG evidence.
+    logger.info("[Memo] Retrieving financial-statement and catalyst evidence...")
+    await _emit({"type": "structured_start", "phase": "structured_extraction"})
+
+    # Use the already-retrieved all_chunks for catalysts, sensitivity, and peers.
+    # For financial statements, run a dedicated retrieval query targeting the
+    # income statement / cash flow / balance sheet sections of 10-K/10-Q filings,
+    # since the section queries pull narrative text, not financial tables.
+    fin_query = (
+        f"{company_name} {company_ticker} consolidated statements of income "
+        "revenue cost of revenue gross profit operating expenses net income "
+        "cash flow from operating activities capital expenditures free cash flow "
+        "balance sheet total assets total liabilities stockholders equity total debt"
+    )
+    fin_focused = await _retrieve_evidence(rag, fin_query, query_time)
+    fin_chunks = fin_focused + all_chunks if fin_focused else all_chunks
+    catalyst_chunks = all_chunks
+    sensitivity_chunks = all_chunks
+    peer_chunks = all_chunks
+
+    fin_stmt_data, fin_usage, _, fin_raw = await _extract_financial_statements(
+        session_manager, company_name, company_ticker, fin_chunks,
+    )
+    catalyst_data, cat_usage, _, _ = await _extract_catalysts(
+        session_manager, company_name, company_ticker, catalyst_chunks,
+    )
+    sensitivity_data, sens_usage, _, _ = await _extract_sensitivity(
+        session_manager, company_name, company_ticker, sensitivity_chunks,
+    )
+    peer_data, peer_usage, _, _ = await _extract_peers(
+        session_manager, company_name, company_ticker, peer_chunks,
+    )
+    for label, u in (("financial_statements", fin_usage), ("catalysts", cat_usage),
+                     ("sensitivity", sens_usage), ("peers", peer_usage)):
+        if u:
+            token_usage_log.append({"section": label, **u})
+
+    # Merge financial-statement key_ratios into the metric pool (filings-derived
+    # ratios fill the metric cards that the market-data prompt could not).
+    key_ratios = fin_stmt_data.get("key_ratios", {}) if isinstance(fin_stmt_data, dict) else {}
+    for k, v in key_ratios.items():
+        if _is_real_value(v) and not extracted.get(k):
+            extracted[k] = v
+
+    # Build financial statement tables from extracted line items
+    period_current = fin_stmt_data.get("period_current", "Current") if isinstance(fin_stmt_data, dict) else "Current"
+    period_prior = fin_stmt_data.get("period_prior", "Prior") if isinstance(fin_stmt_data, dict) else "Prior"
+    income_rows = fin_stmt_data.get("income_statement", []) if isinstance(fin_stmt_data, dict) else []
+    cashflow_rows = fin_stmt_data.get("cash_flow", []) if isinstance(fin_stmt_data, dict) else []
+    financial_summary_table_html = _build_financial_table_html(income_rows, period_current, period_prior)
+    credit_cashflow_table_html = _build_financial_table_html(cashflow_rows, period_current, period_prior)
+
+    # Build peer comparison table
+    peers = peer_data.get("peers", []) if isinstance(peer_data, dict) else []
+    peer_table_html = _build_peer_table_html(peers)
+
+    logger.info(f"[Memo] Structured extraction: income_rows={len(income_rows)}, "
+                f"cashflow_rows={len(cashflow_rows)}, catalysts={len(catalyst_data.get('top_catalysts', []) if isinstance(catalyst_data, dict) else [])}, "
+                f"peers={len(peers)}")
+    await _emit({"type": "structured_done",
+                 "income_rows": len(income_rows), "cashflow_rows": len(cashflow_rows),
+                 "catalysts": len(catalyst_data.get("top_catalysts", []) if isinstance(catalyst_data, dict) else []),
+                 "peers": len(peers)})
+
     # Merge: use extracted values where available, fall back to provided defaults
     def _metric(key: str, default: str) -> str:
         val = extracted.get(key)
@@ -587,16 +1006,28 @@ async def generate_report(
     week_52_range = _metric("week_52_range", week_52_range)
     sector = _metric("sector", sector)
 
-    # Build revenue key figures from extracted metrics
+    # Build revenue key figures from extracted metrics (filings-derived)
+    def _has(k):
+        v = extracted.get(k)
+        return v and v not in ("N/A", "None", None, "null")
+
     revenue_key_figures = {}
-    if extracted.get("revenue_growth") and extracted["revenue_growth"] not in ("N/A", "None", None):
+    if _has("revenue_growth"):
         revenue_key_figures["Revenue Growth (YoY)"] = extracted["revenue_growth"]
-    if extracted.get("ebitda_margin") and extracted["ebitda_margin"] not in ("N/A", "None", None):
+    if _has("gross_margin"):
+        revenue_key_figures["Gross Margin"] = extracted["gross_margin"]
+    if _has("operating_margin"):
+        revenue_key_figures["Operating Margin"] = extracted["operating_margin"]
+    if _has("net_margin"):
+        revenue_key_figures["Net Margin"] = extracted["net_margin"]
+    if _has("ebitda_margin"):
         revenue_key_figures["EBITDA Margin"] = extracted["ebitda_margin"]
 
     eps_key_figures = {}
-    if extracted.get("eps") and extracted["eps"] not in ("N/A", "None", None):
+    if _has("eps"):
         eps_key_figures["EPS"] = extracted["eps"]
+    if _has("roe"):
+        eps_key_figures["ROE"] = extracted["roe"]
     if fwd_pe != "—":
         eps_key_figures["Forward P/E"] = fwd_pe
 
@@ -674,16 +1105,16 @@ async def generate_report(
         "eps_pe_chart_path": "",
         "ev_ebitda_chart_path": "",
 
-        # Tables (empty placeholders)
-        "financial_summary_table_html": "<p class='body-text' style='color:#94a3b8; font-style:italic;'>Financial summary table not available. Refer to text analysis above.</p>",
-        "credit_cashflow_table_html": "<p class='body-text' style='color:#94a3b8; font-style:italic;'>Credit & cashflow metrics not available.</p>",
-        "peer_ebitda_table_html": "<p class='body-text' style='color:#94a3b8; font-style:italic;'>Peer EBITDA data not available.</p>",
-        "peer_ev_ebitda_table_html": "<p class='body-text' style='color:#94a3b8; font-style:italic;'>Peer EV/EBITDA data not available.</p>",
-        "peer_ev_ebitda_table_html_comp": "<p class='body-text' style='color:#94a3b8; font-style:italic;'>Peer EV/EBITDA data not available.</p>",
+        # Tables (extracted from RAG evidence)
+        "financial_summary_table_html": financial_summary_table_html or "<p class='body-text' style='color:#94a3b8; font-style:italic;'>No income-statement figures found in the retrieved evidence.</p>",
+        "credit_cashflow_table_html": credit_cashflow_table_html or "<p class='body-text' style='color:#94a3b8; font-style:italic;'>No cash-flow figures found in the retrieved evidence.</p>",
+        "peer_ebitda_table_html": peer_table_html or "<p class='body-text' style='color:#94a3b8; font-style:italic;'>No peer comparison data found in the retrieved evidence.</p>",
+        "peer_ev_ebitda_table_html": peer_table_html or "<p class='body-text' style='color:#94a3b8; font-style:italic;'>No peer comparison data found in the retrieved evidence.</p>",
+        "peer_ev_ebitda_table_html_comp": peer_table_html or "<p class='body-text' style='color:#94a3b8; font-style:italic;'>No peer comparison data found in the retrieved evidence.</p>",
 
-        # Enhanced analysis (empty)
-        "sensitivity_analysis": {},
-        "catalyst_analysis": {},
+        # Enhanced analysis (extracted from RAG evidence)
+        "sensitivity_analysis": sensitivity_data if isinstance(sensitivity_data, dict) else {},
+        "catalyst_analysis": catalyst_data if isinstance(catalyst_data, dict) else {},
         "enhanced_news": {},
         "retail_sentiment": {},
         "valuation_analysis": {},
@@ -744,6 +1175,15 @@ async def generate_report(
         "evidence_count": len(all_chunks),
         "evidence_sources": sorted(source_set),
         "section_sources": section_sources,
+        "financial_statements": fin_stmt_data if isinstance(fin_stmt_data, dict) else {},
+        "catalyst_analysis": catalyst_data if isinstance(catalyst_data, dict) else {},
+        "sensitivity_analysis": sensitivity_data if isinstance(sensitivity_data, dict) else {},
+        "peer_comparison": peer_data if isinstance(peer_data, dict) else {},
+        "key_metrics": {
+            "share_price": share_price, "target_price": target_price,
+            "market_cap": market_cap, "fwd_pe": fwd_pe, "pb_ratio": pb_ratio,
+            "roe": roe, "dividend_yield": dividend_yield, "week_52_range": week_52_range,
+        },
         "token_usage": token_usage_log,
     }
     with open(meta_path, "w", encoding="utf-8") as f:
