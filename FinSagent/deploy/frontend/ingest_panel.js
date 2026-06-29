@@ -462,7 +462,7 @@
       var type = (f.type || '').toLowerCase();
       if (type === 'application/pdf') return true;
       var n = (f.name || '').toLowerCase();
-      return /\.(pdf|doc|docx|odt|rtf|ppt|pptx|odp|xls|xlsx|csv|txt|md|markdown)$/i.test(n);
+      return /\.(pdf|doc|docx|odt|rtf|ppt|pptx|odp|xls|xlsx|csv|md|markdown)$/i.test(n);
     }
 
     function fileDedupeKey(f) {

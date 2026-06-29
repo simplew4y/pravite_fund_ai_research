@@ -421,7 +421,7 @@
 
   function setSelectedFiles(files) {
     const allowed = files.filter(function (file) {
-      return /\.(pdf|doc|docx|odt|rtf|ppt|pptx|odp|xls|xlsx|csv|txt|md|markdown)$/i.test(file.name || '');
+      return /\.(pdf|doc|docx|odt|rtf|ppt|pptx|odp|xls|xlsx|csv|md|markdown)$/i.test(file.name || '');
     });
     if (files.length && allowed.length !== files.length) {
       showToast('已忽略暂不支持的文件格式。');

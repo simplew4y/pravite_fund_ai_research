@@ -45,6 +45,15 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_PIPELINE_DIR = REPO_ROOT / "data_pipeline"
 INGEST_SCRIPT = DATA_PIPELINE_DIR / "file2chunk2data_pipeline.py"
+EXCEL_PIPELINE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_excel" / "excel2chunk_pipeline.py"
+EXCEL_LOAD_DATA_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_excel" / "load_data.py"
+EXCEL_LOAD_TABLE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_excel" / "load_table_chroma.py"
+MD_PIPELINE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_md" / "md2chunk_pipeline.py"
+MD_LOAD_DATA_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_md" / "load_data.py"
+MD_LOAD_TABLE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_md" / "load_table_chroma.py"
+WORD_PIPELINE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_word" / "word2chunk_pipeline.py"
+WORD_LOAD_DATA_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_word" / "load_data.py"
+WORD_LOAD_TABLE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_word" / "load_table_chroma.py"
 CONFIG_PATH = REPO_ROOT / "config" / "production.yaml"
 
 DATASET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,62}$")
@@ -55,7 +64,7 @@ DATASET_STATUS = ("empty", "indexing", "indexed", "failed", "unavailable")
 DOCUMENT_STATUS = ("uploaded", "parsing", "parsed", "indexing", "indexed", "failed", "unsupported", "deleted")
 JOB_STATUS = ("queued", "running", "completed", "failed", "cancelled")
 
-RAW_FILE_TYPES = ("pdf", "word", "ppt", "excel", "txt", "md")
+RAW_FILE_TYPES = ("pdf", "word", "ppt", "excel", "md")
 
 RAW_DIR_BY_TYPE = {
     file_type: f"0_raw/{file_type}" for file_type in RAW_FILE_TYPES
@@ -77,10 +86,16 @@ EXTENSION_TO_TYPE = {
     ".xls": "excel",
     ".xlsx": "excel",
     ".csv": "excel",
-    ".txt": "txt",
     ".md": "md",
     ".markdown": "md",
 }
+
+MINERU_GENERATED_PDF_STEM_SUFFIXES = (
+    "_layout",
+    "-layout",
+    "_origin",
+    "-origin",
+)
 
 _jobs_lock = threading.Lock()
 
@@ -169,6 +184,20 @@ def _safe_upload_basename(filename: Optional[str]) -> tuple[str, str, str]:
     stem = SAFE_NAME_RE.sub("_", stem).strip("._-") or "upload"
     stored_name = f"{uuid.uuid4().hex[:10]}_{stem}{ext}"
     return stored_name, file_type, ext
+
+
+def _reject_generated_pdf_upload(filename: Optional[str], file_type: str, ext: str) -> None:
+    if file_type != "pdf" or ext != ".pdf":
+        return
+    original_stem = os.path.splitext(os.path.basename(filename or ""))[0].strip().lower()
+    if original_stem.endswith(MINERU_GENERATED_PDF_STEM_SUFFIXES):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "检测到上传文件像 MinerU 生成的 layout/origin PDF，"
+                "这类文件会带彩色解析框，不能作为原文预览底图。请上传未经过 MinerU 解析的原始 PDF。"
+            ),
+        )
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -925,7 +954,6 @@ _KNOWN_FILE_EXTENSIONS = {
     ".pptx",
     ".xls",
     ".xlsx",
-    ".txt",
     ".md",
 }
 
@@ -1266,14 +1294,14 @@ def _int_or_none(value: Any) -> Optional[int]:
 
 def _delete_table_chunks_for_doc(conn: sqlite3.Connection, doc_id: str) -> None:
     rows = conn.execute(
-        "SELECT chunk_id FROM chunks WHERE doc_id = ? AND content_type = 'table'",
+        "SELECT chunk_id FROM chunks WHERE doc_id = ? AND content_type LIKE '%table%'",
         (doc_id,),
     ).fetchall()
     chunk_ids = [row["chunk_id"] if isinstance(row, sqlite3.Row) else row[0] for row in rows]
     if chunk_ids:
         placeholders = ",".join("?" for _ in chunk_ids)
         conn.execute(f"DELETE FROM chunk_locations WHERE chunk_id IN ({placeholders})", chunk_ids)
-    conn.execute("DELETE FROM chunks WHERE doc_id = ? AND content_type = 'table'", (doc_id,))
+    conn.execute("DELETE FROM chunks WHERE doc_id = ? AND content_type LIKE '%table%'", (doc_id,))
 
 
 def _backfill_document_table_chunks(
@@ -1561,22 +1589,7 @@ def _job_with_files(dataset: dict[str, Any], row: sqlite3.Row) -> dict[str, Any]
     return job
 
 
-def _ingest_subprocess_worker(
-    *,
-    job_id: str,
-    dataset_id: str,
-    pdf_paths: list[str],
-    doc_ids: list[str],
-    config_path: str,
-    extra_args: list[str],
-    log_file: str,
-    skip_load: bool,
-) -> None:
-    dataset = _require_dataset(dataset_id, refresh=False)
-    _update_job(dataset, job_id, status="running", started_at=_now(), log_path=_relative_path(Path(log_file)), message="pipeline 运行中")
-    _update_documents_status(dataset, doc_ids, "parsing")
-    _set_dataset_status(dataset_id, "indexing")
-
+def _ingest_env(log_file: str) -> dict[str, str]:
     env = os.environ.copy()
     env["INGEST_LOG_FILE"] = log_file
     env["PYTHONPATH"] = (
@@ -1586,107 +1599,400 @@ def _ingest_subprocess_worker(
         + os.pathsep
         + env.get("PYTHONPATH", "")
     )
+    return env
 
+
+def _run_logged_command(
+    *,
+    job_id: str,
+    label: str,
+    cmd: list[str],
+    log_f: Any,
+    env: dict[str, str],
+) -> int:
+    logger.info("[dataset ingest %s] [%s] %s", job_id, label, " ".join(cmd))
+    log_f.write(f"\n{'=' * 80}\n[{label}] started at {_now()}\n")
+    log_f.write("CMD: " + " ".join(cmd) + "\n\n")
+    log_f.flush()
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        env=env,
+        stdout=log_f,
+        stderr=subprocess.STDOUT,
+        timeout=None,
+    )
+    log_f.write(f"\n[{label}] finished at {_now()} returncode={proc.returncode}\n")
+    log_f.flush()
+    return int(proc.returncode)
+
+
+def _doc_abs_path(doc: dict[str, Any]) -> Path:
+    return _abs_path(str(doc["stored_path"]))
+
+
+def _chunk_count_for_docs(dataset: dict[str, Any], doc_ids: list[str]) -> int:
+    if not doc_ids:
+        return 0
+    placeholders = ",".join("?" for _ in doc_ids)
+    with _connect_collection(dataset) as conn:
+        row = conn.execute(
+            f"SELECT COUNT(*) FROM chunks WHERE doc_id IN ({placeholders})",
+            doc_ids,
+        ).fetchone()
+    return int((row[0] if row else 0) or 0)
+
+
+def _reload_chat_after_index(dataset_id: str, reason: str) -> str:
+    try:
+        did_reload = app_module.reload_chat_stack_after_dataset_ingest(dataset_id, reason)
+        return "已热重载，可直接检索。" if did_reload else "当前 active dataset 未热重载或已关闭自动热重载。"
+    except Exception as reload_exc:
+        logger.exception("[dataset ingest] 热重载失败: %s", reason)
+        return f"热重载失败：{reload_exc!s}。请重启 API 后再检索。"
+
+
+def _run_pdf_ingest_batch(
+    *,
+    job_id: str,
+    dataset_id: str,
+    pdf_paths: list[str],
+    doc_ids: list[str],
+    config_path: str,
+    extra_args: list[str],
+    log_f: Any,
+    env: dict[str, str],
+    skip_load: bool,
+) -> tuple[int, list[str], list[str]]:
+    if not doc_ids:
+        return 0, [], []
     cmd: list[str] = [sys.executable, str(INGEST_SCRIPT), "--config", config_path]
     for path in pdf_paths:
         cmd += ["--pdf", path]
     cmd += extra_args
-    logger.info("[dataset ingest %s] %s", job_id, " ".join(cmd))
+    code = _run_logged_command(job_id=job_id, label="PDF batch", cmd=cmd, log_f=log_f, env=env)
 
+    dataset = _require_dataset(dataset_id, refresh=False)
+    if code == 0:
+        refreshed = _refresh_dataset_status(dataset, force=True)
+        doc_status = "indexed" if refreshed["status"] == "indexed" and not skip_load else "parsed"
+        chunk_count = _sync_pipeline_outputs(refreshed, doc_ids, mark_status=doc_status)
+        return chunk_count, [], []
+
+    refreshed, chunk_count, sync_error = _sync_partial_pipeline_outputs_after_failure(
+        dataset,
+        doc_ids,
+        skip_load=skip_load,
+    )
+    if chunk_count > 0 and refreshed["status"] == "indexed":
+        warning = f"PDF batch 非零退出 code={code}，但已同步 {chunk_count} 个可用 chunk。"
+        if sync_error:
+            warning += f" partial sync warning: {sync_error}"
+        return chunk_count, [], [warning]
+
+    tail = _read_log_tail(Path(log_f.name))
+    error = f"PDF batch 失败 code={code}。错误尾部：\n{tail}"
+    if sync_error:
+        error += f"\nPartial output sync failed: {sync_error}"
+    _update_documents_status(dataset, doc_ids, "failed", error_message=error)
+    return 0, [error], []
+
+
+def _run_semantic_file_batch(
+    *,
+    job_id: str,
+    dataset: dict[str, Any],
+    docs: list[dict[str, Any]],
+    file_type: str,
+    pipeline_script: Path,
+    load_data_script: Path,
+    load_table_script: Path,
+    input_arg: str,
+    default_doc_type: str,
+    log_f: Any,
+    env: dict[str, str],
+    skip_load: bool,
+    skip_load_table: bool,
+    enable_word_image_ocr: bool,
+    mineru_bin: str,
+) -> tuple[int, list[str], list[str]]:
+    if not docs:
+        return 0, [], []
+    missing = [
+        str(path)
+        for path in (pipeline_script, load_data_script, load_table_script)
+        if not path.is_file()
+    ]
+    if missing:
+        message = f"{file_type} pipeline 缺少脚本: {', '.join(missing)}"
+        _update_documents_status(dataset, [doc["doc_id"] for doc in docs], "failed", error_message=message)
+        return 0, [message], []
+
+    dataset_root = _dataset_abs_root(dataset)
+    collection_name = _index_collection_name(dataset)
+    success_doc_ids: list[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    for doc in docs:
+        doc_id = str(doc["doc_id"])
+        doc_type = str(doc.get("doc_type") or default_doc_type)
+        cmd = [
+            sys.executable,
+            str(pipeline_script),
+            input_arg,
+            str(_doc_abs_path(doc)),
+            "--dataset-root",
+            str(dataset_root),
+            "--dataset-id",
+            str(dataset["dataset_id"]),
+            "--doc-id",
+            doc_id,
+            "--doc-type",
+            doc_type,
+            "--write-db",
+        ]
+        if file_type == "word" and enable_word_image_ocr:
+            cmd.append("--enable-image-ocr")
+            if mineru_bin:
+                cmd += ["--mineru-bin", mineru_bin]
+        code = _run_logged_command(
+            job_id=job_id,
+            label=f"{file_type.upper()} parse {doc.get('original_filename') or doc_id}",
+            cmd=cmd,
+            log_f=log_f,
+            env=env,
+        )
+        if code == 0:
+            success_doc_ids.append(doc_id)
+        else:
+            error = f"{file_type} parse failed: {doc.get('original_filename') or doc_id} code={code}"
+            errors.append(error)
+            _update_documents_status(dataset, [doc_id], "failed", error_message=error)
+
+    if not success_doc_ids:
+        return 0, errors, warnings
+
+    if skip_load:
+        _update_documents_status(dataset, success_doc_ids, "parsed")
+        return _chunk_count_for_docs(dataset, success_doc_ids), errors, warnings
+
+    load_data_cmd = [
+        sys.executable,
+        str(load_data_script),
+        "--config",
+        str(CONFIG_PATH),
+        "--dataset-root",
+        str(dataset_root),
+        "--collection",
+        collection_name,
+    ]
+    code = _run_logged_command(
+        job_id=job_id,
+        label=f"{file_type.upper()} load_data",
+        cmd=load_data_cmd,
+        log_f=log_f,
+        env=env,
+    )
+    if code != 0:
+        error = f"{file_type} load_data failed code={code}"
+        errors.append(error)
+        _update_documents_status(dataset, success_doc_ids, "failed", error_message=error)
+        return _chunk_count_for_docs(dataset, success_doc_ids), errors, warnings
+
+    if not skip_load_table:
+        load_table_cmd = [
+            sys.executable,
+            str(load_table_script),
+            "--config",
+            str(CONFIG_PATH),
+            "--dataset-root",
+            str(dataset_root),
+            "--collection",
+            collection_name,
+        ]
+        code = _run_logged_command(
+            job_id=job_id,
+            label=f"{file_type.upper()} load_table_chroma",
+            cmd=load_table_cmd,
+            log_f=log_f,
+            env=env,
+        )
+        if code != 0:
+            error = f"{file_type} load_table_chroma failed code={code}"
+            errors.append(error)
+            _update_documents_status(dataset, success_doc_ids, "failed", error_message=error)
+            return _chunk_count_for_docs(dataset, success_doc_ids), errors, warnings
+
+    _update_documents_status(dataset, success_doc_ids, "indexed")
+    return _chunk_count_for_docs(dataset, success_doc_ids), errors, warnings
+
+
+def _ingest_subprocess_worker(
+    *,
+    job_id: str,
+    dataset_id: str,
+    pdf_paths: list[str],
+    pdf_doc_ids: list[str],
+    word_docs: list[dict[str, Any]],
+    excel_docs: list[dict[str, Any]],
+    md_docs: list[dict[str, Any]],
+    config_path: str,
+    extra_args: list[str],
+    log_file: str,
+    skip_load: bool,
+    skip_load_table: bool,
+    enable_word_image_ocr: bool,
+    mineru_bin: str,
+) -> None:
+    dataset = _require_dataset(dataset_id, refresh=False)
+    process_doc_ids = [
+        *pdf_doc_ids,
+        *(str(doc["doc_id"]) for doc in word_docs),
+        *(str(doc["doc_id"]) for doc in excel_docs),
+        *(str(doc["doc_id"]) for doc in md_docs),
+    ]
+    _update_job(
+        dataset,
+        job_id,
+        status="running",
+        started_at=_now(),
+        log_path=_relative_path(Path(log_file)),
+        message="pipeline 运行中",
+    )
+    _update_documents_status(dataset, process_doc_ids, "parsing")
+    _set_dataset_status(dataset_id, "indexing")
+
+    env = _ingest_env(log_file)
     log_path = Path(log_file)
+    errors: list[str] = []
+    warnings: list[str] = []
+    total_chunks = 0
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "w", encoding="utf-8") as log_f:
-            log_f.write(f"{'=' * 60}\n[dataset ingest {job_id}] started at {_now()}\n")
-            log_f.write("CMD: " + " ".join(cmd) + "\n\n")
+            log_f.write(f"{'=' * 80}\n[dataset ingest {job_id}] started at {_now()}\n")
+            log_f.write(
+                "Batches: "
+                f"pdf={len(pdf_doc_ids)}, word={len(word_docs)}, excel={len(excel_docs)}, md={len(md_docs)}, "
+                f"skip_load={skip_load}, skip_load_table={skip_load_table}\n"
+            )
             log_f.flush()
-            proc = subprocess.run(
-                cmd,
-                cwd=str(REPO_ROOT),
-                env=env,
-                stdout=log_f,
-                stderr=subprocess.STDOUT,
-                timeout=None,
-            )
 
-        dataset = _require_dataset(dataset_id, refresh=False)
-        if proc.returncode == 0:
-            refreshed = _refresh_dataset_status(dataset, force=True)
-            doc_status = "indexed" if refreshed["status"] == "indexed" and not skip_load else "parsed"
-            chunk_count = _sync_pipeline_outputs(refreshed, doc_ids, mark_status=doc_status)
-            if refreshed["status"] == "indexed":
-                try:
-                    did_reload = app_module.reload_chat_stack_after_dataset_ingest(
-                        dataset_id,
-                        f"dataset ingest job_id={job_id}",
-                    )
-                    reload_msg = "已热重载，可直接检索。" if did_reload else "当前 active dataset 未热重载或已关闭自动热重载。"
-                except Exception as reload_exc:
-                    logger.exception("[dataset ingest %s] 热重载失败", job_id)
-                    reload_msg = f"热重载失败：{reload_exc!s}。请重启 API 后再检索。"
-                final_msg = f"pipeline 已完成，回填 {chunk_count} 个 chunk，索引已写入当前 dataset；{reload_msg}"
-            else:
-                final_msg = f"pipeline 已完成，回填 {chunk_count} 个 chunk，但未检测到可用索引文件；请检查是否跳过入库步骤。"
-            _update_job(
-                refreshed,
-                job_id,
-                status="completed",
-                message=final_msg,
-                returncode=proc.returncode,
-                finished_at=_now(),
-                log_path=_relative_path(log_path),
-            )
-        else:
-            tail = _read_log_tail(log_path)
-            final_msg = f"子进程非零退出（code {proc.returncode}）。错误尾部：\n{tail}"
-            refreshed, chunk_count, sync_error = _sync_partial_pipeline_outputs_after_failure(
-                dataset,
-                doc_ids,
+            pdf_chunks, pdf_errors, pdf_warnings = _run_pdf_ingest_batch(
+                job_id=job_id,
+                dataset_id=dataset_id,
+                pdf_paths=pdf_paths,
+                doc_ids=pdf_doc_ids,
+                config_path=config_path,
+                extra_args=extra_args,
+                log_f=log_f,
+                env=env,
                 skip_load=skip_load,
             )
-            if chunk_count > 0 and refreshed["status"] == "indexed":
-                try:
-                    did_reload = app_module.reload_chat_stack_after_dataset_ingest(
-                        dataset_id,
-                        f"dataset ingest partial sync job_id={job_id}",
-                    )
-                    reload_msg = "已同步可用产物并热重载。" if did_reload else "已同步可用产物。"
-                except Exception as reload_exc:
-                    logger.exception("[dataset ingest %s] partial-sync reload failed", job_id)
-                    reload_msg = f"已同步可用产物；热重载失败：{reload_exc!s}"
-                warning_msg = (
-                    f"pipeline 最终非零退出（code {proc.returncode}），但已写入可用索引；"
-                    f"已同步 {chunk_count} 个 chunk 到 collection.sqlite3。{reload_msg}\n"
-                    f"原始错误尾部：\n{tail}"
-                )
-                _update_job(
-                    refreshed,
-                    job_id,
-                    status="completed",
-                    message=warning_msg,
-                    returncode=proc.returncode,
-                    finished_at=_now(),
-                    log_path=_relative_path(log_path),
-                )
-            else:
-                if sync_error:
-                    final_msg = f"{final_msg}\n\nPartial output sync failed: {sync_error}"
-                _update_documents_status(dataset, doc_ids, "failed", error_message=final_msg)
-                _set_dataset_status(dataset_id, "failed")
-                _update_job(
-                    dataset,
-                    job_id,
-                    status="failed",
-                    message=final_msg,
-                    returncode=proc.returncode,
-                    finished_at=_now(),
-                    log_path=_relative_path(log_path),
-                )
+            total_chunks += pdf_chunks
+            errors.extend(pdf_errors)
+            warnings.extend(pdf_warnings)
+
+            dataset = _require_dataset(dataset_id, refresh=False)
+            word_chunks, word_errors, word_warnings = _run_semantic_file_batch(
+                job_id=job_id,
+                dataset=dataset,
+                docs=word_docs,
+                file_type="word",
+                pipeline_script=WORD_PIPELINE_SCRIPT,
+                load_data_script=WORD_LOAD_DATA_SCRIPT,
+                load_table_script=WORD_LOAD_TABLE_SCRIPT,
+                input_arg="--file",
+                default_doc_type="research_report",
+                log_f=log_f,
+                env=env,
+                skip_load=skip_load,
+                skip_load_table=skip_load_table,
+                enable_word_image_ocr=enable_word_image_ocr,
+                mineru_bin=mineru_bin,
+            )
+            total_chunks += word_chunks
+            errors.extend(word_errors)
+            warnings.extend(word_warnings)
+
+            dataset = _require_dataset(dataset_id, refresh=False)
+            excel_chunks, excel_errors, excel_warnings = _run_semantic_file_batch(
+                job_id=job_id,
+                dataset=dataset,
+                docs=excel_docs,
+                file_type="excel",
+                pipeline_script=EXCEL_PIPELINE_SCRIPT,
+                load_data_script=EXCEL_LOAD_DATA_SCRIPT,
+                load_table_script=EXCEL_LOAD_TABLE_SCRIPT,
+                input_arg="--excel",
+                default_doc_type="valuation_model",
+                log_f=log_f,
+                env=env,
+                skip_load=skip_load,
+                skip_load_table=skip_load_table,
+                enable_word_image_ocr=False,
+                mineru_bin="",
+            )
+            total_chunks += excel_chunks
+            errors.extend(excel_errors)
+            warnings.extend(excel_warnings)
+
+            dataset = _require_dataset(dataset_id, refresh=False)
+            md_chunks, md_errors, md_warnings = _run_semantic_file_batch(
+                job_id=job_id,
+                dataset=dataset,
+                docs=md_docs,
+                file_type="md",
+                pipeline_script=MD_PIPELINE_SCRIPT,
+                load_data_script=MD_LOAD_DATA_SCRIPT,
+                load_table_script=MD_LOAD_TABLE_SCRIPT,
+                input_arg="--file",
+                default_doc_type="research_note",
+                log_f=log_f,
+                env=env,
+                skip_load=skip_load,
+                skip_load_table=skip_load_table,
+                enable_word_image_ocr=False,
+                mineru_bin="",
+            )
+            total_chunks += md_chunks
+            errors.extend(md_errors)
+            warnings.extend(md_warnings)
+
+        dataset = _require_dataset(dataset_id, refresh=False)
+        refreshed = _refresh_dataset_status(dataset, force=True)
+        if refreshed["status"] == "indexed" and not skip_load:
+            warnings.append(_reload_chat_after_index(dataset_id, f"dataset ingest job_id={job_id}"))
+        elif not errors:
+            refreshed = _refresh_dataset_status(refreshed, force=True)
+
+        if errors and refreshed["status"] != "indexed":
+            _set_dataset_status(dataset_id, "failed")
+            refreshed = _require_dataset(dataset_id, refresh=False)
+
+        status = "failed" if errors else "completed"
+        message_parts = [f"pipeline 已完成，回填/登记 {total_chunks} 个 chunk。"]
+        if warnings:
+            message_parts.append("Warnings: " + " | ".join(warnings[:5]))
+        if errors:
+            message_parts.append("Errors: " + " | ".join(errors[:5]))
+        _update_job(
+            refreshed,
+            job_id,
+            status=status,
+            message="\n".join(message_parts),
+            returncode=1 if errors else 0,
+            finished_at=_now(),
+            log_path=_relative_path(log_path),
+        )
     except Exception as exc:
         logger.exception("[dataset ingest %s] failed", job_id)
         dataset = _require_dataset(dataset_id, refresh=False)
-        _update_documents_status(dataset, doc_ids, "failed", error_message=str(exc))
-        _set_dataset_status(dataset_id, "failed")
+        _update_documents_status(dataset, process_doc_ids, "failed", error_message=str(exc))
+        refreshed = _refresh_dataset_status(dataset, force=True)
+        if refreshed["status"] != "indexed":
+            _set_dataset_status(dataset_id, "failed")
         _update_job(
             dataset,
             job_id,
@@ -1706,7 +2012,7 @@ def _chunks_for_document(
     page_sizes = page_sizes or {}
     with _connect_collection(dataset) as conn:
         total = conn.execute(
-            "SELECT COUNT(*) FROM chunks WHERE doc_id = ? AND (content_type IS NULL OR content_type != 'table')",
+            "SELECT COUNT(*) FROM chunks WHERE doc_id = ? AND (content_type IS NULL OR content_type NOT LIKE '%table%')",
             (doc_id,),
         ).fetchone()[0]
         rows = conn.execute(
@@ -1716,7 +2022,7 @@ def _chunks_for_document(
             FROM chunks c
             LEFT JOIN chunk_locations l
               ON l.chunk_id = c.chunk_id AND l.location_index = 0
-            WHERE c.doc_id = ? AND (c.content_type IS NULL OR c.content_type != 'table')
+            WHERE c.doc_id = ? AND (c.content_type IS NULL OR c.content_type NOT LIKE '%table%')
             ORDER BY c.chunk_index ASC
             LIMIT ?
             """,
@@ -1757,7 +2063,7 @@ def _tables_for_document(
     page_sizes = page_sizes or {}
     with _connect_collection(dataset) as conn:
         total = conn.execute(
-            "SELECT COUNT(*) FROM chunks WHERE doc_id = ? AND content_type = 'table'",
+            "SELECT COUNT(*) FROM chunks WHERE doc_id = ? AND content_type LIKE '%table%'",
             (doc_id,),
         ).fetchone()[0]
         rows = conn.execute(
@@ -1767,7 +2073,7 @@ def _tables_for_document(
             FROM chunks c
             LEFT JOIN chunk_locations l
               ON l.chunk_id = c.chunk_id AND l.location_index = 0
-            WHERE c.doc_id = ? AND c.content_type = 'table'
+            WHERE c.doc_id = ? AND c.content_type LIKE '%table%'
             ORDER BY c.chunk_index ASC
             LIMIT ?
             """,
@@ -1788,7 +2094,7 @@ def _tables_for_document(
             {
                 "index": idx,
                 "id": row["chunk_id"],
-                "type": "table",
+                "type": row["content_type"] or "table",
                 "summary": row["summary"] or "",
                 "content": row["content"],
                 "page_idx": page_idx,
@@ -2128,7 +2434,7 @@ async def list_dataset_indexes(dataset_id: str):
 async def upload_dataset_files(
     dataset_id: str,
     background_tasks: BackgroundTasks,
-    files: list[UploadFile] = File(..., description="PDF/Word/PPT/Excel/txt/md 文件"),
+    files: list[UploadFile] = File(..., description="PDF/Word/PPT/Excel/Markdown 文件"),
     company_name: str = Query("", description="公司名；省略则使用资料库名称"),
     doc_type: str = Query("", description="文档类型，如 财报/公告/研报/纪要/估值模型"),
     source_type: str = Query("unknown", description="company_public | market_public | client_internal | generated | unknown"),
@@ -2142,6 +2448,7 @@ async def upload_dataset_files(
     skip_load: bool = Query(False, description="只生成 JSON，不写向量库"),
     skip_load_table: bool = Query(False, description="跳过 Step 5 load_table_chroma"),
     skip_pageindex: bool = Query(False, description="跳过 Step 6 PageIndex 构建"),
+    enable_word_image_ocr: bool = Query(False, description="Word 解析时对内嵌图片启用 MinerU OCR"),
     reset_persist: bool = Query(False, description="入库前删除该 dataset 的 persist_directory（慎用）"),
 ):
     if not files:
@@ -2156,6 +2463,10 @@ async def upload_dataset_files(
     saved_docs: list[dict[str, Any]] = []
     pdf_paths: list[str] = []
     pdf_doc_ids: list[str] = []
+    word_docs: list[dict[str, Any]] = []
+    excel_docs: list[dict[str, Any]] = []
+    md_docs: list[dict[str, Any]] = []
+    unsupported_docs: list[dict[str, Any]] = []
 
     for item in files:
         body = await item.read()
@@ -2168,6 +2479,7 @@ async def upload_dataset_files(
             )
 
         stored_name, file_type, ext = _safe_upload_basename(item.filename)
+        _reject_generated_pdf_upload(item.filename, file_type, ext)
         raw_dir = RAW_DIR_BY_TYPE[file_type]
         target_path = _dataset_abs_root(dataset) / raw_dir / stored_name
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2198,6 +2510,7 @@ async def upload_dataset_files(
                 {
                     "content_type": item.content_type,
                     "stored_basename": stored_name,
+                    "extension": ext,
                     "parser_reserved": file_type != "pdf",
                 },
                 ensure_ascii=False,
@@ -2210,29 +2523,62 @@ async def upload_dataset_files(
         if file_type == "pdf":
             pdf_paths.append(str(target_path.resolve()))
             pdf_doc_ids.append(doc_id)
+        elif file_type == "word" and ext == ".docx":
+            word_docs.append(doc)
+        elif file_type == "excel" and ext in {".xlsx", ".xlsm"}:
+            excel_docs.append(doc)
+        elif file_type == "md":
+            md_docs.append(doc)
+        else:
+            unsupported_docs.append(doc)
 
     has_pdf = bool(pdf_paths)
-    non_pdf_count = len(saved_docs) - len(pdf_paths)
+    has_word = bool(word_docs)
+    has_excel = bool(excel_docs)
+    has_md = bool(md_docs)
+    has_processable = has_pdf or has_word or has_excel or has_md
+    missing_scripts: list[str] = []
     if has_pdf and not INGEST_SCRIPT.is_file():
-        raise HTTPException(status_code=500, detail=f"未找到入库脚本: {INGEST_SCRIPT}")
+        missing_scripts.append(str(INGEST_SCRIPT))
+    if has_word:
+        missing_scripts.extend(
+            str(path)
+            for path in (WORD_PIPELINE_SCRIPT, WORD_LOAD_DATA_SCRIPT, WORD_LOAD_TABLE_SCRIPT)
+            if not path.is_file()
+        )
+    if has_excel:
+        missing_scripts.extend(
+            str(path)
+            for path in (EXCEL_PIPELINE_SCRIPT, EXCEL_LOAD_DATA_SCRIPT, EXCEL_LOAD_TABLE_SCRIPT)
+            if not path.is_file()
+        )
+    if has_md:
+        missing_scripts.extend(
+            str(path)
+            for path in (MD_PIPELINE_SCRIPT, MD_LOAD_DATA_SCRIPT, MD_LOAD_TABLE_SCRIPT)
+            if not path.is_file()
+        )
+    if missing_scripts:
+        raise HTTPException(status_code=500, detail=f"未找到入库脚本: {', '.join(missing_scripts)}")
 
     pipeline_config: Optional[Path] = None
     log_file = _dataset_abs_root(dataset) / "logs" / "ingest" / f"{job_id}.log"
-    job_status = "queued" if has_pdf else "completed"
-    job_type = "index" if has_pdf else "upload"
+    job_status = "queued" if has_processable else "completed"
+    job_type = "index" if has_processable else "upload"
     message = (
-        f"已保存 {len(saved_docs)} 个文件，其中 {len(pdf_paths)} 个 PDF 已排队运行入库 pipeline，"
-        f"{non_pdf_count} 个非 PDF 已登记，等待后续 parser。"
-        if has_pdf
-        else f"已保存 {len(saved_docs)} 个非 PDF 文件；本轮仅登记文件，等待后续 parser。"
+        f"已保存 {len(saved_docs)} 个文件；将按类型顺序解析："
+        f"PDF {len(pdf_doc_ids)} 个、Word {len(word_docs)} 个、Excel {len(excel_docs)} 个、Markdown {len(md_docs)} 个。"
+        f"另有 {len(unsupported_docs)} 个文件暂未接入主流程。"
+        if has_processable
+        else f"已保存 {len(saved_docs)} 个文件；这些格式暂未接入主流程，仅完成登记。"
     )
 
     extra: list[str] = []
+    cfg = app_module.load_config()
+    mb = (mineru_bin or "").strip() or (str(cfg.get("mineru_bin") or "")).strip()
     if has_pdf:
         pipeline_config = _write_pipeline_config(dataset, job_id)
         extra.extend(["--company-name", (company_name.strip() or dataset["name"])])
-        cfg = app_module.load_config()
-        mb = (mineru_bin or "").strip() or (str(cfg.get("mineru_bin") or "")).strip()
         if mb:
             extra.extend(["--mineru-bin", mb])
         if skip_mineru:
@@ -2294,11 +2640,15 @@ async def upload_dataset_files(
                     json.dumps(
                         {
                             "pdf_doc_ids": pdf_doc_ids,
-                            "non_pdf_count": non_pdf_count,
+                            "word_doc_ids": [doc["doc_id"] for doc in word_docs],
+                            "excel_doc_ids": [doc["doc_id"] for doc in excel_docs],
+                            "md_doc_ids": [doc["doc_id"] for doc in md_docs],
+                            "unsupported_doc_ids": [doc["doc_id"] for doc in unsupported_docs],
                             "skip_process_table": skip_process_table,
                             "skip_load": skip_load,
                             "skip_load_table": skip_load_table,
                             "skip_pageindex": skip_pageindex,
+                            "enable_word_image_ocr": enable_word_image_ocr,
                         },
                         ensure_ascii=False,
                     ),
@@ -2306,19 +2656,31 @@ async def upload_dataset_files(
             )
             conn.commit()
 
-    if has_pdf:
-        _update_documents_status(dataset, pdf_doc_ids, "indexing")
+    if has_processable:
+        process_doc_ids = [
+            *pdf_doc_ids,
+            *(doc["doc_id"] for doc in word_docs),
+            *(doc["doc_id"] for doc in excel_docs),
+            *(doc["doc_id"] for doc in md_docs),
+        ]
+        _update_documents_status(dataset, process_doc_ids, "indexing")
         _set_dataset_status(dataset_id, "indexing")
         background_tasks.add_task(
             _ingest_subprocess_worker,
             job_id=job_id,
             dataset_id=dataset_id,
             pdf_paths=pdf_paths,
-            doc_ids=pdf_doc_ids,
-            config_path=str(pipeline_config),
+            pdf_doc_ids=pdf_doc_ids,
+            word_docs=word_docs,
+            excel_docs=excel_docs,
+            md_docs=md_docs,
+            config_path=str(pipeline_config or CONFIG_PATH),
             extra_args=extra,
             log_file=str(log_file.resolve()),
             skip_load=skip_load,
+            skip_load_table=skip_load_table,
+            enable_word_image_ocr=enable_word_image_ocr,
+            mineru_bin=mb,
         )
 
     response_files = [_document_payload(dataset, doc) for doc in saved_docs]
@@ -2327,6 +2689,13 @@ async def upload_dataset_files(
         "dataset_id": dataset_id,
         "status": job_status,
         "file_count": len(saved_docs),
+        "batch_counts": {
+            "pdf": len(pdf_doc_ids),
+            "word": len(word_docs),
+            "excel": len(excel_docs),
+            "md": len(md_docs),
+            "unsupported": len(unsupported_docs),
+        },
         "files": response_files,
         "log_file": _relative_path(log_file),
         "message": message,
