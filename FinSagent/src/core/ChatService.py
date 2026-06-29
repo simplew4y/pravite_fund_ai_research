@@ -136,6 +136,16 @@ class ChatService:
         self.general_graph = build_general_subgraph()
 
         self.session_history_store = session_history_store_from_config(config)
+        # Research Memory (可选, 不阻塞)
+        try:
+            from core.ResearchMemory import ResearchMemory
+            self.memory = ResearchMemory(
+                base_dir=config.get("memory", {}).get("dir", ".memory")
+            )
+            logger.info("ResearchMemory initialized")
+        except Exception as e:
+            self.memory = None
+            logger.warning(f"ResearchMemory not available: {e}")
         self._agentic_search_corpus: Optional[CorpusStore] = None
 
         logger.info("ChatService initialized successfully")
