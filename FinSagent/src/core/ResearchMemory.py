@@ -268,6 +268,13 @@ class ResearchMemory(MemoryManager):
         except Exception:
             pass  # 文件系统写入失败不阻塞
 
+        # Phase 4: checkpoint
+        try:
+            tc = self._count_messages(session_id)
+            self._checkpoint_session(session_id, tc)
+        except Exception:
+            pass
+
         return {"ok": True, "message_id": msg_asst_id, "citation_ids": cit_ids}
 
     # ── 查询 ───────────────────────────────────────
@@ -493,3 +500,80 @@ class ResearchMemory(MemoryManager):
         ]
         conn.close()
         return rows
+        conn.close()
+        return rows
+
+    # ── Phase 4: 长会话管理 ───────────────────────
+
+    def set_embedding_fn(self, fn):
+        self._embed = fn
+
+    def set_llm_fn(self, fn):
+        self._llm = fn
+
+    def _count_messages(self, session_id):
+        return len(self.get_session_messages(session_id))
+
+    def _checkpoint_session(self, session_id, turn_count, interval=5):
+        if turn_count < interval or turn_count % interval != 0:
+            return
+        if not self._llm:
+            return
+        messages = self.get_session_messages(session_id)
+        if len(messages) < interval * 2:
+            return
+        recent = messages[-interval * 2:]
+        session_path = self._uri_to_path("fin://sessions/" + session_id)
+        existing = ""
+        cp = session_path / ".checkpoint.md"
+        if cp.exists():
+            existing = cp.read_text(encoding="utf-8")
+        if existing:
+            prompt = ("基于已有摘要和最新对话，生成更新的会话摘要。\n\n"
+                      "已有摘要:\n" + existing + "\n\n最新对话:\n" + self._fmt_messages(recent))
+        else:
+            prompt = "总结以下投研对话的核心内容。\n\n" + self._fmt_messages(recent)
+        summary = self._llm(prompt)
+        cp.write_text(summary, encoding="utf-8")
+        recent_md = self._messages_to_md(recent[-interval * 2:])
+        new_content = summary + "\n\n---\n\n## 最新对话\n\n" + recent_md
+        (session_path / "content.md").write_text(new_content, encoding="utf-8")
+        abstract = summary[:120]
+        if len(summary) > 120:
+            abstract += "..."
+        (session_path / ".abstract.md").write_text(abstract, encoding="utf-8")
+        self._update_embedding(session_id)
+
+    def _update_embedding(self, session_id):
+        if not self._embed:
+            return
+        uri = "fin://sessions/" + session_id
+        content = self.read_memory(uri, "L2")
+        if not content or "PathNotFoundError" in content:
+            return
+        try:
+            import json, sqlite3
+            emb = self._embed(content[:1000])
+            conn = sqlite3.connect(self.db_path)
+            conn.execute("UPDATE memory_index SET embedding=? WHERE uri=?", (json.dumps(emb), uri))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _fmt_messages(messages):
+        parts = []
+        for m in messages:
+            parts.append("[" + m.get("role", "?") + "] " + str(m.get("content", ""))[:200])
+        return "\n".join(parts)
+
+    @staticmethod
+    def _messages_to_md(messages):
+        parts = []
+        for m in messages:
+            ts = m.get("timestamp", m.get("created_at", ""))
+            role = m.get("role", "?")
+            content = m.get("content", "")
+            parts.append("### [" + ts + "] " + role + "\n\n" + content)
+        return "\n\n".join(parts)
