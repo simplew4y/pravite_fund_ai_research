@@ -126,6 +126,11 @@ class ResearchMemory(MemoryManager):
             CREATE INDEX IF NOT EXISTS idx_audit_session ON audit_trail(session_id, created_at);
         """)
         conn.commit()
+        # Add embedding column if not present (migration)
+        try:
+            conn.execute("ALTER TABLE memory_index ADD COLUMN embedding TEXT")
+        except Exception:
+            pass  # already exists
         conn.close()
 
     # ── 写入 ───────────────────────────────────────
@@ -272,6 +277,12 @@ class ResearchMemory(MemoryManager):
         try:
             tc = self._count_messages(session_id)
             self._checkpoint_session(session_id, tc)
+        except Exception:
+            pass
+
+        # Phase 5: update embedding (semantic search)
+        try:
+            self._update_embedding(session_id)
         except Exception:
             pass
 
