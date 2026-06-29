@@ -132,3 +132,18 @@ def test_excel_upstream_cells_never_required():
     e12 = normalize_many(ExcelEvidenceAdapter().adapt([block], _ctx()))[0]
     assert "upstream_cells" not in e12.content_json
     assert e12.content_json["value"] == "1"
+
+
+def test_excel_empty_block_produces_no_evidence():
+    """An empty block (or one without core fields) must not yield evidence."""
+    assert ExcelEvidenceAdapter().adapt([{}], _ctx()) == []
+    # only a non-core field present -> still skipped
+    assert ExcelEvidenceAdapter().adapt([{"number_format": "0.0%"}], _ctx()) == []
+
+
+def test_excel_none_fields_are_not_written_into_content_json():
+    """Absent value/formula stay out of content_json (no value=None / formula=None)."""
+    block = {"file": "m.xlsx", "sheet": "DCF", "cell": "E12", "value": "1"}
+    e12 = ExcelEvidenceAdapter().adapt([block], _ctx())[0]
+    assert "formula" not in e12.content_json
+    assert e12.content_json == {"value": "1"}

@@ -74,7 +74,8 @@ def test_memo_blocks_become_unified_evidence(memo_blocks):
     assert e.location.location_json["memo_id"] == "memo_001"
     assert e.location.heading == "核心观点"
     assert e.metadata_json["section_type"] == "thesis"
-    assert render_citation_display(e) == "memo_001, section thesis"
+    # display prefers the human-readable heading over the raw section_id.
+    assert render_citation_display(e) == "memo_001, section 核心观点"
 
 
 def test_memo_evidence_is_consumable_by_build_citation(memo_blocks):
@@ -89,7 +90,15 @@ def test_memo_evidence_is_consumable_by_build_citation(memo_blocks):
     assert citation.evidence_id == e.evidence_id
     assert citation.source_type == "memo_section"
     assert citation.claim
-    assert citation.display == "memo_001, section thesis"
+    assert citation.display == "memo_001, section 核心观点"
+
+
+def test_memo_display_falls_back_to_section_id_without_heading():
+    """When no readable heading/section exists, display uses the section id."""
+    block = {"memo_id": "memo_001", "section_id": "thesis", "content": "结论。"}
+    e = normalize_many(MemoEvidenceAdapter().adapt([block], _ctx("memo_001")))[0]
+    assert e.location.heading is None
+    assert render_citation_display(e) == "memo_001, section thesis"
 
 
 def test_qa_memo_evidence_ids_are_deterministic(qa_blocks, memo_blocks):

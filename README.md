@@ -100,6 +100,7 @@
 | 2026-06-26 | 第二阶段：新增 PPT/Word/Markdown 三个 evidence adapter（slide_no/shape_id、heading_path/labels、frontmatter/tags/wikilinks），统一接入 normalizer 与 display。 | `src/evidence_schema/adapters/ppt_adapter.py`, `src/evidence_schema/adapters/word_adapter.py`, `src/evidence_schema/adapters/markdown_adapter.py`, `src/evidence_schema/adapters/__init__.py`, `src/evidence_schema/__init__.py`, `test/evidence_schema/*`, `README.md` | 运行 `pytest test/evidence_schema/`（16 passed）；三类 parsed block 转统一 evidence，display 渲染与设计文档 §8 一致。 | review |
 | 2026-06-28 | 低耦合 MVP：新增 `pick()` 字段 alias 助手，所有 adapter 不再写死上游字段名（page/page_no、slide/slide_no、heading/heading_path、file/file_name 等）；Excel `upstream_cells`/`number_format` 严格可选；补字段 alias 契约测试；在 `test/evidence_schema/README.md` 记录全部未确认接口与假设。 | `src/evidence_schema/adapters/base.py`, `src/evidence_schema/adapters/{pdf,ppt,word,markdown,excel}_adapter.py`, `test/evidence_schema/test_excel_evidence.py`, `test/evidence_schema/test_evidence_normalizer.py`, `test/evidence_schema/README.md`, `README.md` | 运行 `pytest test/evidence_schema/`（23 passed）；parser/DB/Memory/Memo 接口变更只需改 adapter alias，不影响下游。 | review |
 | 2026-06-28 | 安全假设三项：新增 QA adapter（qa_message：session_id/message_id/role）、Memo adapter（memo_section：memo_id/section_id，可被 build_citation 消费）、轻量纯函数 citation quality gate（缺 evidence_id/claim/display -> needs_review）；均不接真实 DB/LLM，未确认项写入 ASSUMPTIONS。 | `src/evidence_schema/adapters/{qa,memo}_adapter.py`, `src/evidence_schema/citation_gate.py`, `src/evidence_schema/adapters/__init__.py`, `src/evidence_schema/__init__.py`, `test/evidence_schema/{test_qa_memo_adapters,test_citation_gate}.py`, `test/evidence_schema/fixtures/{qa,memo}_parsed.json`, `test/evidence_schema/{conftest,README}.py/md`, `README.md` | 运行 `pytest test/evidence_schema/`（34 passed）；gate 归属与 QA/Memo 真实字段待与廖/朝龙对齐，确认后只改 alias，不动 schema。 | review |
+| 2026-06-28 | 按 Draft PR #1 review 修复：Excel adapter 空 block 过滤（缺 sheet/cell/range/value/formula 即跳过）、`content_json` 不再写入 None；Memo display 优先人读 heading/section，缺失才回退 section_id；补 3 个测试。 | `src/evidence_schema/adapters/excel_adapter.py`, `src/evidence_schema/display.py`, `test/evidence_schema/test_excel_evidence.py`, `test/evidence_schema/test_qa_memo_adapters.py`, `README.md` | 运行 `pytest test/evidence_schema/`（39 passed）；`adapt([{}])` 不再生成 evidence，memo display 形如 `memo_001, section 核心观点`。 | review |
 
 ## 模块进度看板
 
@@ -108,7 +109,7 @@
 | Project DB | 雷雷 | 固化 SQLite schema、目录结构和 repository API。 | `test/project_db/` | 输出第一版 schema.sql、初始化脚本和 DB 回溯测试。 | 暂无 |
 | Research Memory | 廖 | QA 后完整写入原文、facts、citations、audit，并进入语义索引。 | `test/research_memory/` | 实现最小 QA memory 闭环和对应测试 fixture。 | OpenViking 接入方案待确认 |
 | Memo Generation | 朝龙 | 固定模板 memo + evidence pack + citation gate。 | `test/memo_generation/` | 实现 memo 最小端到端 demo 和 citation gate 测试。 | 依赖 Evidence Schema 和 Memory API |
-| Evidence Schema | 程景逸 | 统一 evidence/citation/provenance schema。 | `test/evidence_schema/` | 与雷雷对齐 collection.db 字段后接入 SQLite repository；补 QA/Memo adapter。 | 需要和 DB schema 对齐（见 `test/evidence_schema/README.md` 对齐清单） |
+| Evidence Schema | 程景逸 | 统一 evidence/citation/provenance schema。 | `test/evidence_schema/` | 修复 Draft PR #1 review 后转 ready-for-review；之后另开下一阶段 PR 接入 SQLite repository / DB 字段对齐 / RM citation。 | 需要和 DB schema 对齐（见 `test/evidence_schema/README.md` 对齐清单） |
 
 ## 员工 Coding Agent 更新规范
 

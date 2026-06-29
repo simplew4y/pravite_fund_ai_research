@@ -79,7 +79,9 @@ def _qa(loc: EvidenceLocation) -> str:
 def _memo(loc: EvidenceLocation) -> str:
     lj = loc.location_json or {}
     memo_id = lj.get("memo_id", "")
-    section = lj.get("section_id", "") or loc.section or ""
+    # Prefer the human-readable heading; fall back to the section id only when
+    # no readable title is available.
+    section = loc.heading or loc.section or lj.get("section_id", "")
     tail = f"section {section}" if section else ""
     return _join([memo_id, tail])
 

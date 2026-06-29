@@ -41,13 +41,20 @@ class ExcelEvidenceAdapter(BaseEvidenceAdapter):
         for block in parsed_blocks:
             sheet = pick(block, "sheet", "sheet_name")
             cell = pick(block, "cell")
+            cell_range = pick(block, "range", "cell_range")
             value = pick(block, "value")
             formula = pick(block, "formula")
+            # Skip blocks with no core location / content field: an empty block
+            # must not produce a hollow evidence.
+            if all(v is None for v in (sheet, cell, cell_range, value, formula)):
+                continue
             content_text = self._content_text(sheet, cell, value, formula)
-            content_json: dict[str, Any] = {
-                "value": value,
-                "formula": formula,
-            }
+            # Only write fields that are actually present; never persist None.
+            content_json: dict[str, Any] = {}
+            if value is not None:
+                content_json["value"] = value
+            if formula is not None:
+                content_json["formula"] = formula
             number_format = pick(block, "number_format")
             if number_format is not None:
                 content_json["number_format"] = number_format
@@ -59,7 +66,7 @@ class ExcelEvidenceAdapter(BaseEvidenceAdapter):
                 file_name=pick(block, "file", "file_name") or ctx.file_name,
                 sheet_name=sheet,
                 cell=cell,
-                cell_range=pick(block, "range", "cell_range"),
+                cell_range=cell_range,
                 formula=formula,
                 location_json={"value": value} if value is not None else {},
             )
