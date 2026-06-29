@@ -1,7 +1,7 @@
 """
 会话列表、创建、重命名、删除、持久化消息等路由。
 
-依赖主模块中的 `chat_service` 与 `session_history_db` 配置。日期/侧栏分组由前端根据
+依赖主模块中的 `session_history_db` 配置。日期/侧栏分组由前端根据
 `created_at` / `updated_at` 自行处理。
 """
 
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from pathlib import Path
 from typing import List, Optional
 
 import app as app_module
@@ -18,19 +19,25 @@ from pydantic import BaseModel, Field
 from utils.session_history_store import SessionHistoryStore
 
 router = APIRouter(tags=["sessions"])
+_session_store: Optional[SessionHistoryStore] = None
+_session_store_path: Optional[str] = None
 
 
 def _require_session_store() -> SessionHistoryStore:
-    cs = app_module.chat_service
-    if cs is None:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
-    store = getattr(cs, "session_history_store", None)
-    if store is None:
+    global _session_store, _session_store_path
+    config = app_module.load_config()
+    db_path = str(config.get("session_history_db") or "").strip()
+    if not db_path:
         raise HTTPException(
             status_code=503,
             detail="Session history is not configured (set session_history_db in config)",
         )
-    return store
+    resolved = str(Path(db_path).expanduser().resolve())
+    Path(resolved).parent.mkdir(parents=True, exist_ok=True)
+    if _session_store is None or _session_store_path != resolved:
+        _session_store = SessionHistoryStore(resolved)
+        _session_store_path = resolved
+    return _session_store
 
 
 class SessionListItem(BaseModel):
@@ -96,12 +103,9 @@ async def allocate_session_id():
 
     首轮对话持久化后由 ChatService 按需更新标题；响应体仍只含 id。
     """
-    if app_module.chat_service is None:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
     sid = str(uuid.uuid4())
-    store = getattr(app_module.chat_service, "session_history_store", None)
-    if store:
-        await asyncio.to_thread(store.create_empty_session, sid, _DEFAULT_NEW_SESSION_TITLE)
+    store = _require_session_store()
+    await asyncio.to_thread(store.create_empty_session, sid, _DEFAULT_NEW_SESSION_TITLE)
     return SessionIdResponse(id=sid)
 
 

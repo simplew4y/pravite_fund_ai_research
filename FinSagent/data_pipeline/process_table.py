@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import logging
@@ -11,12 +13,16 @@ from typing import List, Dict, Optional, Any, Sequence
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-import anthropic
 from openai import OpenAI
 from tqdm import tqdm
 from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    import anthropic
+except Exception:  # Anthropic is optional; the default path uses OpenAI-compatible vision models.
+    anthropic = None
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,6 +77,17 @@ def encode_image(image_path: str) -> tuple[str, str]:
     return image_data, media_type
 
 
+def _strip_code_fence(text: str) -> str:
+    value = (text or "").strip()
+    if value.startswith("```html"):
+        value = value[7:]
+    elif value.startswith("```"):
+        value = value[3:]
+    if value.endswith("```"):
+        value = value[:-3]
+    return value.strip()
+
+
 def load_anthropic_api_keys(
     explicit_key: Optional[str] = None,
     explicit_keys: Optional[Sequence[str]] = None,
@@ -114,7 +131,7 @@ def load_anthropic_api_keys(
     return keys
 
 
-def pick_claude_client(clients: Sequence[anthropic.Anthropic]) -> anthropic.Anthropic:
+def pick_claude_client(clients: Sequence[Any]) -> Any:
     """Pick a random Anthropic client from the pool."""
     if not clients:
         raise ValueError("No Anthropic clients available")
@@ -122,7 +139,7 @@ def pick_claude_client(clients: Sequence[anthropic.Anthropic]) -> anthropic.Anth
 
 
 def process_table_to_html_with_claude(
-    claude_clients: Sequence[anthropic.Anthropic],
+    claude_clients: Sequence[Any],
     image_path: str,
     rate_limiter: RateLimiter,
     model: str = "claude-sonnet-4-20250514",
@@ -134,6 +151,9 @@ def process_table_to_html_with_claude(
     if not os.path.exists(image_path):
         logger.error(f"Image file not found: {image_path}")
         return None
+
+    if anthropic is None:
+        raise RuntimeError("anthropic package is not installed; use the OpenAI-compatible table path instead.")
 
     image_data, media_type = encode_image(image_path)
 
@@ -173,14 +193,7 @@ Requirements:
                 ],
             )
 
-            html_content = message.content[0].text.strip()
-            if html_content.startswith("``html"):
-                html_content = html_content[7:]
-            if html_content.startswith("`"):
-                html_content = html_content[3:]
-            if html_content.endswith("``"):
-                html_content = html_content[:-3]
-            return html_content.strip()
+            return _strip_code_fence(message.content[0].text)
 
         except anthropic.RateLimitError as e:
             wait = 60
@@ -190,6 +203,65 @@ Requirements:
         except Exception as e:
             wait = 5
             logger.error(f"[{attempt}/{max_retries}] Error for {image_path}: {e}, waiting {wait}s...")
+            if attempt < max_retries:
+                time.sleep(wait)
+
+    logger.error(f"Giving up on {image_path} after {max_retries} attempts")
+    return None
+
+
+def process_table_to_html_with_openai_compatible(
+    client: OpenAI,
+    image_path: str,
+    rate_limiter: RateLimiter,
+    model: str,
+    max_retries: int = 3,
+) -> Optional[str]:
+    """
+    Use an OpenAI-compatible multimodal chat model to convert a table image to HTML.
+    DashScope's compatible API accepts image_url data URLs for Qwen multimodal models.
+    """
+    if not os.path.exists(image_path):
+        logger.error(f"Image file not found: {image_path}")
+        return None
+
+    image_data, media_type = encode_image(image_path)
+    data_url = f"data:{media_type};base64,{image_data}"
+    prompt = """Please convert this table image into HTML format.
+
+Requirements:
+1. Preserve the complete structure of the table: headers, rows, columns, and hierarchy.
+2. Use <thead> and <tbody> where appropriate.
+3. Preserve merged cells using colspan and rowspan when visible.
+4. Preserve exact number formatting, units, punctuation, and dates.
+5. Do not add CSS styles.
+6. Output only the HTML table code, with no explanation and no markdown code block."""
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            rate_limiter.acquire()
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a precise financial document table reconstruction assistant.",
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": data_url}},
+                        ],
+                    },
+                ],
+                max_tokens=8192,
+                extra_body={"enable_thinking": False},
+            )
+            return _strip_code_fence(response.choices[0].message.content or "")
+        except Exception as e:
+            wait = 8
+            logger.error(f"[{attempt}/{max_retries}] Error converting table image with {model}: {e}")
             if attempt < max_retries:
                 time.sleep(wait)
 
@@ -259,15 +331,19 @@ Please output only the descriptive text, without any formatting marks or prefixe
 
 
 def process_single_table(
-    claude_clients: Sequence[anthropic.Anthropic],
-    tencent_client: OpenAI,
     item: Dict[str, Any],
     idx: int,
     base_image_dir: str,
     previous_context: str,
     rate_limiter: RateLimiter,
-    claude_model: str = "claude-sonnet-4-20250514",
-    tencent_model: str = "deepseek-v3"
+    *,
+    openai_client: Optional[OpenAI] = None,
+    openai_table_model: str = "",
+    openai_summary_model: str = "",
+    claude_clients: Optional[Sequence[Any]] = None,
+    tencent_client: Optional[OpenAI] = None,
+    claude_model: str = "claude-sonnet-4-6",
+    tencent_model: str = "deepseek-v4-pro",
 ) -> Optional[Dict[str, Any]]:
     """处理单个表格项"""
     img_path = item.get('img_path', '')
@@ -287,10 +363,17 @@ def process_single_table(
         logger.warning(f"Image not found: {full_image_path}, skipping")
         return None
     
-    # Step 1: 使用 Claude 将表格图片转换为 HTML
-    html_content = process_table_to_html_with_claude(
-        claude_clients, full_image_path, rate_limiter, claude_model
-    )
+    use_openai_compatible = openai_client is not None
+    if use_openai_compatible:
+        html_content = process_table_to_html_with_openai_compatible(
+            openai_client, full_image_path, rate_limiter, openai_table_model
+        )
+    else:
+        if not claude_clients:
+            raise ValueError("No Claude clients available for legacy table processing")
+        html_content = process_table_to_html_with_claude(
+            claude_clients, full_image_path, rate_limiter, claude_model
+        )
     
     if html_content is None:
         logger.warning(f"Failed to generate HTML for table at index {idx}, skipping")
@@ -305,9 +388,17 @@ def process_single_table(
     if isinstance(original_footnote, list):
         original_footnote = ' '.join(original_footnote)
 
-    # Step 2: 使用腾讯云生成表格摘要
+    if use_openai_compatible:
+        summary_client = openai_client
+        summary_model = openai_summary_model or openai_table_model
+    else:
+        if tencent_client is None:
+            raise ValueError("Tencent/OpenAI-compatible summary client is required for legacy table processing")
+        summary_client = tencent_client
+        summary_model = tencent_model
+
     summary_text = generate_table_summary_with_tencent(
-        tencent_client, html_content, previous_context, original_caption, original_footnote, tencent_model
+        summary_client, html_content, previous_context, original_caption, original_footnote, summary_model
     )
     if summary_text is None:
         logger.warning(f"Failed to generate summary for table at index {idx}, skipping")
@@ -319,10 +410,21 @@ def process_single_table(
         'summary': summary_text,
         'content': html_content,
         'page_idx': item.get('page_idx'),
+        'bbox': item.get('bbox'),
         'original_img_path': img_path,
         'table_caption': item.get('table_caption', []),
         'table_footnote': item.get('table_footnote', []),
-        'original_index': idx
+        'original_index': idx,
+        'source_locations': ([{
+            'page_idx': item.get('page_idx'),
+            'bbox': item.get('bbox'),
+            'block_type': 'table',
+            'block_index': idx,
+            'source_file': 'content_list',
+            'coordinate_system': 'mineru_content_list',
+            'page_width': 1000,
+            'page_height': 1000,
+        }] if item.get('bbox') else []),
     }
     
     logger.info(f"Successfully processed table at index {idx}")
@@ -352,9 +454,9 @@ def reconstruct_table_chunks(
     anthropic_api_key: Optional[str] = None,
     anthropic_api_keys: Optional[Sequence[str]] = None,
     tencent_api_key: Optional[str] = None,
-    tencent_base_url: str = "https://api.lkeap.cloud.tencent.com/v1",
-    claude_model: str = "claude-sonnet-4-20250514",
-    tencent_model: str = "deepseek-v3.2",
+    tencent_base_url: str = "",
+    claude_model: str = "",
+    tencent_model: str = "",
     max_workers: int = 5,
     requests_per_minute: int = 50,
     context_window: int = 3,
@@ -366,13 +468,11 @@ def reconstruct_table_chunks(
     Args:
         input_dir: 输入目录，包含 /hybrid_auto/*_content_list.json 和 /hybrid_auto/images/
         output_json_path: 输出 JSON 路径（可选，默认在 input_dir 下生成）
-        anthropic_api_key: 单个 Anthropic API Key（可选）
-        anthropic_api_keys: 多个 Anthropic API Key 列表，每次调用随机选一个
-            （可选，默认从环境变量 ANTHROPIC_API_KEYS / ANTHROPIC_API_KEY_N / ANTHROPIC_API_KEY 读取）
-        tencent_api_key: 腾讯云 API Key
-        tencent_base_url: 腾讯云 API Base URL
-        claude_model: Claude 模型名称
-        tencent_model: 腾讯云模型名称
+        anthropic_api_key / anthropic_api_keys: legacy Claude API keys.
+        tencent_api_key: legacy summary API key.
+        tencent_base_url: legacy summary API base URL.
+        claude_model: legacy Claude model name.
+        tencent_model: legacy summary model name.
         max_workers: 最大并行数
         requests_per_minute: 每分钟最大请求数（速率限制）
         context_window: 上下文窗口大小（取前 N 个 text chunk）
@@ -403,30 +503,68 @@ def reconstruct_table_chunks(
         dir_name = os.path.basename(input_dir.rstrip('/'))
         output_json_path = os.path.join(input_dir, f"{dir_name}_table_reconstructed.json")
     
-    # 初始化 Claude 客户端池（支持多个 API key，每次调用随机选一个）
-    api_keys = load_anthropic_api_keys(
-        explicit_key=anthropic_api_key,
-        explicit_keys=anthropic_api_keys,
+    process_table_key = (
+        os.environ.get("process_table_llm_api_key")
+        or os.environ.get("PROCESS_TABLE_LLM_API_KEY")
     )
-    if not api_keys:
-        raise ValueError(
-            "No Anthropic API keys found. Set ANTHROPIC_API_KEYS (comma-separated), "
-            "ANTHROPIC_API_KEY_1/2/..., or ANTHROPIC_API_KEY in .env, "
-            "or pass --anthropic-api-keys."
+    process_table_base_url = (
+        os.environ.get("process_table_llm_base_url")
+        or os.environ.get("PROCESS_TABLE_LLM_BASE_URL")
+    )
+    process_table_model = (
+        os.environ.get("process_table_llm_model_name")
+        or os.environ.get("PROCESS_TABLE_LLM_MODEL_NAME")
+    )
+    process_table_summary_model = (
+        os.environ.get("process_table_summary_model_name")
+        or os.environ.get("PROCESS_TABLE_SUMMARY_MODEL_NAME")
+        or os.environ.get("LLM_MODEL_NAME")
+        or "deepseek-v4-pro"
+    )
+    use_process_table_llm = bool(process_table_key and process_table_base_url and process_table_model)
+
+    openai_client: Optional[OpenAI] = None
+    claude_clients: list[Any] = []
+    legacy_tencent_client: Optional[OpenAI] = None
+    resolved_claude_model = claude_model or "claude-sonnet-4-6"
+    resolved_tencent_model = tencent_model or "deepseek-v4-pro"
+    resolved_tencent_base_url = tencent_base_url or "https://api.lkeap.cloud.tencent.com/v1"
+
+    if use_process_table_llm:
+        openai_client = OpenAI(api_key=process_table_key, base_url=process_table_base_url)
+        logger.info(
+            "Initialized process_table_llm client: base_url=%s table_model=%s summary_model=%s",
+            process_table_base_url,
+            process_table_model,
+            process_table_summary_model,
         )
-    claude_clients = [anthropic.Anthropic(api_key=k) for k in api_keys]
-    logger.info(
-        f"Initialized {len(claude_clients)} Anthropic client(s) with model: {claude_model}"
-    )
-    
-    # 初始化腾讯云客户端
-    if tencent_api_key is None:
-        tencent_api_key = os.environ.get("TENCENT_API_KEY")
-    if tencent_api_key is None:
-        raise ValueError("tencent_api_key is required (set TENCENT_API_KEY in .env or pass --tencent-api-key)")
-    
-    tencent_client = OpenAI(api_key=tencent_api_key, base_url=tencent_base_url)
-    logger.info(f"Initialized Tencent client with model: {tencent_model}")
+    else:
+        if anthropic is None:
+            raise RuntimeError("anthropic package is required for legacy Claude table processing")
+        api_keys = load_anthropic_api_keys(
+            explicit_key=anthropic_api_key,
+            explicit_keys=anthropic_api_keys,
+        )
+        if not api_keys:
+            raise ValueError(
+                "No Anthropic API keys found. Configure process_table_llm_* to use the "
+                "OpenAI-compatible path, or set ANTHROPIC_API_KEYS / ANTHROPIC_API_KEY."
+            )
+        claude_clients = [anthropic.Anthropic(api_key=k) for k in api_keys]
+
+        if tencent_api_key is None:
+            tencent_api_key = os.environ.get("TENCENT_API_KEY")
+        if not tencent_api_key:
+            raise ValueError(
+                "TENCENT_API_KEY is required for legacy table summary when process_table_llm_* is not fully configured"
+            )
+        legacy_tencent_client = OpenAI(api_key=tencent_api_key, base_url=resolved_tencent_base_url)
+        logger.info(
+            "Initialized legacy table clients: claude_model=%s summary_base_url=%s summary_model=%s",
+            resolved_claude_model,
+            resolved_tencent_base_url,
+            resolved_tencent_model,
+        )
     
     # 初始化速率限制器
     rate_limiter = RateLimiter(requests_per_minute=requests_per_minute)
@@ -486,8 +624,18 @@ def reconstruct_table_chunks(
     def process_task(task):
         idx, item, previous_context = task
         return process_single_table(
-            claude_clients, tencent_client, item, idx, image_dir,
-            previous_context, rate_limiter, claude_model, tencent_model
+            item,
+            idx,
+            image_dir,
+            previous_context,
+            rate_limiter,
+            openai_client=openai_client,
+            openai_table_model=process_table_model or "",
+            openai_summary_model=process_table_summary_model,
+            claude_clients=claude_clients,
+            tencent_client=legacy_tencent_client,
+            claude_model=resolved_claude_model,
+            tencent_model=resolved_tencent_model,
         )
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -523,19 +671,18 @@ def reconstruct_table_chunks(
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="使用 Claude API 重建表格 chunks")
+    parser = argparse.ArgumentParser(description="使用 OpenAI-compatible 多模态模型重建表格 chunks")
     parser.add_argument("input_dir", help="输入目录，包含 /hybrid_auto/*_content_list.json 和 /hybrid_auto/images/")
     parser.add_argument("-o", "--output", help="输出 JSON 路径")
-    parser.add_argument("--anthropic-api-key", help="单个 Anthropic API Key（或设置 ANTHROPIC_API_KEY 环境变量）")
+    parser.add_argument("--anthropic-api-key", help="兼容旧参数，当前默认不使用")
     parser.add_argument(
         "--anthropic-api-keys",
-        help="多个 Anthropic API Key，逗号分隔；每次调用随机选一个 "
-             "（或设置 ANTHROPIC_API_KEYS / ANTHROPIC_API_KEY_1/2/...）",
+        help="兼容旧参数，当前默认不使用",
     )
-    parser.add_argument("--tencent-api-key", help="腾讯云 API Key（或设置 TENCENT_API_KEY 环境变量）")
-    parser.add_argument("--tencent-base-url", default="https://api.lkeap.cloud.tencent.com/v1", help="腾讯云 API Base URL")
-    parser.add_argument("--claude-model", default="claude-sonnet-4-6", help="Claude 模型名称")
-    parser.add_argument("--tencent-model", default="deepseek-v4-pro", help="腾讯云模型名称")
+    parser.add_argument("--tencent-api-key", help="兼容旧参数；OpenAI-compatible API Key，默认读 process_table_llm_api_key")
+    parser.add_argument("--tencent-base-url", default="", help="兼容旧参数；OpenAI-compatible API Base URL，默认读 process_table_llm_base_url")
+    parser.add_argument("--claude-model", default="", help="兼容旧参数；未配置 process_table_llm_* 时使用的 Claude 模型")
+    parser.add_argument("--tencent-model", default="", help="兼容旧参数；未配置 process_table_llm_* 时使用的摘要模型")
     parser.add_argument("-w", "--workers", type=int, default=5, help="最大并行数（默认5）")
     parser.add_argument("--rpm", type=int, default=50, help="每分钟最大请求数（默认50）")
     parser.add_argument("--context-window", type=int, default=3, help="上下文窗口大小（默认3）")

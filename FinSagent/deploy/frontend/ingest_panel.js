@@ -21,12 +21,22 @@
     var listEl = document.getElementById('ingest-file-list');
     var taskHistoryEl = document.getElementById('ingest-task-history');
     var submitBtn = document.getElementById('ingest-submit-btn');
+    var datasetSelect = document.getElementById('dataset-select');
+    var datasetCreateToggle = document.getElementById('dataset-create-toggle');
+    var datasetCreatePanel = document.getElementById('dataset-create-panel');
+    var datasetNameInput = document.getElementById('dataset-name-input');
+    var datasetIdInput = document.getElementById('dataset-id-input');
+    var datasetCreateSubmit = document.getElementById('dataset-create-submit');
+    var datasetCurrentNote = document.getElementById('dataset-current-note');
 
     if (!wrap || !trigger || !sheet) return;
 
     /** @type {File[]} */
     var pending = [];
     var pollTimer = null;
+    var datasets = [];
+    var activeDatasetId = null;
+    var datasetsLoadingPromise = null;
 
     var historyNextPage = 1;
     var historyHasMore = true;
@@ -40,6 +50,103 @@
       }
     }
 
+    function datasetStatusLabel(status) {
+      if (status === 'indexed') return '已索引';
+      if (status === 'indexing') return '索引中';
+      if (status === 'empty') return '空';
+      if (status === 'failed') return '失败';
+      if (status === 'unavailable') return '不可用';
+      return status || '未知';
+    }
+
+    function activeDataset() {
+      return datasets.find(function (d) {
+        return d.dataset_id === activeDatasetId;
+      }) || null;
+    }
+
+    function renderDatasetControls() {
+      if (!datasetSelect) return;
+      datasetSelect.innerHTML = '';
+      if (!datasets.length) {
+        var emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.textContent = '暂无资料库';
+        datasetSelect.appendChild(emptyOpt);
+        datasetSelect.disabled = true;
+        if (datasetCurrentNote) datasetCurrentNote.textContent = '请先创建资料库后再上传文档。';
+        renderList();
+        return;
+      }
+      datasetSelect.disabled = false;
+      datasets.forEach(function (d) {
+        var opt = document.createElement('option');
+        opt.value = d.dataset_id;
+        opt.textContent = (d.name || d.dataset_id) + ' · ' + datasetStatusLabel(d.status);
+        datasetSelect.appendChild(opt);
+      });
+      if (!activeDatasetId || !datasets.some(function (d) { return d.dataset_id === activeDatasetId; })) {
+        activeDatasetId = datasets[0].dataset_id;
+      }
+      datasetSelect.value = activeDatasetId || '';
+      var current = activeDataset();
+      if (datasetCurrentNote) {
+        datasetCurrentNote.textContent = current
+          ? '当前资料库：' + (current.name || current.dataset_id) + ' / collection: ' + current.collection_name
+          : '未选择资料库';
+      }
+      if (datasetCurrentNote && current) {
+        datasetCurrentNote.textContent = '当前资料库：' + (current.name || current.dataset_id);
+      }
+      renderList();
+    }
+
+    async function loadDatasets() {
+      try {
+        var res = await fetch('/datasets');
+        var data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) throw new Error(data.detail || '加载资料库失败');
+        datasets = Array.isArray(data.datasets) ? data.datasets : [];
+        activeDatasetId = data.active_dataset_id || (datasets[0] && datasets[0].dataset_id) || null;
+      } catch (err) {
+        datasets = [];
+        activeDatasetId = null;
+        if (datasetCurrentNote) datasetCurrentNote.textContent = err.message || '加载资料库失败';
+      } finally {
+        renderDatasetControls();
+      }
+      return activeDatasetId;
+    }
+
+    function ensureDatasetsLoaded() {
+      if (!datasetsLoadingPromise) {
+        datasetsLoadingPromise = loadDatasets().finally(function () {
+          datasetsLoadingPromise = null;
+        });
+      }
+      return datasetsLoadingPromise;
+    }
+
+    async function activateDataset(nextId) {
+      if (!nextId || nextId === activeDatasetId) return activeDatasetId;
+      var res = await fetch('/datasets/' + encodeURIComponent(nextId) + '/activate', { method: 'POST' });
+      var data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) throw new Error(data.detail || '切换资料库失败');
+      activeDatasetId = nextId;
+      await loadDatasets();
+      resetHistoryAndLoadFirst();
+      return activeDatasetId;
+    }
+
+    window.getActiveDatasetId = async function () {
+      if (!activeDatasetId) await ensureDatasetsLoaded();
+      return activeDatasetId || null;
+    };
+
     function setPill(state, label) {
       pill.dataset.state = state;
       pill.textContent = label;
@@ -51,6 +158,12 @@
       if (x === 'running') return '处理中';
       if (x === 'completed') return '已完成';
       if (x === 'failed') return '失败';
+      if (x === 'uploaded') return '已上传';
+      if (x === 'parsing') return '解析中';
+      if (x === 'parsed') return '已解析';
+      if (x === 'indexing') return '索引中';
+      if (x === 'indexed') return '已索引';
+      if (x === 'unsupported') return '待接入解析';
       return s || '—';
     }
 
@@ -174,12 +287,22 @@
 
     async function loadNextHistoryPage() {
       if (!taskHistoryEl || historyLoading || !historyHasMore) return;
+      if (!activeDatasetId) {
+        taskHistoryEl.innerHTML = '';
+        var noDatasetLi = document.createElement('li');
+        noDatasetLi.className = 'ingest-hist-empty';
+        noDatasetLi.textContent = '请先创建或选择资料库';
+        taskHistoryEl.appendChild(noDatasetLi);
+        historyHasMore = false;
+        return;
+      }
 
       historyLoading = true;
       var page = historyNextPage;
       try {
         var res = await fetch(
-          '/ingest/jobs?page=' + encodeURIComponent(String(page)) + '&page_size=' + encodeURIComponent(String(PAGE_SIZE))
+          '/datasets/' + encodeURIComponent(activeDatasetId) + '/jobs?page=' +
+            encodeURIComponent(String(page)) + '&page_size=' + encodeURIComponent(String(PAGE_SIZE))
         );
         var data = await res.json().catch(function () {
           return {};
@@ -219,7 +342,7 @@
     function openSheet() {
       sheet.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
-      resetHistoryAndLoadFirst();
+      ensureDatasetsLoaded().then(resetHistoryAndLoadFirst);
     }
 
     function closeSheet() {
@@ -251,7 +374,7 @@
       if (pending.length === 0) {
         var li = document.createElement('li');
         li.className = 'ingest-row ingest-row--empty';
-        li.textContent = '暂无待上传文件，请使用下方「选择文件」或「选择文件夹」添加 PDF';
+        li.textContent = '暂无待上传文件，请使用下方「选择文件」或「选择文件夹」添加资料文件';
         listEl.appendChild(li);
         submitBtn.disabled = true;
         return;
@@ -284,7 +407,7 @@
         row.appendChild(rm);
         listEl.appendChild(row);
       });
-      submitBtn.disabled = false;
+      submitBtn.disabled = !activeDatasetId;
     }
 
     function mapStatus(s) {
@@ -296,11 +419,13 @@
       return { pill: 'idle', text: '空闲' };
     }
 
-    async function poll(jobId) {
+    async function poll(jobId, datasetId) {
       stopPoll();
       var tick = async function () {
         try {
-          var res = await fetch('/ingest/jobs/' + encodeURIComponent(jobId));
+          var res = await fetch(
+            '/datasets/' + encodeURIComponent(datasetId) + '/jobs/' + encodeURIComponent(jobId)
+          );
           var data = await res.json().catch(function () {
             return {};
           });
@@ -315,7 +440,7 @@
           if (data.status === 'completed' || data.status === 'failed') {
             stopPoll();
             trigger.disabled = false;
-            submitBtn.disabled = pending.length === 0;
+            submitBtn.disabled = pending.length === 0 || !activeDatasetId;
             if (!sheet.hidden) resetHistoryAndLoadFirst();
           }
         } catch {
@@ -333,11 +458,11 @@
       toggleSheet();
     });
 
-    function isPdfFile(f) {
+    function isSupportedFile(f) {
       var type = (f.type || '').toLowerCase();
       if (type === 'application/pdf') return true;
       var n = (f.name || '').toLowerCase();
-      return n.endsWith('.pdf');
+      return /\.(pdf|doc|docx|odt|rtf|ppt|pptx|odp|xls|xlsx|csv|txt|md|markdown)$/i.test(n);
     }
 
     function fileDedupeKey(f) {
@@ -346,7 +471,7 @@
     }
 
     function mergeFilesIntoPending(fileList) {
-      var add = Array.from(fileList || []).filter(isPdfFile);
+      var add = Array.from(fileList || []).filter(isSupportedFile);
       for (var i = 0; i < add.length; i++) {
         var f = add[i];
         var key = fileDedupeKey(f);
@@ -378,12 +503,65 @@
       });
     }
 
+    if (datasetSelect) {
+      datasetSelect.addEventListener('change', function () {
+        var nextId = datasetSelect.value;
+        activateDataset(nextId).catch(function (err) {
+          if (datasetCurrentNote) datasetCurrentNote.textContent = err.message || '切换资料库失败';
+        });
+      });
+    }
+
+    if (datasetCreateToggle && datasetCreatePanel) {
+      datasetCreateToggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        datasetCreatePanel.hidden = !datasetCreatePanel.hidden;
+      });
+    }
+
+    if (datasetCreateSubmit) {
+      datasetCreateSubmit.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        var name = (datasetNameInput && datasetNameInput.value.trim()) || '';
+        if (!name) {
+          if (datasetCurrentNote) datasetCurrentNote.textContent = '请输入资料库名称';
+          return;
+        }
+        datasetCreateSubmit.disabled = true;
+        try {
+          var res = await fetch('/datasets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+          });
+          var data = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error(data.detail || '创建资料库失败');
+          await activateDataset(data.dataset_id);
+          if (datasetNameInput) datasetNameInput.value = '';
+          if (datasetIdInput) datasetIdInput.value = '';
+          if (datasetCreatePanel) datasetCreatePanel.hidden = true;
+        } catch (err) {
+          if (datasetCurrentNote) datasetCurrentNote.textContent = err.message || '创建资料库失败';
+        } finally {
+          datasetCreateSubmit.disabled = false;
+        }
+      });
+    }
+
     document.addEventListener('click', function (e) {
       if (!wrap.contains(e.target)) closeSheet();
     });
 
     submitBtn.addEventListener('click', async function () {
       if (pending.length === 0) return;
+      var datasetId = await window.getActiveDatasetId();
+      if (!datasetId) {
+        setPill('err', '无资料库');
+        if (datasetCurrentNote) datasetCurrentNote.textContent = '请先创建或选择资料库';
+        return;
+      }
       stopPoll();
       var fd = new FormData();
       pending.forEach(function (f) {
@@ -396,36 +574,40 @@
       closeSheet();
 
       try {
-        var res = await fetch('/ingest/upload', { method: 'POST', body: fd });
+        var res = await fetch(
+          '/datasets/' + encodeURIComponent(datasetId) + '/upload',
+          { method: 'POST', body: fd }
+        );
         var data = await res.json().catch(function () {
           return {};
         });
         if (!res.ok) {
           setPill('err', '失败');
           trigger.disabled = false;
-          submitBtn.disabled = pending.length === 0;
+          submitBtn.disabled = pending.length === 0 || !activeDatasetId;
           return;
         }
         var jobId = data.job_id;
         if (!jobId) {
           setPill('err', '失败');
           trigger.disabled = false;
-          submitBtn.disabled = pending.length === 0;
+          submitBtn.disabled = pending.length === 0 || !activeDatasetId;
           return;
         }
         var m = mapStatus(data.status || 'queued');
         setPill(m.pill, m.text);
         pending = [];
         renderList();
-        await poll(jobId);
+        await poll(jobId, datasetId);
       } catch (err) {
         setPill('err', '失败');
         trigger.disabled = false;
-        submitBtn.disabled = pending.length === 0;
+        submitBtn.disabled = pending.length === 0 || !activeDatasetId;
       }
     });
 
     renderList();
     setPill('idle', '空闲');
+    ensureDatasetsLoaded();
   });
 })();

@@ -99,6 +99,41 @@ def extract_content_text(item):
     return ""
 
 
+def _source_location(item, page_idx, block_index, source_file="content_list_v2"):
+    bbox = item.get("bbox")
+    if not bbox:
+        return None
+    item_page_idx = item.get("page_idx", page_idx)
+    try:
+        item_page_idx = int(item_page_idx)
+    except (TypeError, ValueError):
+        item_page_idx = page_idx
+    return {
+        "page_idx": item_page_idx,
+        "bbox": bbox,
+        "block_type": item.get("type"),
+        "block_index": block_index,
+        "source_file": source_file,
+        "coordinate_system": "mineru_content_list",
+        "page_width": 1000,
+        "page_height": 1000,
+    }
+
+
+def _dedupe_source_locations(locations):
+    out = []
+    seen = set()
+    for loc in locations or []:
+        if not isinstance(loc, dict):
+            continue
+        key = json.dumps(loc, ensure_ascii=False, sort_keys=True)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(loc)
+    return out
+
+
 def build_chunks_from_v2(data, initial_pairs=None):
     """遍历 v2 结构，维护标题栈，输出带 title_path 的 chunk 列表。
 
@@ -111,12 +146,14 @@ def build_chunks_from_v2(data, initial_pairs=None):
     title_stack = []  # 元素: (level:int, text:str)
     chunks = []
 
+    block_index = 0
     for page_idx, page in enumerate(data):
         if not isinstance(page, list):
             continue
         for item in page:
             if not isinstance(item, dict):
                 continue
+            block_index += 1
             t = item.get("type")
 
             if t in DROP_TYPES:
@@ -143,6 +180,9 @@ def build_chunks_from_v2(data, initial_pairs=None):
                     "content": text,
                     "page_number": page_idx,
                     "type": "text",
+                    "source_locations": _dedupe_source_locations(
+                        [_source_location(item, page_idx, block_index)]
+                    ),
                 })
             # 其他未知类型默认忽略
 
@@ -203,6 +243,7 @@ def _flush_window(window, out):
             "content": new_content,
             "page_number": c.get("page_number", 0),
             "type": "text",
+            "source_locations": _dedupe_source_locations(c.get("source_locations", [])),
         })
 
 
@@ -237,6 +278,7 @@ def merge_short_units_by_chars(chunks, min_chars=MIN_CHARACTER_THRESHOLD):
                 "content": text,
                 "page_number": c.get("page_number", 0),
                 "type": "text",
+                "source_locations": _dedupe_source_locations(c.get("source_locations", [])),
             })
             continue
 
@@ -244,6 +286,7 @@ def merge_short_units_by_chars(chunks, min_chars=MIN_CHARACTER_THRESHOLD):
             "title_path_pairs": pairs,
             "content": text,
             "page_number": c.get("page_number", 0),
+            "source_locations": _dedupe_source_locations(c.get("source_locations", [])),
         })
         window_chars += len(text)
 
@@ -329,6 +372,7 @@ def process_json_file(json_path, output_base_dir, skip_image_chunks=True, compan
             "title": title_str,
             "title_path": title_path,
             "type": c["type"],
+            "source_locations": _dedupe_source_locations(c.get("source_locations", [])),
         })
 
     save_json_file(output, output_path)

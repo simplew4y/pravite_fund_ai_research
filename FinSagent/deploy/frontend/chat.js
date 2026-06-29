@@ -9,6 +9,21 @@ function sessionIdForRequest() {
     }
     return 'web_user_' + Math.random().toString(36).substring(2, 10);
 }
+
+async function datasetIdForRequest() {
+    if (typeof window.getActiveDatasetId === 'function') {
+        return await window.getActiveDatasetId();
+    }
+    try {
+        const response = await fetch('/datasets');
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) return null;
+        return data.active_dataset_id || null;
+    } catch {
+        return null;
+    }
+}
+
 let isSending = false;
 let isPreviewMode = true;
 
@@ -220,12 +235,16 @@ async function sendMessagePreviewMode(question, rowDiv, stepsContainer, sendingS
     STATUS_DISPLAY.textContent = '';
 
     try {
+        const datasetId = await datasetIdForRequest();
         const response = await fetch(PREVIEW_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question, session_id: sessionIdForRequest() })
+            body: JSON.stringify({ question, session_id: sendingSessionId, dataset_id: datasetId })
         });
-        if (!response.ok) throw new Error('Network response was not ok');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Network response was not ok');
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -282,12 +301,16 @@ async function sendMessageStandardMode(question, rowDiv, stepsContainer, sending
     STATUS_DISPLAY.textContent = '正在思考...';
 
     try {
+        const datasetId = await datasetIdForRequest();
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question, session_id: sessionIdForRequest() })
+            body: JSON.stringify({ question, session_id: sendingSessionId, dataset_id: datasetId })
         });
-        if (!response.ok) throw new Error('Network response was not ok');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Network response was not ok');
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();

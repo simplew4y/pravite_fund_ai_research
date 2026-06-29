@@ -54,6 +54,20 @@ import json
 import re
 import argparse
 
+def merge_source_locations(*location_groups):
+    merged = []
+    seen = set()
+    for locations in location_groups:
+        for loc in locations or []:
+            if not isinstance(loc, dict):
+                continue
+            key = json.dumps(loc, ensure_ascii=False, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(loc)
+    return merged
+
 def split_content(content, content_size):
     """将文本内容分割成指定大小的块，确保句子完整性"""
     # 定义句子分隔模式 - 修改正则表达式以更准确地识别句子边界
@@ -157,6 +171,10 @@ def process_json(input_file, output_file, content_size=200):
                 # Extract content from the next item
                 additional_content = next_item['content']
                 current_chunk['content'] += ' ' + additional_content
+                current_chunk['source_locations'] = merge_source_locations(
+                    current_chunk.get('source_locations', []),
+                    next_item.get('source_locations', []),
+                )
                 # Keep the original page_number
                 current_chunk['page_number'] = current_chunk['page_number']
                 # Remove the next item since its content has been merged
@@ -179,6 +197,10 @@ def process_json(input_file, output_file, content_size=200):
                 # 插入到items列表中，以便下次循环处理
                 new_item = item.copy()
                 new_item['content'] = remaining_content
+                new_item['source_locations'] = merge_source_locations(
+                    current_chunk.get('source_locations', []),
+                    item.get('source_locations', []),
+                )
                 items.insert(index + 1, new_item)
         else:
             current_chunk['id'] = chunk_id_counter

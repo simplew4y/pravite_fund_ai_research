@@ -9,17 +9,13 @@ import sqlite3
 import yaml
 import logging
 import json
-import uuid
-import subprocess
 import threading
 import time
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional, Any
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Query, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from starlette.responses import JSONResponse
@@ -33,15 +29,6 @@ sys.path.insert(0, REPO_ROOT)
 
 from core.ChatService import ChatService
 from core.RAGManager import RAGManager
-from doc_agent import DocumentTriageAgent
-
-from data_pipeline.ingest_documents_db import (
-    fetch_job_snapshot,
-    fetch_recent_jobs_page,
-    resolve_db_path,
-    try_insert_document_rows,
-    try_update_job_documents,
-)
 
 # 配置日志
 API_LOG_PATH = os.environ.get(
@@ -62,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 # 全局变量
 chat_service: Optional[ChatService] = None
+active_dataset_id: Optional[str] = None
 
 # 入库成功后热重载 RAG + ChatService（方案 B）；与并发入库线程互斥
 _chat_stack_reload_lock = threading.Lock()
@@ -69,24 +57,6 @@ _chat_stack_reload_lock = threading.Lock()
 _active_rag_ops = 0
 _active_rag_ops_lock = threading.Lock()
 _rag_reload_in_progress = False
-
-# 文档入库异步任务（子进程跑 file2chunk2data_pipeline，避免破坏当前进程的 RAGManager 单例）
-DATA_PIPELINE_DIR = os.path.join(REPO_ROOT, "data_pipeline")
-INGEST_SCRIPT = os.path.join(DATA_PIPELINE_DIR, "file2chunk2data_pipeline.py")
-CONFIG_PATH = os.path.join(REPO_ROOT, "config", "production.yaml")
-_ingest_jobs_lock = threading.Lock()
-_ingest_jobs: dict[str, dict[str, Any]] = {}
-# 每个入库任务独立日志文件，避免多请求并发写同一文件导致错乱。可通过环境变量覆盖目录。
-INGEST_LOG_DIR = os.environ.get(
-    "INGEST_LOG_DIR",
-    os.path.join(REPO_ROOT, "pe_logs", "ingest_jobs"),
-).rstrip(os.sep)
-os.makedirs(INGEST_LOG_DIR, exist_ok=True)
-
-
-def _ingest_job_log_path(job_id: str) -> str:
-    return os.path.join(INGEST_LOG_DIR, f"{job_id}.log")
-
 
 def load_config():
     """加载配置文件"""
@@ -98,23 +68,6 @@ def load_config():
     except Exception as e:
         logger.error(f"加载配置文件失败: {e}")
         raise
-
-
-def load_doc_agent_config() -> dict[str, Any]:
-    """加载文档分诊 agent 配置；缺少 production.yaml 时允许用环境变量测试。"""
-    try:
-        config = load_config()
-    except Exception:
-        config = {}
-    env_overrides = {
-        "llm_base_url": os.environ.get("LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
-        "llm_api_key": os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY"),
-        "llm_model_name": os.environ.get("LLM_MODEL_NAME") or os.environ.get("OPENAI_MODEL"),
-    }
-    for key, value in env_overrides.items():
-        if value:
-            config[key] = value
-    return config
 
 
 def _reset_rag_manager_singleton() -> None:
@@ -157,9 +110,9 @@ def _wait_for_rag_idle_unlocked(timeout_sec: float, poll_sec: float = 0.25) -> b
     return False
 
 
-def _build_chat_stack() -> ChatService:
-    """从 production.yaml 构建 RAGManager + ChatService（启动与热重载共用）。"""
-    config = load_config()
+def _build_chat_stack(config: Optional[dict[str, Any]] = None) -> ChatService:
+    """从配置构建 RAGManager + ChatService（启动、热重载、数据集切换共用）。"""
+    config = config or load_config()
     logger.info("正在初始化 RAG Manager...")
     collection_name = config.get("collection_name")
     retrieve_top_k = int(config.get("retrieve_top_k"))
@@ -173,21 +126,48 @@ def _build_chat_stack() -> ChatService:
     )
 
 
-def _reload_chat_stack_after_ingest(reason: str) -> bool:
-    """
-    入库子进程成功更新磁盘索引后，在本进程内重置单例并重建 ChatService。
-    可通过环境变量 INGEST_AUTO_RELOAD_RAG=0 关闭（返回 False）。
+def _activate_chat_dataset(dataset_id: Optional[str] = None) -> dict[str, Any]:
+    """切换单用户当前 ChatService 到指定数据集；空数据集会在 dataset_routes 中返回 409。"""
+    global chat_service, active_dataset_id, _rag_reload_in_progress
+    dataset = dataset_routes.get_dataset_for_chat(dataset_id)
+    target_id = dataset["dataset_id"]
+    if chat_service is not None and active_dataset_id == target_id:
+        return dataset
+    with _chat_stack_reload_lock:
+        if chat_service is not None and active_dataset_id == target_id:
+            return dataset
+        _rag_reload_in_progress = True
+        try:
+            _reset_rag_manager_singleton()
+            config = dataset_routes.config_for_dataset(dataset, load_config())
+            chat_service = _build_chat_stack(config)
+            active_dataset_id = target_id
+            dataset_routes.activate_dataset_in_registry(target_id)
+            logger.info("已切换 ChatService 数据集: %s (%s)", dataset.get("name"), target_id)
+        finally:
+            _rag_reload_in_progress = False
+    return dataset
 
-    Returns:
-        True 若已执行热重载；False 若因环境变量跳过。
-    """
-    global chat_service
+
+def reload_chat_stack_after_dataset_ingest(dataset_id: str, reason: str) -> bool:
+    """入库成功后，仅当该 dataset 是 active dataset 时热重载 ChatService。"""
+    global chat_service, active_dataset_id
     flag = os.environ.get("INGEST_AUTO_RELOAD_RAG", "1").strip().lower()
     if flag in ("0", "false", "no", "off"):
         logger.info("INGEST_AUTO_RELOAD_RAG 已关闭，跳过热重载（%s）", reason)
         return False
+    if active_dataset_id != dataset_id:
+        logger.info(
+            "入库 dataset=%s 不是当前 active dataset=%s，跳过热重载（%s）",
+            dataset_id,
+            active_dataset_id,
+            reason,
+        )
+        return False
     global _rag_reload_in_progress
     with _chat_stack_reload_lock:
+        if active_dataset_id != dataset_id:
+            return False
         _rag_reload_in_progress = True
         try:
             wait_sec = float(os.environ.get("INGEST_RELOAD_IDLE_WAIT_SEC", "120"))
@@ -198,10 +178,12 @@ def _reload_chat_stack_after_ingest(reason: str) -> bool:
                     wait_sec,
                 )
                 _wait_for_rag_idle_unlocked(wait_sec)
-            logger.info("♻️ 热重载 RAG + ChatService（%s）", reason)
+            logger.info("热重载 RAG + ChatService（%s）", reason)
             _reset_rag_manager_singleton()
             try:
-                chat_service = _build_chat_stack()
+                dataset = dataset_routes.get_dataset_for_chat(dataset_id)
+                config = dataset_routes.config_for_dataset(dataset, load_config())
+                chat_service = _build_chat_stack(config)
             except Exception:
                 logger.exception("热重载失败，Chat 接口将不可用直至进程重启")
                 chat_service = None
@@ -213,7 +195,7 @@ def _reload_chat_stack_after_ingest(reason: str) -> bool:
                     torch.cuda.empty_cache()
             except Exception:
                 pass
-            logger.info("✅ 热重载完成，对话检索已对齐磁盘索引")
+            logger.info("热重载完成，对话检索已对齐 dataset=%s", dataset_id)
         finally:
             _rag_reload_in_progress = False
     return True
@@ -227,8 +209,15 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 启动 FastAPI 应用...")
 
     try:
-        chat_service = _build_chat_stack()
-        logger.info("✅ Chat Service 初始化完成")
+        dataset_routes.init_dataset_registry(load_config())
+        try:
+            _activate_chat_dataset()
+            logger.info("✅ Chat Service 初始化完成")
+        except HTTPException as e:
+            if e.status_code == 409:
+                logger.warning("数据集尚未构建索引，Chat Service 暂不初始化: %s", e.detail)
+            else:
+                raise
 
         yield
 
@@ -286,12 +275,14 @@ class ChatRequest(BaseModel):
     """聊天请求"""
     question: str
     session_id: str = "default"
+    dataset_id: Optional[str] = None
 
     class Config:
         json_schema_extra = {
             "example": {
                 "question": "极氪2023年的研发费用是多少？",
                 "session_id": "user_123",
+                "dataset_id": "tesla",
             }
         }
 
@@ -314,164 +305,8 @@ class HealthResponse(BaseModel):
     """健康检查响应"""
     status: str
     message: str
-
-
-def _conda_base_bin_for_python() -> Optional[str]:
-    """
-    若当前解释器位于 miniconda/mamba 的 envs/<name>/bin/python，则返回安装根目录下的 bin
-    （许多工具只装在 base env，子环境 PATH 里找不到 mineru）。
-    """
-    try:
-        exe = Path(sys.executable).resolve()
-        parts = exe.parts
-        if "envs" not in parts:
-            return None
-        i = parts.index("envs")
-        root = Path(*parts[:i])
-        b = root / "bin"
-        return str(b) if b.is_dir() else None
-    except (ValueError, OSError):
-        return None
-
-
-def _safe_upload_basename(name: Optional[str]) -> str:
-    base = os.path.basename(name or "upload.pdf")
-    if ".." in base or base.startswith("."):
-        base = "upload.pdf"
-    if not base.lower().endswith(".pdf"):
-        base = base + ".pdf"
-    return f"{uuid.uuid4().hex[:10]}_{base}"
-
-
-def _read_log_tail(path: str, max_bytes: int = 2000) -> str:
-    """读取日志文件最后 max_bytes 字节，文件不存在时返回空字符串。"""
-    try:
-        with open(path, "rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            f.seek(max(0, size - max_bytes))
-            return f.read().decode("utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-def _ingest_subprocess_worker(
-    job_id: str,
-    pdf_paths: list[str],
-    extra_args: list[str],
-    documents_db_path: str,
-) -> None:
-    """在后台线程中启动子进程执行流水线，不修改当前 uvicorn 进程内的 RAGManager。
-
-    pdf_paths 支持批量；每个 PDF 以 ``--pdf <path>`` 透传给 v2 脚本。
-    """
-    job_log = _ingest_job_log_path(job_id)
-    with _ingest_jobs_lock:
-        _ingest_jobs[job_id]["status"] = "running"
-        _ingest_jobs[job_id]["started_at"] = datetime.now(timezone.utc).isoformat()
-        _ingest_jobs[job_id]["log_file"] = job_log
-
-    try_update_job_documents(documents_db_path, job_id, "running", None, None)
-
-    env = os.environ.copy()
-    env["INGEST_LOG_FILE"] = job_log
-    base_bin = _conda_base_bin_for_python()
-    if base_bin:
-        env["PATH"] = base_bin + os.pathsep + env.get("PATH", "")
-    src_path = os.path.join(REPO_ROOT, "src")
-    env["PYTHONPATH"] = src_path + os.pathsep + DATA_PIPELINE_DIR + os.pathsep + env.get("PYTHONPATH", "")
-
-    cmd: list[str] = [sys.executable, INGEST_SCRIPT, "--config", CONFIG_PATH]
-    for p in pdf_paths:
-        cmd += ["--pdf", p]
-    cmd += extra_args
-    logger.info("[ingest %s] log=%s %s", job_id, job_log, " ".join(cmd))
-
-    try:
-        os.makedirs(INGEST_LOG_DIR, exist_ok=True)
-        with open(job_log, "w", encoding="utf-8") as log_f:
-            log_f.write(f"{'='*60}\n[ingest {job_id}] started at {datetime.now(timezone.utc).isoformat()}\n")
-            log_f.write("CMD: " + " ".join(cmd) + "\n\n")
-            log_f.flush()
-            proc = subprocess.run(
-                cmd,
-                cwd=REPO_ROOT,
-                env=env,
-                stdout=log_f,
-                stderr=subprocess.STDOUT,
-                timeout=None,
-            )
-        final_msg: str | None = None
-        final_status: str
-        if proc.returncode == 0:
-            final_status = "completed"
-            skip_load = "--skip-load" in extra_args
-            if not skip_load:
-                try:
-                    did_reload = _reload_chat_stack_after_ingest(f"ingest job_id={job_id}")
-                    if did_reload:
-                        final_msg = (
-                            "流水线已完成；磁盘 Chroma/BM25 已更新，"
-                            "本 API 进程内检索索引已热重载，可直接对话检索新数据。"
-                        )
-                    else:
-                        final_msg = (
-                            "流水线已完成；磁盘 Chroma/BM25 已更新。"
-                            "INGEST_AUTO_RELOAD_RAG 已关闭，未热重载内存索引；"
-                            "请重启 API 或开启该环境变量后重新入库一次。"
-                        )
-                except Exception as reload_exc:
-                    logger.exception("[ingest %s] 入库成功但热重载失败", job_id)
-                    final_msg = (
-                        "流水线已完成且磁盘索引已更新，但本进程热重载失败："
-                        f"{reload_exc!s}。请重启 API 服务后再试检索。"
-                    )
-            else:
-                final_msg = (
-                    "流水线已完成（已跳过向量入库 --skip-load）；"
-                    "未执行热重载。"
-                )
-        else:
-            tail = _read_log_tail(job_log, 2000)
-            final_status = "failed"
-            final_msg = f"子进程非零退出（code {proc.returncode}）。错误尾部：\n{tail}"
-
-        with _ingest_jobs_lock:
-            _ingest_jobs[job_id]["returncode"] = proc.returncode
-            _ingest_jobs[job_id]["log_file"] = job_log
-            _ingest_jobs[job_id]["status"] = final_status
-            _ingest_jobs[job_id]["message"] = final_msg
-        try_update_job_documents(
-            documents_db_path,
-            job_id,
-            final_status,
-            final_msg,
-            proc.returncode,
-        )
-    except Exception as e:
-        logger.exception("[ingest %s] failed", job_id)
-        with _ingest_jobs_lock:
-            _ingest_jobs[job_id]["status"] = "failed"
-            _ingest_jobs[job_id]["message"] = str(e)
-        try_update_job_documents(documents_db_path, job_id, "failed", str(e), None)
-    finally:
-        with _ingest_jobs_lock:
-            _ingest_jobs[job_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
-
-
-def _schedule_ingest(
-    job_id: str,
-    pdf_paths: list[str],
-    extra_args: list[str],
-    documents_db_path: str,
-) -> None:
-    """供 BackgroundTasks 调用的同步入口。"""
-    t = threading.Thread(
-        target=_ingest_subprocess_worker,
-        args=(job_id, pdf_paths, extra_args, documents_db_path),
-        daemon=True,
-    )
-    t.start()
+    chat_ready: bool = False
+    active_dataset_id: Optional[str] = None
 
 
 # API 路由
@@ -481,65 +316,13 @@ def _schedule_ingest(
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """健康检查"""
-    if chat_service is None:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
-
+    registry_active_id = dataset_routes.get_active_dataset_id()
     return HealthResponse(
         status="healthy",
-        message="Chat service is ready"
+        message="API service is ready" if chat_service is None else "Chat service is ready",
+        chat_ready=chat_service is not None,
+        active_dataset_id=active_dataset_id or registry_active_id,
     )
-
-
-@app.post("/doc-agent/analyze")
-async def doc_agent_analyze(
-    file: UploadFile = File(..., description="待识别和摘要的文档，支持 PDF/DOCX/TXT/MD/HTML/JSON 等"),
-    use_llm: bool = Query(True, description="是否调用 LLM；关闭后只使用规则兜底"),
-):
-    """测试阶段文档分诊 agent：上传单个文档，返回类型识别和 summary。"""
-    body = await file.read()
-    if not body:
-        raise HTTPException(status_code=400, detail="空文件")
-    config = load_doc_agent_config()
-    agent = DocumentTriageAgent(config)
-    try:
-        return await agent.analyze_upload(file.filename or "upload", body, use_llm=use_llm)
-    except Exception as e:
-        logger.error("文档分诊失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/doc-agent/analyze-batch")
-async def doc_agent_analyze_batch(
-    files: list[UploadFile] = File(..., description="待批量识别和摘要的文档"),
-    use_llm: bool = Query(True, description="是否调用 LLM；关闭后只使用规则兜底"),
-):
-    """测试阶段文档分诊 agent：批量上传文档，逐个返回类型识别和 summary。"""
-    if not files:
-        raise HTTPException(status_code=400, detail="未提供任何文件")
-    config = load_doc_agent_config()
-    agent = DocumentTriageAgent(config)
-    results = []
-    for uploaded in files:
-        body = await uploaded.read()
-        if not body:
-            results.append(
-                {
-                    "filename": uploaded.filename or "upload",
-                    "error": "空文件",
-                }
-            )
-            continue
-        try:
-            results.append(await agent.analyze_upload(uploaded.filename or "upload", body, use_llm=use_llm))
-        except Exception as e:
-            logger.warning("文档分诊失败 filename=%s: %s", uploaded.filename, e, exc_info=True)
-            results.append(
-                {
-                    "filename": uploaded.filename or "upload",
-                    "error": str(e),
-                }
-            )
-    return {"count": len(results), "results": results}
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -547,10 +330,10 @@ async def chat(request: ChatRequest):
     """
     聊天接口
     """
-    if chat_service is None:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
-
     try:
+        _activate_chat_dataset(request.dataset_id)
+        if chat_service is None:
+            raise HTTPException(status_code=503, detail="Chat service not initialized")
         logger.info(f"收到请求 - Session: {request.session_id}, Question: {request.question}")
 
         # 调用 ChatService
@@ -566,6 +349,8 @@ async def chat(request: ChatRequest):
             session_id=request.session_id
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"处理请求失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -584,10 +369,11 @@ async def chat_stream(request: ChatRequest):
     - complete: 处理完成
     - error: 错误信息
     """
+    _activate_chat_dataset(request.dataset_id)
     if chat_service is None:
         raise HTTPException(status_code=503, detail="Chat service not initialized")
 
-    logger.info(f"收到流式请求 - Session: {request.session_id}, Question: {request.question}")
+    logger.info(f"收到流式请求 - Dataset: {request.dataset_id}, Session: {request.session_id}, Question: {request.question}")
 
     async def event_generator():
         try:
@@ -626,10 +412,11 @@ async def chat_preview(request: ChatRequest):
       - {"event": "complete", "data": {...}}                         – preview request completed
       - {"event": "error", "data": {"message": "..."}}            – on failure
     """
+    _activate_chat_dataset(request.dataset_id)
     if chat_service is None:
         raise HTTPException(status_code=503, detail="Chat service not initialized")
 
-    logger.info(f"收到预览请求 - Session: {request.session_id}, Question: {request.question}")
+    logger.info(f"收到预览请求 - Dataset: {request.dataset_id}, Session: {request.session_id}, Question: {request.question}")
 
     async def event_generator():
         try:
@@ -691,181 +478,6 @@ async def get_history(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/ingest/upload")
-async def ingest_upload(
-    background_tasks: BackgroundTasks,
-    files: list[UploadFile] = File(..., description="PDF 文件（支持多文件批量）"),
-    company_name: str = Query("", description="公司名（step2_v2 / step6 必需，省略则回退 config['collection_name']）"),
-    mineru_bin: str = Query("", description="mineru 可执行文件绝对路径；空则用 production.yaml mineru_bin 或脚本默认 DEFAULT_MINERU_BIN"),
-    skip_mineru: bool = Query(False, description="已存在 mineru 输出时跳过"),
-    skip_file2chunk: bool = Query(False, description="已有 base_final 时跳过 file2chunk"),
-    skip_process_table: bool = Query(False, description="跳过 Step 3 process_table（连不上 Anthropic 时使用）"),
-    skip_load: bool = Query(False, description="只生成 JSON，不写向量库"),
-    skip_load_table: bool = Query(False, description="跳过 Step 5 load_table_chroma，不写 table_chroma"),
-    skip_pageindex: bool = Query(False, description="跳过 Step 6 PageIndex 构建（输出至 {persist_directory}/pageindex/）"),
-    reset_persist: bool = Query(False, description="入库前删除 persist_directory（慎用）"),
-):
-    """
-    批量上传 PDF，异步执行 `data_pipeline/file2chunk2data_pipeline.py`（子进程），
-    不阻塞当前请求。一次 job 处理本次上传的所有文件，最后只做一次 load_data 入库。
-
-    每个任务单独写入 ``INGEST_LOG_DIR/<job_id>.log``（默认目录见环境变量说明），避免多任务共写一份日志错乱。
-
-    完成后磁盘上的库会更新；默认（``INGEST_AUTO_RELOAD_RAG`` 未设为 0）会在本进程内**热重载** RAG 与 ChatService，
-    无需重启即可检索新数据。若关闭自动热重载或热重载失败，则需重启 API。
-    """
-    if not os.path.isfile(INGEST_SCRIPT):
-        raise HTTPException(status_code=500, detail=f"未找到入库脚本: {INGEST_SCRIPT}")
-
-    if not files:
-        raise HTTPException(status_code=400, detail="未提供任何文件")
-
-    cfg = load_config()
-    persist = Path(cfg["persist_directory"]).resolve()
-    dataset_root = persist.parent
-    # 与 v2 DatasetLayout 严格对齐：0_raw_pdf
-    raw_pdf_dir = dataset_root / "0_raw_pdf"
-    raw_pdf_dir.mkdir(parents=True, exist_ok=True)
-
-    max_bytes = int(os.environ.get("INGEST_MAX_UPLOAD_MB", "200")) * 1024 * 1024
-    saved_entries: list[tuple[str, str, Path]] = []
-    for f in files:
-        body = await f.read()
-        if not body:
-            raise HTTPException(status_code=400, detail=f"空文件: {f.filename}")
-        if len(body) > max_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=f"{f.filename} 超过单文件限制 {max_bytes // (1024 * 1024)} MB",
-            )
-        safe_name = _safe_upload_basename(f.filename)
-        dest_path = raw_pdf_dir / safe_name
-        with open(dest_path, "wb") as out_f:
-            out_f.write(body)
-        orig_name = (f.filename or "upload.pdf").strip() or "upload.pdf"
-        saved_entries.append((orig_name, safe_name, dest_path.resolve()))
-
-    job_id = uuid.uuid4().hex[:16]
-    job_log = _ingest_job_log_path(job_id)
-    documents_db_path = str(resolve_db_path(dataset_root))
-    uploaded_at = datetime.now(timezone.utc).isoformat()
-    collection_name = cfg.get("collection_name")
-    try_insert_document_rows(
-        documents_db_path,
-        [
-            {
-                "job_id": job_id,
-                "original_filename": orig,
-                "stored_basename": safe,
-                "stored_path": str(path),
-                "status": "queued",
-                "collection_name": collection_name,
-                "uploaded_at": uploaded_at,
-                "returncode": None,
-                "message": None,
-                "log_file": job_log,
-            }
-            for orig, safe, path in saved_entries
-        ],
-    )
-
-    saved_paths = [path for _, _, path in saved_entries]
-    with _ingest_jobs_lock:
-        _ingest_jobs[job_id] = {
-            "status": "queued",
-            "saved_paths": [str(p) for p in saved_paths],
-            "file_count": len(saved_paths),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "log_file": job_log,
-        }
-
-    extra: list[str] = []
-    if company_name.strip():
-        extra.extend(["--company-name", company_name.strip()])
-    mb = (mineru_bin or "").strip() or (str(cfg.get("mineru_bin") or "")).strip()
-    if mb:
-        extra.extend(["--mineru-bin", mb])
-    if skip_mineru:
-        extra.append("--skip-mineru")
-    if skip_file2chunk:
-        extra.append("--skip-file2chunk")
-    if skip_process_table:
-        extra.append("--skip-process-table")
-    if skip_load:
-        extra.append("--skip-load")
-    if skip_load_table:
-        extra.append("--skip-load-table")
-    if skip_pageindex:
-        extra.append("--skip-pageindex")
-    if reset_persist:
-        extra.append("--reset-persist")
-
-    background_tasks.add_task(
-        _schedule_ingest,
-        job_id,
-        [str(p) for p in saved_paths],
-        extra,
-        documents_db_path,
-    )
-
-    return {
-        "job_id": job_id,
-        "status": "queued",
-        "file_count": len(saved_paths),
-        "saved_paths": [str(p) for p in saved_paths],
-        "log_file": job_log,
-        "message": (
-            "已排队批量异步入库；可用 GET /ingest/jobs/{job_id} 查询状态。"
-            f" 本任务日志：{job_log}。"
-            "完成后默认会自动热重载检索索引（可通过 INGEST_AUTO_RELOAD_RAG=0 关闭）。"
-        ),
-    }
-
-
-@app.get("/ingest/jobs/{job_id}")
-async def ingest_job_status(job_id: str):
-    """查询异步入库任务状态。"""
-    with _ingest_jobs_lock:
-        job = _ingest_jobs.get(job_id)
-    if job:
-        return dict(job)
-
-    cfg = load_config()
-    persist = Path(cfg["persist_directory"]).resolve()
-    dataset_root = persist.parent
-    db_path = resolve_db_path(dataset_root)
-    if not db_path.is_file():
-        raise HTTPException(status_code=404, detail="未知 job_id")
-    snap = fetch_job_snapshot(db_path, job_id)
-    if not snap:
-        raise HTTPException(status_code=404, detail="未知 job_id")
-    return {"job_id": job_id, **snap}
-
-
-@app.get("/ingest/jobs")
-async def ingest_jobs_list(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=50),
-):
-    """历史入库任务分页列表（``meta/ingest_documents.db``，按批次最近上传时间倒序；每任务含 ``files``）。"""
-    cfg = load_config()
-    persist = Path(cfg["persist_directory"]).resolve()
-    dataset_root = persist.parent
-    db_path = resolve_db_path(dataset_root)
-    offset = (page - 1) * page_size
-    try:
-        jobs, has_more = fetch_recent_jobs_page(db_path, page_size, offset)
-    except Exception as e:
-        logger.warning("读取 ingest 任务列表失败: %s", e, exc_info=True)
-        jobs, has_more = [], False
-    return {
-        "jobs": jobs,
-        "page": page,
-        "page_size": page_size,
-        "has_more": has_more,
-    }
-
-
 @app.get("/metadata/{collection_name}/{doc_id}")
 async def get_metadata(collection_name: str, doc_id: str):
     """返回 Chroma 集合中指定 doc_id 的原始 metadata 和 page_content（JSON）。"""
@@ -919,8 +531,10 @@ async def get_metadata(collection_name: str, doc_id: str):
 # ============================================================
 # 会话持久化相关路由（独立模块）
 # ============================================================
+import dataset_routes
 from session_routes import router as session_router
 
+app.include_router(dataset_routes.router)
 app.include_router(session_router)
 
 

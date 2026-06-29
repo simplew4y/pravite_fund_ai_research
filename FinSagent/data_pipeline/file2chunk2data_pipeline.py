@@ -3,19 +3,19 @@
 file2chunk2data_pipeline.py — 上传 + mineru + file2chunk v5 + table + Chroma/BM25 + PageIndex
 
 六步串联：
-  Step 1: 0_raw_pdf  → mineru → 1_processed_pdf
-  Step 2: 1_processed_pdf → file2chunk v5 → 2_final_pdf_v2/<stem>/base_final.json
-  Step 3: 1_processed_pdf 表格图片 → process_table → 4_processed_table/<stem>_table_reconstructed.json
+  Step 1: 0_raw/pdf  → mineru → 1_processed/pdf
+  Step 2: 1_processed/pdf → file2chunk v5 → 2_final/pdf_v2/<stem>/base_final.json
+  Step 3: 1_processed/pdf 表格图片 → process_table → 4_processed_table/<stem>_table_reconstructed.json
   Step 4: 同步 base_final.json 到 3_base_final/<stem>.json → load_data → Chroma + BM25
   Step 5: 4_processed_table → load_table_chroma → table_chroma
-  Step 6: 0_raw_pdf → build_pageindex_index → {persist_directory}/pageindex/
+  Step 6: 0_raw/pdf → build_pageindex_index → {persist_directory}/pageindex/
 
 目录布局（dataset_root = dirname(config['persist_directory'])）::
 
     {dataset_root}/
-      0_raw_pdf/         # 源 PDF（API 上传后落到这里）
-      1_processed_pdf/   # mineru 输出（每份 PDF 一个子目录）
-      2_final_pdf_v2/    # file2chunk v5 中间产物 + base_final.json
+      0_raw/pdf/         # 源 PDF（API 上传后落到这里）
+      1_processed/pdf/   # mineru 输出（每份 PDF 一个子目录）
+      2_final/pdf_v2/    # file2chunk v5 中间产物 + base_final.json
       3_base_final/      # 平铺 base_final.json，load_data 一次性扫描
       4_processed_table/ # process_table 输出：<stem>_table_reconstructed.json
 
@@ -29,30 +29,31 @@ Step 1 (mineru) 严格对齐 file2chunk/mineru_analysis.py::
     env  MINERU_MODEL_SOURCE=modelscope
          MINERU_FORMULA_ENABLE=true
          [MINERU_TOOLS_CONFIG_JSON=/root/mineru.json]
-    mineru -p <pdf>  -o <1_processed_pdf>
+    mineru -p <pdf>  -o <1_processed/pdf>
            -b hybrid-auto-engine -l en --gpu-memory-utilization 0.2
 
 Step 2 (file2chunk v5) 直接 import 现有实现::
 
     from main_pipeline_v5_20260426 import process_document
-    process_document(<*_content_list_v2.json>, <2_final_pdf_v2>,
+    process_document(<*_content_list_v2.json>, <2_final/pdf_v2>,
                      company_name=..., lsh_threshold=..., keep_policy=...,
                      llm_api_max_workers=..., enable_summary=...)
 
-中间产物：``2_final_pdf_v2/<stem>/base_final.json``
+中间产物：``2_final/pdf_v2/<stem>/base_final.json``
 
 Step 3 (process_table) 直接 import data_pipeline/process_table.py::
 
-    reconstruct_table_chunks(input_dir=<1_processed_pdf>/<stem>,
+    reconstruct_table_chunks(input_dir=<1_processed/pdf>/<stem>,
                              output_json_path=<4_processed_table>/<stem>_table_reconstructed.json,
-                             anthropic_api_keys=..., tencent_api_key=..., ...)
+                             ...)
 
-需要 ANTHROPIC_API_KEY(S) 与 TENCENT_API_KEY 环境变量；服务器若连不上 anthropic
-可加 ``--skip-process-table`` 跳过。
+默认只读取 ``data_pipeline/.env`` 中的表格模型配置：
+``process_table_llm_api_key / process_table_llm_base_url / process_table_llm_model_name``。
+如需跳过可加 ``--skip-process-table``。
 
 Step 4 (Chroma + BM25) 直接 import data_pipeline/load_data.py::
 
-    cp 2_final_pdf_v2/<stem>/base_final.json -> 3_base_final/<stem>.json
+    cp 2_final/pdf_v2/<stem>/base_final.json -> 3_base_final/<stem>.json
     import_collection_from_dir(rag, collection_name, 3_base_final/, batch_size)
     load_from_chroma_and_save(rag.get_collection_documents(coll), bm25_dir)
 
@@ -122,7 +123,7 @@ DEFAULT_LANG = "en"
 DEFAULT_MINERU_BACKEND = "hybrid-auto-engine"
 DEFAULT_MINERU_MODEL_SOURCE = "modelscope"
 DEFAULT_MINERU_FORMULA_ENABLE = True
-DEFAULT_MINERU_GPU_MEMORY_UTILIZATION = 0.3
+DEFAULT_MINERU_GPU_MEMORY_UTILIZATION = 0.2
 DEFAULT_MINERU_TOOLS_CONFIG = ""  # 空串 = 不设置 MINERU_TOOLS_CONFIG_JSON
 
 # Step 2 file2chunk v5
@@ -137,9 +138,9 @@ DEFAULT_LLM_MAX_WORKERS = 8
 DEFAULT_ENABLE_SUMMARY = True
 
 # Step 3 process_table（API key 走 .env，CLI 不暴露）   
-DEFAULT_TENCENT_BASE_URL = "https://tokenhub.tencentmaas.com/v1"
-DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
-DEFAULT_TENCENT_MODEL = "deepseek-v4-pro"
+DEFAULT_TENCENT_BASE_URL = ""
+DEFAULT_CLAUDE_MODEL = ""
+DEFAULT_TENCENT_MODEL = ""
 DEFAULT_TABLE_WORKERS = 5
 DEFAULT_TABLE_RPM = 50
 DEFAULT_TABLE_CONTEXT_WINDOW = 3
@@ -166,12 +167,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 @dataclass
 class DatasetLayout:
-    """目录命名：0_raw_pdf / 1_processed_pdf / 2_final_pdf_v2 / 3_base_final / 4_processed_table"""
+    """目录命名：0_raw/pdf / 1_processed/pdf / 2_final/pdf_v2 / 3_base_final / 4_processed_table"""
 
     dataset_root: Path
-    raw_pdf: Path             # 0_raw_pdf
-    processed_pdf: Path       # 1_processed_pdf
-    final_pdf: Path           # 2_final_pdf_v2
+    raw_pdf: Path             # 0_raw/pdf
+    processed_pdf: Path       # 1_processed/pdf
+    final_pdf: Path           # 2_final/pdf_v2
     base_final_flat: Path     # 3_base_final（load_data 扫描的平铺目录）
     processed_table: Path     # 4_processed_table（process_table 输出 + load_table_chroma 扫描）
     persist_directory: Path   # 来自 config['persist_directory']
@@ -183,9 +184,9 @@ class DatasetLayout:
         root = persist.parent
         return cls(
             dataset_root=root,
-            raw_pdf=root / "0_raw_pdf",
-            processed_pdf=root / "1_processed_pdf",
-            final_pdf=root / "2_final_pdf_v2",
+            raw_pdf=root / "0_raw" / "pdf",
+            processed_pdf=root / "1_processed" / "pdf",
+            final_pdf=root / "2_final" / "pdf_v2",
             base_final_flat=root / "3_base_final",
             processed_table=root / "4_processed_table",
             persist_directory=persist,
@@ -210,10 +211,10 @@ def load_config(config_path: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Step 1.0: 把 PDF 复制到 0_raw_pdf/
+# Step 1.0: 把 PDF 复制到 0_raw/pdf/
 # ---------------------------------------------------------------------------
 def save_pdfs_to_layout(pdfs: Sequence[Path], layout: DatasetLayout) -> List[Path]:
-    """将多个 PDF 复制到 ``0_raw_pdf/``，返回目标路径列表（保持输入顺序）。"""
+    """将多个 PDF 复制到 ``0_raw/pdf/``，返回目标路径列表（保持输入顺序）。"""
     layout.ensure_dirs()
     out: List[Path] = []
     for src in pdfs:
@@ -225,7 +226,7 @@ def save_pdfs_to_layout(pdfs: Sequence[Path], layout: DatasetLayout) -> List[Pat
             shutil.copy2(src, dest)
             logger.info("已保存源文件: %s", dest)
         else:
-            logger.info("源文件已在 0_raw_pdf 下，跳过复制: %s", dest)
+            logger.info("源文件已在 0_raw/pdf 下，跳过复制: %s", dest)
         out.append(dest)
     return out
 
@@ -253,7 +254,7 @@ def run_mineru_one(
     """
     out_subdir = processed_pdf_root / pdf_path.stem
     if out_subdir.exists() and any(out_subdir.iterdir()):
-        logger.info("1_processed_pdf 已存在子目录，跳过 mineru: %s", out_subdir)
+        logger.info("1_processed/pdf 已存在子目录，跳过 mineru: %s", out_subdir)
         return out_subdir
 
     env = os.environ.copy()
@@ -336,7 +337,7 @@ def run_step_pdf_to_processed(
     lang: str = "en",
     skip_mineru: bool = False,
 ) -> dict:
-    """执行 Step 1：把 PDF 落到 0_raw_pdf/，再用 mineru 解析到 1_processed_pdf/。
+    """执行 Step 1：把 PDF 落到 0_raw/pdf/，再用 mineru 解析到 1_processed/pdf/。
 
     mineru 可执行文件直接使用 ``mineru_bin``（默认为 DEFAULT_MINERU_BIN）。
     返回各阶段产物路径字典。
@@ -351,7 +352,7 @@ def run_step_pdf_to_processed(
     layout = DatasetLayout.from_config(config)
     layout.ensure_dirs()
 
-    # ----- 1.0 复制源文件到 0_raw_pdf/ -----
+    # ----- 1.0 复制源文件到 0_raw/pdf/ -----
     saved_pdfs = save_pdfs_to_layout([Path(p) for p in pdfs], layout)
 
     result: dict = {
@@ -390,10 +391,12 @@ def run_step_pdf_to_processed(
 
 
 # ---------------------------------------------------------------------------
-# Step 2.0: 在 1_processed_pdf 下找到 *_content_list_v2.json
+# Step 2.0: 在 1_processed/pdf 下找到 *_content_list_v2.json
 # ---------------------------------------------------------------------------
 def find_content_list_v2_jsons(
-    processed_pdf_root: Path, pdf_stems: Sequence[str]
+    processed_pdf_root: Path,
+    pdf_stems: Sequence[str],
+    fallback_roots: Optional[Sequence[Path]] = None,
 ) -> List[Path]:
     """对一批 PDF stem，返回各自的 ``*_content_list_v2.json`` 路径。
 
@@ -401,10 +404,13 @@ def find_content_list_v2_jsons(
     那个。任何一个 stem 找不到都直接抛错（v5 流程只接受 v2）。
     """
     out: List[Path] = []
+    roots = [processed_pdf_root, *(fallback_roots or [])]
     for stem in pdf_stems:
-        stem_dir = processed_pdf_root / stem
+        stem_dir = next((root / stem for root in roots if (root / stem).is_dir()), processed_pdf_root / stem)
         if not stem_dir.is_dir():
-            raise FileNotFoundError(f"未找到 mineru 输出目录: {stem_dir}")
+            raise FileNotFoundError(
+                f"未找到 mineru 输出目录: {stem_dir}；也未在 fallback 中找到。"
+            )
         cands = sorted(
             (p for p in stem_dir.rglob("*_content_list_v2.json") if p.is_file()),
             key=lambda x: len(str(x)),
@@ -416,6 +422,18 @@ def find_content_list_v2_jsons(
             )
         out.append(cands[0])
     return out
+
+
+def _processed_pdf_stem_dir(layout: DatasetLayout, stem: str) -> Path:
+    """Return the MinerU output dir for a stem, preferring the new 1_processed/pdf layout."""
+    primary = layout.processed_pdf / stem
+    if primary.is_dir():
+        return primary
+    legacy = layout.dataset_root / "1_processed_pdf" / stem
+    if legacy.is_dir():
+        logger.info("使用历史 MinerU 输出目录: %s", legacy)
+        return legacy
+    return primary
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +574,7 @@ def run_step_processed_to_final(
     llm_api_max_workers: int = 8,
     enable_summary: bool = True,
 ) -> dict:
-    """从 1_processed_pdf 起跑 file2chunk v5，结果落到 2_final_pdf_v2。"""
+    """从 1_processed/pdf 起跑 file2chunk v5，结果落到 2_final/pdf_v2。"""
     if not pdf_stems:
         raise ValueError("pdf_stems 列表为空")
     if not company_name or not company_name.strip():
@@ -570,7 +588,11 @@ def run_step_processed_to_final(
     layout = DatasetLayout.from_config(config)
     layout.ensure_dirs()
 
-    content_jsons = find_content_list_v2_jsons(layout.processed_pdf, pdf_stems)
+    content_jsons = find_content_list_v2_jsons(
+        layout.processed_pdf,
+        pdf_stems,
+        fallback_roots=[layout.dataset_root / "1_processed_pdf"],
+    )
     base_finals = run_file2chunk_batch(
         content_jsons,
         layout.final_pdf,
@@ -618,7 +640,7 @@ def run_process_table_one(
     context_window: int = 3,
     save_interval: int = 10,
 ) -> Path:
-    """单个 ``1_processed_pdf/<stem>/`` 跑表格重建，输出到
+    """单个 ``1_processed/pdf/<stem>/`` 跑表格重建，输出到
     ``4_processed_table/<stem>_table_reconstructed.json``。
 
     ``stem_dir`` 必须包含 ``hybrid_auto/*_content_list.json``（v1 扁平格式）和
@@ -720,8 +742,8 @@ def run_step_process_table(
 ) -> dict:
     """对一批 PDF stem 跑 process_table，输出到 4_processed_table/。
 
-    需要 ANTHROPIC_API_KEY(S) 与 TENCENT_API_KEY 环境变量
-    （或通过参数显式传入）。
+    表格处理默认由 data_pipeline/process_table.py 读取 data_pipeline/.env：
+    process_table_llm_api_key / process_table_llm_base_url / process_table_llm_model_name。
     """
     if not pdf_stems:
         raise ValueError("pdf_stems 列表为空")
@@ -734,7 +756,7 @@ def run_step_process_table(
 
     stem_dirs: List[Path] = []
     for stem in pdf_stems:
-        sd = layout.processed_pdf / stem
+        sd = _processed_pdf_stem_dir(layout, stem)
         if not sd.is_dir():
             raise FileNotFoundError(f"未找到 mineru 输出目录: {sd}")
         stem_dirs.append(sd)
@@ -760,7 +782,7 @@ def run_step_process_table(
 
 
 # ---------------------------------------------------------------------------
-# Step 4.0: 把 2_final_pdf_v2/<stem>/base_final.json 同步到 3_base_final/<stem>.json
+# Step 4.0: 把 2_final/pdf_v2/<stem>/base_final.json 同步到 3_base_final/<stem>.json
 # ---------------------------------------------------------------------------
 def sync_base_finals_to_flat(
     base_finals: Sequence[Path], base_final_flat: Path
@@ -977,7 +999,7 @@ def run_step_build_pageindex(
     *,
     pageindex_repo_path: str = "",
 ) -> dict:
-    """从 ``0_raw_pdf/`` 为所有 PDF 构建 PageIndex 结构树。
+    """从 ``0_raw/pdf/`` 为所有 PDF 构建 PageIndex 结构树。
 
     输出目录优先读取 config 中的 ``pageindex_index_dir``；
     未配置时自动回退到 ``{persist_directory}/pageindex/``。
@@ -1009,7 +1031,7 @@ def run_step_build_pageindex(
         logger.info("Step 6 PageIndex: pageindex_index_dir 未配置，使用默认路径: %s", output_dir)
 
     if not input_dir.exists():
-        logger.warning("Step 6 PageIndex: 0_raw_pdf 不存在，跳过: %s", input_dir)
+        logger.warning("Step 6 PageIndex: 0_raw/pdf 不存在，跳过: %s", input_dir)
         return {"skipped": True, "reason": f"input_dir not found: {input_dir}"}
 
     build_script = PIPELINE_ROOT / "build_pageindex_index.py"
@@ -1103,9 +1125,9 @@ def main() -> None:
         help=f"mineru 可执行文件绝对路径（默认 {DEFAULT_MINERU_BIN}）",
     )
     parser.add_argument("--skip-mineru", action="store_true",
-                        help="跳过 Step 1 mineru（要求 1_processed_pdf 已就绪）")
+                        help="跳过 Step 1 mineru（要求 1_processed/pdf 已就绪）")
     parser.add_argument("--skip-file2chunk", action="store_true",
-                        help="跳过 Step 2 file2chunk（要求 2_final_pdf_v2 已就绪）")
+                        help="跳过 Step 2 file2chunk（要求 2_final/pdf_v2 已就绪）")
     parser.add_argument("--skip-process-table", action="store_true",
                         help="跳过 Step 3 process_table（连不上 anthropic 时使用）")
     parser.add_argument("--skip-load", action="store_true",
@@ -1185,7 +1207,7 @@ def main() -> None:
         base_finals = [Path(p) for p in out2["base_finals"]]
 
     # ---------- Step 3: process_table ----------
-    # API key 走 data_pipeline/.env：ANTHROPIC_API_KEY(S) / TENCENT_API_KEY
+    # 表格模型配置默认走 data_pipeline/.env 的 process_table_llm_*，不读取回答模型配置。
     if args.skip_process_table:
         logger.info("--skip-process-table：跳过 Step 3")
     else:

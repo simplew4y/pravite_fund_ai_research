@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinSagent 知识库</title>
+  <style>
+    :root {
+      --canvas: #faf9f5;
+      --surface-soft: #f5f0e8;
+      --surface-card: #efe9de;
+      --surface-strong: #e8e0d2;
+      --surface-dark: #181715;
+      --ink: #141413;
+      --body: #3d3d3a;
+      --muted: #6c6a64;
+      --muted-soft: #8e8b82;
+      --hairline: #e6dfd8;
+      --coral: #cc785c;
+      --coral-active: #a9583e;
+      --success: #5db872;
+      --warning: #d4a017;
+      --error: #c64545;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      overflow: auto;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    .kb-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 292px minmax(0, 1fr);
+      background: var(--canvas);
+    }
+
+    .kb-rail {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--hairline);
+      background: var(--surface-soft);
+      overflow: hidden;
+    }
+
+    .kb-brand {
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--hairline);
+      flex-shrink: 0;
+    }
+
+    .kb-brand-title {
+      font-size: 16px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .kb-chat-link {
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: var(--canvas);
+      white-space: nowrap;
+    }
+
+    .kb-rail-actions {
+      padding: 14px;
+      border-bottom: 1px solid var(--hairline);
+      display: grid;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .kb-root-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      word-break: break-all;
+    }
+
+    .kb-dataset-list {
+      min-height: 0;
+      overflow: auto;
+      padding: 10px;
+      display: grid;
+      align-content: start;
+      gap: 6px;
+    }
+
+    .kb-dataset-item {
+      width: 100%;
+      text-align: left;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 11px 12px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .kb-dataset-item:hover {
+      background: rgba(255, 255, 255, 0.58);
+      border-color: var(--hairline);
+    }
+
+    .kb-dataset-item.active {
+      background: var(--surface-card);
+      border-color: var(--surface-strong);
+    }
+
+    .kb-dataset-name {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.35;
+    }
+
+    .kb-dataset-count,
+    .kb-dataset-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin-top: 5px;
+      word-break: break-all;
+    }
+
+    .kb-current-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--coral);
+      flex-shrink: 0;
+    }
+
+    .kb-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .kb-topbar {
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--hairline);
+      background: rgba(250, 249, 245, 0.94);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      backdrop-filter: blur(10px);
+    }
+
+    .kb-title-wrap {
+      min-width: 0;
+    }
+
+    .kb-page-title {
+      margin: 0;
+      font-family: "Cormorant Garamond", "EB Garamond", Georgia, serif;
+      font-size: 32px;
+      font-weight: 500;
+      line-height: 1.12;
+      letter-spacing: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .kb-subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: min(760px, 58vw);
+    }
+
+    .kb-top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .kb-content {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      padding: 22px 24px 36px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .kb-file-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 6px 0 8px;
+    }
+
+    .kb-file-heading h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    .kb-file-heading p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .kb-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .kb-input,
+    .kb-select {
+      height: 38px;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: #fffdf9;
+      color: var(--ink);
+      padding: 0 11px;
+      outline: none;
+    }
+
+    .kb-input {
+      width: min(320px, 42vw);
+    }
+
+    .kb-input:focus,
+    .kb-select:focus {
+      border-color: var(--coral);
+      box-shadow: 0 0 0 3px rgba(204, 120, 92, 0.16);
+    }
+
+    .kb-primary,
+    .kb-secondary,
+    .kb-ghost,
+    .kb-link-btn {
+      min-height: 38px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+
+    .kb-primary {
+      background: var(--coral);
+      color: #fff;
+    }
+
+    .kb-primary:hover:not(:disabled) {
+      background: var(--coral-active);
+    }
+
+    .kb-secondary {
+      background: #fffdf9;
+      border-color: var(--hairline);
+      color: var(--ink);
+    }
+
+    .kb-ghost,
+    .kb-link-btn {
+      background: transparent;
+      color: var(--coral);
+      padding: 0 8px;
+    }
+
+    .kb-primary:disabled,
+    .kb-secondary:disabled,
+    .kb-ghost:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .kb-file-surface {
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      background: #fffdf9;
+      overflow: hidden;
+    }
+
+    .kb-file-list {
+      display: grid;
+    }
+
+    .kb-file-row {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.8fr) 130px 110px 140px 120px;
+      gap: 16px;
+      align-items: center;
+      min-height: 66px;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--hairline);
+    }
+
+    .kb-file-row:last-child {
+      border-bottom: none;
+    }
+
+    .kb-file-row.head {
+      min-height: 44px;
+      background: var(--surface-soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .kb-file-name {
+      min-width: 0;
+      font-weight: 650;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .kb-status-text {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--body);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .kb-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--muted-soft);
+      flex-shrink: 0;
+    }
+
+    .kb-status-text.completed .kb-status-dot,
+    .kb-status-text.indexed .kb-status-dot {
+      background: var(--success);
+    }
+
+    .kb-status-text.queued .kb-status-dot,
+    .kb-status-text.running .kb-status-dot,
+    .kb-status-text.on_disk .kb-status-dot,
+    .kb-status-text.empty .kb-status-dot {
+      background: var(--warning);
+    }
+
+    .kb-status-text.failed .kb-status-dot,
+    .kb-status-text.unavailable .kb-status-dot {
+      background: var(--error);
+    }
+
+    .kb-muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .kb-row-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .kb-empty-state {
+      min-height: 360px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+
+    .kb-empty-state h2 {
+      color: var(--ink);
+      margin: 0 0 8px;
+      font-family: "Cormorant Garamond", "EB Garamond", Georgia, serif;
+      font-size: 30px;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+
+    .kb-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: rgba(20, 20, 19, 0.36);
+      z-index: 30;
+    }
+
+    .kb-modal-backdrop.show {
+      display: grid;
+    }
+
+    .kb-modal {
+      width: min(760px, 100%);
+      max-height: min(86vh, 760px);
+      display: flex;
+      flex-direction: column;
+      background: var(--canvas);
+      color: var(--ink);
+      border-radius: 12px;
+      box-shadow: 0 24px 70px rgba(20, 20, 19, 0.22);
+      overflow: hidden;
+    }
+
+    .kb-modal.large {
+      width: min(1120px, 100%);
+    }
+
+    .kb-modal-head {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--hairline);
+      flex-shrink: 0;
+    }
+
+    .kb-modal-title {
+      font-size: 17px;
+      font-weight: 650;
+      margin: 0;
+    }
+
+    .kb-modal-title-row {
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .kb-modal-title-name {
+      min-width: 0;
+      max-width: min(760px, 68vw);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .kb-modal-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .kb-modal-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 18px;
+      border-top: 1px solid var(--hairline);
+      background: var(--surface-soft);
+      flex-shrink: 0;
+    }
+
+    .kb-close-btn {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--hairline);
+      border-radius: 999px;
+      background: #fffdf9;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .kb-upload-zone {
+      border: 1px dashed #cbbdaf;
+      border-radius: 10px;
+      background: #fffdf9;
+      padding: 26px;
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .kb-upload-zone.dragging {
+      border-color: var(--coral);
+      background: #fff7f2;
+    }
+
+    .kb-upload-title {
+      font-size: 16px;
+      font-weight: 650;
+    }
+
+    .kb-selected-files,
+    .kb-form-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .kb-selected-files {
+      margin-top: 14px;
+    }
+
+    .kb-selected-file {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fffdf9;
+      border: 1px solid var(--hairline);
+      font-size: 13px;
+    }
+
+    .kb-jobs-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .kb-job-item {
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      background: #fffdf9;
+      padding: 13px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .kb-job-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .kb-job-message {
+      max-height: 120px;
+      overflow: auto;
+      padding: 10px;
+      border-radius: 8px;
+      background: var(--surface-soft);
+      color: var(--body);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .kb-artifact-chip {
+      flex-shrink: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .kb-artifact-source {
+      width: 100%;
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .kb-artifact-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr) minmax(360px, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .kb-artifact-section {
+      min-width: 0;
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      background: #fffdf9;
+      overflow: hidden;
+    }
+
+    .kb-artifact-section-wide {
+      grid-column: auto;
+    }
+
+    .kb-artifact-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--hairline);
+      background: var(--surface-soft);
+      font-weight: 650;
+    }
+
+    .kb-artifact-list {
+      max-height: min(62vh, 620px);
+      overflow: auto;
+      display: grid;
+    }
+
+    .kb-artifact-clickable {
+      cursor: pointer;
+    }
+
+    .kb-artifact-clickable:hover,
+    .kb-artifact-clickable:focus {
+      background: #fff8ef;
+      outline: none;
+    }
+
+    .kb-chunk-item,
+    .kb-node-item,
+    .kb-table-item {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--hairline);
+      display: grid;
+      gap: 8px;
+    }
+
+    .kb-chunk-item:last-child,
+    .kb-node-item:last-child,
+    .kb-table-item:last-child {
+      border-bottom: none;
+    }
+
+    .kb-artifact-title {
+      font-size: 13px;
+      font-weight: 650;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .kb-artifact-content {
+      color: var(--body);
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    .kb-table-scroll {
+      max-width: 100%;
+      overflow: auto;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .kb-table-scroll table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: collapse;
+      color: var(--body);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .kb-table-scroll th,
+    .kb-table-scroll td {
+      border: 1px solid var(--hairline);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+      white-space: normal;
+    }
+
+    .kb-table-scroll th {
+      background: var(--surface-soft);
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    .kb-pdf-modal {
+      width: min(1180px, 100%);
+      max-height: min(92vh, 900px);
+    }
+
+    .kb-pdf-layout {
+      min-height: 420px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 132px;
+      gap: 12px;
+    }
+
+    .kb-pdf-stage {
+      min-height: 420px;
+      overflow: auto;
+      display: grid;
+      place-items: start center;
+      padding: 12px;
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      background: #d9d4ca;
+    }
+
+    .kb-pdf-rail {
+      min-height: 420px;
+      max-height: 70vh;
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      background: var(--surface-soft);
+    }
+
+    .kb-pdf-rail-title {
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .kb-pdf-rail-empty {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .kb-pdf-rail-page {
+      width: 100%;
+      display: grid;
+      gap: 5px;
+      margin-bottom: 8px;
+      padding: 8px;
+      text-align: left;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: var(--canvas);
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .kb-pdf-rail-page.active {
+      border-color: rgba(204, 120, 92, 0.95);
+      background: rgba(204, 120, 92, 0.12);
+    }
+
+    .kb-pdf-rail-page strong {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .kb-pdf-rail-page small {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .kb-pdf-rail-page i {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      min-height: 8px;
+      font-style: normal;
+    }
+
+    .kb-pdf-rail-page i span {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(204, 120, 92, 0.72);
+    }
+
+    .kb-pdf-rail-page i em {
+      color: var(--muted);
+      font-size: 10px;
+      font-style: normal;
+    }
+
+    .kb-pdf-page-wrap {
+      position: relative;
+      background: #fff;
+      box-shadow: 0 16px 40px rgba(20, 20, 19, 0.18);
+    }
+
+    .kb-pdf-page-wrap canvas {
+      display: block;
+    }
+
+    .kb-pdf-highlight-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .kb-pdf-highlight {
+      position: absolute;
+      border: 2px solid rgba(204, 120, 92, 0.95);
+      background: rgba(204, 120, 92, 0.22);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.75);
+    }
+
+    @media (max-width: 840px) {
+      .kb-pdf-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .kb-pdf-rail {
+        min-height: auto;
+        max-height: 140px;
+      }
+    }
+
+    .kb-toast {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 40;
+      max-width: 380px;
+      border-radius: 10px;
+      background: var(--surface-dark);
+      color: var(--canvas);
+      padding: 14px 16px;
+      box-shadow: 0 14px 36px rgba(20, 20, 19, 0.18);
+      display: none;
+      line-height: 1.45;
+      font-size: 14px;
+    }
+
+    .kb-toast.show {
+      display: block;
+    }
+
+    @media (max-width: 980px) {
+      .kb-shell {
+        grid-template-columns: 1fr;
+      }
+      .kb-rail {
+        position: static;
+        height: auto;
+        overflow: visible;
+      }
+      .kb-dataset-list {
+        max-height: 260px;
+      }
+      .kb-topbar {
+        position: static;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .kb-subtitle {
+        max-width: 100%;
+      }
+      .kb-top-actions,
+      .kb-toolbar,
+      .kb-file-header {
+        justify-content: flex-start;
+      }
+      .kb-file-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .kb-file-row,
+      .kb-file-row.head {
+        grid-template-columns: minmax(220px, 1fr) 120px;
+      }
+      .kb-artifact-grid {
+        grid-template-columns: 1fr;
+      }
+      .kb-file-row > :nth-child(3),
+      .kb-file-row > :nth-child(4) {
+        display: none;
+      }
+      .kb-input {
+        width: min(100%, 360px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="kb-shell">
+    <aside class="kb-rail">
+      <div class="kb-brand">
+        <div class="kb-brand-title">知识库</div>
+        <a class="kb-chat-link" href="/">回到对话</a>
+      </div>
+
+      <div class="kb-rail-actions">
+        <button class="kb-primary" id="kb-create-open-btn" type="button">新建资料库</button>
+        <div class="kb-root-note" id="kb-root-note">正在读取资料库目录...</div>
+      </div>
+
+      <div class="kb-dataset-list" id="kb-dataset-list" aria-label="资料库列表"></div>
+    </aside>
+
+    <main class="kb-main">
+      <header class="kb-topbar">
+        <div class="kb-title-wrap">
+          <h1 class="kb-page-title" id="kb-page-title">机构资料库</h1>
+          <div class="kb-subtitle" id="kb-subtitle">选择资料库后查看文件</div>
+        </div>
+        <div class="kb-top-actions">
+          <button class="kb-secondary" id="kb-refresh-btn" type="button">刷新</button>
+          <button class="kb-secondary" id="kb-jobs-open-btn" type="button" disabled>入库任务</button>
+          <button class="kb-secondary" id="kb-activate-btn" type="button" disabled>设为当前</button>
+          <button class="kb-primary" id="kb-upload-open-btn" type="button" disabled>上传文件</button>
+        </div>
+      </header>
+
+      <section class="kb-content" id="kb-content">
+        <div class="kb-empty-state">
+          <div>
+            <h2>选择或新建资料库</h2>
+            <p>这里会展示当前资料库里的文件，上传与入库任务在右上角按钮中处理。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <input id="kb-file-input" type="file" accept=".pdf,.doc,.docx,.odt,.rtf,.ppt,.pptx,.odp,.xls,.xlsx,.csv,.txt,.md,.markdown,application/pdf" multiple hidden>
+
+  <div class="kb-modal-backdrop" id="kb-upload-modal" aria-hidden="true">
+    <section class="kb-modal" role="dialog" aria-modal="true" aria-labelledby="kb-upload-title">
+      <div class="kb-modal-head">
+        <h2 class="kb-modal-title" id="kb-upload-title">上传文件</h2>
+        <button class="kb-close-btn" type="button" data-close-modal aria-label="关闭">×</button>
+      </div>
+      <div class="kb-modal-body">
+        <div class="kb-upload-zone" id="kb-upload-zone">
+          <div class="kb-upload-title">拖入资料文件，或选择本地文件</div>
+          <div class="kb-muted">文件会保存到当前资料库，并自动创建入库任务。</div>
+          <button class="kb-secondary" id="kb-pick-files" type="button">选择文件</button>
+        </div>
+        <div class="kb-selected-files" id="kb-selected-files"></div>
+      </div>
+      <div class="kb-modal-actions">
+        <button class="kb-secondary" type="button" data-close-modal>取消</button>
+        <button class="kb-primary" id="kb-upload-submit" type="button" disabled>开始上传</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="kb-modal-backdrop" id="kb-create-modal" aria-hidden="true">
+    <section class="kb-modal" role="dialog" aria-modal="true" aria-labelledby="kb-create-title">
+      <div class="kb-modal-head">
+        <h2 class="kb-modal-title" id="kb-create-title">新建资料库</h2>
+        <button class="kb-close-btn" type="button" data-close-modal aria-label="关闭">×</button>
+      </div>
+      <form id="kb-create-form">
+        <div class="kb-modal-body">
+          <div class="kb-form-grid">
+            <input class="kb-input" id="kb-create-name" type="text" placeholder="资料库名称，例如 Tesla 研究库" autocomplete="off">
+          </div>
+        </div>
+        <div class="kb-modal-actions">
+          <button class="kb-secondary" type="button" data-close-modal>取消</button>
+          <button class="kb-primary" type="submit">创建</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="kb-modal-backdrop" id="kb-jobs-modal" aria-hidden="true">
+    <section class="kb-modal" role="dialog" aria-modal="true" aria-labelledby="kb-jobs-title">
+      <div class="kb-modal-head">
+        <h2 class="kb-modal-title" id="kb-jobs-title">入库任务</h2>
+        <button class="kb-close-btn" type="button" data-close-modal aria-label="关闭">×</button>
+      </div>
+      <div class="kb-modal-body">
+        <div class="kb-jobs-list" id="kb-jobs-list"></div>
+      </div>
+      <div class="kb-modal-actions">
+        <button class="kb-secondary" type="button" data-close-modal>关闭</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="kb-modal-backdrop" id="kb-preview-modal" aria-hidden="true">
+    <section class="kb-modal large" role="dialog" aria-modal="true" aria-labelledby="kb-preview-title">
+      <div class="kb-modal-head">
+        <h2 class="kb-modal-title" id="kb-preview-title">转化产物</h2>
+        <button class="kb-close-btn" type="button" data-close-modal aria-label="关闭">×</button>
+      </div>
+      <div class="kb-modal-body" id="kb-preview-body"></div>
+      <div class="kb-modal-actions">
+        <button class="kb-secondary" type="button" data-close-modal>关闭</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="kb-modal-backdrop" id="kb-pdf-modal" aria-hidden="true">
+    <section class="kb-modal kb-pdf-modal" role="dialog" aria-modal="true" aria-labelledby="kb-pdf-title">
+      <div class="kb-modal-head">
+        <h2 class="kb-modal-title" id="kb-pdf-title">PDF 预览</h2>
+        <button class="kb-close-btn" type="button" data-close-pdf-preview aria-label="关闭">×</button>
+      </div>
+      <div class="kb-modal-body" id="kb-pdf-body"></div>
+      <div class="kb-modal-actions">
+        <button class="kb-secondary" type="button" data-close-pdf-preview>关闭</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="kb-toast" id="kb-toast"></div>
+  <script src="vendor/pdfjs/pdf.min.js?v=3.11.174"></script>
+  <script src="knowledge_base.js?v=20260627-name-only-create"></script>
+</body>
+</html>
