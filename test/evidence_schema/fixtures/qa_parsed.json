@@ -1,0 +1,30 @@
+[
+  {
+    "session_id": "session_001",
+    "message_id": "msg_001",
+    "project_id": "proj_zk",
+    "analyst_id": "analyst_01",
+    "role": "user",
+    "content": "极氪 FY2024 毛利率怎么样？",
+    "citation_ids": [],
+    "metadata_json": {},
+    "created_at": "2026-01-01T00:00:00Z"
+  },
+  {
+    "session_id": "session_001",
+    "message_id": "msg_002",
+    "project_id": "proj_zk",
+    "analyst_id": "analyst_01",
+    "role": "assistant",
+    "content": "FY2024 毛利率承压，主要来自价格竞争。",
+    "citation_ids": ["cit_demo"],
+    "metadata_json": {"model_name": "test-model"},
+    "created_at": "2026-01-01T00:00:05Z"
+  },
+  {
+    "session_id": "session_001",
+    "message_id": "msg_003",
+    "role": "assistant",
+    "content": "   "
+  }
+]

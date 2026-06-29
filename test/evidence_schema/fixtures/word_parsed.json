@@ -1,0 +1,21 @@
+[
+  {
+    "heading_path": ["管理层问答", "毛利率"],
+    "paragraph_no": 18,
+    "text": "毛利率短期承压，主要来自价格竞争。",
+    "labels": ["观点"],
+    "block_type": "paragraph"
+  },
+  {
+    "heading_path": ["风险提示"],
+    "paragraph_no": 25,
+    "text": "原材料价格波动可能影响下季度利润。",
+    "labels": ["风险"],
+    "block_type": "paragraph"
+  },
+  {
+    "heading_path": ["附录"],
+    "paragraph_no": 40,
+    "text": "  "
+  }
+]

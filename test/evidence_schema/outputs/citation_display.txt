@@ -1,0 +1,7 @@
+pdf_page_section: Zeekr_2024_AR.pdf, p.42, Management Discussion
+ppt_slide: Investor_Day.pptx, slide 12
+word_section: meeting_minutes.docx, 管理层问答 > 毛利率, paragraph 18
+excel_cell: Zeekr_valuation_model.xlsx, DCF!E12, formula = E11/E10
+markdown_block: zeekr_profitability.md, #毛利率趋势
+qa_message: session_001, assistant message msg_002
+memo_section: memo_001, section 核心观点
