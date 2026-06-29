@@ -6,7 +6,7 @@
 |---|---|---|---|---|---:|
 | 雷雷 | Project DB / Company Collection / Analyst Space 总体 DB 结构 | [project_db_and_personal_memory_design.md](docs/project_db_and_personal_memory_design.md) | [test/project_db/](test/project_db/) | 初始设计完成，待实现 | 10% |
 | 廖 | Research Memory | [research_memory_design.md](docs/research_memory_design.md) | [test/research_memory/](test/research_memory/) | 初始设计完成，待实现 | 10% |
-| 朝龙 | Memo Generation | [memo_generation_design.md](docs/memo_generation_design.md) | [test/memo_generation/](test/memo_generation/) | 初始设计完成，待实现 | 10% |
+| 朝龙 | Memo Generation | [memo_generation_design.md](docs/memo_generation_design.md) | [test/memo_generation/](test/memo_generation/) | 初版报告生成 PR 已送审，待修复后合并 | 40% |
 | 程景逸 | Evidence Schema / Citation / Provenance | [evidence_schema_design.md](docs/evidence_schema_design.md) | [test/evidence_schema/](test/evidence_schema/) | 第一阶段实现 PR 已送审，待修复后合并 | 30% |
 
 ## 测试目录要求
@@ -78,6 +78,7 @@
 |---|---|---|---|---|
 | 2026-06-24 | 创建 Memo 生成模块设计文档。 | `docs/memo_generation_design.md` | 文档已覆盖输入输出、Evidence Pack、Citation Gate、验收流程。 | done |
 | 2026-06-24 | 新增模块测试目录要求。 | `README.md`, `test/memo_generation/README.md` | 确认 Memo Generation 后续测试统一归档到 `test/memo_generation/`。 | done |
+| 2026-06-29 | 初版 Memo / Equity Research Report 生成能力已提交 PR #2：新增 `/memo` 后端路由、RAG+LLM 章节生成、HTML 报告渲染、PDF 转换、前端报告生成入口、SSE 进度和 token 用量面板；当前待修复 review 阻塞点后合并。 | `README.md`, PR #2: `FinSagent/deploy/memo_routes.py`, `FinSagent/src/memo/report_generator.py`, `FinSagent/deploy/frontend/index.html`, `FinSagent/deploy/app.py` | 在 PR #2 临时 worktree 执行 `python -m py_compile FinSagent/deploy/memo_routes.py FinSagent/src/memo/report_generator.py` 通过；真实 import 暴露 FinRobot 私有绝对路径问题；fake RAG/LLM 最小生成通过；注入样例确认生成 HTML 需补 sanitizer / sandbox / CSP。 | review |
 
 ### 程景逸：Evidence Schema / Citation / Provenance
 
@@ -103,7 +104,7 @@
 |---|---|---|---|---|---|
 | Project DB | 雷雷 | 固化 SQLite schema、目录结构和 repository API。 | `test/project_db/` | 输出第一版 schema.sql、初始化脚本和 DB 回溯测试。 | 暂无 |
 | Research Memory | 廖 | QA 后完整写入原文、facts、citations、audit，并进入语义索引。 | `test/research_memory/` | 实现最小 QA memory 闭环和对应测试 fixture。 | OpenViking 接入方案待确认 |
-| Memo Generation | 朝龙 | 固定模板 memo + evidence pack + citation gate。 | `test/memo_generation/` | 实现 memo 最小端到端 demo 和 citation gate 测试。 | 依赖 Evidence Schema 和 Memory API |
+| Memo Generation | 朝龙 | 初版报告生成链路已进入 PR review：RAG 检索证据、LLM 生成章节、HTML/PDF 报告预览、引用格式统一和生成过程 token 统计。 | `test/memo_generation/` | 修复 PR #2 review 阻塞点：FinRobot 模板路径改为仓库相对或配置项、生成 HTML 做 sanitizer / CSP / iframe sandbox 收紧、校验 `company_ticker` 输出路径；随后补最小端到端测试和 citation gate 测试。 | PR #2 暂不建议合并；依赖 Evidence Schema 和 Memory API 继续对齐 |
 | Evidence Schema | 程景逸 | 第一阶段统一 evidence/citation/provenance 中间层 PR 已送审。 | `test/evidence_schema/` | 修复 Excel 空 block 过滤和 Memo display 后，将 PR #1 从 draft 转 ready 并合并；随后对接 SQLite repository。 | 需要和 DB schema、Research Memory citation 字段继续对齐 |
 
 ## 员工 Coding Agent 更新规范
