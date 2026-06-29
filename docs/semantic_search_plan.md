@@ -28,25 +28,9 @@ _search_semantic(query)
 
 ### 为什么没有走 OpenViking + LLM
 
-OpenViking 0.3.3 的两个阻塞点：
+需要实际可用的 API key。OpenViking 的 LLM/VLM 通路初始化时需要有效的 API key，当前 ov.conf 中配置的是占位符，导致 semantic processor 初始化失败。打通 OpenViking + LLM 需要先配置真实可用的 LLM 端点（如本地 Qwen 在 8000 端口）及对应的 API key。
 
-#### 阻塞点 1: Embedder 维度参数不兼容
-
-OpenViking 的 `OpenAIDenseEmbedder` 自动检测 embedding 维度后，每次请求都带 `dimensions=1024` 参数。但 vLLM 的 BGE-M3 启动时没有启用 Matryoshka Representation Learning（MRL），收到 `dimensions` 参数就返回 400：
-
-```
-error: Model "BAAI/bge-m3" does not support matryoshka representation,
-       changing output dimensions will lead to poor results.
-```
-
-直接请求（不带 `dimensions`）正常返回 200，`openai` 库 v2.6.1 直接调也正常。问题出在 OpenViking embedder 内部固定的调用方式。
-
-**可能的原因（需验证）：**
-- OpenViking 0.3.3 embedder 检查的是 `self.dimension`（无下划线），但属性存为 `self._dimension`（有下划线），导致 `if self.dimension:` 永远为 False，不走 `_detect_dimension()`→ 回退默认值 1536 → 传入 `dimensions=1536` → BGE-M3 拒绝。但实测 behavior 与此不完全一致，需要读源码确认。
-
-#### 阻塞点 2: VLM/LLM 通路初始化失败
-
-OpenViking 的 semantic processor 依赖 VLM（视觉语言模型）做语义摘要和增强理解。当前 `ov.conf` 中 VLM 配置指向本地 Qwen API（端口 8000），但初始化时报 `api_key client option must be set`，即使传了 `api_key: EMPTY` 也失败。这条通路不修好，OpenViking 的 LLM 增强语义功能不可用。
+当前 BGE-M3 直接调用是占位方案，后续待 OpenViking LLM 通路就绪后，可以用 LLM 做语义摘要增强意图理解。
 
 ### 后续计划
 
