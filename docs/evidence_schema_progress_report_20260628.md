@@ -4,8 +4,8 @@
 - 报告日期：2026-06-28
 - 模块定位：私募投研 AI 助手的「证据 / 引用 / 溯源」统一中间层
 - 分支：`chengjingyi/evidence-schema/20260626-phase1-evidence`（已 push，未合并 main）
-- 当前提交：`188b65f` `[evidence_schema] align qa adapter with research memory`
-- 后续修复（待提交）：按 Draft PR #1 review 修 Excel 空 block 过滤与 Memo display，新增 3 个测试（详见 §4）
+- 协作载体：Draft PR #1（基于上述分支），已收到 review 并完成对应修复（详见 §4 与下方协作点）
+- 最新进展：按 Draft PR #1 review 修 Excel 空 block 过滤与 Memo display，新增 3 个测试（详见 §4），均已随 PR #1 push；提交历史以 PR / `git log` 为准
 
 ---
 
@@ -190,4 +190,4 @@ citation gate），并已与下游 Research Memory（廖的 `lzx_memo` 分支）
 - 源码：`src/evidence_schema/`（schema / ids / display / normalizer / citation_gate + 7 适配器）。
 - 测试：`test/evidence_schema/`（39 passed，含 fixtures 与 README/ASSUMPTIONS）。
 - 文档：本报告 + `test/evidence_schema/README.md`（含已对齐 / 非阻塞差异清单）。
-- 协作点：Draft PR #1（`chengjingyi/evidence-schema/20260626-phase1-evidence`）已创建并收到 review；两条意见已修复，待提交后转 ready-for-review。下一阶段（SQLite / DB 对齐 / RM 接入）另开 PR。
+- 协作点：Draft PR #1（`chengjingyi/evidence-schema/20260626-phase1-evidence`）已创建并收到 review；两条意见已修复并随 PR push，待转 ready-for-review。下一阶段（SQLite / DB 对齐 / RM 接入）另开 PR。
