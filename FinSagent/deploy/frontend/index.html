@@ -1525,6 +1525,109 @@
             gap: 6px;
         }
 
+        /* Report Sidebar */
+        .report-sidebar {
+            width: 0;
+            min-width: 0;
+            overflow: hidden;
+            border-left: 1px solid var(--color-border);
+            background: var(--color-chat-bg);
+            transition: width 0.25s ease, min-width 0.25s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .report-sidebar.open {
+            width: 260px;
+            min-width: 260px;
+        }
+        .report-sidebar-header {
+            padding: 12px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-secondary-text);
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            white-space: nowrap;
+        }
+        .report-sidebar-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+        }
+        .report-sidebar-empty {
+            padding: 20px 14px;
+            font-size: 12px;
+            color: var(--color-secondary-text);
+            text-align: center;
+        }
+        .report-tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            margin-bottom: 4px;
+        }
+        .report-tab:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+        .report-tab.active {
+            background: rgba(99, 102, 241, 0.08);
+        }
+        .report-tab-icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .report-tab-title {
+            flex: 1;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--color-text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .report-tab-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .report-tab-status.pending {
+            background: #f59e0b;
+            animation: report-pulse 1.2s infinite;
+        }
+        .report-tab-status.success {
+            background: #22c55e;
+        }
+        .report-tab-status.error {
+            background: #ef4444;
+        }
+        @keyframes report-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .report-generate-btn.pending {
+            background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+        }
+        .report-generate-btn.pending .report-btn-text {
+            animation: report-dots 1.5s infinite;
+        }
+        @keyframes report-dots {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
         /* Report Preview Modal */
         .report-modal-overlay {
             display: none;
@@ -2294,6 +2397,7 @@
                 </div>
             </div>
 
+            <div style="display:flex; flex:1; min-height:0; overflow:hidden;">
             <div class="main-content">
                 <div id="chat-container">
                     <div class="chat-container-inner" id="chat-messages-root">
@@ -2307,6 +2411,15 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <aside class="report-sidebar" id="report-sidebar">
+                <div class="report-sidebar-header">
+                    <span>📊 报告列表</span>
+                </div>
+                <div class="report-sidebar-list" id="report-sidebar-list">
+                    <div class="report-sidebar-empty">暂无报告</div>
+                </div>
+            </aside>
             </div>
 
             <div id="input-area-fixed">
@@ -2377,7 +2490,8 @@
 <script>
     // ── Report Generation Logic ──────────────────────────────────────────
     let reportModeEnabled = false;
-    let currentReportUrl = null;
+    let reportJobs = []; // {id, title, status, reportUrl, companyName, ticker, tokenSteps, totalPrompt, totalCompletion, totalTokens, errorMsg}
+    let activeJobId = null; // which job is currently shown in the modal
 
     function toggleReportMode() {
         reportModeEnabled = !reportModeEnabled;
@@ -2393,11 +2507,9 @@
     }
 
     function getCompanyNameFromSession() {
-        // Try to extract company name from the current session title or chat context
         const titleEl = document.getElementById('main-header-title-text');
         if (titleEl) {
             const title = titleEl.textContent || '';
-            // If the title contains a company-like name, use it
             if (title && title !== '新对话') {
                 return title.trim();
             }
@@ -2407,7 +2519,6 @@
 
     function inferTickerFromName(name) {
         if (!name) return 'UNKNOWN';
-        // Common mappings
         const known = {
             'nvidia': 'NVDA', 'apple': 'AAPL', 'microsoft': 'MSFT',
             'google': 'GOOGL', 'alphabet': 'GOOGL', 'amazon': 'AMZN',
@@ -2425,10 +2536,53 @@
         for (const [key, ticker] of Object.entries(known)) {
             if (lower.includes(key)) return ticker;
         }
-        // Fallback: first 4 uppercase chars
         return name.substring(0, 4).toUpperCase();
     }
 
+    // ── Sidebar rendering ─────────────────────────────────────────────────
+    function renderReportSidebar() {
+        const list = document.getElementById('report-sidebar-list');
+        const sidebar = document.getElementById('report-sidebar');
+        if (reportJobs.length === 0) {
+            sidebar.classList.remove('open');
+            list.innerHTML = '<div class="report-sidebar-empty">暂无报告</div>';
+            return;
+        }
+        sidebar.classList.add('open');
+        list.innerHTML = '';
+        // Show most recent first
+        for (let i = reportJobs.length - 1; i >= 0; i--) {
+            const job = reportJobs[i];
+            const tab = document.createElement('div');
+            tab.className = 'report-tab' + (job.id === activeJobId ? ' active' : '');
+            tab.onclick = () => openReportModal(job.id);
+            const icon = job.status === 'success' ? '✅' : job.status === 'error' ? '❌' : '⏳';
+            tab.innerHTML = `
+                <div class="report-tab-icon">${icon}</div>
+                <div class="report-tab-title">${escapeHtml(job.title)}</div>
+                <div class="report-tab-status ${job.status}"></div>
+            `;
+            list.appendChild(tab);
+        }
+    }
+
+    function updateReportButtonState() {
+        const btn = document.getElementById('report-generate-btn');
+        const hasPending = reportJobs.some(j => j.status === 'pending');
+        if (hasPending) {
+            btn.classList.add('pending');
+            btn.disabled = true;
+            const textSpan = btn.querySelector('.report-btn-text') || btn.querySelector('span');
+            if (textSpan) textSpan.textContent = '生成中...';
+        } else {
+            btn.classList.remove('pending');
+            btn.disabled = false;
+            const textSpan = btn.querySelector('.report-btn-text') || btn.querySelector('span');
+            if (textSpan) textSpan.textContent = '生成报告';
+        }
+    }
+
+    // ── Report generation ─────────────────────────────────────────────────
     async function generateReport() {
         const companyName = getCompanyNameFromSession();
         if (!companyName || companyName === '新对话') {
@@ -2437,18 +2591,35 @@
         }
 
         const ticker = inferTickerFromName(companyName);
-        const btn = document.getElementById('report-generate-btn');
-        btn.disabled = true;
+        const jobId = 'rpt_' + Date.now();
+        const job = {
+            id: jobId,
+            title: `${companyName} (${ticker})`,
+            status: 'pending',
+            reportUrl: null,
+            companyName: companyName,
+            ticker: ticker,
+            tokenSteps: [],
+            totalPrompt: 0,
+            totalCompletion: 0,
+            totalTokens: 0,
+            errorMsg: null,
+        };
+        reportJobs.push(job);
+        activeJobId = jobId;
 
-        // Clear previous report state so showReportModal shows loading
-        currentReportUrl = null;
+        renderReportSidebar();
+        updateReportButtonState();
+
+        // Reset modal UI for new job
+        resetTokenPanel();
         const iframe = document.getElementById('report-iframe');
         iframe.src = '';
+        iframe.style.display = 'none';
+        const loading = document.getElementById('report-modal-loading');
+        loading.style.display = 'flex';
+        loading.querySelector('.report-loading-spinner').style.display = 'block';
 
-        // Reset token panel
-        resetTokenPanel();
-
-        // Show modal with loading
         showReportModal();
         updateReportProgress('正在检索证据并生成报告，请耐心等待...');
 
@@ -2467,7 +2638,6 @@
                 throw new Error(err.detail || `HTTP ${resp.status}`);
             }
 
-            // Read SSE stream
             const reader = resp.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
@@ -2477,9 +2647,8 @@
                 if (done) break;
                 buffer += decoder.decode(value, { stream: true });
 
-                // Process complete SSE events (separated by \n\n)
                 const events = buffer.split('\n\n');
-                buffer = events.pop(); // keep incomplete chunk
+                buffer = events.pop();
 
                 for (const evtStr of events) {
                     const lines = evtStr.trim().split('\n');
@@ -2487,7 +2656,7 @@
                         if (line.startsWith('data: ')) {
                             try {
                                 const evt = JSON.parse(line.slice(6));
-                                handleReportEvent(evt, companyName, ticker);
+                                handleReportEvent(evt, job);
                             } catch (e) {
                                 console.warn('Failed to parse SSE event:', line);
                             }
@@ -2497,62 +2666,111 @@
             }
         } catch (err) {
             console.error('Report generation failed:', err);
-            updateReportProgress('❌ 生成失败: ' + err.message);
-            const loading = document.getElementById('report-modal-loading');
-            loading.querySelector('.report-loading-spinner').style.display = 'none';
-        } finally {
-            btn.disabled = false;
+            job.status = 'error';
+            job.errorMsg = err.message;
+            renderReportSidebar();
+            updateReportButtonState();
+            if (activeJobId === job.id) {
+                updateReportProgress('❌ 生成失败: ' + err.message);
+                const loading = document.getElementById('report-modal-loading');
+                loading.querySelector('.report-loading-spinner').style.display = 'none';
+            }
         }
     }
 
-    function handleReportEvent(evt, companyName, ticker) {
+    function handleReportEvent(evt, job) {
+        // Only update modal UI if this job is currently active in the modal
+        const isActive = activeJobId === job.id;
+
         switch (evt.type) {
             case 'start':
-                updateReportProgress(`开始生成报告: ${evt.company} (${evt.ticker})，共 ${evt.total_sections} 个章节...`);
+                if (isActive) updateReportProgress(`开始生成报告: ${evt.company} (${evt.ticker})，共 ${evt.total_sections} 个章节...`);
                 break;
             case 'section_start':
-                updateReportProgress(`[${evt.step}/${evt.total}] 检索证据: ${evt.section}...`);
-                addTokenStep(evt.section, evt.step, evt.total);
+                if (isActive) {
+                    updateReportProgress(`[${evt.step}/${evt.total}] 检索证据: ${evt.section}...`);
+                    addTokenStep(evt.section, evt.step, evt.total);
+                }
                 break;
             case 'section_retrieved':
-                updateReportProgress(`[${evt.step}/${evt.total}] 生成文本: ${evt.section}... (检索到 ${evt.chunks} 个证据片段)`);
+                if (isActive) updateReportProgress(`[${evt.step}/${evt.total}] 生成文本: ${evt.section}... (检索到 ${evt.chunks} 个证据片段)`);
                 break;
             case 'section_done':
-                updateReportProgress(`[${evt.step}/${evt.total}] ✅ ${evt.section} 完成 (${evt.chars} 字符)`);
-                updateTokenStep(evt.section, evt.prompt_tokens, evt.completion_tokens, evt.total_tokens, evt.chars, evt.prompt, evt.response);
+                job.tokenSteps.push({
+                    section: evt.section,
+                    promptTokens: evt.prompt_tokens,
+                    completionTokens: evt.completion_tokens,
+                    totalTokens: evt.total_tokens,
+                    chars: evt.chars,
+                    prompt: evt.prompt,
+                    response: evt.response,
+                });
+                job.totalPrompt += evt.prompt_tokens || 0;
+                job.totalCompletion += evt.completion_tokens || 0;
+                job.totalTokens += evt.total_tokens || 0;
+                if (isActive) {
+                    updateReportProgress(`[${evt.step}/${evt.total}] ✅ ${evt.section} 完成 (${evt.chars} 字符)`);
+                    updateTokenStep(evt.section, evt.prompt_tokens, evt.completion_tokens, evt.total_tokens, evt.chars, evt.prompt, evt.response);
+                }
                 break;
             case 'metrics_start':
-                updateReportProgress('提取财务指标...');
-                addTokenStep('metrics_extraction', 0, 0, true);
+                if (isActive) {
+                    updateReportProgress('提取财务指标...');
+                    addTokenStep('metrics_extraction', 0, 0, true);
+                }
                 break;
             case 'metrics_done':
-                updateReportProgress('✅ 财务指标提取完成');
-                updateTokenStep('metrics_extraction', evt.prompt_tokens, evt.completion_tokens, evt.total_tokens, 0, evt.prompt, evt.response);
+                job.tokenSteps.push({
+                    section: 'metrics_extraction',
+                    promptTokens: evt.prompt_tokens,
+                    completionTokens: evt.completion_tokens,
+                    totalTokens: evt.total_tokens,
+                    chars: 0,
+                    prompt: evt.prompt,
+                    response: evt.response,
+                });
+                job.totalPrompt += evt.prompt_tokens || 0;
+                job.totalCompletion += evt.completion_tokens || 0;
+                job.totalTokens += evt.total_tokens || 0;
+                if (isActive) {
+                    updateReportProgress('✅ 财务指标提取完成');
+                    updateTokenStep('metrics_extraction', evt.prompt_tokens, evt.completion_tokens, evt.total_tokens, 0, evt.prompt, evt.response);
+                }
                 break;
             case 'rendering':
-                updateReportProgress('渲染 HTML 报告...');
+                if (isActive) updateReportProgress('渲染 HTML 报告...');
                 break;
             case 'complete':
-                updateReportProgress('✅ 报告生成完成！');
+                if (isActive) updateReportProgress('✅ 报告生成完成！');
                 break;
             case 'result':
-                currentReportUrl = evt.html_url;
-                updateReportProgress('报告生成完成，正在加载预览...');
-                // Load the report in the iframe
-                const iframe = document.getElementById('report-iframe');
-                const loading = document.getElementById('report-modal-loading');
-                iframe.onload = () => {
-                    loading.style.display = 'none';
-                    iframe.style.display = 'block';
-                    document.getElementById('report-modal-title-text').textContent =
-                        `${companyName} (${ticker}) - Equity Research Report`;
-                };
-                iframe.src = evt.html_url;
+                job.status = 'success';
+                job.reportUrl = evt.html_url;
+                renderReportSidebar();
+                updateReportButtonState();
+                if (isActive) {
+                    updateReportProgress('报告生成完成，正在加载预览...');
+                    const iframe = document.getElementById('report-iframe');
+                    const loading = document.getElementById('report-modal-loading');
+                    iframe.onload = () => {
+                        loading.style.display = 'none';
+                        iframe.style.display = 'block';
+                        document.getElementById('report-modal-title-text').textContent =
+                            `${job.companyName} (${job.ticker}) - Equity Research Report`;
+                    };
+                    iframe.src = evt.html_url;
+                }
                 break;
             case 'error':
-                updateReportProgress('❌ ' + evt.detail);
-                const loadingEl = document.getElementById('report-modal-loading');
-                loadingEl.querySelector('.report-loading-spinner').style.display = 'none';
+                job.status = 'error';
+                job.errorMsg = evt.detail;
+                renderReportSidebar();
+                updateReportButtonState();
+                if (isActive) {
+                    updateReportProgress('❌ ' + evt.detail);
+                    const loadingEl = document.getElementById('report-modal-loading');
+                    loadingEl.querySelector('.report-loading-spinner').style.display = 'none';
+                }
                 break;
         }
     }
@@ -2689,33 +2907,64 @@
         return div.innerHTML;
     }
 
-    function showReportModal() {
-        const overlay = document.getElementById('report-modal-overlay');
-        const loading = document.getElementById('report-modal-loading');
-        const iframe = document.getElementById('report-iframe');
+    function openReportModal(jobId) {
+        const job = reportJobs.find(j => j.id === jobId);
+        if (!job) return;
+        activeJobId = jobId;
+        renderReportSidebar();
 
-        // If we already have a report loaded, show it directly without loading state
-        if (currentReportUrl) {
-            loading.style.display = 'none';
-            iframe.style.display = 'block';
-            // Re-load the iframe if it was cleared
-            if (!iframe.src || iframe.src === 'about:blank') {
-                iframe.src = currentReportUrl;
-            }
-        } else {
+        // Reset UI
+        resetTokenPanel();
+        const iframe = document.getElementById('report-iframe');
+        const loading = document.getElementById('report-modal-loading');
+        iframe.src = '';
+        iframe.style.display = 'none';
+
+        // Set title
+        document.getElementById('report-modal-title-text').textContent =
+            `${job.companyName} (${job.ticker}) - Equity Research Report`;
+
+        if (job.status === 'pending') {
+            // Still generating — show loading state
             loading.style.display = 'flex';
             loading.querySelector('.report-loading-spinner').style.display = 'block';
-            iframe.style.display = 'none';
-            iframe.src = '';
+            updateReportProgress('正在生成报告，请耐心等待...');
+
+            // Replay any token steps already collected
+            for (const step of job.tokenSteps) {
+                addTokenStep(step.section, 0, 0, step.section === 'metrics_extraction');
+                updateTokenStep(step.section, step.promptTokens, step.completionTokens, step.totalTokens, step.chars, step.prompt, step.response);
+            }
+        } else if (job.status === 'success') {
+            // Report ready — load in iframe
+            loading.style.display = 'none';
+            iframe.style.display = 'block';
+            iframe.src = job.reportUrl;
+
+            // Replay token steps
+            for (const step of job.tokenSteps) {
+                addTokenStep(step.section, 0, 0, step.section === 'metrics_extraction');
+                updateTokenStep(step.section, step.promptTokens, step.completionTokens, step.totalTokens, step.chars, step.prompt, step.response);
+            }
+        } else if (job.status === 'error') {
+            // Show error
+            loading.style.display = 'flex';
+            loading.querySelector('.report-loading-spinner').style.display = 'none';
+            updateReportProgress('❌ 生成失败: ' + (job.errorMsg || '未知错误'));
         }
+
+        showReportModal();
+    }
+
+    function showReportModal() {
+        const overlay = document.getElementById('report-modal-overlay');
         overlay.classList.add('active');
     }
 
     function closeReportModal() {
         const overlay = document.getElementById('report-modal-overlay');
         overlay.classList.remove('active');
-        // Keep currentReportUrl and iframe content so reopening shows the report
-        // Don't clear iframe.src — just hide the modal
+        // Don't clear activeJobId — sidebar tab highlight stays
     }
 
     function updateReportProgress(text) {
@@ -2723,38 +2972,38 @@
         if (el) el.textContent = text;
     }
 
+    function getCurrentJob() {
+        return reportJobs.find(j => j.id === activeJobId);
+    }
+
     function printReport() {
+        const job = getCurrentJob();
+        if (!job || !job.reportUrl) {
+            alert('报告尚未加载，请先生成报告。');
+            return;
+        }
         const iframe = document.getElementById('report-iframe');
         try {
-            if (!iframe.src || iframe.src === 'about:blank' || !currentReportUrl) {
-                alert('报告尚未加载，请先生成报告。');
-                return;
-            }
             iframe.contentWindow.focus();
             iframe.contentWindow.print();
         } catch (e) {
             console.error('Print failed:', e);
-            if (currentReportUrl) {
-                const w = window.open(currentReportUrl, '_blank');
-                if (w) {
-                    w.onload = () => { w.print(); };
-                } else {
-                    alert('无法直接打印，请使用"新窗口打开"功能。');
-                }
+            const w = window.open(job.reportUrl, '_blank');
+            if (w) {
+                w.onload = () => { w.print(); };
             } else {
-                alert('无法打印，请先生成报告。');
+                alert('无法直接打印，请使用"新窗口打开"功能。');
             }
         }
     }
 
     function downloadReport() {
-        if (!currentReportUrl) {
+        const job = getCurrentJob();
+        if (!job || !job.reportUrl) {
             alert('报告尚未加载，请先生成报告。');
             return;
         }
-        // Convert HTML URL to PDF URL
-        const pdfUrl = currentReportUrl.replace('/memo/report/', '/memo/pdf/');
-        // Trigger download of the PDF
+        const pdfUrl = job.reportUrl.replace('/memo/report/', '/memo/pdf/');
         const a = document.createElement('a');
         a.href = pdfUrl;
         const filename = pdfUrl.split('/').pop().replace('.html', '.pdf') || 'report.pdf';
@@ -2765,9 +3014,9 @@
     }
 
     function openReportInNewTab() {
-        if (currentReportUrl) {
-            // Open PDF version in new tab
-            const pdfUrl = currentReportUrl.replace('/memo/report/', '/memo/pdf/');
+        const job = getCurrentJob();
+        if (job && job.reportUrl) {
+            const pdfUrl = job.reportUrl.replace('/memo/report/', '/memo/pdf/');
             window.open(pdfUrl, '_blank');
         }
     }
