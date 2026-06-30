@@ -1008,12 +1008,23 @@ async def generate_report(
                  "catalysts": len(catalyst_data.get("top_catalysts", []) if isinstance(catalyst_data, dict) else []),
                  "peers": len(peers)})
 
-    # Merge: use extracted values where available, fall back to provided defaults
+    # Merge: FMP real-time market data takes priority over LLM-extracted values
+    # for market data fields (SEC filings don't contain real-time prices).
+    # For financial ratios (PE, PB, ROE), LLM-extracted values from filings
+    # can supplement, but FMP is still preferred when available.
+    _fmp_priority_keys = {"share_price", "target_price", "market_cap", "dividend_yield", "week_52_range"}
+
     def _metric(key: str, default: str) -> str:
         val = extracted.get(key)
-        if val is None or val == "null" or val == "N/A" or val == "None":
-            return default if default != "N/A" else "—"
-        return str(val)
+        llm_has = val is not None and val != "null" and val != "N/A" and val != "None"
+        fmp_has = default is not None and default != "N/A"
+        # FMP real-time data always wins for market data fields
+        if key in _fmp_priority_keys and fmp_has:
+            return default
+        # Otherwise: LLM-extracted value first, then FMP default
+        if llm_has:
+            return str(val)
+        return default if fmp_has else "—"
 
     share_price = _metric("share_price", share_price)
     target_price = _metric("target_price", target_price)

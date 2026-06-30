@@ -88,6 +88,35 @@ async def generate_memo(req: MemoGenerateRequest):
     sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
     from memo.report_generator import generate_report
 
+    # ── Fetch market data from FMP ────────────────────────────────────────
+    fmp_data = {}
+    try:
+        from tools.fmp import market_snapshot
+        logger.info(f"[Memo] Fetching FMP market data for {req.company_ticker}...")
+        fmp_data = market_snapshot(req.company_ticker)
+        logger.info(f"[Memo] FMP data received: price={fmp_data.get('share_price')}, "
+                     f"mcap={fmp_data.get('market_cap')}, PE={fmp_data.get('fwd_pe')}")
+    except Exception as e:
+        logger.warning(f"[Memo] FMP fetch failed, using request defaults: {e}")
+        fmp_data = {}
+
+    # Use FMP data to fill in any "N/A" fields from the request
+    def _fill_from_fmp(req_val: str, fmp_key: str) -> str:
+        if req_val and req_val != "N/A":
+            return req_val
+        fmp_val = fmp_data.get(fmp_key, "N/A")
+        return fmp_val if fmp_val != "N/A" else "N/A"
+
+    share_price = _fill_from_fmp(req.share_price, "share_price")
+    target_price = _fill_from_fmp(req.target_price, "target_price")
+    market_cap = _fill_from_fmp(req.market_cap, "market_cap")
+    fwd_pe = _fill_from_fmp(req.fwd_pe, "fwd_pe")
+    pb_ratio = _fill_from_fmp(req.pb_ratio, "pb_ratio")
+    roe = _fill_from_fmp(req.roe, "roe")
+    dividend_yield = _fill_from_fmp(req.dividend_yield, "dividend_yield")
+    week_52_range = _fill_from_fmp(req.week_52_range, "week_52_range")
+    sector = _fill_from_fmp(req.sector, "sector")
+
     output_dir = os.path.join(REPORTS_DIR, req.company_ticker)
     os.makedirs(output_dir, exist_ok=True)
 
@@ -106,15 +135,15 @@ async def generate_memo(req: MemoGenerateRequest):
                     session_manager=session_manager,
                     config=config,
                     output_dir=output_dir,
-                    sector=req.sector,
-                    share_price=req.share_price,
-                    target_price=req.target_price,
-                    market_cap=req.market_cap,
-                    fwd_pe=req.fwd_pe,
-                    pb_ratio=req.pb_ratio,
-                    roe=req.roe,
-                    dividend_yield=req.dividend_yield,
-                    week_52_range=req.week_52_range,
+                    sector=sector,
+                    share_price=share_price,
+                    target_price=target_price,
+                    market_cap=market_cap,
+                    fwd_pe=fwd_pe,
+                    pb_ratio=pb_ratio,
+                    roe=roe,
+                    dividend_yield=dividend_yield,
+                    week_52_range=week_52_range,
                     progress_callback=progress_cb,
                 )
 
