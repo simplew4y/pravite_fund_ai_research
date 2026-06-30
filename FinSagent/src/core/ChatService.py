@@ -263,16 +263,99 @@ class ChatService:
             is_off_topic,
         )
 
+    def _search_memo_memory(self, question: str, chat_history: list = None) -> str:
+        """Search memos.sqlite memory_items for relevant past memos.
+        Returns a context string summarizing matching memos, or empty string.
+        """
+        try:
+            import sqlite3
+            repo_root = Path(__file__).resolve().parents[2]
+            db_path = str(repo_root / "memos.sqlite")
+            if not Path(db_path).exists():
+                return ""
+            conn = sqlite3.connect(db_path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+
+            # Detect meta-questions about recent actions (e.g. "我们刚才做了什么")
+            meta_keywords = ["刚才", "做了什么", "生成了什么", "什么memo", "上一个",
+                             "previous", "刚才生成", "memo", "报告", "report",
+                             "上一个问题", "之前", "刚才的"]
+            is_meta_question = any(kw in question.lower() for kw in meta_keywords)
+
+            # Collect keywords from question + recent chat history
+            all_text = question
+            if chat_history:
+                recent = chat_history[-4:] if len(chat_history) > 4 else chat_history
+                for msg in recent:
+                    all_text += " " + msg.get("content", "")
+
+            keywords = [kw for kw in all_text.strip().split() if len(kw) >= 2]
+            conditions = []
+            params = []
+            for kw in keywords:
+                conditions.append("content LIKE ?")
+                params.append(f"%{kw}%")
+
+            rows = []
+            if conditions and not is_meta_question:
+                query_sql = (
+                    "SELECT memory_id, memory_type, company_id, title, content, "
+                    "metadata_json, created_at FROM memory_items "
+                    "WHERE (" + " OR ".join(conditions) + ") "
+                    "ORDER BY created_at DESC LIMIT 3"
+                )
+                rows = conn.execute(query_sql, params).fetchall()
+
+            # Fallback: if meta-question or no keyword match, get latest memos
+            if not rows:
+                rows = conn.execute(
+                    "SELECT memory_id, memory_type, company_id, title, content, "
+                    "metadata_json, created_at FROM memory_items "
+                    "ORDER BY created_at DESC LIMIT 3"
+                ).fetchall()
+
+            conn.close()
+            if not rows:
+                return ""
+            parts = []
+            for r in rows:
+                import json
+                meta = json.loads(r["metadata_json"]) if r["metadata_json"] else {}
+                parts.append(
+                    f"[Past Memo] {r['title']} (company: {r['company_id']}, "
+                    f"created: {r['created_at'][:19]})\n"
+                    f"Content excerpt: {r['content'][:500]}"
+                )
+            context = "\n---\n".join(parts)
+            logger.info(f"[MemoMemory] Found {len(rows)} memos (meta={is_meta_question})")
+            return context
+        except Exception as e:
+            logger.debug(f"[MemoMemory] Search failed: {e}")
+            return ""
+
     def _build_agentic_initial_state(
         self,
         question: str,
         session_manager: SessionManager,
         draft_holder: _DraftHolder | None = None,
     ) -> Dict[str, Any]:
+        # Search memo memory_items for relevant past memos
+        chat_history_raw = session_manager.get_chat_history_copy()
+        memo_context = self._search_memo_memory(question, chat_history=chat_history_raw)
+
+        # Build chat history with memo memory injected as context
+        chat_history = chat_history_raw
+        if memo_context:
+            chat_history.insert(0, {
+                "role": "system",
+                "content": f"Previous research memos from memory:\n{memo_context}",
+            })
+
         state: Dict[str, Any] = {
             "original_query": question,
             "user_query_raw": question,
-            "chat_history": session_manager.get_chat_history_copy(),
+            "chat_history": chat_history,
+            "memo_memory_context": memo_context,
             "rag": self.rag,
             "session_manager": session_manager,
             "config": self.config,
@@ -656,6 +739,49 @@ class ChatService:
         self.cleanup_old_sessions()
         await asyncio.to_thread(session_manager.request_lock.acquire)
         logger.info(f"[Session {session_id}] Preview-mode (concurrent) query: {question}")
+
+        # ── Memo memory interception ──────────────────────────────────────
+        # If the user is asking about recently generated memos, short-circuit
+        # the normal RAG/agentic-search flow and return memo memory directly.
+        _memo_meta_keywords = ["刚才生成", "生成了什么", "什么memo", "刚才做了",
+                               "生成的memo", "memo的核心", "memo结论", "刚才的memo",
+                               "什么报告", "生成的报告", "刚才的报告"]
+        is_memo_meta = any(kw in question for kw in _memo_meta_keywords)
+        if is_memo_meta:
+            memo_context = self._search_memo_memory(question, chat_history=session_manager.get_chat_history_copy())
+            if memo_context:
+                # Build a direct answer from memo memory
+                direct_answer = (
+                    f"根据系统记忆，以下是最近生成的 memo 记录：\n\n{memo_context}\n\n"
+                    f"以上 memo 已保存至 SQLite 数据库并导出为 markdown 文件，"
+                    f"可通过 /memo/memos API 查看完整内容。"
+                )
+                session_manager.add_exchange(question, direct_answer)
+                await self._persist_session_history_turn(
+                    session_id, question, None, direct_answer,
+                    ["memo_memory"], False,
+                )
+                await asyncio.to_thread(session_manager.request_lock.release)
+                yield {"event": "start", "data": {"question": question, "session_id": session_id, "preview": True}}
+                yield {"event": "preview_draft", "data": {
+                    "stage": "draft", "agent": "memo_memory",
+                    "draft_answer": direct_answer,
+                    "sub_queries": [], "evidence": [], "evidence_count": 0,
+                }}
+                yield {"event": "preliminary", "data": {
+                    "answer": direct_answer,
+                    "sub_queries": [], "evidence": [],
+                }}
+                yield {"event": "comprehensive", "data": {
+                    "answer": direct_answer,
+                    "selected_agents": ["memo_memory"],
+                    "chat_history": session_manager.get_chat_history_string(),
+                }}
+                yield {"event": "complete", "data": {
+                    "final_answer": direct_answer,
+                    "session_id": session_id,
+                }}
+                return
 
         draft_holder = _DraftHolder()
         event_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()

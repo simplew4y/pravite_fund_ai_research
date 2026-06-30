@@ -131,6 +131,42 @@ async def generate_memo(req: MemoGenerateRequest):
                     "evidence_sources": result["evidence_sources"],
                     "token_usage": result.get("token_usage", []),
                 }
+
+                # Write memo summary to chat session history so subsequent
+                # chat questions can recall what memo was generated.
+                try:
+                    sections = result["sections"]
+                    tagline = sections.get("tagline", "")
+                    section_count = len([v for v in sections.values() if v and v.strip()])
+                    memo_summary = (
+                        f"[Memo Generated] {req.company_name} ({req.company_ticker}) coverage memo "
+                        f"(report_id={result['report_id']}). "
+                        f"{section_count} sections, {result['evidence_count']} evidence chunks. "
+                        f"Tagline: {tagline[:200]}. "
+                        f"HTML: {html_url}"
+                    )
+                    # Add to in-memory chat history
+                    session_manager.add_exchange(
+                        f"生成 {req.company_name} ({req.company_ticker}) 覆盖 memo",
+                        memo_summary,
+                    )
+                    # Persist to sessions.sqlite3
+                    store = getattr(cs, "session_history_store", None)
+                    if store is not None:
+                        import asyncio as _aio
+                        await _aio.to_thread(
+                            store.append_turn,
+                            req.session_id,
+                            f"生成 {req.company_name} ({req.company_ticker}) 覆盖 memo",
+                            None,
+                            memo_summary,
+                            ["memo_generation"],
+                            False,
+                        )
+                        logger.info(f"[Memo] Wrote memo summary to session history ({req.session_id})")
+                except Exception as e:
+                    logger.warning(f"[Memo] Failed to write session history: {e}")
+
                 await queue.put(final_event)
             except Exception as e:
                 logger.error(f"Memo generation failed: {e}", exc_info=True)
@@ -299,3 +335,75 @@ async def serve_report_pdf(ticker: str, filename: str):
             "X-Frame-Options": "SAMEORIGIN",
         },
     )
+
+
+# ── Memo SQLite API routes ───────────────────────────────────────────────────
+_MEMO_DB = os.path.join(REPO_ROOT, "memos.sqlite")
+
+
+@router.get("/memos")
+async def list_memos_route(company: Optional[str] = None, status: Optional[str] = None, limit: int = 50):
+    """List memos from the SQLite database."""
+    sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
+    from memo.memo_writer import list_memos
+    memos = list_memos(_MEMO_DB, company_id=company, status=status, limit=limit)
+    return {"memos": memos, "count": len(memos)}
+
+
+@router.get("/memos/{memo_id}")
+async def get_memo_route(memo_id: str):
+    """Get a single memo with sections and citations."""
+    sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
+    from memo.memo_writer import get_memo
+    memo = get_memo(_MEMO_DB, memo_id)
+    if not memo:
+        raise HTTPException(status_code=404, detail=f"Memo not found: {memo_id}")
+    return memo
+
+
+@router.get("/memos/{memo_id}/markdown")
+async def get_memo_markdown_route(memo_id: str):
+    """Serve the markdown file for a memo."""
+    sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
+    from memo.memo_writer import get_memo
+    memo = get_memo(_MEMO_DB, memo_id)
+    if not memo:
+        raise HTTPException(status_code=404, detail=f"Memo not found: {memo_id}")
+
+    md_dir = os.path.join(REPO_ROOT, "analyst_space", "markdown_memory", "memos")
+    md_path = os.path.join(md_dir, f"{memo_id}.md")
+    if not os.path.exists(md_path):
+        raise HTTPException(status_code=404, detail=f"Markdown file not found: {memo_id}.md")
+
+    with open(md_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return Response(
+        content=content,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f"inline; filename=\"{memo_id}.md\""},
+    )
+
+
+@router.get("/memory/search")
+async def search_memory_route(q: str, company: Optional[str] = None, limit: int = 10):
+    """Search memory_items for a query."""
+    sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
+    from memo.memo_memory_writer import search_memory
+    results = search_memory(_MEMO_DB, query=q, company_id=company, limit=limit)
+    return {"results": results, "count": len(results)}
+
+
+@router.get("/runs")
+async def list_generation_runs_route(limit: int = 20):
+    """List recent memo generation runs for audit."""
+    import sqlite3
+    if not os.path.exists(_MEMO_DB):
+        return {"runs": []}
+    conn = sqlite3.connect(_MEMO_DB)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM memo_generation_runs ORDER BY started_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return {"runs": [dict(r) for r in rows], "count": len(rows)}

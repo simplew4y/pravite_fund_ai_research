@@ -51,6 +51,17 @@ from modules.html_template_professional import (  # noqa: E402
     format_advanced_charts_html_professional,
 )
 
+from memo.memo_writer import (  # noqa: E402
+    init_db as init_memo_db,
+    create_generation_run,
+    finish_generation_run,
+    write_memo,
+    DEFAULT_DB_PATH as MEMO_DB_PATH,
+    _SECTION_TYPE_MAP,
+)
+from memo.markdown_exporter import export_memo_to_markdown  # noqa: E402
+from memo.memo_memory_writer import register_memo_as_memory  # noqa: E402
+
 
 # ── Section definitions ──────────────────────────────────────────────────────
 # Each section: (key, retrieval_query_template, prompt_template)
@@ -829,6 +840,14 @@ async def generate_report(
     query_time = datetime.now()
     token_usage_log: List[Dict[str, Any]] = []
 
+    # Initialize memo SQLite DB and create generation run
+    init_memo_db(MEMO_DB_PATH)
+    run_id = create_generation_run(
+        MEMO_DB_PATH,
+        user_instruction=f"Generate coverage memo for {company_name} ({company_ticker})",
+        evidence_pack={"company_name": company_name, "ticker": company_ticker},
+    )
+
     async def _emit(event: Dict[str, Any]):
         if progress_callback:
             try:
@@ -1188,6 +1207,87 @@ async def generate_report(
     }
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    # ── Step 5: Write to memos.sqlite (memo_drafts, memo_sections, citations) ──
+    key_metrics_dict = {
+        "share_price": share_price, "target_price": target_price,
+        "market_cap": market_cap, "fwd_pe": fwd_pe, "pb_ratio": pb_ratio,
+        "roe": roe, "dividend_yield": dividend_yield, "week_52_range": week_52_range,
+    }
+    evidence_sources_list = sorted(source_set)
+
+    try:
+        memo_id, section_ids = write_memo(
+            db_path=MEMO_DB_PATH,
+            company_name=company_name,
+            company_ticker=company_ticker,
+            report_id=report_id,
+            sections=sections,
+            section_sources=section_sources,
+            financial_statements=fin_stmt_data if isinstance(fin_stmt_data, dict) else {},
+            catalyst_analysis=catalyst_data if isinstance(catalyst_data, dict) else {},
+            sensitivity_analysis=sensitivity_data if isinstance(sensitivity_data, dict) else {},
+            peer_comparison=peer_data if isinstance(peer_data, dict) else {},
+            key_metrics=key_metrics_dict,
+            evidence_sources=evidence_sources_list,
+            token_usage=token_usage_log,
+            html_path=html_path,
+            meta_path=meta_path,
+        )
+        logger.info(f"[Memo] ✅ Memo written to SQLite: {memo_id} ({len(section_ids)} sections)")
+
+        # ── Step 6: Export to markdown ──────────────────────────────────────
+        md_path = export_memo_to_markdown(
+            memo_id=memo_id,
+            company_name=company_name,
+            company_ticker=company_ticker,
+            sections=sections,
+            section_sources=section_sources,
+            financial_statements=fin_stmt_data if isinstance(fin_stmt_data, dict) else {},
+            catalyst_analysis=catalyst_data if isinstance(catalyst_data, dict) else {},
+            sensitivity_analysis=sensitivity_data if isinstance(sensitivity_data, dict) else {},
+            peer_comparison=peer_data if isinstance(peer_data, dict) else {},
+            key_metrics=key_metrics_dict,
+            evidence_sources=evidence_sources_list,
+        )
+        logger.info(f"[Memo] ✅ Markdown exported: {md_path}")
+
+        # ── Step 7: Register memo as memory_item ────────────────────────────
+        memory_id = register_memo_as_memory(
+            db_path=MEMO_DB_PATH,
+            memo_id=memo_id,
+            company_name=company_name,
+            company_ticker=company_ticker,
+            sections=sections,
+            markdown_path=md_path,
+            html_path=html_path,
+        )
+        logger.info(f"[Memo] ✅ Memo registered as memory: {memory_id}")
+
+        # Finish generation run
+        generated_sections_info = [
+            {"section_id": sid, "section_type": _SECTION_TYPE_MAP.get(key, key)}
+            for key, sid in zip(sections.keys(), section_ids)
+        ]
+        finish_generation_run(
+            db_path=MEMO_DB_PATH,
+            run_id=run_id,
+            memo_id=memo_id,
+            generated_sections=generated_sections_info,
+            unsupported_claims=[],
+            status="completed",
+        )
+    except Exception as e:
+        logger.error(f"[Memo] SQLite/markdown/memory write failed: {e}", exc_info=True)
+        finish_generation_run(
+            db_path=MEMO_DB_PATH,
+            run_id=run_id,
+            memo_id="",
+            generated_sections=[],
+            unsupported_claims=[],
+            status="failed",
+            error=str(e),
+        )
 
     # Compute totals
     total_prompt = sum(u.get("prompt_tokens", 0) for u in token_usage_log)
