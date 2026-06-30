@@ -291,30 +291,31 @@ class ResearchMemory(MemoryManager):
     # ── 查询 ───────────────────────────────────────
 
     def retrieve(
-        self, query: str, top_k: int = 5
+        self, query: str, top_k: int = 5, session_id: str = None
     ) -> List[Dict[str, Any]]:
         """两层检索（精确 + 语义）并合并排序。
 
         Args:
             query: 查询文本
             top_k: 返回条数
+            session_id: 当前会话ID（提供时同会话结果加权）
 
         Returns:
             [{content, score, tier, source}, ...]
         """
-        exact = self._search_exact(query, top_k * 2)
-        semantic = self._search_semantic(query, top_k * 2)
+        exact = self._search_exact(query, top_k * 2, session_id=session_id)
+        semantic = self._search_semantic(query, top_k * 2, session_id=session_id)
         return self._merge(exact, semantic, top_k)
 
     def retrieve_for_prompt(
-        self, query: str, top_k: int = 5
+        self, query: str, top_k: int = 5, session_id: str = None
     ) -> str:
         """检索并格式化为 prompt 注入段。
 
         Returns:
-            "[Related History]\\n📌 xxx\\n🔗 xxx" 或 ""（无结果）
+            "[Related History]\n📌 xxx\n🔗 xxx" 或 ""（无结果）
         """
-        items = self.retrieve(query, top_k)
+        items = self.retrieve(query, top_k, session_id=session_id)
         if not items:
             return ""
 
@@ -327,17 +328,17 @@ class ResearchMemory(MemoryManager):
     # ── 内部检索 ───────────────────────────────────
 
     def _search_exact(
-        self, query: str, limit: int
+        self, query: str, limit: int, session_id: str = None
     ) -> List[Dict[str, Any]]:
-        """FTS5 + facts 表精确检索。"""
+        """FTS5 + facts 表精确检索。支持 session 内结果加权。"""
         results: List[Dict[str, Any]] = []
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
 
         try:
-            # facts 表精确匹配
+            # ① facts 表精确匹配（全域）
             cur = conn.execute(
-                """SELECT entity, metric, value, unit, period, source_ref, created_at
+                """SELECT entity, metric, value, unit, period, source_ref, created_at, session_id
                    FROM facts
                    WHERE metric LIKE ? OR entity = ?
                    ORDER BY created_at DESC
@@ -345,17 +346,35 @@ class ResearchMemory(MemoryManager):
                 (f"%{query}%", self._extract_entity(query), limit),
             )
             for r in cur.fetchall():
+                score = 1.0
+                if session_id and r["session_id"] == session_id:
+                    score = 1.3  # 同 session 结果加权
                 results.append({
-                    "content": (
-                        f"{r['entity']} {r['metric']}: "
-                        f"{r['value']}{r['unit']} ({r['period']})"
-                    ),
-                    "score": 1.0,
+                    "content": f"{r['entity']} {r['metric']}: {r['value']}{r['unit']} ({r['period']})",
+                    "score": score,
                     "tier": "exact",
                     "source": r["source_ref"] or f"fact/{r['created_at'][:10]}",
                 })
 
-            # FTS5 全文匹配（memory_fts 由 MemoryManager 维护）
+            # ② 当前 session 的 qa_messages 精确匹配（优先于全域 FTS5）
+            if session_id:
+                cur = conn.execute(
+                    """SELECT content, created_at, role
+                       FROM qa_messages
+                       WHERE session_id=? AND content LIKE ?
+                       ORDER BY created_at DESC
+                       LIMIT ?""",
+                    (session_id, f"%{query}%", limit),
+                )
+                for r in cur.fetchall():
+                    results.append({
+                        "content": r["content"][:200],
+                        "score": 1.2,
+                        "tier": "exact",
+                        "source": f"session/{session_id}",
+                    })
+
+            # ③ FTS5 全文匹配（全域）
             words = [w for w in query.split() if w.strip()]
             if words:
                 fts_query = " OR ".join(f"{w}*" for w in words)
@@ -368,23 +387,26 @@ class ResearchMemory(MemoryManager):
                     (fts_query, limit),
                 )
                 for r in cur.fetchall():
+                    score = 0.95
+                    if session_id and session_id in r["uri"]:
+                        score = 1.15  # 同 session 结果加权
                     results.append({
                         "content": r["abstract"] or r["uri"],
-                        "score": 0.95,
+                        "score": score,
                         "tier": "exact",
                         "source": r["uri"],
                     })
         except Exception:
-            pass  # FTS5 语法错误忽略
+            pass
         finally:
             conn.close()
 
         return results
 
     def _search_semantic(
-        self, query: str, limit: int
+        self, query: str, limit: int, session_id: str = None
     ) -> List[Dict[str, Any]]:
-        """语义检索（Phase 5 实现）。"""
+        """语义检索。支持 session 内结果加权。"""
         if not self._embed:
             return []
         q_emb = self._embed(query)
@@ -403,6 +425,8 @@ class ResearchMemory(MemoryManager):
             emb = json.loads(r["embedding"])
             score = self._cosine_similarity(q_emb, emb)
             if score > 0.3:
+                if session_id and session_id in r["uri"]:
+                    score *= 1.3  # 同 session 语义结果加权
                 scored.append({
                     "content": r["abstract"] or r["uri"],
                     "score": score,
