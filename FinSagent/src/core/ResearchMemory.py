@@ -124,6 +124,15 @@ class ResearchMemory(MemoryManager):
             CREATE INDEX IF NOT EXISTS idx_citations_source ON citations(source_type, source_id);
             CREATE INDEX IF NOT EXISTS idx_citations_doc ON citations(doc_id);
             CREATE INDEX IF NOT EXISTS idx_audit_session ON audit_trail(session_id, created_at);
+
+            CREATE TABLE IF NOT EXISTS fact_citations (
+                fact_id TEXT NOT NULL,
+                citation_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'primary'
+                    CHECK(role IN ('primary', 'supporting', 'conflicting')),
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (fact_id, citation_id)
+            );
         """)
         conn.commit()
         # Add embedding column if not present (migration)
@@ -202,17 +211,44 @@ class ResearchMemory(MemoryManager):
             if facts:
                 for f in facts:
                     fid = f"fact_{uuid.uuid4().hex[:12]}"
+                    entity = f.get("entity", "")
+                    metric = f.get("metric", "")
+
+                    # 标记旧版本 superseded
+                    if entity and metric:
+                        cur.execute(
+                            """UPDATE facts SET superseded_at=?
+                               WHERE entity=? AND metric=? AND superseded_at IS NULL""",
+                            (now, entity, metric),
+                        )
+
+                    # 查询最新版本号
+                    cur.execute(
+                        "SELECT COALESCE(MAX(version), 0) + 1 FROM facts WHERE entity=? AND metric=?",
+                        (entity, metric),
+                    )
+                    next_ver = cur.fetchone()[0]
+
                     cur.execute(
                         """INSERT INTO facts
                             (fact_id, session_id, message_id, entity, metric,
-                             value, unit, period, fact_type, source_ref, confidence)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                             value, unit, period, fact_type, source_ref,
+                             confidence, version)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (fid, session_id, msg_asst_id,
-                         f.get("entity", ""), f.get("metric", ""),
+                         entity, metric,
                          f.get("value", ""), f.get("unit", ""),
                          f.get("period", ""), f.get("fact_type", "metric"),
-                         f.get("source_ref", ""), f.get("confidence", 1.0)),
+                         f.get("source_ref", ""), f.get("confidence", 1.0),
+                         next_ver),
                     )
+
+                    # 关联 citations
+                    for cid in cit_ids:
+                        cur.execute(
+                            "INSERT OR IGNORE INTO fact_citations (fact_id, citation_id, role) VALUES (?, ?, 'primary')",
+                            (fid, cid),
+                        )
 
             # ── audit ──
             if audit:
@@ -531,6 +567,26 @@ class ResearchMemory(MemoryManager):
             for r in conn.execute(
                 "SELECT * FROM citations WHERE source_type=? AND source_id=?",
                 (source_type, source_id),
+            ).fetchall()
+        ]
+        conn.close()
+        return rows
+
+    def get_fact_citations(
+        self, fact_id: str
+    ) -> List[Dict[str, Any]]:
+        """查询某事实关联的所有引用（含 role）。"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                """SELECT fc.*, c.doc_id, c.page, c.display, c.evidence_id
+                   FROM fact_citations fc
+                   JOIN citations c ON fc.citation_id = c.citation_id
+                   WHERE fc.fact_id=?
+                   ORDER BY fc.role""",
+                (fact_id,),
             ).fetchall()
         ]
         conn.close()
