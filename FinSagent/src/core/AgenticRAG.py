@@ -553,6 +553,7 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
             preliminary = state.get("preliminary_draft", "") or ""
         prompt = synthesis_prompt.format(
             question=state["original_query"],
+            memory_context=state.get("memory_context", ""),
             sub_answers=synthesis_context,
             preliminary_draft=preliminary,
             lang=lang,
