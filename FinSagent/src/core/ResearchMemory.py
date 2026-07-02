@@ -133,6 +133,17 @@ class ResearchMemory(MemoryManager):
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 PRIMARY KEY (fact_id, citation_id)
             );
+
+            CREATE TABLE IF NOT EXISTS global_memory (
+                key TEXT NOT NULL,
+                analyst_id TEXT NOT NULL DEFAULT '',
+                value TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'preference'
+                    CHECK(category IN ('preference', 'observation', 'habit', 'rule')),
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (key, analyst_id)
+            );
         """)
         conn.commit()
         # Add embedding column if not present (migration)
@@ -597,6 +608,62 @@ class ResearchMemory(MemoryManager):
         return rows
 
     # ── Phase 4: 长会话管理 ───────────────────────
+
+    # ---- Global Memory (auto-injected preferences/habits) ----
+
+    def set_global_memory(self, key, value, category="preference", analyst_id=""):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(
+            "INSERT OR REPLACE INTO global_memory (key, analyst_id, value, category, updated_at) "
+            "VALUES (?, ?, ?, ?, datetime('now'))",
+            (key, analyst_id, value, category),
+        )
+        conn.commit()
+        conn.close()
+
+    def get_global_memory(self, key, analyst_id=""):
+        conn = sqlite3.connect(self.db_path)
+        row = conn.execute(
+            "SELECT value FROM global_memory WHERE key=? AND analyst_id=?",
+            (key, analyst_id),
+        ).fetchone()
+        conn.close()
+        return row[0] if row else ""
+
+    def list_global_memory(self, category=None, analyst_id=""):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        if category:
+            rows = conn.execute(
+                "SELECT * FROM global_memory WHERE category=? AND analyst_id=? ORDER BY updated_at DESC",
+                (category, analyst_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM global_memory WHERE analyst_id=? ORDER BY updated_at DESC",
+                (analyst_id,),
+            ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_global_memory_text(self, analyst_id=""):
+        items = self.list_global_memory(analyst_id=analyst_id)
+        if not items:
+            items = self.list_global_memory(analyst_id="")
+        if not items:
+            return ""
+        lines = ["[Global Memory]"]
+        for item in items:
+            icon = {"preference": "..", "observation": "--", "habit": "==", "rule": "##"}.get(item["category"], "++")
+            lines.append(f"  {icon} {item['key']}: {item['value']}")
+        return "\n".join(lines)
+
+    def record_observation(self, observation, analyst_id=""):
+        import hashlib
+        key = "obs_" + hashlib.md5(observation.encode()).hexdigest()[:12]
+        self.set_global_memory(key, observation, category="observation", analyst_id=analyst_id)
+
+    # ---- Embedding & LLM injection ----
 
     def set_embedding_fn(self, fn):
         self._embed = fn

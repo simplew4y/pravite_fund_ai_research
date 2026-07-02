@@ -299,12 +299,21 @@ class ChatService:
         )
 
     def _get_memory_context(self, question: str, session_id: str) -> str:
-        if hasattr(self, 'memory') and self.memory:
-            try:
-                return self.memory.retrieve_for_prompt(question, session_id=session_id)
-            except Exception:
-                pass
-        return ''
+        if not hasattr(self, 'memory') or not self.memory:
+            return ''
+        try:
+            parts = []
+            # Global memory: auto-injected preferences/habits
+            global_mem = self.memory.get_global_memory_text()
+            if global_mem:
+                parts.append(global_mem)
+            # Session memory: retrieved facts
+            sess_mem = self.memory.retrieve_for_prompt(question, session_id=session_id)
+            if sess_mem:
+                parts.append(sess_mem)
+            return '\n\n'.join(parts)
+        except Exception:
+            return ''
 
     def _build_agentic_initial_state(
         self,
