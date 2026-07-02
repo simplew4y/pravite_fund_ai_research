@@ -1,6 +1,7 @@
 """Standalone agentic search loop for raw corpora."""
 
 from .corpus import CorpusStore
+from .dataset_cache import ParsedDocumentCache
 from .loop import (
     AGENTIC_SEARCH_MODE_DEFAULTS,
     AgenticSearchConfig,
@@ -21,6 +22,7 @@ __all__ = [
     "AGENTIC_SEARCH_MODE_DEFAULTS",
     "AgenticSearchTools",
     "CorpusStore",
+    "ParsedDocumentCache",
     "EvidenceItem",
     "OpenAIChatClient",
     "SearchEvent",

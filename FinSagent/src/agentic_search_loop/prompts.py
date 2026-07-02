@@ -432,7 +432,7 @@ def build_user_prompt(question: str, extra_context: Optional[str] = None, mode: 
         question.strip(),
         "",
         "Search objective:",
-        "Find and verify the answer from original corpus files. Use direct citations from raw PDFs, Markdown, JSON, text, or tables whenever possible.",
+        "Find and verify the answer from original corpus files and their parsed text cache. Use direct citations from raw PDFs, source-file parsed text, JSON, text, or tables whenever possible.",
         "",
         "Before answering:",
         "- Every tool-using turn must provide a concise Chinese public progress note before or alongside tool calls.",
@@ -441,6 +441,7 @@ def build_user_prompt(question: str, extra_context: Optional[str] = None, mode: 
         "- Write Agent-visible progress notes and tool public_note values in Chinese by default unless the user explicitly asks for another language.",
         "- Default thoroughness is medium unless the user asks for quick or exhaustive search.",
         "- Establish source coverage before narrowing to one document.",
+        "- For Word/Excel/PPT evidence, describe search hits as source-file parsed text or parsed cache, not as Markdown files. Cite original_filename, source_ref, chunk_id, page, paragraph, slide, sheet, or cell range metadata when present.",
         "- Search alternate names/terms if the first query is incomplete.",
         f"- Use {GREP_TOOL_NAME} snippets as leads only; support final claims with source context inspected through {READ_TOOL_NAME}.",
         "- Every key number, period, unit, basis, entity, and causal statement in the final answer needs direct source evidence.",
@@ -458,7 +459,7 @@ def build_user_prompt(question: str, extra_context: Optional[str] = None, mode: 
             question.strip(),
             "",
             "Search objective:",
-            "Find a direct answer from original SEC/source files as quickly as possible. Prefer exact source text with path/line or page markers.",
+            "Find a direct answer from original SEC/source files or source-file parsed text as quickly as possible. Prefer exact source text with path/line, page, chunk_id, source_ref, or cell/slide markers.",
             "",
             "Before answering:",
             "- Every tool-using turn must provide a concise Chinese public progress note before or alongside tool calls.",
@@ -552,7 +553,7 @@ def grep_tool_schema() -> Dict[str, Any]:
         "type": "function",
         "function": {
             "name": GREP_TOOL_NAME,
-            "description": "Search file contents with Python regex over PDFs, Markdown, JSON, and text. When relevance is uncertain, search the whole corpus with files_with_matches or count before narrowing by path/glob. Content-mode results include line and PDF page markers; reuse those markers as Read offset/pages for focused reads.",
+            "description": "Search file contents with Python regex over PDFs, parsed Word/Excel/PPT source text, Markdown, JSON, and text. When relevance is uncertain, search the whole corpus with files_with_matches or count before narrowing by path/glob. Content-mode results include line and PDF page markers; reuse those markers as Read offset/pages for focused reads.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -619,7 +620,7 @@ def fast_grep_tool_schema() -> Dict[str, Any]:
     schema = grep_tool_schema()
     schema["function"][
         "description"
-    ] = "Search file contents with Python regex over PDFs, Markdown, JSON, and text. Content-mode results include line and PDF page markers; reuse those markers as Read offset/pages for focused reads."
+    ] = "Search file contents with Python regex over PDFs, parsed Word/Excel/PPT source text, Markdown, JSON, and text. Content-mode results include line and PDF page markers; reuse those markers as Read offset/pages for focused reads."
     schema["function"]["parameters"]["properties"]["path"][
         "description"
     ] = "Optional file or directory to search within."

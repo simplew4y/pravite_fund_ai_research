@@ -305,6 +305,16 @@ class ChatService:
     def _project_root(self) -> Path:
         return Path(__file__).resolve().parents[2]
 
+    def _agentic_search_dataset_root(self) -> Optional[Path]:
+        cfg = self._agentic_search_config()
+        raw_root = cfg.get("dataset_root")
+        if raw_root and str(raw_root).strip():
+            return Path(str(raw_root)).expanduser().resolve()
+        persist = self.config.get("persist_directory")
+        if persist:
+            return Path(str(persist)).expanduser().resolve().parent
+        return None
+
     def _agentic_search_roots(self) -> List[Path]:
         cfg = self._agentic_search_config()
         raw_roots = cfg.get("roots") or []
@@ -317,7 +327,7 @@ class ChatService:
         persist = self.config.get("persist_directory")
         if persist:
             dataset_root = Path(str(persist)).expanduser().resolve().parent
-            for name in ("0_raw_pdf", "1_processed_pdf", "3_base_final"):
+            for name in ("0_raw_pdf", "1_processed_pdf", "3_base_final", "0_raw/pdf"):
                 candidate = dataset_root / name
                 if candidate.exists():
                     roots.append(candidate)
@@ -333,11 +343,13 @@ class ChatService:
                 "agentic_search roots are not configured and no corpus directories were inferred from persist_directory"
             )
         cache_dir = self._project_root() / ".agentic_search_cache" / "pdf_text"
-        self._agentic_search_corpus = CorpusStore(roots=roots, cache_dir=cache_dir)
+        dataset_root = self._agentic_search_dataset_root()
+        self._agentic_search_corpus = CorpusStore(roots=roots, cache_dir=cache_dir, dataset_root=dataset_root)
         logger.info(
-            "Agentic Search corpus initialized: roots=%s cache_dir=%s",
+            "Agentic Search corpus initialized: roots=%s cache_dir=%s dataset_root=%s",
             [str(root) for root in roots],
             cache_dir,
+            dataset_root,
         )
         return self._agentic_search_corpus
 

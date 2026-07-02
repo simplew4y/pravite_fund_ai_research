@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
@@ -11,6 +12,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from .dataset_cache import ParsedDocumentCache, SUPPORTED_PARSED_EXTENSIONS, find_dataset_root
+
+
+logger = logging.getLogger(__name__)
 
 TEXT_EXTENSIONS = {
     ".md",
@@ -27,8 +32,9 @@ TEXT_EXTENSIONS = {
     ".yml",
 }
 PDF_EXTENSIONS = {".pdf"}
-DEFAULT_EXTENSIONS = TEXT_EXTENSIONS | PDF_EXTENSIONS
+DEFAULT_EXTENSIONS = TEXT_EXTENSIONS | PDF_EXTENSIONS | SUPPORTED_PARSED_EXTENSIONS
 DEFAULT_IGNORE_DIRS = {
+    ".agentic_search_cache",
     ".git",
     ".svn",
     ".hg",
@@ -265,6 +271,8 @@ class CorpusStore:
         ignore_dirs: Optional[Iterable[str]] = None,
         allow_outside_roots: bool = False,
         max_text_file_bytes: int = 20_000_000,
+        dataset_root: str | Path | None = None,
+        enable_dataset_cache: bool = True,
     ):
         if not roots:
             raise ValueError("At least one corpus root is required")
@@ -281,6 +289,17 @@ class CorpusStore:
         if cache_dir is None:
             cache_dir = Path.cwd() / ".agentic_search_cache" / "pdf_text"
         self.pdf_extractor = PDFTextExtractor(Path(cache_dir).expanduser().resolve())
+        self.parsed_extractor: ParsedDocumentCache | None = None
+        if enable_dataset_cache:
+            resolved_dataset_root = Path(dataset_root).expanduser().resolve() if dataset_root else None
+            if resolved_dataset_root is None:
+                for root in self.roots:
+                    resolved_dataset_root = find_dataset_root(root)
+                    if resolved_dataset_root is not None:
+                        break
+            if resolved_dataset_root is not None:
+                self.parsed_extractor = ParsedDocumentCache(resolved_dataset_root)
+                logger.info("Parsed document cache enabled: dataset_root=%s", resolved_dataset_root)
 
     @classmethod
     def from_fin_config(
@@ -288,6 +307,7 @@ class CorpusStore:
         config_path: str | Path,
         extra_roots: Optional[Sequence[str | Path]] = None,
         cache_dir: str | Path | None = None,
+        enable_dataset_cache: bool = True,
     ) -> "CorpusStore":
         import yaml
 
@@ -295,9 +315,10 @@ class CorpusStore:
         config = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         roots: List[Path] = []
         persist = config.get("persist_directory")
+        dataset_root: Path | None = None
         if persist:
             dataset_root = Path(persist).expanduser().resolve().parent
-            for name in ("0_raw_pdf", "1_processed_pdf", "3_base_final"):
+            for name in ("0_raw_pdf", "1_processed_pdf", "3_base_final", "0_raw/pdf"):
                 candidate = dataset_root / name
                 if candidate.exists():
                     roots.append(candidate)
@@ -305,7 +326,12 @@ class CorpusStore:
             roots.extend(Path(p).expanduser().resolve() for p in extra_roots)
         if not roots:
             raise ValueError(f"No corpus roots found from config: {cfg_path}")
-        return cls(roots=roots, cache_dir=cache_dir)
+        return cls(
+            roots=roots,
+            cache_dir=cache_dir,
+            dataset_root=dataset_root,
+            enable_dataset_cache=enable_dataset_cache,
+        )
 
     def inspect(self, max_samples: int = 20) -> Dict[str, object]:
         records = self.list_files(max_results=max(max_samples, 1), include_counts=True)
@@ -426,6 +452,18 @@ class CorpusStore:
                         records.append(LineRecord(text=raw_line.rstrip(), line=line_no, page=page_idx))
                     line_no += 1
             return records, method
+
+        if ext in SUPPORTED_PARSED_EXTENSIONS and self.parsed_extractor is not None:
+            try:
+                text_lines, method = self.parsed_extractor.extract(path)
+                return [
+                    LineRecord(text=line.rstrip(), line=i)
+                    for i, line in enumerate(text_lines, start=1)
+                ], method
+            except Exception:
+                if ext not in TEXT_EXTENSIONS:
+                    raise
+                logger.debug("Falling back to direct text read for %s", path, exc_info=True)
 
         if ext not in TEXT_EXTENSIONS:
             raise ValueError(f"Unsupported file type for text search: {path.suffix}")

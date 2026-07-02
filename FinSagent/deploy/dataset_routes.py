@@ -619,7 +619,25 @@ def config_for_dataset(dataset: dict[str, Any], base_config: Optional[dict[str, 
     cfg["persist_directory"] = str(persist)
     cfg["pageindex_index_dir"] = str(persist / "pageindex")
     cfg["agentic_search"] = dict(cfg.get("agentic_search") or {})
-    cfg["agentic_search"]["roots"] = [str(root / "3_base_final"), str(root / RAW_DIR_BY_TYPE["pdf"])]
+    cfg["agentic_search"]["dataset_root"] = str(root)
+    raw_roots = cfg["agentic_search"].get("roots") or []
+    if isinstance(raw_roots, (str, Path)):
+        raw_roots = [raw_roots]
+    configured_roots: list[str] = []
+    for item in raw_roots:
+        if not str(item).strip():
+            continue
+        candidate = Path(str(item)).expanduser().resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            continue
+        configured_roots.append(str(candidate))
+    default_roots = [
+        root / "3_base_final",
+        *(root / RAW_DIR_BY_TYPE[file_type] for file_type in RAW_FILE_TYPES),
+    ]
+    cfg["agentic_search"]["roots"] = configured_roots or [str(path) for path in default_roots if path.exists()]
     cfg["datasets"] = dict(cfg.get("datasets") or {})
     cfg["datasets"]["root_dir"] = str(_dataset_root_from_config(cfg))
     return cfg
