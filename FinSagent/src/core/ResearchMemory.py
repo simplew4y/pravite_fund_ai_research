@@ -152,6 +152,8 @@ class ResearchMemory(MemoryManager):
         citations: Optional[List[Dict[str, Any]]] = None,
         facts: Optional[List[Dict[str, Any]]] = None,
         audit: Optional[Dict[str, Any]] = None,
+        project_id: str = "default",
+        analyst_id: str = "",
     ) -> Dict[str, Any]:
         """记录一次问答（仅 SQLite 写入，不写文件系统）。
 
@@ -182,10 +184,10 @@ class ResearchMemory(MemoryManager):
                     cit_ids.append(cit_id)
                     cur.execute(
                         """INSERT INTO citations
-                            (citation_id, session_id, source_type, source_id,
+                            (citation_id, session_id, project_id, analyst_id, source_type, source_id,
                              doc_id, doc_type, page, evidence_id, claim, display)
-                           VALUES (?, ?, 'qa_message', ?, ?, ?, ?, ?, ?, ?)""",
-                        (cit_id, session_id, msg_asst_id,
+                           VALUES (?, ?, ?, ?, 'qa_message', ?, ?, ?, ?, ?, ?, ?)""",
+                        (cit_id, session_id, project_id, analyst_id, msg_asst_id,
                          c.get("doc_id", ""), c.get("doc_type", ""),
                          c.get("page"), c.get("evidence_text", ""),
                          c.get("claim", ""), c.get("display", "")),
@@ -194,17 +196,17 @@ class ResearchMemory(MemoryManager):
             # ── qa_messages (user) ──
             cur.execute(
                 """INSERT INTO qa_messages
-                    (message_id, session_id, role, content, citation_ids, created_at)
-                   VALUES (?, ?, 'user', ?, ?, ?)""",
-                (msg_user_id, session_id, question, "[]", now),
+                    (message_id, session_id, project_id, analyst_id, role, content, citation_ids, created_at)
+                   VALUES (?, ?, ?, ?, 'user', ?, ?, ?)""",
+                (msg_user_id, session_id, project_id, analyst_id, question, "[]", now),
             )
 
             # ── qa_messages (assistant) ──
             cur.execute(
                 """INSERT INTO qa_messages
-                    (message_id, session_id, role, content, citation_ids, created_at)
-                   VALUES (?, ?, 'assistant', ?, ?, ?)""",
-                (msg_asst_id, session_id, answer, json.dumps(cit_ids), now),
+                    (message_id, session_id, project_id, analyst_id, role, content, citation_ids, created_at)
+                   VALUES (?, ?, ?, ?, 'assistant', ?, ?, ?)""",
+                (msg_asst_id, session_id, project_id, analyst_id, answer, json.dumps(cit_ids), now),
             )
 
             # ── facts ──
@@ -231,11 +233,11 @@ class ResearchMemory(MemoryManager):
 
                     cur.execute(
                         """INSERT INTO facts
-                            (fact_id, session_id, message_id, entity, metric,
+                            (fact_id, session_id, project_id, analyst_id, message_id, entity, metric,
                              value, unit, period, fact_type, source_ref,
                              confidence, version)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (fid, session_id, msg_asst_id,
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (fid, session_id, project_id, analyst_id, msg_asst_id,
                          entity, metric,
                          f.get("value", ""), f.get("unit", ""),
                          f.get("period", ""), f.get("fact_type", "metric"),
@@ -255,13 +257,13 @@ class ResearchMemory(MemoryManager):
                 aid = f"aud_{uuid.uuid4().hex[:12]}"
                 cur.execute(
                     """INSERT INTO audit_trail
-                        (audit_id, session_id, message_id, query_text,
+                        (audit_id, session_id, project_id, analyst_id, message_id, query_text,
                          latency_ms, status, rewritten_query, sub_queries,
                          exact_results, semantic_results, merged_results,
                          used_evidence, generated_answer,
                          facts_written, citations_written)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (aid, session_id, msg_asst_id, question,
+                    (aid, session_id, project_id, analyst_id, msg_asst_id, question,
                      audit.get("latency_ms", 0), audit.get("status", "ok"),
                      audit.get("rewritten_query", ""),
                      json.dumps(audit.get("sub_queries", [])),

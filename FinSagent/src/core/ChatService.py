@@ -138,6 +138,41 @@ class ChatService:
         self.session_history_store = session_history_store_from_config(config)
         self._agentic_search_corpus: Optional[CorpusStore] = None
 
+        # Research Memory
+        try:
+            from core.ResearchMemory import ResearchMemory
+            self.memory = ResearchMemory(
+                base_dir=config.get("memory", {}).get("dir", ".memory")
+            )
+            # Wire embedding function
+            try:
+                if hasattr(self, 'rag') and self.rag and self.rag.rag_manager:
+                    r = self.rag.rag_manager._retrievers[0]
+                    self.memory.set_embedding_fn(r.embeddings.embed_query)
+            except Exception:
+                pass
+            # Wire LLM for checkpoint
+            try:
+                llm_base = config.get("llm_base_url", "")
+                llm_key = config.get("llm_api_key", "EMPTY")
+                llm_model = config.get("llm_model_name", "")
+                if llm_base and llm_model:
+                    import openai
+                    lc = openai.OpenAI(api_key=llm_key, base_url=llm_base)
+                    def _llm_call(prompt, _lc=lc, _model=llm_model):
+                        return _lc.chat.completions.create(
+                            model=_model,
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=0, max_tokens=1024
+                        ).choices[0].message.content
+                    self.memory.set_llm_fn(_llm_call)
+            except Exception:
+                pass
+            logger.info("ResearchMemory initialized")
+        except Exception as e:
+            self.memory = None
+            logger.warning("ResearchMemory not available: %s", e)
+
         logger.info("ChatService initialized successfully")
 
     def get_or_create_session(self, session_id: str) -> SessionManager:
