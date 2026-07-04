@@ -342,6 +342,8 @@ class ResearchMemory(MemoryManager):
     def retrieve(
         self, query: str, top_k: int = 5, session_id: str = None
     ) -> List[Dict[str, Any]]:
+        if not query or not query.strip():
+            return []
         """两层检索（精确 + 语义）并合并排序。
 
         Args:
@@ -359,6 +361,8 @@ class ResearchMemory(MemoryManager):
     def retrieve_for_prompt(
         self, query: str, top_k: int = 5, session_id: str = None
     ) -> str:
+        if not query or not query.strip():
+            return ""
         """检索并格式化为 prompt 注入段。
 
         Returns:
