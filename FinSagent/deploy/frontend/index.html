@@ -1485,6 +1485,450 @@
             transform: translateX(20px);
         }
 
+        /* Report Generation Toggle */
+        .report-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--color-secondary-text);
+        }
+        .report-toggle-label {
+            font-weight: 500;
+        }
+        .report-generate-btn {
+            display: none;
+            padding: 6px 16px;
+            border: 1px solid rgba(11, 87, 208, 0.3);
+            border-radius: 999px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+            white-space: nowrap;
+        }
+        .report-generate-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+        .report-generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .report-toggle-container.active .report-generate-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Report Sidebar */
+        .report-sidebar {
+            width: 0;
+            min-width: 0;
+            overflow: hidden;
+            border-left: 1px solid var(--color-border);
+            background: var(--color-chat-bg);
+            transition: width 0.25s ease, min-width 0.25s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .report-sidebar.open {
+            width: 260px;
+            min-width: 260px;
+        }
+        .report-sidebar-header {
+            padding: 12px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-secondary-text);
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            white-space: nowrap;
+        }
+        .report-sidebar-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+        }
+        .report-sidebar-empty {
+            padding: 20px 14px;
+            font-size: 12px;
+            color: var(--color-secondary-text);
+            text-align: center;
+        }
+        .report-tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            margin-bottom: 4px;
+        }
+        .report-tab:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+        .report-tab.active {
+            background: rgba(99, 102, 241, 0.08);
+        }
+        .report-tab-icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .report-tab-title {
+            flex: 1;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--color-text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .report-tab-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .report-tab-status.pending {
+            background: #f59e0b;
+            animation: report-pulse 1.2s infinite;
+        }
+        .report-tab-status.success {
+            background: #22c55e;
+        }
+        .report-tab-status.error {
+            background: #ef4444;
+        }
+        @keyframes report-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .report-generate-btn.pending {
+            background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+        }
+        .report-generate-btn.pending .report-btn-text {
+            animation: report-dots 1.5s infinite;
+        }
+        @keyframes report-dots {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Report Preview Modal */
+        .report-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        .report-modal-overlay.active {
+            display: flex;
+        }
+        .report-modal {
+            background: #fff;
+            border-radius: 16px;
+            width: 96vw;
+            max-width: 1600px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: reportModalIn 0.25s ease;
+        }
+        @keyframes reportModalIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .report-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--color-border);
+            background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+        }
+        .report-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .report-modal-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .report-modal-btn {
+            padding: 6px 14px;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--color-text);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .report-modal-btn:hover {
+            background: var(--color-chat-bg);
+            border-color: var(--color-primary);
+        }
+        .report-modal-btn.primary {
+            background: var(--color-primary);
+            color: #fff;
+            border-color: var(--color-primary);
+        }
+        .report-modal-btn.primary:hover {
+            opacity: 0.9;
+        }
+        .report-modal-close {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            border-radius: 50%;
+            background: transparent;
+            cursor: pointer;
+            color: var(--color-secondary-text);
+            font-size: 20px;
+            transition: background 0.15s ease;
+        }
+        .report-modal-close:hover {
+            background: rgba(0, 0, 0, 0.08);
+        }
+        .report-modal-body {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+        }
+        .report-modal-left {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            border-right: 1px solid #e2e8f0;
+        }
+        .report-modal-left iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .report-modal-right {
+            width: 320px;
+            min-width: 320px;
+            overflow-y: auto;
+            background: #f8fafc;
+            padding: 16px;
+            font-size: 13px;
+        }
+        .report-token-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .report-token-header {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1e293b;
+            border-bottom: 2px solid #6366f1;
+            padding-bottom: 8px;
+            margin-bottom: 4px;
+        }
+        .report-token-summary {
+            background: #fff;
+            border-radius: 10px;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+        }
+        .report-token-summary-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+        .report-token-summary-label {
+            color: #64748b;
+            font-size: 12px;
+        }
+        .report-token-summary-value {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 13px;
+        }
+        .report-token-step {
+            background: #fff;
+            border-radius: 8px;
+            padding: 10px 12px;
+            border: 1px solid #e2e8f0;
+            transition: border-color 0.2s ease;
+        }
+        .report-token-step.active {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+        }
+        .report-token-step.done {
+            opacity: 0.85;
+            cursor: pointer;
+        }
+        .report-token-step.done:hover {
+            opacity: 1;
+            border-color: #6366f1;
+        }
+        .report-token-step-title {
+            font-weight: 600;
+            color: #1e293b;
+            font-size: 12px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .report-token-step-toggle {
+            margin-left: auto;
+            font-size: 10px;
+            color: #94a3b8;
+            transition: transform 0.2s ease;
+        }
+        .report-token-step.expanded .report-token-step-toggle {
+            transform: rotate(180deg);
+        }
+        .report-token-step-expandable {
+            display: none;
+            margin-top: 8px;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 8px;
+        }
+        .report-token-step.expanded .report-token-step-expandable {
+            display: block;
+        }
+        .report-token-qa-block {
+            margin-bottom: 8px;
+        }
+        .report-token-qa-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #6366f1;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 3px;
+        }
+        .report-token-qa-content {
+            font-size: 11px;
+            color: #475569;
+            line-height: 1.5;
+            background: #f8fafc;
+            border-radius: 6px;
+            padding: 6px 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .report-token-cost-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 2px 0;
+        }
+        .report-token-cost-label {
+            color: #64748b;
+        }
+        .report-token-cost-value {
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .report-token-step-status {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+        .report-token-step-status.pending {
+            background: #f1f5f9;
+            color: #94a3b8;
+        }
+        .report-token-step-status.running {
+            background: #eef2ff;
+            color: #6366f1;
+        }
+        .report-token-step-status.done {
+            background: #ecfdf5;
+            color: #059669;
+        }
+        .report-token-step-detail {
+            font-size: 11px;
+            color: #64748b;
+            display: flex;
+            justify-content: space-between;
+        }
+        .report-token-bar {
+            height: 4px;
+            background: #f1f5f9;
+            border-radius: 2px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .report-token-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+        .report-modal-loading {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: #fff;
+        }
+        .report-loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e2e8f0;
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .report-loading-text {
+            font-size: 14px;
+            color: var(--color-secondary-text);
+        }
+        .report-loading-progress {
+            font-size: 12px;
+            color: var(--color-primary);
+            max-width: 400px;
+            text-align: center;
+        }
+
         /* --- 文档上传（Chrome 下载列表风格浮层）--- */
         .header-right {
             display: flex;
@@ -1942,9 +2386,18 @@
                         <span class="preview-toggle-label">⚡ 预览模式 (Preview)</span>
                         <div class="toggle-switch active" id="preview-toggle" onclick="togglePreviewMode()"></div>
                     </div>
+                    <div class="report-toggle-container" id="report-toggle-container">
+                        <span class="report-toggle-label">📊 报告生成</span>
+                        <div class="toggle-switch" id="report-toggle" onclick="toggleReportMode()"></div>
+                        <button class="report-generate-btn" id="report-generate-btn" onclick="generateReport()">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span>生成报告</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
+            <div style="display:flex; flex:1; min-height:0; overflow:hidden;">
             <div class="main-content">
                 <div id="chat-container">
                     <div class="chat-container-inner" id="chat-messages-root">
@@ -1958,6 +2411,15 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <aside class="report-sidebar" id="report-sidebar">
+                <div class="report-sidebar-header">
+                    <span>📊 报告列表</span>
+                </div>
+                <div class="report-sidebar-list" id="report-sidebar-list">
+                    <div class="report-sidebar-empty">暂无报告</div>
+                </div>
+            </aside>
             </div>
 
             <div id="input-area-fixed">
@@ -1974,9 +2436,604 @@
         </div>
     </div>
 
+    <!-- Report Preview Modal -->
+    <div class="report-modal-overlay" id="report-modal-overlay">
+        <div class="report-modal">
+            <div class="report-modal-header">
+                <div class="report-modal-title">
+                    <span style="font-size: 20px;">📊</span>
+                    <span id="report-modal-title-text">Equity Research Report</span>
+                </div>
+                <div class="report-modal-actions">
+                    <button class="report-modal-btn" id="report-modal-print-btn" onclick="printReport()">🖨️ 打印</button>
+                    <button class="report-modal-btn" id="report-modal-download-btn" onclick="downloadReport()">⬇️ 保存PDF</button>
+                    <button class="report-modal-btn" id="report-modal-open-btn" onclick="openReportInNewTab()">新窗口打开</button>
+                    <button class="report-modal-close" onclick="closeReportModal()">&times;</button>
+                </div>
+            </div>
+            <div class="report-modal-body">
+                <div class="report-modal-left">
+                    <div class="report-modal-loading" id="report-modal-loading">
+                        <div class="report-loading-spinner"></div>
+                        <div class="report-loading-text" id="report-loading-text">正在生成研究报告...</div>
+                        <div class="report-loading-progress" id="report-loading-progress"></div>
+                    </div>
+                    <iframe id="report-iframe" style="display:none;" sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox"></iframe>
+                </div>
+                <div class="report-modal-right" id="report-modal-right">
+                    <div class="report-token-panel" id="report-token-panel">
+                        <div class="report-token-header">📊 Token 用量分析</div>
+                        <div class="report-token-summary" id="report-token-summary">
+                            <div class="report-token-summary-row">
+                                <span class="report-token-summary-label">Prompt Tokens</span>
+                                <span class="report-token-summary-value" id="report-total-prompt">0</span>
+                            </div>
+                            <div class="report-token-summary-row">
+                                <span class="report-token-summary-label">Completion Tokens</span>
+                                <span class="report-token-summary-value" id="report-total-completion">0</span>
+                            </div>
+                            <div class="report-token-summary-row">
+                                <span class="report-token-summary-label">Total Tokens</span>
+                                <span class="report-token-summary-value" id="report-total-tokens">0</span>
+                            </div>
+                        </div>
+                        <div id="report-token-steps"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 <script src="avatar.js"></script>
 <script src="ui.js"></script>
 <script src="ingest_panel.js"></script>
+<script>
+    // ── Report Generation Logic ──────────────────────────────────────────
+    let reportModeEnabled = false;
+    let reportJobs = []; // {id, title, status, reportUrl, companyName, ticker, tokenSteps, totalPrompt, totalCompletion, totalTokens, errorMsg}
+    let activeJobId = null; // which job is currently shown in the modal
+
+    function toggleReportMode() {
+        reportModeEnabled = !reportModeEnabled;
+        const toggle = document.getElementById('report-toggle');
+        const container = document.getElementById('report-toggle-container');
+        if (reportModeEnabled) {
+            toggle.classList.add('active');
+            container.classList.add('active');
+        } else {
+            toggle.classList.remove('active');
+            container.classList.remove('active');
+        }
+    }
+
+    function getCompanyNameFromSession() {
+        const titleEl = document.getElementById('main-header-title-text');
+        if (titleEl) {
+            const title = titleEl.textContent || '';
+            if (title && title !== '新对话') {
+                return title.trim();
+            }
+        }
+        return '';
+    }
+
+    function inferTickerFromName(name) {
+        if (!name) return 'UNKNOWN';
+        const known = {
+            'nvidia': 'NVDA', 'apple': 'AAPL', 'microsoft': 'MSFT',
+            'google': 'GOOGL', 'alphabet': 'GOOGL', 'amazon': 'AMZN',
+            'meta': 'META', 'facebook': 'META', 'tesla': 'TSLA',
+            'byd': 'BYD', 'geely': 'GELY', 'zeekr': 'ZK',
+            'nio': 'NIO', 'xpeng': 'XPEV', 'li auto': 'LI',
+            'tencent': 'TCEHY', 'alibaba': 'BABA', 'jd': 'JD',
+            'baidu': 'BIDU', 'pdd': 'PDD', 'netease': 'NTES',
+            '理想': 'LI', '蔚来': 'NIO', '小鹏': 'XPEV',
+            '比亚迪': 'BYD', '吉利': 'GELY', '极氪': 'ZK',
+            '英伟达': 'NVDA', '苹果': 'AAPL', '微软': 'MSFT',
+            '腾讯': 'TCEHY', '阿里巴巴': 'BABA', '百度': 'BIDU',
+        };
+        const lower = name.toLowerCase();
+        for (const [key, ticker] of Object.entries(known)) {
+            if (lower.includes(key)) return ticker;
+        }
+        return name.substring(0, 4).toUpperCase();
+    }
+
+    // ── Sidebar rendering ─────────────────────────────────────────────────
+    function renderReportSidebar() {
+        const list = document.getElementById('report-sidebar-list');
+        const sidebar = document.getElementById('report-sidebar');
+        if (reportJobs.length === 0) {
+            sidebar.classList.remove('open');
+            list.innerHTML = '<div class="report-sidebar-empty">暂无报告</div>';
+            return;
+        }
+        sidebar.classList.add('open');
+        list.innerHTML = '';
+        // Show most recent first
+        for (let i = reportJobs.length - 1; i >= 0; i--) {
+            const job = reportJobs[i];
+            const tab = document.createElement('div');
+            tab.className = 'report-tab' + (job.id === activeJobId ? ' active' : '');
+            tab.onclick = () => openReportModal(job.id);
+            const icon = job.status === 'success' ? '✅' : job.status === 'error' ? '❌' : '⏳';
+            tab.innerHTML = `
+                <div class="report-tab-icon">${icon}</div>
+                <div class="report-tab-title">${escapeHtml(job.title)}</div>
+                <div class="report-tab-status ${job.status}"></div>
+            `;
+            list.appendChild(tab);
+        }
+    }
+
+    function updateReportButtonState() {
+        const btn = document.getElementById('report-generate-btn');
+        const hasPending = reportJobs.some(j => j.status === 'pending');
+        if (hasPending) {
+            btn.classList.add('pending');
+            btn.disabled = true;
+            const textSpan = btn.querySelector('.report-btn-text') || btn.querySelector('span');
+            if (textSpan) textSpan.textContent = '生成中...';
+        } else {
+            btn.classList.remove('pending');
+            btn.disabled = false;
+            const textSpan = btn.querySelector('.report-btn-text') || btn.querySelector('span');
+            if (textSpan) textSpan.textContent = '生成报告';
+        }
+    }
+
+    // ── Report generation ─────────────────────────────────────────────────
+    async function generateReport() {
+        const companyName = getCompanyNameFromSession();
+        if (!companyName || companyName === '新对话') {
+            alert('请先在对话中讨论一家公司，然后再生成的报告。');
+            return;
+        }
+
+        const ticker = inferTickerFromName(companyName);
+        const jobId = 'rpt_' + Date.now();
+        const job = {
+            id: jobId,
+            title: `${companyName} (${ticker})`,
+            status: 'pending',
+            reportUrl: null,
+            companyName: companyName,
+            ticker: ticker,
+            tokenSteps: [],
+            totalPrompt: 0,
+            totalCompletion: 0,
+            totalTokens: 0,
+            errorMsg: null,
+        };
+        reportJobs.push(job);
+        activeJobId = jobId;
+
+        renderReportSidebar();
+        updateReportButtonState();
+
+        // Reset modal UI for new job
+        resetTokenPanel();
+        const iframe = document.getElementById('report-iframe');
+        iframe.src = '';
+        iframe.style.display = 'none';
+        const loading = document.getElementById('report-modal-loading');
+        loading.style.display = 'flex';
+        loading.querySelector('.report-loading-spinner').style.display = 'block';
+
+        showReportModal();
+        updateReportProgress('正在检索证据并生成报告，请耐心等待...');
+
+        try {
+            const resp = await fetch('/memo/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    company_name: companyName,
+                    company_ticker: ticker,
+                }),
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: 'Unknown error' }));
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const events = buffer.split('\n\n');
+                buffer = events.pop();
+
+                for (const evtStr of events) {
+                    const lines = evtStr.trim().split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const evt = JSON.parse(line.slice(6));
+                                handleReportEvent(evt, job);
+                            } catch (e) {
+                                console.warn('Failed to parse SSE event:', line);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Report generation failed:', err);
+            job.status = 'error';
+            job.errorMsg = err.message;
+            renderReportSidebar();
+            updateReportButtonState();
+            if (activeJobId === job.id) {
+                updateReportProgress('❌ 生成失败: ' + err.message);
+                const loading = document.getElementById('report-modal-loading');
+                loading.querySelector('.report-loading-spinner').style.display = 'none';
+            }
+        }
+    }
+
+    function handleReportEvent(evt, job) {
+        // Only update modal UI if this job is currently active in the modal
+        const isActive = activeJobId === job.id;
+
+        switch (evt.type) {
+            case 'start':
+                if (isActive) updateReportProgress(`开始生成报告: ${evt.company} (${evt.ticker})，共 ${evt.total_sections} 个章节...`);
+                break;
+            case 'section_start':
+                if (isActive) {
+                    updateReportProgress(`[${evt.step}/${evt.total}] 检索证据: ${evt.section}...`);
+                    addTokenStep(evt.section, evt.step, evt.total);
+                }
+                break;
+            case 'section_retrieved':
+                if (isActive) updateReportProgress(`[${evt.step}/${evt.total}] 生成文本: ${evt.section}... (检索到 ${evt.chunks} 个证据片段)`);
+                break;
+            case 'section_done':
+                job.tokenSteps.push({
+                    section: evt.section,
+                    promptTokens: evt.prompt_tokens,
+                    completionTokens: evt.completion_tokens,
+                    totalTokens: evt.total_tokens,
+                    chars: evt.chars,
+                    prompt: evt.prompt,
+                    response: evt.response,
+                });
+                job.totalPrompt += evt.prompt_tokens || 0;
+                job.totalCompletion += evt.completion_tokens || 0;
+                job.totalTokens += evt.total_tokens || 0;
+                if (isActive) {
+                    updateReportProgress(`[${evt.step}/${evt.total}] ✅ ${evt.section} 完成 (${evt.chars} 字符)`);
+                    updateTokenStep(evt.section, evt.prompt_tokens, evt.completion_tokens, evt.total_tokens, evt.chars, evt.prompt, evt.response);
+                }
+                break;
+            case 'metrics_start':
+                if (isActive) {
+                    updateReportProgress('提取财务指标...');
+                    addTokenStep('metrics_extraction', 0, 0, true);
+                }
+                break;
+            case 'metrics_done':
+                job.tokenSteps.push({
+                    section: 'metrics_extraction',
+                    promptTokens: evt.prompt_tokens,
+                    completionTokens: evt.completion_tokens,
+                    totalTokens: evt.total_tokens,
+                    chars: 0,
+                    prompt: evt.prompt,
+                    response: evt.response,
+                });
+                job.totalPrompt += evt.prompt_tokens || 0;
+                job.totalCompletion += evt.completion_tokens || 0;
+                job.totalTokens += evt.total_tokens || 0;
+                if (isActive) {
+                    updateReportProgress('✅ 财务指标提取完成');
+                    updateTokenStep('metrics_extraction', evt.prompt_tokens, evt.completion_tokens, evt.total_tokens, 0, evt.prompt, evt.response);
+                }
+                break;
+            case 'rendering':
+                if (isActive) updateReportProgress('渲染 HTML 报告...');
+                break;
+            case 'complete':
+                if (isActive) updateReportProgress('✅ 报告生成完成！');
+                break;
+            case 'result':
+                job.status = 'success';
+                job.reportUrl = evt.html_url;
+                renderReportSidebar();
+                updateReportButtonState();
+                if (isActive) {
+                    updateReportProgress('报告生成完成，正在加载预览...');
+                    const iframe = document.getElementById('report-iframe');
+                    const loading = document.getElementById('report-modal-loading');
+                    iframe.onload = () => {
+                        loading.style.display = 'none';
+                        iframe.style.display = 'block';
+                        document.getElementById('report-modal-title-text').textContent =
+                            `${job.companyName} (${job.ticker}) - Equity Research Report`;
+                    };
+                    iframe.src = evt.html_url;
+                }
+                break;
+            case 'error':
+                job.status = 'error';
+                job.errorMsg = evt.detail;
+                renderReportSidebar();
+                updateReportButtonState();
+                if (isActive) {
+                    updateReportProgress('❌ ' + evt.detail);
+                    const loadingEl = document.getElementById('report-modal-loading');
+                    loadingEl.querySelector('.report-loading-spinner').style.display = 'none';
+                }
+                break;
+        }
+    }
+
+    // ── Token Panel Functions ──────────────────────────────────────────────
+    let tokenStepsData = {};
+
+    function resetTokenPanel() {
+        tokenStepsData = {};
+        document.getElementById('report-total-prompt').textContent = '0';
+        document.getElementById('report-total-completion').textContent = '0';
+        document.getElementById('report-total-tokens').textContent = '0';
+        document.getElementById('report-token-steps').innerHTML = '';
+    }
+
+    function addTokenStep(section, step, total, isExtra) {
+        const container = document.getElementById('report-token-steps');
+        const div = document.createElement('div');
+        div.className = 'report-token-step active';
+        div.id = `token-step-${section}`;
+        const label = section.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        div.innerHTML = `
+            <div class="report-token-step-title">
+                <span>${isExtra ? '🔧' : '📝'} ${label}</span>
+                <span class="report-token-step-status running">运行中</span>
+                <span class="report-token-step-toggle">▼</span>
+            </div>
+            <div class="report-token-step-detail">
+                <span>等待中...</span>
+            </div>
+            <div class="report-token-bar"><div class="report-token-bar-fill" style="width:0%"></div></div>
+            <div class="report-token-step-expandable"></div>
+        `;
+        container.appendChild(div);
+    }
+
+    function updateTokenStep(section, promptTokens, completionTokens, totalTokens, chars, promptText, responseText) {
+        const div = document.getElementById(`token-step-${section}`);
+        if (!div) return;
+        div.classList.remove('active');
+        div.classList.add('done');
+        const status = div.querySelector('.report-token-step-status');
+        status.className = 'report-token-step-status done';
+        status.textContent = '完成';
+        const detail = div.querySelector('.report-token-step-detail');
+        detail.innerHTML = `
+            <span>P: ${formatTokens(promptTokens)}</span>
+            <span>C: ${formatTokens(completionTokens)}</span>
+            <span>T: ${formatTokens(totalTokens)}</span>
+        `;
+        // Animate bar
+        tokenStepsData[section] = totalTokens;
+        const maxTokens = Math.max(...Object.values(tokenStepsData), 1);
+        const bar = div.querySelector('.report-token-bar-fill');
+        bar.style.width = `${(totalTokens / maxTokens) * 100}%`;
+
+        // Build expandable detail: cost breakdown + Q/A
+        const expandable = div.querySelector('.report-token-step-expandable');
+        if (expandable) {
+            const truncatedPrompt = (promptText || '').substring(0, 2000);
+            const truncatedResponse = (responseText || '').substring(0, 3000);
+            expandable.innerHTML = `
+                <div class="report-token-qa-block">
+                    <div class="report-token-qa-label">💰 花费明细</div>
+                    <div class="report-token-cost-row">
+                        <span class="report-token-cost-label">输入 (Prompt)</span>
+                        <span class="report-token-cost-value">${promptTokens.toLocaleString()} tokens</span>
+                    </div>
+                    <div class="report-token-cost-row">
+                        <span class="report-token-cost-label">输出 (Completion)</span>
+                        <span class="report-token-cost-value">${completionTokens.toLocaleString()} tokens</span>
+                    </div>
+                    <div class="report-token-cost-row">
+                        <span class="report-token-cost-label">总计 (Total)</span>
+                        <span class="report-token-cost-value">${totalTokens.toLocaleString()} tokens</span>
+                    </div>
+                    <div class="report-token-cost-row">
+                        <span class="report-token-cost-label">输出字符数</span>
+                        <span class="report-token-cost-value">${(chars || 0).toLocaleString()} chars</span>
+                    </div>
+                </div>
+                <div class="report-token-qa-block">
+                    <div class="report-token-qa-label">❓ Q — 提示词</div>
+                    <div class="report-token-qa-content">${escapeHtml(truncatedPrompt)}</div>
+                </div>
+                <div class="report-token-qa-block">
+                    <div class="report-token-qa-label">💡 A — 回答</div>
+                    <div class="report-token-qa-content">${escapeHtml(truncatedResponse)}</div>
+                </div>
+            `;
+        }
+
+        // Toggle expand/collapse on click
+        div.querySelector('.report-token-step-title').onclick = (e) => {
+            div.classList.toggle('expanded');
+        };
+
+        // Update summary totals
+        updateTokenSummary();
+    }
+
+    function updateTokenSummary() {
+        let totalP = 0, totalC = 0, totalT = 0;
+        const steps = document.querySelectorAll('.report-token-step.done .report-token-step-detail');
+        steps.forEach(detail => {
+            const spans = detail.querySelectorAll('span');
+            if (spans.length >= 3) {
+                totalP += parseTokens(spans[0].textContent);
+                totalC += parseTokens(spans[1].textContent);
+                totalT += parseTokens(spans[2].textContent);
+            }
+        });
+        document.getElementById('report-total-prompt').textContent = formatTokens(totalP);
+        document.getElementById('report-total-completion').textContent = formatTokens(totalC);
+        document.getElementById('report-total-tokens').textContent = formatTokens(totalT);
+    }
+
+    function formatTokens(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+        return String(n);
+    }
+
+    function parseTokens(text) {
+        const s = text.trim().replace(/[^\d.KM]/g, '');
+        if (s.endsWith('M')) return Math.round(parseFloat(s) * 1000000);
+        if (s.endsWith('K')) return Math.round(parseFloat(s) * 1000);
+        return parseInt(s) || 0;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function openReportModal(jobId) {
+        const job = reportJobs.find(j => j.id === jobId);
+        if (!job) return;
+        activeJobId = jobId;
+        renderReportSidebar();
+
+        // Reset UI
+        resetTokenPanel();
+        const iframe = document.getElementById('report-iframe');
+        const loading = document.getElementById('report-modal-loading');
+        iframe.src = '';
+        iframe.style.display = 'none';
+
+        // Set title
+        document.getElementById('report-modal-title-text').textContent =
+            `${job.companyName} (${job.ticker}) - Equity Research Report`;
+
+        if (job.status === 'pending') {
+            // Still generating — show loading state
+            loading.style.display = 'flex';
+            loading.querySelector('.report-loading-spinner').style.display = 'block';
+            updateReportProgress('正在生成报告，请耐心等待...');
+
+            // Replay any token steps already collected
+            for (const step of job.tokenSteps) {
+                addTokenStep(step.section, 0, 0, step.section === 'metrics_extraction');
+                updateTokenStep(step.section, step.promptTokens, step.completionTokens, step.totalTokens, step.chars, step.prompt, step.response);
+            }
+        } else if (job.status === 'success') {
+            // Report ready — load in iframe
+            loading.style.display = 'none';
+            iframe.style.display = 'block';
+            iframe.src = job.reportUrl;
+
+            // Replay token steps
+            for (const step of job.tokenSteps) {
+                addTokenStep(step.section, 0, 0, step.section === 'metrics_extraction');
+                updateTokenStep(step.section, step.promptTokens, step.completionTokens, step.totalTokens, step.chars, step.prompt, step.response);
+            }
+        } else if (job.status === 'error') {
+            // Show error
+            loading.style.display = 'flex';
+            loading.querySelector('.report-loading-spinner').style.display = 'none';
+            updateReportProgress('❌ 生成失败: ' + (job.errorMsg || '未知错误'));
+        }
+
+        showReportModal();
+    }
+
+    function showReportModal() {
+        const overlay = document.getElementById('report-modal-overlay');
+        overlay.classList.add('active');
+    }
+
+    function closeReportModal() {
+        const overlay = document.getElementById('report-modal-overlay');
+        overlay.classList.remove('active');
+        // Don't clear activeJobId — sidebar tab highlight stays
+    }
+
+    function updateReportProgress(text) {
+        const el = document.getElementById('report-loading-progress');
+        if (el) el.textContent = text;
+    }
+
+    function getCurrentJob() {
+        return reportJobs.find(j => j.id === activeJobId);
+    }
+
+    function printReport() {
+        const job = getCurrentJob();
+        if (!job || !job.reportUrl) {
+            alert('报告尚未加载，请先生成报告。');
+            return;
+        }
+        const iframe = document.getElementById('report-iframe');
+        try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        } catch (e) {
+            console.error('Print failed:', e);
+            const w = window.open(job.reportUrl, '_blank');
+            if (w) {
+                w.onload = () => { w.print(); };
+            } else {
+                alert('无法直接打印，请使用"新窗口打开"功能。');
+            }
+        }
+    }
+
+    function downloadReport() {
+        const job = getCurrentJob();
+        if (!job || !job.reportUrl) {
+            alert('报告尚未加载，请先生成报告。');
+            return;
+        }
+        const pdfUrl = job.reportUrl.replace('/memo/report/', '/memo/pdf/');
+        const a = document.createElement('a');
+        a.href = pdfUrl;
+        const filename = pdfUrl.split('/').pop().replace('.html', '.pdf') || 'report.pdf';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    function openReportInNewTab() {
+        const job = getCurrentJob();
+        if (job && job.reportUrl) {
+            const pdfUrl = job.reportUrl.replace('/memo/report/', '/memo/pdf/');
+            window.open(pdfUrl, '_blank');
+        }
+    }
+
+    // Close modal on overlay click
+    document.getElementById('report-modal-overlay').addEventListener('click', function(e) {
+        if (e.target === this) closeReportModal();
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const overlay = document.getElementById('report-modal-overlay');
+            if (overlay.classList.contains('active')) closeReportModal();
+        }
+    });
+</script>
 <script src="session_sidebar.js"></script>
 <script src="chat.js"></script>
 </body>

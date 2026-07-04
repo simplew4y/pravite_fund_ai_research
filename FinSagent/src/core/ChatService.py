@@ -263,16 +263,194 @@ class ChatService:
             is_off_topic,
         )
 
+    def _search_memo_memory(self, question: str, chat_history: list = None) -> str:
+        """Search memos.sqlite for relevant past memos based on the question.
+        
+        Strategy:
+        1. If meta-question ("刚才生成了什么"), find the most recent memo generation
+           event from session history to identify WHICH memo was just generated.
+        2. Search memo_sections + memory_items by topic keywords for relevant content.
+        3. Return only the top-scored memo with its key sections.
+        """
+        try:
+            import sqlite3
+            import re
+            repo_root = Path(__file__).resolve().parents[2]
+            db_path = str(repo_root / "memos.sqlite")
+            if not Path(db_path).exists():
+                return ""
+            conn = sqlite3.connect(db_path, timeout=5.0)
+            conn.row_factory = sqlite3.Row
+
+            # ── Step 1: Identify the most recent memo from session history ──
+            recent_memo_id = None
+            recent_memo_company = None
+            recent_memo_topic = None
+            if chat_history:
+                for msg in reversed(chat_history):
+                    content = msg.get("content", "")
+                    # Look for memo generation markers in chat history
+                    m = re.search(r'report_id=([a-f0-9]+)', content)
+                    if m:
+                        recent_memo_id = m.group(1)
+                        # Extract company name from the memo generation message
+                        m2 = re.search(r'(?:生成|Coverage memo).*?([A-Za-z\u4e00-\u9fff]+)\s*\(', content)
+                        if m2:
+                            recent_memo_company = m2.group(1)
+                        # Extract topic from the message
+                        m3 = re.search(r'生成\s+(.+?)\s+(?:覆盖|Coverage)', content)
+                        if m3:
+                            recent_memo_topic = m3.group(1).strip()
+                        break
+
+            # ── Step 2: Extract topic keywords from question + history ──
+            # Remove common stop words and meta-question words
+            stop_words = {"我们", "刚才", "做了", "什么", "的", "是", "了", "吗", "呢",
+                          "核心", "结论", "里面", "有", "哪些", "上一步", "之前",
+                          "previous", "what", "did", "we", "just", "do", "the",
+                          "memo", "报告", "report", "覆盖", "coverage"}
+            all_text = question
+            if chat_history:
+                for msg in chat_history[-6:]:
+                    all_text += " " + msg.get("content", "")
+            
+            # Extract meaningful keywords (Chinese 2+ chars, English 3+ chars)
+            raw_keywords = re.findall(r'[\u4e00-\u9fff]{2,}|[A-Za-z]{3,}|[$\d.]+(?:billion|B|亿)', all_text)
+            keywords = [kw for kw in raw_keywords if kw.lower() not in stop_words and len(kw) >= 2]
+            # Deduplicate
+            keywords = list(dict.fromkeys(keywords))
+
+            # ── Step 3: Score and rank memos by relevance ──
+            # Get all memos with their sections
+            all_memos = conn.execute(
+                "SELECT memory_id, company_id, title, content, metadata_json, created_at "
+                "FROM memory_items ORDER BY created_at DESC"
+            ).fetchall()
+
+            if not all_memos:
+                conn.close()
+                return ""
+
+            scored_memos = []
+            for memo in all_memos:
+                memo_id_short = memo["memory_id"].replace("mem_memo_", "")
+                title = memo["title"] or ""
+                content = memo["content"] or ""
+                
+                # Get sections for this memo
+                sections = conn.execute(
+                    "SELECT section_type, content FROM memo_sections "
+                    "WHERE memo_id = ? ORDER BY sort_order", (f"memo_{memo_id_short}",)
+                ).fetchall()
+                sections_text = " ".join(s["content"] or "" for s in sections)
+                
+                # Combine all searchable text
+                searchable = f"{title} {content} {sections_text}"
+                
+                # Calculate relevance score
+                score = 0
+                matched_keywords = []
+                
+                # If this is the most recently generated memo (from session history), boost score
+                if recent_memo_id and recent_memo_id in memo["memory_id"]:
+                    score += 100
+                    matched_keywords.append("[recently_generated]")
+                
+                # Keyword matching with scoring
+                for kw in keywords:
+                    kw_lower = kw.lower()
+                    searchable_lower = searchable.lower()
+                    if kw_lower in searchable_lower:
+                        score += 10
+                        matched_keywords.append(kw)
+                        # Extra score for title match
+                        if kw_lower in title.lower():
+                            score += 5
+                
+                # Company match bonus
+                if recent_memo_company and recent_memo_company.lower() in searchable.lower():
+                    score += 15
+                
+                scored_memos.append({
+                    "memo": memo,
+                    "sections": sections,
+                    "score": score,
+                    "matched": matched_keywords,
+                })
+
+            # Sort by score descending
+            scored_memos.sort(key=lambda x: x["score"], reverse=True)
+
+            # Filter: only include memos with score > 0
+            relevant = [m for m in scored_memos if m["score"] > 0]
+            if not relevant:
+                # No keyword match at all — return only the single most recent memo
+                relevant = scored_memos[:1]
+            else:
+                # Take top 2 at most
+                relevant = relevant[:2]
+
+            conn.close()
+
+            # ── Step 4: Build context string with key sections ──
+            parts = []
+            for item in relevant:
+                memo = item["memo"]
+                sections = item["sections"]
+                score = item["score"]
+                matched = item["matched"]
+                
+                # Find the most relevant sections
+                key_sections = []
+                for sec in sections:
+                    sec_type = sec["section_type"] or ""
+                    sec_content = sec["content"] or ""
+                    # Prioritize overview, thesis, financials, tagline
+                    if sec_type in ("overview", "thesis", "financials", "tagline"):
+                        # Strip HTML tags
+                        clean = re.sub(r'<[^>]+>', '', sec_content).strip()
+                        if clean:
+                            key_sections.append(f"  [{sec_type}] {clean[:300]}")
+                
+                matched_str = ", ".join(matched[:5]) if matched else "recent"
+                parts.append(
+                    f"[Memo] {memo['title']} (company: {memo['company_id']}, "
+                    f"created: {memo['created_at'][:19]}, relevance: {matched_str})\n"
+                    + "\n".join(key_sections[:4])
+                )
+            
+            context = "\n---\n".join(parts)
+            logger.info(f"[MemoMemory] Scored {len(all_memos)} memos, returned {len(relevant)} "
+                        f"(top_score={relevant[0]['score'] if relevant else 0}, "
+                        f"keywords={keywords[:5]}, recent_memo_id={recent_memo_id})")
+            return context
+        except Exception as e:
+            logger.warning(f"[MemoMemory] Search failed: {e}", exc_info=True)
+            return ""
+
     def _build_agentic_initial_state(
         self,
         question: str,
         session_manager: SessionManager,
         draft_holder: _DraftHolder | None = None,
     ) -> Dict[str, Any]:
+        # Search memo memory_items for relevant past memos
+        chat_history_raw = session_manager.get_chat_history_copy()
+        memo_context = self._search_memo_memory(question, chat_history=chat_history_raw)
+
+        # Build chat history with memo memory injected as context
+        chat_history = chat_history_raw
+        if memo_context:
+            chat_history.insert(0, {
+                "role": "system",
+                "content": f"Previous research memos from memory:\n{memo_context}",
+            })
+
         state: Dict[str, Any] = {
             "original_query": question,
             "user_query_raw": question,
-            "chat_history": session_manager.get_chat_history_copy(),
+            "chat_history": chat_history,
+            "memo_memory_context": memo_context,
             "rag": self.rag,
             "session_manager": session_manager,
             "config": self.config,
@@ -656,6 +834,64 @@ class ChatService:
         self.cleanup_old_sessions()
         await asyncio.to_thread(session_manager.request_lock.acquire)
         logger.info(f"[Session {session_id}] Preview-mode (concurrent) query: {question}")
+
+        # ── Memo memory interception ──────────────────────────────────────
+        # If the user is asking about recently generated memos, search memo
+        # memory and use LLM to summarize the relevant memo content.
+        _memo_meta_keywords = ["刚才生成", "生成了什么", "什么memo", "刚才做了",
+                               "生成的memo", "memo的核心", "memo结论", "刚才的memo",
+                               "什么报告", "生成的报告", "刚才的报告"]
+        is_memo_meta = any(kw in question for kw in _memo_meta_keywords)
+        if is_memo_meta:
+            chat_hist = session_manager.get_chat_history_copy()
+            memo_context = self._search_memo_memory(question, chat_history=chat_hist)
+            if memo_context:
+                # Use LLM to summarize the memo context into a natural answer
+                llm_messages = [
+                    {"role": "system", "content": "你是一个金融研究助手。根据系统检索到的 memo 记录回答用户问题。"},
+                    {"role": "user", "content": (
+                        f"用户问题：{question}\n\n"
+                        f"以下是系统检索到的相关 memo 记录：\n{memo_context}\n\n"
+                        f"请根据以上 memo 记录，用中文回答用户的问题。"
+                        f"要求：1) 只回答用户问的内容，不要列出所有 memo；"
+                        f"2) 提取与问题最相关的核心结论；"
+                        f"3) 如果有多条 memo，只回答最相关的那条；"
+                        f"4) 回答要简洁、有重点。"
+                    )},
+                ]
+                try:
+                    llm_resp = await session_manager.call_llm_async(llm_messages, temperature=0.3)
+                    direct_answer = llm_resp.choices[0].message.content
+                except Exception as llm_err:
+                    logger.warning(f"[MemoMemory] LLM summarization failed: {llm_err}")
+                    direct_answer = memo_context
+
+                session_manager.add_exchange(question, direct_answer)
+                await self._persist_session_history_turn(
+                    session_id, question, None, direct_answer,
+                    ["memo_memory"], False,
+                )
+                await asyncio.to_thread(session_manager.request_lock.release)
+                yield {"event": "start", "data": {"question": question, "session_id": session_id, "preview": True}}
+                yield {"event": "preview_draft", "data": {
+                    "stage": "draft", "agent": "memo_memory",
+                    "draft_answer": direct_answer,
+                    "sub_queries": [], "evidence": [], "evidence_count": 0,
+                }}
+                yield {"event": "preliminary", "data": {
+                    "answer": direct_answer,
+                    "sub_queries": [], "evidence": [],
+                }}
+                yield {"event": "comprehensive", "data": {
+                    "answer": direct_answer,
+                    "selected_agents": ["memo_memory"],
+                    "chat_history": session_manager.get_chat_history_string(),
+                }}
+                yield {"event": "complete", "data": {
+                    "final_answer": direct_answer,
+                    "session_id": session_id,
+                }}
+                return
 
         draft_holder = _DraftHolder()
         event_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()

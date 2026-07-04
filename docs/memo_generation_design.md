@@ -817,4 +817,3 @@ finrobot report 模板集成
 8. Memo 必须写入 audit_trail。
 9. Memo 既消费 memory，也生产 memory。
 10. 第一版先做单公司覆盖 memo，不做复杂全行业报告。
-
