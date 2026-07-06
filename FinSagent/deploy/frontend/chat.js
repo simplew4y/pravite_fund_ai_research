@@ -2,6 +2,7 @@
 
 const API_URL = '/chat/stream';
 const PREVIEW_URL = '/chat/preview';
+const RESEARCH_CHAT_URL = '/pdf-research/ask';
 
 function sessionIdForRequest() {
     if (typeof window.getCurrentSessionId === 'function') {
@@ -132,43 +133,17 @@ async function sendMessage() {
     if (INITIAL_MESSAGE) INITIAL_MESSAGE.style.display = 'none';
     const rowDiv = document.createElement('div');
     rowDiv.classList.add('message-row', 'assistant-row');
-    // previewRoutingState: unknown -> allow/offtopic (set after orchestrator event)
-    rowDiv.dataset.previewRoutingState = 'unknown';
-    rowDiv._previewDraftBuffer = [];
-
-    if (isPreviewMode) {
-        rowDiv.innerHTML = `
-            <div class="message-content">
-                <div class="message-icon">✦</div>
-                <div class="message-bubble">
-                    <div class="phase-section phase-preliminary" id="phase1-section" style="display:none;">
-                        <div class="phase-header">⚡ 快速草稿 (Quick Draft)</div>
-                        <div class="phase-body" id="phase1-body"></div>
-                    </div>
-                    <div class="phase-loading" id="phase2-loading" style="display:none;">
-                        <div class="spinner"></div>
-                        <span>专家团队深度分析中... (Specialists working...)</span>
-                    </div>
-                    <div class="phase-section phase-comprehensive" id="phase2-section" style="display:none;">
-                        <div class="phase-header">🔬 深度分析 (Deep Dive) <span id="phase2-agents"></span></div>
-                        <div class="phase-body" id="phase2-body"></div>
-                    </div>
-                    <div class="message-bubble-text" id="pending-loading" style="display:none; color:#6b7280;"></div>
-                    <div class="message-bubble-text" id="preview-final-answer-div" style="display:none;"></div>
-                </div>
+    rowDiv.innerHTML = `
+        <div class="message-content">
+            <div class="message-icon">✦</div>
+            <div class="message-bubble">
+                <div class="message-bubble-text" id="pending-loading" style="display:none; color:#6b7280;"></div>
+                <div class="message-bubble-text" id="final-answer-div" style="display:none;"></div>
+                <div class="research-citation-strip" id="research-citation-strip"></div>
+                <div class="research-trace-box" id="research-trace-box" style="display:none;"></div>
             </div>
-        `;
-    } else {
-        rowDiv.innerHTML = `
-            <div class="message-content">
-                <div class="message-icon">✦</div>
-                <div class="message-bubble">
-                    <div class="message-bubble-text" id="pending-loading" style="display:none; color:#6b7280;"></div>
-                    <div class="message-bubble-text" id="final-answer-div" style="display:none;"></div>
-                </div>
-            </div>
-        `;
-    }
+        </div>
+    `;
 
     CHAT_ROOT.appendChild(rowDiv);
     if (typeof window.forceChatScrollToBottomAfterSend === 'function') {
@@ -195,11 +170,137 @@ async function sendMessage() {
         window.forceChatScrollToBottomAfterSend();
     }
 
-    if (isPreviewMode) {
-        await sendMessagePreviewMode(question, rowDiv, stepsContainer, sendingSessionId);
-    } else {
-        await sendMessageStandardMode(question, rowDiv, stepsContainer, sendingSessionId);
+    await sendMessageResearchMode(question, rowDiv, stepsContainer, sendingSessionId);
+}
+
+async function sendMessageResearchMode(question, rowDiv, stepsContainer, sendingSessionId) {
+    const STATUS_DISPLAY = document.getElementById('status-display');
+    const SEND_BUTTON = document.getElementById('send-button');
+    const finalAnswerDiv = rowDiv.querySelector('#final-answer-div');
+    const traceBox = rowDiv.querySelector('#research-trace-box');
+    const citationStrip = rowDiv.querySelector('#research-citation-strip');
+
+    STATUS_DISPLAY.textContent = 'Research 检索中...';
+    setExecutionPanelVisible(stepsContainer, true);
+    updateStep(stepsContainer, 'pdf_research', 'running', '正在检索本地 PDF evidence...');
+
+    try {
+        const response = await fetch(RESEARCH_CHAT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, session_id: sendingSessionId })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.detail || 'Research request failed');
+
+        updateStep(
+            stepsContainer,
+            'pdf_research',
+            'done',
+            `命中 ${result.citations ? result.citations.length : 0} 条可追溯 citation`
+        );
+        updateStep(
+            stepsContainer,
+            'synthesis',
+            'done',
+            result.llm_used ? 'LLM 已基于本地 evidence 完成综合' : '已使用抽取式 fallback'
+        );
+
+        stopPendingLoading(rowDiv);
+        if (finalAnswerDiv) {
+            finalAnswerDiv.style.display = 'block';
+            await typeText(finalAnswerDiv, result.answer || '（无回复）', 12);
+            if (result.needs_review || result.llm_error) {
+                const warn = document.createElement('div');
+                warn.className = 'research-warning';
+                warn.textContent = result.llm_error || 'Needs review';
+                finalAnswerDiv.appendChild(warn);
+            }
+        }
+
+        renderResearchCitations(rowDiv, result.citations || [], result.traces || []);
+        if (result.traces && result.traces[0]) {
+            renderResearchTrace(traceBox, result.traces[0]);
+        }
+
+        try {
+            const stepAvatars = stepsContainer.querySelectorAll('.avatar-sprite');
+            stepAvatars.forEach(av => setAvatarState(av, 'done'));
+            const assistantIcon = rowDiv.querySelector('.message-icon .avatar-sprite');
+            if (assistantIcon) setAvatarState(assistantIcon, 'done', 36);
+        } catch (e) { console.error(e); }
+        if (typeof window.markSessionHasMessages === 'function') window.markSessionHasMessages();
+    } catch (error) {
+        stopPendingLoading(rowDiv);
+        if (finalAnswerDiv) {
+            finalAnswerDiv.style.display = 'block';
+            finalAnswerDiv.innerHTML = '<span style="color:red;">Error: ' + escapeHtml(error.message) + '</span>';
+        }
+        updateStep(stepsContainer, 'pdf_research', 'done', '<span style="color:#b91c1c;">Research 请求失败</span>');
+    } finally {
+        isSending = false;
+        SEND_BUTTON.disabled = false;
+        STATUS_DISPLAY.textContent = '';
+        if (typeof window.clearStreamingSessionBackup === 'function') {
+            window.clearStreamingSessionBackup(sendingSessionId);
+        }
+        if (typeof window.markSessionStreaming === 'function') window.markSessionStreaming(false);
+        if (typeof window.refreshSessionSidebar === 'function') window.refreshSessionSidebar();
+        if (typeof window.requestChatScrollToBottom === 'function') {
+            window.requestChatScrollToBottom({ repeat: 2 });
+        }
     }
+}
+
+function renderResearchCitations(rowDiv, citations, traces) {
+    const citationStrip = rowDiv.querySelector('#research-citation-strip');
+    const traceBox = rowDiv.querySelector('#research-trace-box');
+    if (!citationStrip) return;
+    const traceMap = new Map();
+    (traces || []).forEach((trace) => {
+        if (trace && trace.citation && trace.citation.citation_id) {
+            traceMap.set(trace.citation.citation_id, trace);
+        }
+    });
+    citationStrip.innerHTML = (citations || []).map((citation) => {
+        return `<button type="button" class="research-citation-btn" data-citation-id="${escapeHtml(citation.citation_id)}">${escapeHtml(citation.citation_id)}</button>`;
+    }).join('');
+    citationStrip.querySelectorAll('[data-citation-id]').forEach((button) => {
+        button.addEventListener('click', async () => {
+            const cid = button.dataset.citationId;
+            let trace = traceMap.get(cid);
+            if (!trace) {
+                const res = await fetch('/pdf-research/trace/' + encodeURIComponent(cid));
+                trace = await res.json();
+                if (!res.ok) {
+                    if (traceBox) {
+                        traceBox.style.display = 'block';
+                        traceBox.innerHTML = '<span style="color:red;">Trace failed</span>';
+                    }
+                    return;
+                }
+                traceMap.set(cid, trace);
+            }
+            renderResearchTrace(traceBox, trace);
+        });
+    });
+}
+
+function renderResearchTrace(traceBox, trace) {
+    if (!traceBox || !trace) return;
+    const citation = trace.citation || {};
+    const evidence = trace.evidence || {};
+    const documentInfo = trace.document || {};
+    const version = trace.version || {};
+    const location = trace.location || {};
+    traceBox.style.display = 'block';
+    traceBox.innerHTML = `
+        <div><strong>Citation</strong><br>${escapeHtml(citation.citation_id || '')}</div>
+        <div><strong>Location</strong><br>${escapeHtml(location.file_name || documentInfo.file_name || '')}, p.${escapeHtml(location.page_no || '')}, paragraph ${escapeHtml(location.paragraph_no || '')}</div>
+        <div><strong>Original File</strong><br>${escapeHtml(trace.original_file || documentInfo.file_path || '')}</div>
+        <div><strong>Version</strong><br>${escapeHtml(version.version_id || '')}<br>${escapeHtml(version.checksum || '')}</div>
+        <div><strong>Evidence</strong><br>${escapeHtml(evidence.content_text || citation.quote || '')}</div>
+    `;
 }
 
 // Preview mode: calls /chat/preview → generate_response_with_preview (SSE stream)

@@ -21,10 +21,10 @@ router = APIRouter(tags=["sessions"])
 
 
 def _require_session_store() -> SessionHistoryStore:
+    if hasattr(app_module, "get_session_history_store"):
+        return app_module.get_session_history_store()
     cs = app_module.chat_service
-    if cs is None:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
-    store = getattr(cs, "session_history_store", None)
+    store = getattr(cs, "session_history_store", None) if cs is not None else None
     if store is None:
         raise HTTPException(
             status_code=503,
@@ -96,10 +96,8 @@ async def allocate_session_id():
 
     首轮对话持久化后由 ChatService 按需更新标题；响应体仍只含 id。
     """
-    if app_module.chat_service is None:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
     sid = str(uuid.uuid4())
-    store = getattr(app_module.chat_service, "session_history_store", None)
+    store = _require_session_store()
     if store:
         await asyncio.to_thread(store.create_empty_session, sid, _DEFAULT_NEW_SESSION_TITLE)
     return SessionIdResponse(id=sid)

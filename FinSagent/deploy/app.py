@@ -13,6 +13,7 @@ import uuid
 import subprocess
 import threading
 import time
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any
@@ -27,13 +28,30 @@ from pydantic import BaseModel
 
 from fastapi.staticfiles import StaticFiles
 
-REPO_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
+DEPLOY_ROOT = os.path.realpath(os.path.dirname(__file__))
+REPO_ROOT = os.path.realpath(os.path.join(DEPLOY_ROOT, ".."))
+PROJECT_ROOT = os.path.realpath(os.path.join(REPO_ROOT, ".."))
+PDF_RESEARCH_SRC = os.path.join(PROJECT_ROOT, "src")
+if PDF_RESEARCH_SRC not in sys.path:
+    sys.path.insert(0, PDF_RESEARCH_SRC)
+if DEPLOY_ROOT not in sys.path:
+    sys.path.insert(0, DEPLOY_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
 sys.path.insert(0, REPO_ROOT)
 
-from core.ChatService import ChatService
-from core.RAGManager import RAGManager
-from doc_agent import DocumentTriageAgent
+CORE_IMPORT_ERROR: Optional[BaseException] = None
+try:
+    from core.ChatService import ChatService
+    from core.RAGManager import RAGManager
+    from doc_agent import DocumentTriageAgent
+except Exception as exc:
+    ChatService = None
+    RAGManager = None
+    DocumentTriageAgent = None
+    CORE_IMPORT_ERROR = exc
+from pdf_research_demo import PdfResearchDemo
+from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+from utils.session_history_store import SessionHistoryStore
 
 from data_pipeline.ingest_documents_db import (
     fetch_job_snapshot,
@@ -61,7 +79,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 全局变量
-chat_service: Optional[ChatService] = None
+chat_service: Optional[Any] = None
+pdf_research_demo: Optional[PdfResearchDemo] = None
+pdf_research_document: Optional[Any] = None
+pdf_research_llm_summary: dict[str, Any] = {}
+pdf_research_init_error: Optional[str] = None
+pdf_research_lock = threading.Lock()
+fallback_session_history_store: Optional[SessionHistoryStore] = None
+fallback_session_history_lock = threading.Lock()
 
 # 入库成功后热重载 RAG + ChatService（方案 B）；与并发入库线程互斥
 _chat_stack_reload_lock = threading.Lock()
@@ -74,6 +99,18 @@ _rag_reload_in_progress = False
 DATA_PIPELINE_DIR = os.path.join(REPO_ROOT, "data_pipeline")
 INGEST_SCRIPT = os.path.join(DATA_PIPELINE_DIR, "file2chunk2data_pipeline.py")
 CONFIG_PATH = os.path.join(REPO_ROOT, "config", "production.yaml")
+PDF_RESEARCH_PDF_PATH = os.environ.get(
+    "PDF_RESEARCH_PDF_PATH",
+    os.path.join(PROJECT_ROOT, "tesla_extracted", "20260129_10-K_0001628280-26-003952.pdf"),
+)
+PDF_RESEARCH_TEXT_PATH = os.environ.get(
+    "PDF_RESEARCH_TEXT_PATH",
+    os.path.join(PROJECT_ROOT, "tmp", "pdfs", "tesla_text", "20260129_10-K_0001628280-26-003952.txt"),
+)
+FALLBACK_SESSION_HISTORY_DB = os.environ.get(
+    "FINSAGENT_SESSION_HISTORY_DB",
+    os.path.join(DEPLOY_ROOT, ".memory", "research_sessions.sqlite3"),
+)
 _ingest_jobs_lock = threading.Lock()
 _ingest_jobs: dict[str, dict[str, Any]] = {}
 # 每个入库任务独立日志文件，避免多请求并发写同一文件导致错乱。可通过环境变量覆盖目录。
@@ -119,6 +156,8 @@ def load_doc_agent_config() -> dict[str, Any]:
 
 def _reset_rag_manager_singleton() -> None:
     """清空 RAGManager 单例（与测试脚本 / load_data 子进程用法一致），便于从磁盘重新加载索引。"""
+    if RAGManager is None:
+        raise RuntimeError(f"RAGManager dependency unavailable: {CORE_IMPORT_ERROR}")
     RAGManager._instance = None
     RAGManager._config = None
     RAGManager._collections = {}
@@ -157,8 +196,10 @@ def _wait_for_rag_idle_unlocked(timeout_sec: float, poll_sec: float = 0.25) -> b
     return False
 
 
-def _build_chat_stack() -> ChatService:
+def _build_chat_stack() -> Any:
     """从 production.yaml 构建 RAGManager + ChatService（启动与热重载共用）。"""
+    if ChatService is None or RAGManager is None:
+        raise RuntimeError(f"ChatService dependencies unavailable: {CORE_IMPORT_ERROR}")
     config = load_config()
     logger.info("正在初始化 RAG Manager...")
     collection_name = config.get("collection_name")
@@ -227,8 +268,13 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 启动 FastAPI 应用...")
 
     try:
-        chat_service = _build_chat_stack()
-        logger.info("✅ Chat Service 初始化完成")
+        skip_chat_init = os.environ.get("FINSAGENT_SKIP_CHAT_INIT", "").strip().lower() in ("1", "true", "yes", "on")
+        if skip_chat_init:
+            chat_service = None
+            logger.warning("FINSAGENT_SKIP_CHAT_INIT 已开启，跳过 ChatService 初始化；PDF Research 与静态 UI 仍可用")
+        else:
+            chat_service = _build_chat_stack()
+            logger.info("✅ Chat Service 初始化完成")
 
         yield
 
@@ -314,6 +360,119 @@ class HealthResponse(BaseModel):
     """健康检查响应"""
     status: str
     message: str
+
+
+class PdfResearchAskRequest(BaseModel):
+    question: str
+    session_id: str = "default"
+
+
+class PdfResearchMemoRequest(BaseModel):
+    company_name: str = "Tesla, Inc."
+    ticker: str = "TSLA"
+
+
+def _jsonable(value: Any) -> Any:
+    if hasattr(value, "to_dict"):
+        return _jsonable(value.to_dict())
+    if is_dataclass(value):
+        return _jsonable(asdict(value))
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def _pdf_research_trace_payload(demo: PdfResearchDemo, citations: list[Any]) -> list[dict[str, Any]]:
+    return [_jsonable(demo.trace_citation(citation.citation_id)) for citation in citations]
+
+
+def _get_pdf_research_stack() -> tuple[PdfResearchDemo, Any, dict[str, Any]]:
+    """Lazily load the local PDF evidence demo and its configured real LLM."""
+    global pdf_research_demo, pdf_research_document, pdf_research_llm_summary, pdf_research_init_error
+    with pdf_research_lock:
+        if pdf_research_demo is not None and pdf_research_document is not None:
+            return pdf_research_demo, pdf_research_document, pdf_research_llm_summary
+
+        try:
+            llm_config = load_llm_config(CONFIG_PATH)
+            llm_client = OpenAICompatibleChatClient(llm_config) if llm_config else None
+            demo = PdfResearchDemo(llm_client=llm_client)
+            document = demo.ingest_pdf(PDF_RESEARCH_PDF_PATH, PDF_RESEARCH_TEXT_PATH)
+            pdf_research_demo = demo
+            pdf_research_document = document
+            pdf_research_llm_summary = (
+                llm_config.safe_summary()
+                if llm_config
+                else {"enabled": False, "model_name": "", "base_url": "", "source": CONFIG_PATH}
+            )
+            pdf_research_init_error = None
+            logger.info(
+                "PDF Research initialized: pdf=%s evidence=%s llm=%s",
+                PDF_RESEARCH_PDF_PATH,
+                len(demo.store.evidence),
+                pdf_research_llm_summary.get("model_name") or "disabled",
+            )
+            return demo, document, pdf_research_llm_summary
+        except Exception as exc:
+            pdf_research_init_error = str(exc)
+            logger.error("PDF Research 初始化失败: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail=f"PDF Research 初始化失败: {exc}") from exc
+
+
+def get_session_history_store() -> SessionHistoryStore:
+    """Return the main ChatService session store or a lightweight research fallback store."""
+    global fallback_session_history_store
+    store = getattr(chat_service, "session_history_store", None) if chat_service is not None else None
+    if store is not None:
+        return store
+
+    with fallback_session_history_lock:
+        if fallback_session_history_store is None:
+            path = Path(FALLBACK_SESSION_HISTORY_DB).expanduser().resolve()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fallback_session_history_store = SessionHistoryStore(str(path))
+            logger.info("Research fallback session DB: %s", path)
+        return fallback_session_history_store
+
+
+def _history_answer_with_citations(answer: str, citations: list[Any]) -> str:
+    lines = [(answer or "").strip()]
+    if citations:
+        lines.extend(["", "Citations:"])
+        for citation in citations:
+            lines.append(f"- `{citation.citation_id}`: {citation.display}")
+    return "\n".join(lines).strip()
+
+
+def _pdf_research_answer_payload(question: str, session_id: str) -> dict[str, Any]:
+    demo, _, _ = _get_pdf_research_stack()
+    with pdf_research_lock:
+        result = demo.answer_question(question)
+        try:
+            store = get_session_history_store()
+            store.append_turn(
+                session_id=session_id,
+                question=question,
+                draft_answer=None,
+                final_answer=_history_answer_with_citations(result.answer, result.citations),
+                activated_agents=["pdf_research"],
+                is_off_topic=False,
+            )
+        except Exception:
+            logger.warning("PDF Research session persist failed", exc_info=True)
+        return {
+            "question": result.question,
+            "answer": result.answer,
+            "needs_review": result.needs_review,
+            "llm_used": result.llm_used,
+            "llm_error": result.llm_error,
+            "citations": _jsonable(result.citations),
+            "traces": _pdf_research_trace_payload(demo, result.citations),
+        }
 
 
 def _conda_base_bin_for_python() -> Optional[str]:
@@ -490,6 +649,65 @@ async def health_check():
     )
 
 
+@app.get("/pdf-research/health")
+async def pdf_research_health():
+    """本地 PDF Research 工作台状态。"""
+    demo, document, llm_summary = _get_pdf_research_stack()
+    return {
+        "status": "ok",
+        "document": document.to_dict(),
+        "pdf_path": PDF_RESEARCH_PDF_PATH,
+        "text_path": PDF_RESEARCH_TEXT_PATH,
+        "evidence_count": len(demo.store.evidence),
+        "citation_count": len(demo.store.citations),
+        "llm": llm_summary,
+        "init_error": pdf_research_init_error,
+    }
+
+
+@app.post("/pdf-research/ask")
+async def pdf_research_ask(request: PdfResearchAskRequest):
+    """基于本地 PDF evidence 检索后调用真实 LLM 回答，并保留 citation trace。"""
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required.")
+    session_id = (request.session_id or "default").strip() or "default"
+    return _pdf_research_answer_payload(question, session_id)
+
+
+@app.post("/pdf-research/memo")
+async def pdf_research_memo(request: PdfResearchMemoRequest):
+    """基于本地 PDF evidence 生成带 citation 的 memo。"""
+    company_name = request.company_name.strip()
+    ticker = request.ticker.strip()
+    if not company_name or not ticker:
+        raise HTTPException(status_code=400, detail="Company name and ticker are required.")
+    demo, _, _ = _get_pdf_research_stack()
+    with pdf_research_lock:
+        memo = demo.generate_memo(company_name, ticker)
+        return {
+            "memo_id": memo.memo_id,
+            "title": memo.title,
+            "markdown": memo.to_markdown(),
+            "sections": _jsonable(memo.sections),
+            "llm_used": memo.llm_used,
+            "llm_error": memo.llm_error,
+            "citations": _jsonable(memo.citations),
+            "traces": _pdf_research_trace_payload(demo, memo.citations),
+        }
+
+
+@app.get("/pdf-research/trace/{citation_id}")
+async def pdf_research_trace(citation_id: str):
+    """从 citation_id 回溯到本地 PDF evidence / document version / page / paragraph。"""
+    demo, _, _ = _get_pdf_research_stack()
+    with pdf_research_lock:
+        trace = demo.trace_citation(citation_id)
+    if not trace:
+        raise HTTPException(status_code=404, detail="Citation not found.")
+    return _jsonable(trace)
+
+
 @app.post("/doc-agent/analyze")
 async def doc_agent_analyze(
     file: UploadFile = File(..., description="待识别和摘要的文档，支持 PDF/DOCX/TXT/MD/HTML/JSON 等"),
@@ -500,6 +718,8 @@ async def doc_agent_analyze(
     if not body:
         raise HTTPException(status_code=400, detail="空文件")
     config = load_doc_agent_config()
+    if DocumentTriageAgent is None:
+        raise HTTPException(status_code=503, detail=f"Document agent dependencies unavailable: {CORE_IMPORT_ERROR}")
     agent = DocumentTriageAgent(config)
     try:
         return await agent.analyze_upload(file.filename or "upload", body, use_llm=use_llm)
@@ -517,6 +737,8 @@ async def doc_agent_analyze_batch(
     if not files:
         raise HTTPException(status_code=400, detail="未提供任何文件")
     config = load_doc_agent_config()
+    if DocumentTriageAgent is None:
+        raise HTTPException(status_code=503, detail=f"Document agent dependencies unavailable: {CORE_IMPORT_ERROR}")
     agent = DocumentTriageAgent(config)
     results = []
     for uploaded in files:
@@ -584,13 +806,30 @@ async def chat_stream(request: ChatRequest):
     - complete: 处理完成
     - error: 错误信息
     """
-    if chat_service is None:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
-
     logger.info(f"收到流式请求 - Session: {request.session_id}, Question: {request.question}")
 
     async def event_generator():
         try:
+            if chat_service is None:
+                yield f"data: {json.dumps({'event': 'start', 'data': {'message': 'Research started'}}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'event': 'orchestrator', 'data': {'selected_agents': ['pdf_research'], 'routing_reason': '主 RAG 未初始化，使用本地 PDF evidence research fallback。'}}, ensure_ascii=False)}\n\n"
+                result = _pdf_research_answer_payload(request.question, request.session_id)
+                agent_payload = {
+                    "agent_outputs": [
+                        {
+                            "agent": "pdf_research",
+                            "sub_queries": [request.question],
+                            "draft_answer": result["answer"],
+                            "evidence_count": len(result["citations"]),
+                            "evidence": result["citations"],
+                            "tool_results": {},
+                        }
+                    ]
+                }
+                yield f"data: {json.dumps({'event': 'agents', 'data': agent_payload}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'event': 'synthesis', 'data': {'final_answer': result['answer']}}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'event': 'complete', 'data': {'final_answer': result['answer']}}, ensure_ascii=False)}\n\n"
+                return
             async for event in chat_service.generate_response_stream(
                 question=request.question,
                 session_id=request.session_id
@@ -626,13 +865,27 @@ async def chat_preview(request: ChatRequest):
       - {"event": "complete", "data": {...}}                         – preview request completed
       - {"event": "error", "data": {"message": "..."}}            – on failure
     """
-    if chat_service is None:
-        raise HTTPException(status_code=503, detail="Chat service not initialized")
-
     logger.info(f"收到预览请求 - Session: {request.session_id}, Question: {request.question}")
 
     async def event_generator():
         try:
+            if chat_service is None:
+                yield f"data: {json.dumps({'event': 'start', 'data': {'message': 'Research started'}}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'event': 'orchestrator', 'data': {'selected_agents': ['pdf_research'], 'routing_reason': '主 RAG 未初始化，使用本地 PDF evidence research fallback。'}}, ensure_ascii=False)}\n\n"
+                result = _pdf_research_answer_payload(request.question, request.session_id)
+                draft_payload = {
+                    "stage": "finalize",
+                    "message": "本地 PDF evidence 检索完成",
+                    "evidence_count": len(result["citations"]),
+                }
+                yield f"data: {json.dumps({'event': 'preview_draft', 'data': draft_payload}, ensure_ascii=False)}\n\n"
+                comprehensive_payload = {
+                    "answer": result["answer"],
+                    "selected_agents": ["pdf_research"],
+                }
+                yield f"data: {json.dumps({'event': 'comprehensive', 'data': comprehensive_payload}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'event': 'complete', 'data': {'final_answer': result['answer']}}, ensure_ascii=False)}\n\n"
+                return
             async for result in chat_service.generate_response_with_preview(
                 question=request.question,
                 session_id=request.session_id,

@@ -1,5 +1,19 @@
 # Private Fund AI Research
 
+## 当前分支说明
+
+本分支整理了当前 Omnigent + Claude Code Haha + 本地 PDF evidence 私募研究 demo 的完整系统结构。
+
+核心文档：
+
+| 文档 | 内容 |
+|---|---|
+| [omnigent_cc_haha_system_architecture_20260706.md](docs/omnigent_cc_haha_system_architecture_20260706.md) | Omnigent、cc-haha、LiteLLM、DashScope、本地 PDF QA、Memo PDF、来源点击面板的完整运行链路 |
+| [private_fund_code_architecture_20260706.md](docs/private_fund_code_architecture_20260706.md) | `src/pdf_research_demo`、FinSagent 接入、脚本、测试和 Omnigent 补丁的代码架构说明 |
+| [omnigent_private_fund_integration_20260706.patch](patches/omnigent_private_fund_integration_20260706.patch) | 当前本地 `omnigent/` clone 的私募研究集成补丁，避免把独立 clone 整体塞进主仓库 |
+
+当前 GitHub 分支只提交主业务仓库代码、文档、脚本、测试和 Omnigent 补丁；本地 PDF、运行输出、`omnigent/` clone、`cc-haha/` clone 和依赖目录不进入主仓库。
+
 ## 任务分工
 
 | 负责人 | 模块 | 主要交付物 | 测试目录 | 当前状态 | 进度 |
@@ -79,6 +93,10 @@
 | 2026-06-24 | 创建 Memo 生成模块设计文档。 | `docs/memo_generation_design.md` | 文档已覆盖输入输出、Evidence Pack、Citation Gate、验收流程。 | done |
 | 2026-06-24 | 新增模块测试目录要求。 | `README.md`, `test/memo_generation/README.md` | 确认 Memo Generation 后续测试统一归档到 `test/memo_generation/`。 | done |
 | 2026-06-29 | 初版 Memo / Equity Research Report 生成能力已提交 PR #2：新增 `/memo` 后端路由、RAG+LLM 章节生成、HTML 报告渲染、PDF 转换、前端报告生成入口、SSE 进度和 token 用量面板；当前待修复 review 阻塞点后合并。 | `README.md`, PR #2: `FinSagent/deploy/memo_routes.py`, `FinSagent/src/memo/report_generator.py`, `FinSagent/deploy/frontend/index.html`, `FinSagent/deploy/app.py` | 在 PR #2 临时 worktree 执行 `python -m py_compile FinSagent/deploy/memo_routes.py FinSagent/src/memo/report_generator.py` 通过；真实 import 暴露 FinRobot 私有绝对路径问题；fake RAG/LLM 最小生成通过；注入样例确认生成 HTML 需补 sanitizer / sandbox / CSP。 | review |
+| 2026-06-30 | 新增 PDF-only 最小集成 demo：PDF/cached text 入库为 page evidence，支持 QA、固定 memo、citation_id 和 trace_citation 回到 PDF 文件/version/page/paragraph。 | `src/pdf_research_demo/*`, `scripts/run_pdf_research_demo.py`, `test/memo_generation/test_pdf_research_demo.py`, `test/memo_generation/outputs/tesla/pdf_demo_memo.md`, `test/memo_generation/README.md`, `README.md` | 运行 `python -m pytest test/memo_generation/test_pdf_research_demo.py -q`，结果 2 passed；运行 `python scripts/run_pdf_research_demo.py --pdf tesla_extracted/20260129_10-K_0001628280-26-003952.pdf --text tmp/pdfs/tesla_text/20260129_10-K_0001628280-26-003952.txt --question "What does Tesla say about Robotaxi and FSD?" --memo-out test/memo_generation/outputs/tesla/pdf_demo_memo.md`，确认 QA 和 memo citation 可 trace 到 PDF p.9。 | in_progress |
+| 2026-06-30 | 在 PDF-only demo 上新增本地 Web 服务并接入真实 LLM：FastAPI API + 单页页面，可在浏览器提问、生成 memo，并点击 citation 查看 PDF 文件、version、page、paragraph 和原文片段；启动脚本默认读取 `FinSagent/config/production.yaml` 的 OpenAI-compatible LLM 配置。 | `src/pdf_research_demo/web_app.py`, `src/pdf_research_demo/llm.py`, `scripts/run_pdf_research_web_app.py`, `test/memo_generation/test_pdf_research_web_app.py`, `test/memo_generation/README.md`, `README.md` | 运行 `python -m pytest test/memo_generation -q`，结果 4 passed；运行 `python -m py_compile src/pdf_research_demo/*.py scripts/run_pdf_research_demo.py scripts/run_pdf_research_web_app.py` 通过；本地服务用 `python scripts/run_pdf_research_web_app.py --host 127.0.0.1 --port 8765` 启动后，可访问 `/api/health`、`/api/ask`、`/api/memo` 和 `/api/trace/{citation_id}`，需要禁用 LLM 时加 `--no-llm`。 | in_progress |
+| 2026-06-30 | 完成真实 LLM smoke test：`qwen3-max` 可通过 DashScope OpenAI-compatible endpoint 调用；Web QA 和 memo 均返回 `llm_used=true`，citation 仍可 trace 到本地 Tesla PDF。 | `src/pdf_research_demo/llm.py`, `src/pdf_research_demo/demo.py`, `src/pdf_research_demo/web_app.py`, `scripts/run_pdf_research_web_app.py` | 运行最小 LLM 连通性检查返回 `ok`；启动 Web 服务后 `/api/health` 返回 `llm.enabled=true`、`model_name=qwen3-max`；`/api/ask` 返回 `llm_used=true`、3 条 citation、首条 trace 到 Tesla PDF p.9；`/api/memo` 返回 `llm_used=true`、4 个 section、8 条 citation。 | in_progress |
+| 2026-06-30 | 将 FinSagent 主页面改为 Research Chat：左侧会话管理保留并支持 fallback SQLite；主输入框直接调用本地 evidence + 真实 LLM 的 research QA，不再使用单独 `PDF Research` 按钮；后端保留 `/pdf-research/health`、`/pdf-research/ask`、`/pdf-research/memo`、`/pdf-research/trace/{citation_id}` 作为内部 API。 | `FinSagent/deploy/app.py`, `FinSagent/deploy/session_routes.py`, `FinSagent/deploy/frontend/index.html`, `FinSagent/deploy/frontend/chat.js`, `FinSagent/deploy/frontend/session_sidebar.js`, `FinSagent/deploy/frontend/ui.js`, `README.md` | 运行 `python -m py_compile FinSagent/deploy/app.py FinSagent/deploy/session_routes.py src/pdf_research_demo/*.py` 通过；运行 `node --check FinSagent/deploy/frontend/chat.js && node --check FinSagent/deploy/frontend/session_sidebar.js && node --check FinSagent/deploy/frontend/ui.js` 通过；以 `FINSAGENT_SKIP_CHAT_INIT=1 python -m uvicorn app:app --host 127.0.0.1 --port 8000` 启动 FinSagent，确认首页有 `FinSagent Research`、没有 `pdf-research-trigger` 和 `pdf_research_panel.js`；`/sessions` 可创建会话；主 research ask 写入同一 session；`/sessions/{sid}/messages` 可读回带 citation 的回答。 | in_progress |
 
 ### 程景逸：Evidence Schema / Citation / Provenance
 
@@ -104,7 +122,7 @@
 |---|---|---|---|---|---|
 | Project DB | 雷雷 | 固化 SQLite schema、目录结构和 repository API。 | `test/project_db/` | 输出第一版 schema.sql、初始化脚本和 DB 回溯测试。 | 暂无 |
 | Research Memory | 廖 | QA 后完整写入原文、facts、citations、audit，并进入语义索引。 | `test/research_memory/` | 实现最小 QA memory 闭环和对应测试 fixture。 | OpenViking 接入方案待确认 |
-| Memo Generation | 朝龙 | 初版报告生成链路已进入 PR review：RAG 检索证据、LLM 生成章节、HTML/PDF 报告预览、引用格式统一和生成过程 token 统计。 | `test/memo_generation/` | 修复 PR #2 review 阻塞点：FinRobot 模板路径改为仓库相对或配置项、生成 HTML 做 sanitizer / CSP / iframe sandbox 收紧、校验 `company_ticker` 输出路径；随后补最小端到端测试和 citation gate 测试。 | PR #2 暂不建议合并；依赖 Evidence Schema 和 Memory API 继续对齐 |
+| Memo Generation | 朝龙 | 已有 PDF-only 最小集成 demo、真实 LLM 综合、FinSagent 主 Research Chat、左侧会话管理和 citation trace；PR #2 报告生成链路仍在 review。 | `test/memo_generation/` | 将当前稳定 `citation_id -> evidence_id` 方案回填 PR #2 的报告链路；继续修复 sanitizer / sandbox / CSP 和输出路径校验；后续再接 MCP/skills 的多文件检索。 | PR #2 暂不建议合并；依赖 Evidence Schema、Memory API 和 Project DB SQLite repository 继续对齐 |
 | Evidence Schema | 程景逸 | 第一阶段统一 evidence/citation/provenance 中间层 PR 已送审。 | `test/evidence_schema/` | 修复 Excel 空 block 过滤和 Memo display 后，将 PR #1 从 draft 转 ready 并合并；随后对接 SQLite repository。 | 需要和 DB schema、Research Memory citation 字段继续对齐 |
 
 ## 员工 Coding Agent 更新规范

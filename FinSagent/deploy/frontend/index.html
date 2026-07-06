@@ -1846,6 +1846,53 @@
             box-shadow: none;
         }
 
+        .research-citation-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .research-citation-btn {
+            min-height: 30px;
+            max-width: 100%;
+            padding: 0 10px;
+            border: 1px solid rgba(11, 87, 208, 0.22);
+            border-radius: 999px;
+            background: #f3f7ff;
+            color: var(--color-primary);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-family: inherit;
+        }
+        .research-citation-btn:hover {
+            background: #e8f0fe;
+        }
+        .research-trace-box {
+            margin-top: 12px;
+            border: 1px solid var(--color-border);
+            border-radius: 12px;
+            background: #fafbfc;
+            padding: 12px;
+            color: var(--color-secondary-text);
+            font-size: 12px;
+            line-height: 1.55;
+            word-break: break-word;
+        }
+        .research-trace-box > div + div {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+        }
+        .research-warning {
+            margin-top: 8px;
+            color: var(--color-warning);
+            font-weight: 600;
+            font-size: 13px;
+        }
+
         @media (max-width: 900px) {
             .session-sidebar {
                 position: fixed;
@@ -1886,7 +1933,7 @@
         <aside id="session-sidebar" class="session-sidebar" aria-label="会话列表">
             <div class="sidebar-brand">
                 <span class="sidebar-logo">✨</span>
-                <span class="sidebar-product">FinSagent Chat</span>
+                <span class="sidebar-product">FinSagent Research</span>
             </div>
             <button type="button" id="sidebar-new-chat" class="sidebar-new-chat">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -1938,10 +1985,6 @@
                             </div>
                         </div>
                     </div>
-                    <div class="preview-toggle-container">
-                        <span class="preview-toggle-label">⚡ 预览模式 (Preview)</span>
-                        <div class="toggle-switch active" id="preview-toggle" onclick="togglePreviewMode()"></div>
-                    </div>
                 </div>
             </div>
 
@@ -1949,12 +1992,9 @@
                 <div id="chat-container">
                     <div class="chat-container-inner" id="chat-messages-root">
                         <div class="welcome-message" id="initial-message">
-                            <h2>Hello, I'm FinSagent</h2>
-                            <p>我是您的专业金融 Agent。</p>
-                            <p>我可以帮您进行市场分析、财报解读和复杂问题规划。</p>
-                            <p style="font-size: 13px; margin-top: 12px; color: var(--color-primary);">
-                                💡 提示：使用右上角「⚡ 预览模式」开关可切换快速草稿+深度分析（Preview）或标准单阶段响应模式
-                            </p>
+                            <h2>FinSagent Research</h2>
+                            <p>基于本地资料进行金融问答、memo 生成和可靠溯源。</p>
+                            <p>每个核心结论都应能回到原始文件、版本、页码和证据片段。</p>
                         </div>
                     </div>
                 </div>
@@ -1964,7 +2004,7 @@
                 <div id="input-container">
                     <div id="status-display" style="font-size: 12px; color: var(--color-primary); padding-left: 10px; min-height: 18px;"></div>
                     <div id="input-controls">
-                        <textarea id="prompt-input" rows="1" placeholder="问我任何关于金融的问题..." oninput="autoExpand(this)" onkeydown="handleKeydown(event)"></textarea>
+                        <textarea id="prompt-input" rows="1" placeholder="询问本地资料，生成带溯源的研究结论..." oninput="autoExpand(this)" onkeydown="handleKeydown(event)"></textarea>
                         <button id="send-button" onclick="sendMessage()">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                         </button>
@@ -1974,10 +2014,10 @@
         </div>
     </div>
 
-<script src="avatar.js"></script>
-<script src="ui.js"></script>
-<script src="ingest_panel.js"></script>
-<script src="session_sidebar.js"></script>
-<script src="chat.js"></script>
+<script src="avatar.js?v=research-chat-20260630-2"></script>
+<script src="ui.js?v=research-chat-20260630-2"></script>
+<script src="ingest_panel.js?v=research-chat-20260630-2"></script>
+<script src="session_sidebar.js?v=research-chat-20260630-2"></script>
+<script src="chat.js?v=research-chat-20260630-2"></script>
 </body>
 </html>

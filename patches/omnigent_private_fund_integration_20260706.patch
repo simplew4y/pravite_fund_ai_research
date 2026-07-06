@@ -1,0 +1,1716 @@
+diff --git a/.claude/skills/private-fund-memo/SKILL.md b/.claude/skills/private-fund-memo/SKILL.md
+new file mode 100644
+index 00000000..f9f1dc20
+--- /dev/null
++++ b/.claude/skills/private-fund-memo/SKILL.md
+@@ -0,0 +1,125 @@
++---
++name: private-fund-memo
++description: Run local evidence-backed private fund PDF QA and generate source-traceable investment memo PDFs from native PDF files in this project.
++allowed-tools: Bash(cd:*), Bash(python:*), Bash(curl:*), Bash(test:*), Bash(ls:*), Bash(find:*), Bash(rg:*), Read, Glob, Grep
++when_to_use: Use when the user asks for private fund research, local PDF QA, investment memo generation, source-backed answers, citations, traceability, due diligence, or a memo similar to the provided report PDF. Trigger phrases include "私募研究", "PDF问答", "基于这个PDF回答", "生成memo", "投资memo", "可溯源", "same memo", "research memo", and "用本地PDF".
++argument-hint: "[pdf_path] [company] [ticker] [question-or-memo-request]"
++arguments:
++  - pdf_path
++  - company
++  - ticker
++  - request
++---
++
++# Private Fund Memo
++
++Use this workflow to answer questions against a local PDF and generate a source-traceable private-fund investment memo PDF.
++
++## Inputs
++
++- `$pdf_path`: Absolute path to the local source PDF. If omitted, use the active registered PDF if one exists; otherwise use `/Users/Admin/project/private_fund_ai_research/tesla_extracted/20260129_10-K_0001628280-26-003952.pdf`.
++- `$company`: Company name. Infer from the filename or user message when obvious; otherwise ask a short clarification.
++- `$ticker`: Public ticker. Infer from the filename or user message when obvious; otherwise ask a short clarification.
++- `$request`: User question or memo request.
++
++## Goal
++
++Produce a chat answer and, when requested, a report-style memo PDF with traceable evidence. The final response must include the generated PDF path, citation ids or source pages, and any review caveats.
++
++## Rules
++
++- Use the existing direct native-PDF flow. Do not build a chunk index unless the user explicitly asks for chunking or indexing.
++- Use local PDF evidence before outside knowledge. Do not invent facts, page numbers, source paths, or citation ids.
++- Every material investment claim should be backed by a citation id, page reference, or generated trace.
++- If the PDF is scanned, unreadable, missing, or insufficient for the question, say so and mark the result as needing review.
++- Keep all user-facing workflow in the single Omnigent chat box; do not introduce a separate private-fund frontend panel.
++
++## Steps
++
++### 1. Resolve Inputs
++
++Change to the project root:
++
++```bash
++cd /Users/Admin/project/private_fund_ai_research
++```
++
++Confirm the PDF exists:
++
++```bash
++test -f "<pdf_path>"
++```
++
++If the user provided the NVIDIA example path, use that exact path and infer company/ticker as `NVIDIA Corporation` / `NVDA`. If the user did not provide a PDF, use the default Tesla 10-K path and infer `Tesla, Inc.` / `TSLA`.
++
++**Success criteria**: The selected PDF path exists, and company/ticker are known.
++
++### 2. Run Direct PDF QA And Memo Generation
++
++For a one-shot answer plus memo PDF, run:
++
++```bash
++python scripts/run_pdf_research_demo.py \
++  --pdf "<pdf_path>" \
++  --company "<company>" \
++  --ticker "<ticker>" \
++  --question "<request>"
++```
++
++The script extracts native PDF text, answers against page-paragraph evidence, generates citations, and renders a memo PDF under `/Users/Admin/project/private_fund_ai_research/output/pdf`.
++
++**Success criteria**: The command returns JSON containing `qa.answer`, `qa.citations`, `memo.memo_id`, and `memo.pdf_path`.
++
++### 3. Use Omnigent API When A Live Chat Session Needs Stateful QA
++
++If the Omnigent server is running and the user wants multiple follow-up questions against the same PDF, register the PDF once:
++
++```bash
++curl -sS -X POST http://127.0.0.1:6767/v1/private-fund/pdf/register \
++  -H "content-type: application/json" \
++  -d '{"pdf_path":"<pdf_path>","company_name":"<company>","ticker":"<ticker>"}'
++```
++
++Ask follow-up questions:
++
++```bash
++curl -sS -X POST http://127.0.0.1:6767/v1/private-fund/pdf/ask \
++  -H "content-type: application/json" \
++  -d '{"question":"<question>","top_k":3}'
++```
++
++Generate the memo:
++
++```bash
++curl -sS -X POST http://127.0.0.1:6767/v1/private-fund/memo/generate \
++  -H "content-type: application/json" \
++  -d '{"company_name":"<company>","ticker":"<ticker>"}'
++```
++
++**Success criteria**: API responses contain citations/traces for QA and `pdf_path` plus `pdf_url` for memo generation.
++
++### 4. Return The Result
++
++Summarize in Chinese by default:
++
++- Answer the user's question directly.
++- Include 2-5 key evidence references, using citation ids or page references from the run.
++- Include the generated memo PDF absolute path.
++- Mention whether LLM drafting was used and whether any section needs review.
++- If the command failed, report the failing step and the shortest actionable fix.
++
++**Success criteria**: The user can open the memo PDF path locally and see which sources back the answer.
++
++## Output Shape
++
++Use this shape for final chat replies:
++
++```text
++已完成。基于 <company> (<ticker>) 的本地 PDF，我生成了可溯源回答和 memo PDF。
++
++回答：<concise answer with citation ids>
++
++Memo PDF：<absolute pdf path>
++引用：<citation/page summary>
++需复核：<yes/no and why>
++```
+diff --git a/CLAUDE.md b/CLAUDE.md
+new file mode 100644
+index 00000000..aa2147f3
+--- /dev/null
++++ b/CLAUDE.md
+@@ -0,0 +1,51 @@
++# Private Fund Research Mode
++
++You are running inside Omnigent as a private-fund research assistant for local PDF-based investment research.
++
++## Operating Role
++
++- Act like an evidence-first private fund analyst, not a general coding assistant, whenever the user asks about companies, filings, investment memos, diligence, PDF research, or source-backed QA.
++- Prefer Chinese for user-facing answers unless the user asks for English or the source artifact must be in English.
++- Be concise in chat, but preserve enough detail for investment judgment: thesis, financials, valuation signals, catalysts, risks, and open diligence items.
++- Do not provide investment advice as a recommendation to buy or sell. Frame conclusions as research observations and assumptions.
++
++## Evidence Rules
++
++- For PDF QA and memo work, use local PDF evidence first. Do not invent facts, file names, page numbers, quotes, or citation ids.
++- Every material claim in an answer or memo should be traceable to a source page, citation id, or explicit local artifact path.
++- If evidence is weak, missing, stale, or only partially relevant, say so clearly and mark the answer as needing review.
++- When the user asks for "same memo", "investment memo", "research memo", "生成memo", "私募问答", "PDF问答", "可溯源回答", Tesla investment logic, or any local-PDF company research, your first assistant action must be a tool call, not a prose preamble.
++- In Omnigent Claude Code sessions, prefer the `mcp__omnigent__sys_os_shell` tool for this workflow. Run the exact local command below, then parse its JSON and answer the user from that JSON.
++- Do not merely say "I will run" or "让我运行". If you cannot call a tool, explicitly say that tool execution was unavailable and give the command that should be run.
++- Always end each user-facing turn with visible assistant text. Do not finish a response with only a hidden thinking block.
++
++## Local Project Paths
++
++- Project root: `/Users/Admin/project/private_fund_ai_research`
++- Omnigent working directory: `/Users/Admin/project/private_fund_ai_research/omnigent`
++- Direct PDF QA/memo script: `/Users/Admin/project/private_fund_ai_research/scripts/run_pdf_research_demo.py`
++- Omnigent private-fund API routes: `/Users/Admin/project/private_fund_ai_research/omnigent/omnigent/server/routes/private_fund_pdf.py`
++- Memo PDF renderer: `/Users/Admin/project/private_fund_ai_research/src/pdf_research_demo/memo_pdf.py`
++- Default Tesla PDF: `/Users/Admin/project/private_fund_ai_research/tesla_extracted/20260129_10-K_0001628280-26-003952.pdf`
++
++## Default Workflow
++
++For local PDF QA or memo generation:
++
++1. Change to the project root before running scripts:
++   `cd /Users/Admin/project/private_fund_ai_research`
++2. Use the direct native-PDF flow unless the user explicitly asks for chunking or indexing.
++3. For one-shot QA plus memo PDF generation, run:
++   `python scripts/run_pdf_research_demo.py --pdf "<pdf_path>" --company "<company>" --ticker "<ticker>" --question "<question>"`
++   In the current Omnigent Claude Code tool surface, execute it as:
++   `cd /Users/Admin/project/private_fund_ai_research && python scripts/run_pdf_research_demo.py --pdf "<pdf_path>" --company "<company>" --ticker "<ticker>" --question "<question>"`
++4. Return the answer, citation summary, and generated memo PDF path.
++5. If Omnigent server APIs are needed, use:
++   - `POST http://127.0.0.1:6767/v1/private-fund/pdf/register`
++   - `POST http://127.0.0.1:6767/v1/private-fund/pdf/ask`
++   - `POST http://127.0.0.1:6767/v1/private-fund/memo/generate`
++   - `GET http://127.0.0.1:6767/v1/private-fund/memo/{memo_id}/pdf`
++
++## Frontend Constraint
++
++Do not propose or rely on a separate "Private Fund PDF" panel. The intended UI is a single Omnigent chat box where the user asks questions and requests memo generation directly.
+diff --git a/omnigent/claude_native_bridge.py b/omnigent/claude_native_bridge.py
+index 92d1241a..4f2ed29a 100644
+--- a/omnigent/claude_native_bridge.py
++++ b/omnigent/claude_native_bridge.py
+@@ -123,6 +123,13 @@ _TMUX_SEND_TIMEOUT_S = 5.0
+ # The glyph persists while Claude is busy responding, so its presence
+ # means "input box mounted" (not "idle"), which is what injection needs.
+ _CLAUDE_PROMPT_GLYPH = "❯"
++# Some Claude Code distributions show a startup announcement screen that
++# blocks before the TUI input box mounts. Advance that page, then keep waiting
++# for the real prompt glyph before injecting the user's message.
++_CLAUDE_CONTINUE_PROMPT_MARKERS = ("press enter to continue",)
++_CLAUDE_CONTINUE_PROMPT_TAIL_LINES = 8
++_CLAUDE_CONTINUE_PROMPT_MAX_ENTERS = 3
++_CLAUDE_CONTINUE_PROMPT_ENTER_COOLDOWN_S = 1.0
+ # How many trailing non-empty lines to scan for the prompt glyph. The
+ # input box sits near the bottom of the pane; scanning only the tail
+ # avoids false positives from the glyph appearing in scrollback output.
+@@ -2787,6 +2794,23 @@ def _claude_prompt_rendered(pane: str) -> bool:
+     return any(_CLAUDE_PROMPT_GLYPH in line for line in non_empty[-_PROMPT_SCAN_TAIL_LINES:])
+
+
++def _claude_continue_prompt_rendered(pane: str) -> bool:
++    """
++    Return whether Claude Code is blocked on a startup continue prompt.
++
++    This is intentionally separate from the real ready check: a continue
++    prompt means the TUI is not yet ready for user input, but sending a single
++    Enter is safe and required before the input box can mount.
++
++    :param pane: Captured pane text from :func:`_capture_pane`.
++    :returns: ``True`` when a startup ``Press Enter to continue`` prompt is
++        visible near the bottom of the pane.
++    """
++    non_empty = [line.strip() for line in pane.splitlines() if line.strip()]
++    tail = "\n".join(non_empty[-_CLAUDE_CONTINUE_PROMPT_TAIL_LINES:]).lower()
++    return any(marker in tail for marker in _CLAUDE_CONTINUE_PROMPT_MARKERS)
++
++
+ def _submit_needle(content: str) -> str:
+     r"""
+     Derive a short marker string used to spot a draft in the input box.
+@@ -2904,9 +2928,21 @@ def _wait_for_claude_prompt_ready(
+         so Claude Code's own startup output surfaces in the caller's error.
+     """
+     deadline = time.monotonic() + timeout_s
++    continue_enters_sent = 0
++    last_continue_enter = 0.0
+     while time.monotonic() < deadline:
+-        if _claude_prompt_rendered(_capture_pane(socket_path, tmux_target)):
++        pane = _capture_pane(socket_path, tmux_target)
++        if _claude_prompt_rendered(pane):
+             return
++        now = time.monotonic()
++        if (
++            continue_enters_sent < _CLAUDE_CONTINUE_PROMPT_MAX_ENTERS
++            and now - last_continue_enter >= _CLAUDE_CONTINUE_PROMPT_ENTER_COOLDOWN_S
++            and _claude_continue_prompt_rendered(pane)
++        ):
++            _run_tmux(socket_path, "send-keys", "-t", tmux_target, "Enter")
++            continue_enters_sent += 1
++            last_continue_enter = now
+         time.sleep(_CLAUDE_READY_POLL_INTERVAL_S)
+     # Timed out: Claude Code never rendered its input prompt. Capture the
+     # pane one last time and attach its tail so the real cause — often a
+diff --git a/omnigent/server/app.py b/omnigent/server/app.py
+index d9cf4783..8fda09d6 100644
+--- a/omnigent/server/app.py
++++ b/omnigent/server/app.py
+@@ -59,6 +59,7 @@ from omnigent.server.routes.builtin_agents import create_builtin_agents_router
+ from omnigent.server.routes.comments import create_comments_router
+ from omnigent.server.routes.default_policies import create_default_policies_router
+ from omnigent.server.routes.policy_registry import create_policy_registry_router
++from omnigent.server.routes.private_fund_pdf import create_private_fund_pdf_router
+ from omnigent.server.routes.runner_tunnel import create_runner_tunnel_router
+ from omnigent.server.routes.session_mcp_servers import create_session_mcp_servers_router
+ from omnigent.server.routes.session_policies import create_session_policies_router
+@@ -1955,6 +1956,11 @@ def create_app(
+         prefix="/v1",
+         tags=["policy_registry"],
+     )
++    app.include_router(
++        create_private_fund_pdf_router(),
++        prefix="/v1",
++        tags=["private_fund_pdf"],
++    )
+
+     # ── Tunnel lifecycle callbacks (Step 8.5 crash recovery) ───
+     async def _on_runner_disconnect(runner_id: str) -> None:
+diff --git a/omnigent/server/routes/private_fund_pdf.py b/omnigent/server/routes/private_fund_pdf.py
+new file mode 100644
+index 00000000..a1346a7d
+--- /dev/null
++++ b/omnigent/server/routes/private_fund_pdf.py
+@@ -0,0 +1,606 @@
++"""Local private-fund PDF research routes.
++
++These endpoints intentionally run a direct PDF flow: register one local PDF,
++extract native page text, answer against temporary page-paragraph evidence, and
++generate a memo PDF. They do not build a persistent chunk index.
++"""
++
++from __future__ import annotations
++
++import logging
++import os
++import hashlib
++import re
++import shutil
++import sys
++import threading
++import subprocess
++from dataclasses import asdict, dataclass, is_dataclass
++from html.parser import HTMLParser
++from pathlib import Path
++from typing import Any
++from urllib.parse import urlencode
++
++from fastapi import APIRouter, HTTPException, Query
++from fastapi.responses import FileResponse
++from pydantic import BaseModel
++
++_logger = logging.getLogger(__name__)
++
++_PRIVATE_FUND_ROOT = Path(__file__).resolve().parents[4]
++_PRIVATE_FUND_SRC = _PRIVATE_FUND_ROOT / "src"
++if str(_PRIVATE_FUND_SRC) not in sys.path:
++    sys.path.insert(0, str(_PRIVATE_FUND_SRC))
++
++from pdf_research_demo.demo import ChatClient, MemoDraft, PdfResearchDemo  # noqa: E402
++from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config  # noqa: E402
++from pdf_research_demo.memo_pdf import render_memo_pdf  # noqa: E402
++from pdf_research_demo.models import Citation  # noqa: E402
++
++DEFAULT_PDF_PATH = _PRIVATE_FUND_ROOT / "tesla_extracted/20260129_10-K_0001628280-26-003952.pdf"
++SOURCE_RENDER_DIR = _PRIVATE_FUND_ROOT / "output/pdf_sources"
++SOURCE_RENDER_DPI = 144
++
++
++@dataclass(frozen=True)
++class _BboxWord:
++    text: str
++    x_min: float
++    y_min: float
++    x_max: float
++    y_max: float
++
++
++@dataclass(frozen=True)
++class _BboxLine:
++    text: str
++    x_min: float
++    y_min: float
++    x_max: float
++    y_max: float
++
++
++class _PdfBboxParser(HTMLParser):
++    def __init__(self) -> None:
++        super().__init__(convert_charrefs=True)
++        self.page_width = 0.0
++        self.page_height = 0.0
++        self.words: list[_BboxWord] = []
++        self._word_attrs: dict[str, str] | None = None
++        self._word_text: list[str] = []
++
++    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
++        attr_map = {key.lower(): value for key, value in attrs if value is not None}
++        if tag.lower() == "page":
++            self.page_width = _safe_float(attr_map.get("width"), 0.0)
++            self.page_height = _safe_float(attr_map.get("height"), 0.0)
++        elif tag.lower() == "word":
++            self._word_attrs = attr_map
++            self._word_text = []
++
++    def handle_data(self, data: str) -> None:
++        if self._word_attrs is not None:
++            self._word_text.append(data)
++
++    def handle_endtag(self, tag: str) -> None:
++        if tag.lower() != "word" or self._word_attrs is None:
++            return
++        text = "".join(self._word_text).strip()
++        attrs = self._word_attrs
++        self._word_attrs = None
++        self._word_text = []
++        if not text:
++            return
++        self.words.append(
++            _BboxWord(
++                text=text,
++                x_min=_safe_float(attrs.get("xmin"), 0.0),
++                y_min=_safe_float(attrs.get("ymin"), 0.0),
++                x_max=_safe_float(attrs.get("xmax"), 0.0),
++                y_max=_safe_float(attrs.get("ymax"), 0.0),
++            )
++        )
++
++
++class RegisterPdfRequest(BaseModel):
++    pdf_path: str
++    company_name: str | None = "Tesla, Inc."
++    ticker: str | None = "TSLA"
++
++
++class AskPdfRequest(BaseModel):
++    question: str
++    top_k: int = 3
++
++
++class MemoRequest(BaseModel):
++    company_name: str | None = None
++    ticker: str | None = None
++
++
++def _jsonable(value: Any) -> Any:
++    if hasattr(value, "to_dict"):
++        return _jsonable(value.to_dict())
++    if is_dataclass(value):
++        return _jsonable(asdict(value))
++    if isinstance(value, Path):
++        return str(value)
++    if isinstance(value, dict):
++        return {key: _jsonable(item) for key, item in value.items()}
++    if isinstance(value, list):
++        return [_jsonable(item) for item in value]
++    if isinstance(value, tuple):
++        return [_jsonable(item) for item in value]
++    return value
++
++
++def _trace_payload(demo: PdfResearchDemo, citations: list[Citation]) -> list[dict[str, Any]]:
++    return [_jsonable(demo.trace_citation(citation.citation_id)) for citation in citations]
++
++
++def _load_chat_client() -> tuple[ChatClient | None, dict[str, Any]]:
++    if os.environ.get("PRIVATE_FUND_USE_LLM", "1").strip().lower() in {"0", "false", "no"}:
++        return None, {"enabled": False, "reason": "PRIVATE_FUND_USE_LLM disabled"}
++
++    config_path = os.environ.get("PRIVATE_FUND_LLM_CONFIG") or None
++    try:
++        config = load_llm_config(config_path)
++    except Exception as exc:  # noqa: BLE001
++        _logger.warning("Could not load private fund LLM config: %s", exc)
++        return None, {"enabled": False, "error": str(exc)}
++    if config is None:
++        return None, {"enabled": False, "reason": "No OpenAI-compatible LLM config found"}
++    return OpenAICompatibleChatClient(config), config.safe_summary()
++
++
++def _safe_float(value: str | None, default: float) -> float:
++    try:
++        return float(value) if value is not None else default
++    except (TypeError, ValueError):
++        return default
++
++
++def _safe_page_no(page_no: int) -> int:
++    page = int(page_no)
++    if page < 1:
++        raise HTTPException(status_code=400, detail="page_no must be >= 1")
++    return page
++
++
++def _require_tool(name: str) -> str:
++    tool = shutil.which(name)
++    if not tool:
++        raise HTTPException(status_code=500, detail=f"Required PDF tool not found: {name}")
++    return tool
++
++
++def _render_cache_key(pdf_path: Path, page_no: int, dpi: int) -> str:
++    stat = pdf_path.stat()
++    raw = f"{pdf_path}:{stat.st_size}:{stat.st_mtime_ns}:{page_no}:{dpi}"
++    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
++
++
++def _png_size(path: Path) -> tuple[int, int]:
++    data = path.read_bytes()[:24]
++    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
++        raise HTTPException(status_code=500, detail="Rendered PDF page is not a valid PNG.")
++    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
++
++
++def _render_page_image(pdf_path: Path, page_no: int, dpi: int = SOURCE_RENDER_DPI) -> tuple[Path, int, int]:
++    page = _safe_page_no(page_no)
++    SOURCE_RENDER_DIR.mkdir(parents=True, exist_ok=True)
++    cache_key = _render_cache_key(pdf_path, page, dpi)
++    prefix = SOURCE_RENDER_DIR / cache_key
++    image_path = prefix.with_suffix(".png")
++    if not image_path.is_file():
++        command = [
++            _require_tool("pdftoppm"),
++            "-f",
++            str(page),
++            "-l",
++            str(page),
++            "-singlefile",
++            "-png",
++            "-r",
++            str(dpi),
++            str(pdf_path),
++            str(prefix),
++        ]
++        result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
++        if result.returncode != 0 or not image_path.is_file():
++            detail = (result.stderr or result.stdout or "Could not render PDF page.").strip()
++            raise HTTPException(status_code=400, detail=detail)
++    width, height = _png_size(image_path)
++    return image_path, width, height
++
++
++def _extract_page_words(pdf_path: Path, page_no: int) -> tuple[float, float, list[_BboxWord]]:
++    page = _safe_page_no(page_no)
++    command = [
++        _require_tool("pdftotext"),
++        "-f",
++        str(page),
++        "-l",
++        str(page),
++        "-bbox",
++        str(pdf_path),
++        "-",
++    ]
++    result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
++    if result.returncode != 0:
++        detail = (result.stderr or result.stdout or "Could not extract PDF page text.").strip()
++        raise HTTPException(status_code=400, detail=detail)
++    parser = _PdfBboxParser()
++    parser.feed(result.stdout)
++    return parser.page_width, parser.page_height, parser.words
++
++
++def _normalize_token(value: str) -> str:
++    return re.sub(r"[^a-z0-9]+", "", value.lower())
++
++
++_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9&./'-]*|\d+(?:\.\d+)?%?")
++_STOP_TOKENS = {
++    "and",
++    "the",
++    "for",
++    "from",
++    "with",
++    "that",
++    "this",
++    "into",
++    "about",
++    "current",
++    "core",
++    "risk",
++    "risks",
++}
++_QUERY_EXPANSIONS = {
++    "汽车": "automotive vehicle vehicles sales revenue",
++    "销售": "sales revenue",
++    "收入": "revenue revenues sales",
++    "能源": "energy generation storage",
++    "服务": "services other",
++    "多元": "diversify diversified energy services",
++    "软件": "software",
++    "人工智能": "artificial intelligence AI",
++    "自动驾驶": "FSD Robotaxi autonomous driving",
++    "关税": "tariff tariffs duties",
++    "供应链": "supply chain suppliers",
++    "成本": "cost costs structure",
++    "贸易": "trade policy tariffs",
++    "现金流": "cash flow liquidity",
++    "资本开支": "capital expenditures capex",
++}
++
++
++def _query_tokens(quote: str | None) -> list[str]:
++    if not quote:
++        return []
++    expanded = quote
++    for needle, addition in _QUERY_EXPANSIONS.items():
++        if needle in quote:
++            expanded += f" {addition}"
++
++    tokens: list[str] = []
++    seen: set[str] = set()
++    for raw in _TOKEN_RE.findall(expanded):
++        token = _normalize_token(raw)
++        if len(token) < 2 or token in _STOP_TOKENS or token in seen:
++            continue
++        seen.add(token)
++        tokens.append(token)
++        if len(tokens) >= 32:
++            break
++    return tokens
++
++
++def _group_words_into_lines(words: list[_BboxWord]) -> list[_BboxLine]:
++    sorted_words = sorted(words, key=lambda word: ((word.y_min + word.y_max) / 2, word.x_min))
++    grouped: list[list[_BboxWord]] = []
++    centers: list[float] = []
++    for word in sorted_words:
++        center = (word.y_min + word.y_max) / 2
++        if grouped and abs(center - centers[-1]) <= 3.5:
++            grouped[-1].append(word)
++            centers[-1] = (centers[-1] * (len(grouped[-1]) - 1) + center) / len(grouped[-1])
++        else:
++            grouped.append([word])
++            centers.append(center)
++
++    lines: list[_BboxLine] = []
++    for line_words in grouped:
++        words_by_x = sorted(line_words, key=lambda word: word.x_min)
++        lines.append(
++            _BboxLine(
++                text=" ".join(word.text for word in words_by_x),
++                x_min=min(word.x_min for word in words_by_x),
++                y_min=min(word.y_min for word in words_by_x),
++                x_max=max(word.x_max for word in words_by_x),
++                y_max=max(word.y_max for word in words_by_x),
++            )
++        )
++    return lines
++
++
++def _score_text(text: str, tokens: list[str]) -> int:
++    normalized = _normalize_token(text)
++    score = 0
++    for token in tokens:
++        if token and token in normalized:
++            score += 1 if token.isdigit() else 2
++    return score
++
++
++def _best_highlight_rects(words: list[_BboxWord], quote: str | None) -> list[tuple[float, float, float, float]]:
++    tokens = _query_tokens(quote)
++    if not tokens:
++        return []
++    lines = _group_words_into_lines(words)
++    if not lines:
++        return []
++
++    best_score = 0
++    best_span: tuple[int, int] | None = None
++    max_window = min(5, len(lines))
++    for start in range(len(lines)):
++        for window_size in range(1, max_window + 1):
++            end = start + window_size
++            if end > len(lines):
++                break
++            window_text = " ".join(line.text for line in lines[start:end])
++            score = _score_text(window_text, tokens)
++            if score > best_score:
++                best_score = score
++                best_span = (start, end)
++
++    if best_span is None or best_score <= 0:
++        return []
++
++    start, end = best_span
++    span_lines = lines[start:end]
++    padding_x = 4.0
++    padding_y = 2.0
++    return [
++        (
++            max(0.0, min(line.x_min for line in span_lines) - padding_x),
++            max(0.0, min(line.y_min for line in span_lines) - padding_y),
++            max(line.x_max for line in span_lines) + padding_x,
++            max(line.y_max for line in span_lines) + padding_y,
++        )
++    ]
++
++
++def _rect_payload(
++    rect: tuple[float, float, float, float],
++    *,
++    page_width: float,
++    page_height: float,
++    image_width: int,
++    image_height: int,
++) -> dict[str, float]:
++    x_min, y_min, x_max, y_max = rect
++    scale_x = image_width / page_width if page_width else SOURCE_RENDER_DPI / 72
++    scale_y = image_height / page_height if page_height else SOURCE_RENDER_DPI / 72
++    x = max(0.0, x_min * scale_x)
++    y = max(0.0, y_min * scale_y)
++    width = max(1.0, (x_max - x_min) * scale_x)
++    height = max(1.0, (y_max - y_min) * scale_y)
++    return {
++        "x": x,
++        "y": y,
++        "width": width,
++        "height": height,
++        "x_pct": x / image_width * 100 if image_width else 0.0,
++        "y_pct": y / image_height * 100 if image_height else 0.0,
++        "width_pct": width / image_width * 100 if image_width else 0.0,
++        "height_pct": height / image_height * 100 if image_height else 0.0,
++    }
++
++
++class _PrivateFundPdfWorkspace:
++    def __init__(self) -> None:
++        self._lock = threading.RLock()
++        self._llm_client, self._llm_summary = _load_chat_client()
++        self.demo = PdfResearchDemo(llm_client=self._llm_client)
++        self.document = None
++        self.company_name = "Tesla, Inc."
++        self.ticker = "TSLA"
++        self.memo_pdfs: dict[str, Path] = {}
++
++    def status(self) -> dict[str, Any]:
++        with self._lock:
++            return {
++                "status": "ready" if self.document else "empty",
++                "company_name": self.company_name,
++                "ticker": self.ticker,
++                "active_document": _jsonable(self.document) if self.document else None,
++                "evidence_count": len(self.demo.store.evidence),
++                "citation_count": len(self.demo.store.citations),
++                "memo_pdf_count": len(self.memo_pdfs),
++                "llm": self._llm_summary,
++                "default_pdf_path": str(DEFAULT_PDF_PATH),
++            }
++
++    def register_pdf(self, request: RegisterPdfRequest) -> dict[str, Any]:
++        pdf_path = Path(request.pdf_path).expanduser().resolve()
++        if not pdf_path.is_file():
++            raise HTTPException(status_code=404, detail=f"PDF not found: {pdf_path}")
++        if pdf_path.suffix.lower() != ".pdf":
++            raise HTTPException(status_code=400, detail="The selected file must be a PDF.")
++
++        company_name = (request.company_name or "Tesla, Inc.").strip() or "Tesla, Inc."
++        ticker = (request.ticker or "TSLA").strip() or "TSLA"
++
++        with self._lock:
++            self.demo = PdfResearchDemo(llm_client=self._llm_client)
++            try:
++                self.document = self.demo.ingest_pdf(pdf_path, None)
++            except Exception as exc:  # noqa: BLE001
++                raise HTTPException(status_code=400, detail=str(exc)) from exc
++            self.company_name = company_name
++            self.ticker = ticker
++            self.memo_pdfs = {}
++            return self.status()
++
++    def ask(self, request: AskPdfRequest) -> dict[str, Any]:
++        question = request.question.strip()
++        if not question:
++            raise HTTPException(status_code=400, detail="Question is required.")
++        if self.document is None:
++            raise HTTPException(status_code=409, detail="Register a PDF before asking questions.")
++
++        top_k = max(1, min(int(request.top_k or 3), 10))
++        with self._lock:
++            result = self.demo.answer_question(question, top_k=top_k)
++            return {
++                "question": result.question,
++                "answer": result.answer,
++                "needs_review": result.needs_review,
++                "llm_used": result.llm_used,
++                "llm_error": result.llm_error,
++                "citations": _jsonable(result.citations),
++                "traces": _trace_payload(self.demo, result.citations),
++            }
++
++    def trace(self, citation_id: str) -> dict[str, Any]:
++        with self._lock:
++            trace = self.demo.trace_citation(citation_id)
++        if not trace:
++            raise HTTPException(status_code=404, detail="Citation not found.")
++        return _jsonable(trace)
++
++    def generate_memo(self, request: MemoRequest | None = None) -> dict[str, Any]:
++        if self.document is None:
++            raise HTTPException(status_code=409, detail="Register a PDF before generating a memo.")
++
++        company_name = (request.company_name if request and request.company_name else self.company_name).strip()
++        ticker = (request.ticker if request and request.ticker else self.ticker).strip()
++        if not company_name or not ticker:
++            raise HTTPException(status_code=400, detail="Company name and ticker are required.")
++
++        with self._lock:
++            memo = self.demo.generate_memo(company_name, ticker)
++            pdf_path = render_memo_pdf(memo)
++            self.memo_pdfs[memo.memo_id] = pdf_path
++            return self._memo_payload(memo, pdf_path)
++
++    def memo_pdf_path(self, memo_id: str) -> Path:
++        with self._lock:
++            pdf_path = self.memo_pdfs.get(memo_id)
++        if pdf_path is None or not pdf_path.is_file():
++            raise HTTPException(status_code=404, detail="Memo PDF not found.")
++        return pdf_path
++
++    def source_pdf_path(self, pdf_path: str | None = None) -> Path:
++        if pdf_path:
++            resolved = Path(pdf_path).expanduser().resolve()
++        else:
++            with self._lock:
++                resolved = (
++                    Path(self.document.file_path).expanduser().resolve()
++                    if self.document
++                    else DEFAULT_PDF_PATH.resolve()
++                )
++        if not resolved.is_file():
++            raise HTTPException(status_code=404, detail=f"PDF not found: {resolved}")
++        if resolved.suffix.lower() != ".pdf":
++            raise HTTPException(status_code=400, detail="The selected file must be a PDF.")
++        return resolved
++
++    def _memo_payload(self, memo: MemoDraft, pdf_path: Path) -> dict[str, Any]:
++        return {
++            "memo_id": memo.memo_id,
++            "title": memo.title,
++            "markdown": memo.to_markdown(),
++            "sections": _jsonable(memo.sections),
++            "llm_used": memo.llm_used,
++            "llm_error": memo.llm_error,
++            "citations": _jsonable(memo.citations),
++            "traces": _trace_payload(self.demo, memo.citations),
++            "pdf_path": str(pdf_path),
++            "pdf_url": f"/v1/private-fund/memo/{memo.memo_id}/pdf",
++        }
++
++
++def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = None) -> APIRouter:
++    """Create local private-fund PDF endpoints mounted under ``/v1``."""
++    router = APIRouter()
++    active_workspace = workspace or _PrivateFundPdfWorkspace()
++
++    @router.get("/private-fund/pdf/status")
++    def status() -> dict[str, Any]:
++        return active_workspace.status()
++
++    @router.post("/private-fund/pdf/register")
++    def register_pdf(request: RegisterPdfRequest) -> dict[str, Any]:
++        return active_workspace.register_pdf(request)
++
++    @router.post("/private-fund/pdf/ask")
++    def ask_pdf(request: AskPdfRequest) -> dict[str, Any]:
++        return active_workspace.ask(request)
++
++    @router.get("/private-fund/citations/{citation_id}")
++    def trace_citation(citation_id: str) -> dict[str, Any]:
++        return active_workspace.trace(citation_id)
++
++    @router.post("/private-fund/memo/generate")
++    def generate_memo(request: MemoRequest | None = None) -> dict[str, Any]:
++        return active_workspace.generate_memo(request)
++
++    @router.get("/private-fund/memo/{memo_id}/pdf")
++    def memo_pdf(memo_id: str) -> FileResponse:
++        pdf_path = active_workspace.memo_pdf_path(memo_id)
++        return FileResponse(pdf_path, media_type="application/pdf", filename=pdf_path.name)
++
++    @router.get("/private-fund/pdf/source/page")
++    def source_page(
++        page_no: int = Query(..., ge=1),
++        quote: str | None = Query(default=None, max_length=1200),
++        pdf_path: str | None = Query(default=None),
++    ) -> dict[str, Any]:
++        resolved_pdf_path = active_workspace.source_pdf_path(pdf_path)
++        image_path, image_width, image_height = _render_page_image(resolved_pdf_path, page_no)
++        page_width, page_height, words = _extract_page_words(resolved_pdf_path, page_no)
++        rects = _best_highlight_rects(words, quote)
++        highlights = [
++            _rect_payload(
++                rect,
++                page_width=page_width,
++                page_height=page_height,
++                image_width=image_width,
++                image_height=image_height,
++            )
++            for rect in rects
++        ]
++        image_url = "/v1/private-fund/pdf/source/page-image?" + urlencode(
++            {"page_no": page_no, "pdf_path": str(resolved_pdf_path)}
++        )
++        return {
++            "page_no": page_no,
++            "pdf_path": str(resolved_pdf_path),
++            "file_name": resolved_pdf_path.name,
++            "image_url": image_url,
++            "image_width": image_width,
++            "image_height": image_height,
++            "page_width": page_width,
++            "page_height": page_height,
++            "highlights": highlights,
++            "matched": bool(highlights),
++        }
++
++    @router.get("/private-fund/pdf/source/page-image")
++    def source_page_image(
++        page_no: int = Query(..., ge=1),
++        pdf_path: str | None = Query(default=None),
++    ) -> FileResponse:
++        resolved_pdf_path = active_workspace.source_pdf_path(pdf_path)
++        image_path, _, _ = _render_page_image(resolved_pdf_path, page_no)
++        return FileResponse(
++            image_path,
++            media_type="image/png",
++            filename=f"{resolved_pdf_path.stem}-p{page_no}.png",
++        )
++
++    return router
+diff --git a/tests/test_claude_native_bridge.py b/tests/test_claude_native_bridge.py
+index 8c16a215..013a3de8 100644
+--- a/tests/test_claude_native_bridge.py
++++ b/tests/test_claude_native_bridge.py
+@@ -2561,6 +2561,75 @@ def test_inject_user_message_waits_for_claude_prompt_before_typing(
+     assert submit[-1] == "Enter"
+
+
++def test_inject_user_message_advances_startup_continue_prompt(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    """
++    Startup announcement pages are advanced before the prompt wait times out.
++
++    Some Claude Code launchers show an announcement screen that blocks on
++    ``Press Enter to continue...`` before rendering the real input prompt.
++    The bridge should send only that acknowledgement Enter while blocked,
++    then wait for ``❯`` before delivering the user's message.
++    """
++    monkeypatch.setattr("omnigent.claude_native_bridge._TRUSTED_PARENT", tmp_path)
++    monkeypatch.setattr("omnigent.claude_native_bridge._CLAUDE_READY_POLL_INTERVAL_S", 0.01)
++    monkeypatch.setattr(
++        "omnigent.claude_native_bridge._CLAUDE_CONTINUE_PROMPT_ENTER_COOLDOWN_S",
++        0.0,
++    )
++    bridge_dir = tmp_path / "bridge"
++    write_tmux_target(
++        bridge_dir,
++        socket_path=Path("/tmp/example/tmux.sock"),
++        tmux_target="claude:0.0",
++    )
++
++    calls: list[list[str]] = []
++    tui = {
++        "phase": "announcement",
++        "pane": "ANNOUNCEMENTS\nPress Enter to continue...",
++    }
++
++    def _fake_run(cmd: list[str], **kwargs: object) -> SimpleNamespace:
++        """
++        Simulate a launcher announcement followed by Claude's prompt.
++
++        :param cmd: Argv list passed to subprocess.run.
++        :param kwargs: Subprocess kwargs (ignored).
++        :returns: Fake CompletedProcess; capture-pane returns the simulated
++            pane, other calls return rc=0.
++        """
++        del kwargs
++        if "capture-pane" in cmd:
++            return SimpleNamespace(returncode=0, stdout=tui["pane"], stderr="")
++        if tui["phase"] == "announcement":
++            assert cmd[-1] == "Enter", f"unexpected key before prompt rendered: {cmd}"
++            tui["phase"] = "ready"
++            tui["pane"] = "❯ "
++        elif "paste-buffer" in cmd:
++            tui["pane"] = "❯ hello"
++        elif cmd[-1] == "Enter":
++            tui["pane"] = "❯ "
++        calls.append(cmd)
++        return SimpleNamespace(returncode=0, stdout="", stderr="")
++
++    monkeypatch.setattr("subprocess.run", _fake_run)
++    inject_user_message(bridge_dir, content="hello")
++
++    assert len(calls) == 6, (
++        f"Expected announcement Enter + 5 delivery calls, got {len(calls)} call(s)."
++    )
++    announcement_enter, clear_home, clear_kill, load, paste, submit = calls
++    assert announcement_enter[-1] == "Enter"
++    assert clear_home[-1] == "C-a"
++    assert clear_kill[-1] == "C-k"
++    assert load[3] == "load-buffer"
++    assert paste[3] == "paste-buffer"
++    assert submit[-1] == "Enter"
++
++
+ def test_inject_user_message_raises_when_prompt_never_renders(
+     tmp_path: Path,
+     monkeypatch: pytest.MonkeyPatch,
+diff --git a/web/src/components/blocks/BlockRenderer.test.tsx b/web/src/components/blocks/BlockRenderer.test.tsx
+index bafb5547..0a013ebd 100644
+--- a/web/src/components/blocks/BlockRenderer.test.tsx
++++ b/web/src/components/blocks/BlockRenderer.test.tsx
+@@ -4,7 +4,7 @@
+
+ import type { ReactNode } from "react";
+ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
++import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import type { RenderItem } from "@/lib/renderItems";
+ import { FileViewerContext } from "@/shell/FileViewerContext";
+@@ -464,6 +464,7 @@ function renderMessage(
+   text: string,
+   ctx: {
+     openFile: (path: string) => void;
++    openPdfSource?: (source: { pageNo: number; quote?: string; label?: string }) => void;
+     isChangedPath: (path: string) => boolean;
+     conversationId: string | undefined;
+     workspaceRoot?: string | null;
+@@ -493,6 +494,50 @@ function renderMessage(
+   );
+ }
+
++describe("BlockRenderer PDF source citations", () => {
++  it("opens the PDF source panel when a page citation is clicked", async () => {
++    const openPdfSource = vi.fn();
++    renderMessage("汽车销售仍是收入核心 [p.113]。", {
++      openFile: vi.fn(),
++      openPdfSource,
++      isChangedPath: () => false,
++      conversationId: "conv_1",
++    });
++
++    const citation = await screen.findByRole("link", { name: "[p.113]" });
++    fireEvent.click(citation);
++
++    expect(openPdfSource).toHaveBeenCalledWith(
++      expect.objectContaining({
++        pageNo: 113,
++        label: "p.113",
++        quote: expect.stringContaining("汽车销售"),
++      }),
++    );
++  });
++
++  it("opens the PDF source panel for 10-K page paragraph source text", async () => {
++    const openPdfSource = vi.fn();
++    renderMessage("来源：10-K p.113, para.1", {
++      openFile: vi.fn(),
++      openPdfSource,
++      isChangedPath: () => false,
++      conversationId: "conv_1",
++    });
++
++    const citation = await screen.findByRole("link", { name: "10-K p.113, para.1" });
++    fireEvent.click(citation);
++
++    expect(openPdfSource).toHaveBeenCalledWith(
++      expect.objectContaining({
++        pageNo: 113,
++        label: "p.113",
++        quote: expect.stringContaining("来源"),
++      }),
++    );
++  });
++});
++
+ describe("BlockRenderer inline file-path linkification", () => {
+   const fetchMock = vi.fn();
+
+diff --git a/web/src/components/blocks/BlockRenderer.tsx b/web/src/components/blocks/BlockRenderer.tsx
+index b5735cb0..ec5b99af 100644
+--- a/web/src/components/blocks/BlockRenderer.tsx
++++ b/web/src/components/blocks/BlockRenderer.tsx
+@@ -28,6 +28,7 @@ import {
+   useFileViewer,
+   useFileViewerConversationId,
+   useIsChangedPath,
++  usePdfSourceViewer,
+   useWorkspacePaths,
+ } from "@/shell/FileViewerContext";
+ import { toWorkspaceRelativePath, useWorkspaceFileExists } from "@/hooks/useWorkspaceChangedFiles";
+@@ -142,9 +143,150 @@ function ZoomableMarkdownImage({ src, alt, ...props }: React.ComponentProps<"img
+   return <ZoomableImage {...props} src={resolvedSrc} alt={alt ?? ""} />;
+ }
+
++const PDF_SOURCE_HASH = "#private-fund-pdf-source";
++const PAGE_CITATION_RE =
++  /(?:\[p\.\s*(\d{1,4})\])|(?:(?:\b(?:10-K|10K|Form\s+10-K)\s+)?p\.\s*(\d{1,4})(?:\s*,?\s*para\.?\s*\d+)?)\b/gi;
++const PAGE_CITATION_CLEAN_RE =
++  /(?:\[p\.\s*\d{1,4}\])|(?:(?:\b(?:10-K|10K|Form\s+10-K)\s+)?p\.\s*\d{1,4}(?:\s*,?\s*para\.?\s*\d+)?)\b/gi;
++
++function encodeMarkdownLinkParam(value: string): string {
++  return encodeURIComponent(value).replace(
++    /[!'()*]/g,
++    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
++  );
++}
++
++function decodeMarkdownLinkParam(value: string | null): string | undefined {
++  if (!value) return undefined;
++  try {
++    return decodeURIComponent(value);
++  } catch {
++    return value;
++  }
++}
++
++function escapeMarkdownLinkText(value: string): string {
++  return value.replace(/([\\[\]])/g, "\\$1");
++}
++
++function citationQuote(text: string, citationIndex: number, citationLength: number): string {
++  const before = text.slice(0, citationIndex);
++  const afterStart = citationIndex + citationLength;
++  const after = text.slice(afterStart);
++  const startBoundary = Math.max(
++    before.lastIndexOf("\n\n"),
++    before.lastIndexOf("\n"),
++    before.lastIndexOf("。"),
++    before.lastIndexOf("."),
++    before.lastIndexOf("；"),
++    before.lastIndexOf(";"),
++    before.lastIndexOf("！"),
++    before.lastIndexOf("!"),
++    before.lastIndexOf("？"),
++    before.lastIndexOf("?"),
++  );
++  const endOffsets = ["\n\n", "\n", "。", ".", "；", ";", "！", "!", "？", "?"]
++    .map((boundary) => after.indexOf(boundary))
++    .filter((offset) => offset >= 0);
++  const endBoundary = endOffsets.length > 0 ? afterStart + Math.min(...endOffsets) : text.length;
++  const start = startBoundary >= 0 ? startBoundary + 1 : Math.max(0, citationIndex - 360);
++  const end = Math.min(text.length, endBoundary + 1, citationIndex + 520);
++  return text
++    .slice(start, end)
++    .replace(PAGE_CITATION_CLEAN_RE, "")
++    .replace(/\s+/g, " ")
++    .trim()
++    .slice(0, 900);
++}
++
++export function linkifyPdfPageCitations(markdown: string): string {
++  return markdown.replace(
++    PAGE_CITATION_RE,
++    (
++      match: string,
++      bracketPageNoText: string | undefined,
++      sourcePageNoText: string | undefined,
++      offset: number,
++    ) => {
++      const pageNoText = bracketPageNoText ?? sourcePageNoText;
++      const isBracketed = bracketPageNoText !== undefined;
++      const nextChar = markdown[offset + match.length];
++      const previousChar = offset > 0 ? markdown[offset - 1] : "";
++      if (isBracketed && (nextChar === "(" || previousChar === "!")) return match;
++      if (!isBracketed && /[A-Za-z0-9_/#?=&%-]/.test(previousChar)) return match;
++      if (!pageNoText) return match;
++
++      const pageNo = Number.parseInt(pageNoText, 10);
++      if (!Number.isFinite(pageNo) || pageNo < 1) return match;
++
++      const label = `p.${pageNo}`;
++      const params = new URLSearchParams({ page: String(pageNo), label });
++      const quote = citationQuote(markdown, offset, match.length);
++      if (quote) params.set("quote", encodeMarkdownLinkParam(quote));
++      const displayText = isBracketed ? `\\[${label}\\]` : escapeMarkdownLinkText(match);
++      return `[${displayText}](${PDF_SOURCE_HASH}?${params.toString()})`;
++    },
++  );
++}
++
++function parsePdfSourceHref(href: string | undefined) {
++  if (!href || !href.startsWith(PDF_SOURCE_HASH)) return null;
++  const query = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
++  const params = new URLSearchParams(query);
++  const pageNo = Number.parseInt(params.get("page") ?? "", 10);
++  if (!Number.isFinite(pageNo) || pageNo < 1) return null;
++  return {
++    pageNo,
++    label: params.get("label") ?? `p.${pageNo}`,
++    quote: decodeMarkdownLinkParam(params.get("quote")),
++    pdfPath: params.get("pdf_path") || undefined,
++  };
++}
++
++function PdfCitationLink({
++  children,
++  className,
++  href,
++  onClick,
++  ...props
++}: React.ComponentPropsWithoutRef<"a">) {
++  const openPdfSource = usePdfSourceViewer();
++  const source = parsePdfSourceHref(href);
++
++  if (!source) {
++    return (
++      <a className={className} href={href} onClick={onClick} {...props}>
++        {children}
++      </a>
++    );
++  }
++
++  return (
++    <a
++      {...props}
++      className={cn(
++        "cursor-pointer whitespace-nowrap decoration-dotted underline-offset-2",
++        className,
++      )}
++      href={href}
++      onClick={(event) => {
++        onClick?.(event);
++        if (event.defaultPrevented || !openPdfSource) return;
++        event.preventDefault();
++        openPdfSource(source);
++      }}
++      rel={undefined}
++      target={undefined}
++    >
++      {children}
++    </a>
++  );
++}
++
+ // Stable module-level override map so MessageResponse's memo (which ignores
+ // `components` changes) never sees a new identity.
+ const FILE_PATH_AWARE_COMPONENTS = {
++  a: PdfCitationLink,
+   inlineCode: WorkspacePathInlineCode,
+   img: ZoomableMarkdownImage,
+ };
+@@ -281,7 +423,7 @@ export function FilePathAwareMessageResponse({
+
+   return (
+     <MessageResponse {...props} components={components} remarkPlugins={remarkPlugins}>
+-      {isString ? throttledText : children}
++      {isString ? linkifyPdfPageCitations(throttledText) : children}
+     </MessageResponse>
+   );
+ }
+diff --git a/web/src/shell/AppShell.tsx b/web/src/shell/AppShell.tsx
+index 0e314215..e26c8f1a 100644
+--- a/web/src/shell/AppShell.tsx
++++ b/web/src/shell/AppShell.tsx
+@@ -48,7 +48,7 @@ import { useResizableInlinePanel } from "@/hooks/useResizableInlinePanel";
+ import { ChatHeader } from "./ChatHeader";
+ import { ExecutionLogsPanel } from "./ExecutionLogsPanel";
+ import { FileViewer } from "./FileViewer";
+-import { FileViewerContext } from "./FileViewerContext";
++import { FileViewerContext, type PdfSourceSelection } from "./FileViewerContext";
+ import { FilesPanelDrawer } from "./FilesPanelDrawer";
+ import type { ChangedSort } from "./FlatFileList";
+ import { MobilePanelDrawer } from "./MobilePanelDrawer";
+@@ -160,6 +160,7 @@ export function AppShell() {
+   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(() =>
+     conversationId ? (readSessionWorkspaceState(conversationId).selectedFilePath ?? null) : null,
+   );
++  const [selectedPdfSource, setSelectedPdfSource] = useState<PdfSourceSelection | null>(null);
+   // Ordered list of open file tabs. ``selectedFilePath`` is the active tab
+   // (null = a scope view, Changed/All, is active). Tabs persist when the user
+   // switches to a scope view or another rail tab; only ``closeFile`` removes
+@@ -435,6 +436,7 @@ export function AppShell() {
+     () =>
+       ({
+         files: showFilesPanel,
++        sources: selectedPdfSource !== null,
+         // Agents tab is unconditional: the panel always lists at least
+         // the main agent (its "main" row), so there's never a dead end.
+         subagents: true,
+@@ -452,6 +454,7 @@ export function AppShell() {
+       }) as const,
+     [
+       showFilesPanel,
++      selectedPdfSource,
+       hideTerminalsTab,
+       railTerminals.length,
+       agentSupportsShells,
+@@ -472,7 +475,7 @@ export function AppShell() {
+   // convergent even when several tabs vanish at once.
+   useEffect(() => {
+     if (railTabsAvailable[rightRailTab]) return;
+-    const next = (["files", "subagents", "terminals", "todos"] as const).find(
++    const next = (["files", "sources", "subagents", "terminals", "todos"] as const).find(
+       (t) => railTabsAvailable[t],
+     );
+     if (next) setRightRailTab(next);
+@@ -524,12 +527,14 @@ export function AppShell() {
+     setShellsPanelOpen(false);
+     setTodosPanelOpen(false);
+     setFilesPanelShowHidden(false);
++    setSelectedPdfSource(null);
+     if (!conversationId) {
+       // No session → no rail; false (not the open default) so rail-gated
+       // effects like the ?view= URL sync stay quiet on non-session routes.
+       setRightPanelOpen(false);
+       setRightRailTab("files");
+       setSelectedFilePath(null);
++      setSelectedPdfSource(null);
+       setOpenFiles([]);
+       setPanelInitialKeyState(null);
+       stateConvRef.current = null;
+@@ -612,7 +617,11 @@ export function AppShell() {
+     }
+     const id = stateConvRef.current;
+     if (!id) return;
+-    writeSessionWorkspaceState(id, { rightRailTab, openFiles, selectedFilePath });
++    writeSessionWorkspaceState(id, {
++      rightRailTab: rightRailTab === "sources" ? "files" : rightRailTab,
++      openFiles,
++      selectedFilePath,
++    });
+   }, [rightRailTab, openFiles, selectedFilePath]);
+
+   // Sync the Files-panel scope into the URL. The tree is the default, so we
+@@ -652,6 +661,7 @@ export function AppShell() {
+   const openFileViewer = useCallback(
+     (path: string) => {
+       setSelectedFilePath(path);
++      setSelectedPdfSource(null);
+       // Add the path to the open tabs if it isn't already open; activating an
+       // already-open tab just re-selects it (no duplicate).
+       setOpenFiles((prev) => (prev.includes(path) ? prev : [...prev, path]));
+@@ -671,10 +681,12 @@ export function AppShell() {
+       setSubagentsPanelOpen(false); // close mobile agents drawer
+       setTodosPanelOpen(false); // close mobile tasks drawer
+       // Pull the rail to the Files tab when parked on a tab where the viewer
+-      // won't render (Terminals, Subagents, Todos). The Files tab surfaces the
+-      // FileViewer inline, so leave it undisturbed.
++      // won't render (Sources, Terminals, Subagents, Todos). The Files tab
++      // surfaces the FileViewer inline, so leave it undisturbed.
+       setRightRailTab((prev) =>
+-        prev === "terminals" || prev === "subagents" || prev === "todos" ? "files" : prev,
++        prev === "terminals" || prev === "subagents" || prev === "todos" || prev === "sources"
++          ? "files"
++          : prev,
+       );
+       // Reveal the rail so the viewer is actually visible — the rail defaults
+       // open but a session the user collapsed restores collapsed, so opening a
+@@ -716,6 +728,27 @@ export function AppShell() {
+     );
+   }, [setSearchParams]);
+
++  const openPdfSource = useCallback(
++    (source: PdfSourceSelection) => {
++      setSelectedPdfSource(source);
++      setSelectedFilePath(null);
++      setFileViewerCommentsOpen(false);
++      clearFileViewerUrl();
++      if (!terminalFirst) {
++        setPanelInitialKey(null);
++      }
++      setExecutionLogsKey(null);
++      setFilesPanelOpen(false);
++      setSubagentsPanelOpen(false);
++      setShellsPanelOpen(false);
++      setTodosPanelOpen(false);
++      setRightRailTab("sources");
++      setRightPanelOpen(true);
++      if (conversationId) writeSessionWorkspaceState(conversationId, { open: true });
++    },
++    [clearFileViewerUrl, conversationId, setPanelInitialKey, terminalFirst],
++  );
++
+   // Toggle the right (Workspace) sidebar — shared by the header's collapse
+   // button and the ⌘⌥]/Ctrl+Alt+] hotkey so they can't drift. Beyond flipping the
+   // open-state it persists the choice and keeps the deep-link URL in sync:
+@@ -848,6 +881,7 @@ export function AppShell() {
+
+   function openTerminalsPanel(key: string) {
+     setSelectedFilePath(null); // close file viewer
++    setSelectedPdfSource(null); // close PDF source viewer
+     clearFileViewerUrl();
+     setExecutionLogsKey(null); // close execution-logs panel
+     setFilesPanelOpen(false); // close files drawer
+@@ -859,6 +893,7 @@ export function AppShell() {
+
+   function openExecutionLogsPanel(key: string) {
+     setSelectedFilePath(null); // close file viewer
++    setSelectedPdfSource(null); // close PDF source viewer
+     clearFileViewerUrl();
+     setPanelInitialKey(null); // close terminals panel
+     setFilesPanelOpen(false); // close files drawer
+@@ -873,6 +908,7 @@ export function AppShell() {
+   // with the desktop rail via ``filesPanelFlatView``, so we don't force it.
+   function openFilesPanel() {
+     setSelectedFilePath(null); // close file viewer
++    setSelectedPdfSource(null); // close PDF source viewer
+     clearFileViewerUrl();
+     setPanelInitialKey(null); // close terminals panel
+     setExecutionLogsKey(null); // close execution-logs panel
+@@ -886,6 +922,7 @@ export function AppShell() {
+   // Agents tab) as a full-screen drawer.
+   function openSubagentsPanel() {
+     setSelectedFilePath(null); // close file viewer
++    setSelectedPdfSource(null); // close PDF source viewer
+     clearFileViewerUrl();
+     setPanelInitialKey(null); // close terminals panel
+     setExecutionLogsKey(null); // close execution-logs panel
+@@ -900,6 +937,7 @@ export function AppShell() {
+   // phones instead of requiring an existing shell before the entry works.
+   function openShellsPanel() {
+     setSelectedFilePath(null); // close file viewer
++    setSelectedPdfSource(null); // close PDF source viewer
+     clearFileViewerUrl();
+     setPanelInitialKey(null); // close terminals panel / terminal-first view
+     setExecutionLogsKey(null); // close execution-logs panel
+@@ -913,6 +951,7 @@ export function AppShell() {
+   // as a full-screen drawer.
+   function openTodosPanel() {
+     setSelectedFilePath(null); // close file viewer
++    setSelectedPdfSource(null); // close PDF source viewer
+     clearFileViewerUrl();
+     setPanelInitialKey(null); // close terminals panel
+     setExecutionLogsKey(null); // close execution-logs panel
+@@ -936,12 +975,13 @@ export function AppShell() {
+   const fileViewerContextValue = useMemo(
+     () => ({
+       openFile: openFileViewer,
++      openPdfSource,
+       isChangedPath,
+       conversationId,
+       workspaceRoot,
+       workspaceHome,
+     }),
+-    [openFileViewer, isChangedPath, conversationId, workspaceRoot, workspaceHome],
++    [openFileViewer, openPdfSource, isChangedPath, conversationId, workspaceRoot, workspaceHome],
+   );
+
+   // Context for descendants — ChatPage's ConnectionIndicator reads
+@@ -1164,6 +1204,7 @@ export function AppShell() {
+                       todosTotal={todos.length}
+                       rootSessionId={rootSessionId}
+                       selectedFilePath={selectedFilePath}
++                      pdfSourceSelection={selectedPdfSource}
+                       openFiles={openFiles}
+                       openFileViewer={openFileViewer}
+                       onCloseFile={closeFile}
+diff --git a/web/src/shell/FileViewerContext.tsx b/web/src/shell/FileViewerContext.tsx
+index 11fa1bdc..0971b146 100644
+--- a/web/src/shell/FileViewerContext.tsx
++++ b/web/src/shell/FileViewerContext.tsx
+@@ -4,8 +4,16 @@
+
+ import { createContext, useContext } from "react";
+
++export interface PdfSourceSelection {
++  pageNo: number;
++  quote?: string;
++  label?: string;
++  pdfPath?: string;
++}
++
+ interface FileViewerContextType {
+   openFile: (path: string) => void;
++  openPdfSource?: (source: PdfSourceSelection) => void;
+   /**
+    * Returns true when `path` is a known workspace file (present in the
+    * session's changed-files list). Used as the synchronous fast path for
+@@ -42,6 +50,14 @@ export function useFileViewer(): ((path: string) => void) | null {
+   return useContext(FileViewerContext)?.openFile ?? null;
+ }
+
++/**
++ * Returns the PDF source opener when rendered inside AppShell, or `null`
++ * outside of it. Chat citations use this to reveal the right-side source panel.
++ */
++export function usePdfSourceViewer(): ((source: PdfSourceSelection) => void) | null {
++  return useContext(FileViewerContext)?.openPdfSource ?? null;
++}
++
+ // Stable fallback used when the context is absent (tests, Storybook).
+ // A module-level constant avoids allocating a new function on every render.
+ const ALWAYS_FALSE = () => false;
+diff --git a/web/src/shell/PdfSourcePanel.tsx b/web/src/shell/PdfSourcePanel.tsx
+new file mode 100644
+index 00000000..0ff47a48
+--- /dev/null
++++ b/web/src/shell/PdfSourcePanel.tsx
+@@ -0,0 +1,146 @@
++import { AlertCircleIcon, FileSearchIcon, Loader2Icon } from "lucide-react";
++import { useEffect, useMemo, useState } from "react";
++import { cn } from "@/lib/utils";
++import type { PdfSourceSelection } from "./FileViewerContext";
++
++interface PdfSourceHighlight {
++  x_pct: number;
++  y_pct: number;
++  width_pct: number;
++  height_pct: number;
++}
++
++interface PdfSourcePage {
++  page_no: number;
++  file_name: string;
++  image_url: string;
++  image_width: number;
++  image_height: number;
++  highlights: PdfSourceHighlight[];
++  matched: boolean;
++}
++
++type PdfSourceState =
++  | { status: "idle" }
++  | { status: "loading" }
++  | { status: "error"; message: string }
++  | { status: "ready"; page: PdfSourcePage };
++
++function buildSourceUrl(selection: PdfSourceSelection): string {
++  const params = new URLSearchParams({ page_no: String(selection.pageNo) });
++  if (selection.quote) params.set("quote", selection.quote);
++  if (selection.pdfPath) params.set("pdf_path", selection.pdfPath);
++  return `/v1/private-fund/pdf/source/page?${params.toString()}`;
++}
++
++function errorMessage(value: unknown): string {
++  if (value instanceof Error) return value.message;
++  return "Could not render PDF source.";
++}
++
++export function PdfSourcePanel({ selection }: { selection: PdfSourceSelection | null }) {
++  const [state, setState] = useState<PdfSourceState>({ status: "idle" });
++  const requestUrl = useMemo(
++    () => (selection ? buildSourceUrl(selection) : null),
++    [selection],
++  );
++
++  useEffect(() => {
++    if (!requestUrl) {
++      setState({ status: "idle" });
++      return;
++    }
++
++    const controller = new AbortController();
++    setState({ status: "loading" });
++    fetch(requestUrl, { signal: controller.signal })
++      .then(async (response) => {
++        if (!response.ok) {
++          let detail = response.statusText;
++          try {
++            const payload = (await response.json()) as { detail?: string };
++            detail = payload.detail || detail;
++          } catch {
++            // Keep the HTTP status text fallback.
++          }
++          throw new Error(detail);
++        }
++        return response.json() as Promise<PdfSourcePage>;
++      })
++      .then((page) => setState({ status: "ready", page }))
++      .catch((error: unknown) => {
++        if (controller.signal.aborted) return;
++        setState({ status: "error", message: errorMessage(error) });
++      });
++
++    return () => controller.abort();
++  }, [requestUrl]);
++
++  const pageLabel = selection?.label ?? (selection ? `p.${selection.pageNo}` : "Source");
++
++  return (
++    <div className="flex min-h-0 flex-1 flex-col">
++      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
++        <FileSearchIcon className="size-4 text-muted-foreground" />
++        <div className="min-w-0">
++          <div className="truncate text-sm font-medium">{pageLabel}</div>
++          {state.status === "ready" && (
++            <div className="truncate text-xs text-muted-foreground">{state.page.file_name}</div>
++          )}
++        </div>
++      </div>
++
++      <div className="min-h-0 flex-1 overflow-auto bg-muted/20">
++        {state.status === "idle" && (
++          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
++            No source selected
++          </div>
++        )}
++
++        {state.status === "loading" && (
++          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
++            <Loader2Icon className="size-4 animate-spin" />
++            Rendering PDF page
++          </div>
++        )}
++
++        {state.status === "error" && (
++          <div className="flex h-full items-center justify-center px-4">
++            <div className="flex max-w-sm items-start gap-2 text-sm text-destructive">
++              <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
++              <span className="min-w-0 break-words">{state.message}</span>
++            </div>
++          </div>
++        )}
++
++        {state.status === "ready" && (
++          <div className="mx-auto w-full max-w-[920px] p-3">
++            <div className="relative overflow-hidden rounded-md border border-border bg-background">
++              <img
++                alt={`${state.page.file_name} page ${state.page.page_no}`}
++                className="block h-auto w-full select-none"
++                src={state.page.image_url}
++              />
++              {state.page.highlights.map((highlight, index) => (
++                <div
++                  aria-hidden
++                  className={cn(
++                    "pointer-events-none absolute rounded-[2px] border border-amber-500/80 bg-amber-300/35 shadow-[0_0_0_1px_rgba(245,158,11,0.18)]",
++                    !state.page.matched && "hidden",
++                  )}
++                  key={`${highlight.x_pct}-${highlight.y_pct}-${index}`}
++                  style={{
++                    left: `${highlight.x_pct}%`,
++                    top: `${highlight.y_pct}%`,
++                    width: `${highlight.width_pct}%`,
++                    height: `${highlight.height_pct}%`,
++                  }}
++                />
++              ))}
++            </div>
++          </div>
++        )}
++      </div>
++    </div>
++  );
++}
+diff --git a/web/src/shell/WorkspacePanel.test.tsx b/web/src/shell/WorkspacePanel.test.tsx
+index 4e51f1a5..999b2061 100644
+--- a/web/src/shell/WorkspacePanel.test.tsx
++++ b/web/src/shell/WorkspacePanel.test.tsx
+@@ -18,6 +18,9 @@ vi.mock("./FilesPanel", () => ({
+ vi.mock("./InlineTerminalsSection", () => ({
+   InlineTerminalsSection: () => <div data-testid="terminals-stub" />,
+ }));
++vi.mock("./PdfSourcePanel", () => ({
++  PdfSourcePanel: () => <div data-testid="pdf-source-stub" />,
++}));
+ vi.mock("./SubagentsPanel", () => ({
+   SubagentsPanel: () => <div data-testid="subagents-stub" />,
+ }));
+@@ -39,6 +42,7 @@ function renderWorkspace(
+   overrides: {
+     rightRailTab?: RightRailTab;
+     selectedFilePath?: string | null;
++    pdfSource?: boolean;
+     openFiles?: string[];
+   } = {},
+ ) {
+@@ -63,6 +67,9 @@ function renderWorkspace(
+       todosTotal={0}
+       rootSessionId={null}
+       selectedFilePath={overrides.selectedFilePath ?? null}
++      pdfSourceSelection={
++        overrides.pdfSource ? { pageNo: 65, label: "p.65", quote: "AI Robotaxi" } : null
++      }
+       openFiles={overrides.openFiles ?? []}
+       openFileViewer={openFileViewer}
+       onCloseFile={onCloseFile}
+@@ -178,4 +185,11 @@ describe("WorkspacePanel content area", () => {
+     expect(screen.getByTestId("files-panel-stub")).toBeInTheDocument();
+     expect(screen.queryByTestId("file-viewer-stub")).toBeNull();
+   });
++
++  it("renders the PDF source panel when the Sources tab is active", () => {
++    renderWorkspace({ rightRailTab: "sources", selectedFilePath: null, pdfSource: true });
++
++    expect(screen.getByRole("tab", { name: /sources/i })).toBeInTheDocument();
++    expect(screen.getByTestId("pdf-source-stub")).toBeInTheDocument();
++  });
+ });
+diff --git a/web/src/shell/WorkspacePanel.tsx b/web/src/shell/WorkspacePanel.tsx
+index 49c37aa9..e4c970cc 100644
+--- a/web/src/shell/WorkspacePanel.tsx
++++ b/web/src/shell/WorkspacePanel.tsx
+@@ -1,11 +1,13 @@
+-import { BotIcon, FileIcon, ListTodoIcon, TerminalIcon, XIcon } from "lucide-react";
++import { BotIcon, FileIcon, FileSearchIcon, ListTodoIcon, TerminalIcon, XIcon } from "lucide-react";
+ import { useCallback, useEffect, useRef } from "react";
+ import { cn } from "@/lib/utils";
+ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+ import { FilesPanel } from "./FilesPanel";
+ import { FileViewer } from "./FileViewer";
++import type { PdfSourceSelection } from "./FileViewerContext";
+ import type { ChangedSort } from "./FlatFileList";
+ import { InlineTerminalsSection } from "./InlineTerminalsSection";
++import { PdfSourcePanel } from "./PdfSourcePanel";
+ import { SubagentsPanel } from "./SubagentsPanel";
+ import { TodoPanel } from "./TodoPanel";
+ import { type RightRailTab, TAB_BADGE_BASE } from "./railTabs";
+@@ -174,6 +176,8 @@ interface WorkspacePanelProps {
+   rootSessionId: string | null;
+   /** Active file path, or null when the Files tab shows a scope view. */
+   selectedFilePath: string | null;
++  /** Active PDF source selection, or null before a page citation is opened. */
++  pdfSourceSelection: PdfSourceSelection | null;
+   /** Ordered list of open file tabs, shown as a strip in the Files panel. */
+   openFiles: string[];
+   /** Open a file in the inline viewer (adds/activates its tab). */
+@@ -236,6 +240,7 @@ export function WorkspacePanel({
+   todosTotal,
+   rootSessionId,
+   selectedFilePath,
++  pdfSourceSelection,
+   openFiles,
+   openFileViewer,
+   onCloseFile,
+@@ -324,6 +329,15 @@ export function WorkspacePanel({
+                 )}
+               </TabsTrigger>
+             )}
++            {pdfSourceSelection !== null && (
++              <TabsTrigger
++                value="sources"
++                className="h-[32px] gap-[6px] rounded-[8px] px-[12px] text-[13px] leading-5"
++              >
++                <FileSearchIcon className="size-4" />
++                Sources
++              </TabsTrigger>
++            )}
+             <TabsTrigger
+               value="subagents"
+               className="h-[32px] gap-[6px] rounded-[8px] px-[12px] text-[13px] leading-5"
+@@ -425,6 +439,8 @@ export function WorkspacePanel({
+           />
+         ) : rightRailTab === "subagents" && rootSessionId ? (
+           <SubagentsPanel conversationId={conversationId} rootSessionId={rootSessionId} />
++        ) : rightRailTab === "sources" ? (
++          <PdfSourcePanel selection={pdfSourceSelection} />
+         ) : rightRailTab === "todos" && isClaudeNative ? (
+           <TodoPanel frameless />
+         ) : rightRailTab === "terminals" && showShellsTab ? (
+diff --git a/web/src/shell/railTabs.ts b/web/src/shell/railTabs.ts
+index 47a2f743..4a4bff58 100644
+--- a/web/src/shell/railTabs.ts
++++ b/web/src/shell/railTabs.ts
+@@ -9,7 +9,7 @@
+  */
+
+ /** The selectable tabs in the right workspace rail, in display order. */
+-export type RightRailTab = "files" | "subagents" | "terminals" | "todos";
++export type RightRailTab = "files" | "sources" | "subagents" | "terminals" | "todos";
+
+ /**
+  * Count/status badge geometry shared across the rail tabs and the mobile

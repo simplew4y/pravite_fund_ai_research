@@ -326,12 +326,9 @@ function resolveSessionId() {
         if (!root) return;
         root.innerHTML = `
             <div class="welcome-message" id="initial-message">
-                <h2>Hello, I'm FinSagent</h2>
-                <p>我是您的专业金融 Agent。</p>
-                <p>我可以帮您进行市场分析、财报解读和复杂问题规划。</p>
-                <p style="font-size: 13px; margin-top: 12px; color: var(--color-primary);">
-                    💡 提示：使用右上角「⚡ 预览模式」开关可切换快速草稿+深度分析（Preview）或标准单阶段响应模式
-                </p>
+                <h2>FinSagent Research</h2>
+                <p>基于本地资料进行金融问答、memo 生成和可靠溯源。</p>
+                <p>每个核心结论都应能回到原始文件、版本、页码和证据片段。</p>
             </div>`;
     }
 

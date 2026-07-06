@@ -2,6 +2,7 @@
 
 const STEP_CONFIG = {
     'orchestrator': { title: 'Agent 路由', icon: '🧭' },
+    'pdf_research': { title: 'Evidence 检索', icon: 'PDF' },
     'preview_draft': { title: '草稿工作流', icon: '⚡' },
     'agentic_search': { title: 'Agentic 检索', icon: 'AS' },
     'agents': { title: '专家执行', icon: '🧠' },
