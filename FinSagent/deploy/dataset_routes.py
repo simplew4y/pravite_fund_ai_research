@@ -874,6 +874,20 @@ def _parse_json_list(value: Any) -> list[Any]:
     return []
 
 
+def _parse_json_dict(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
 _MINERU_CONTENT_COORD_SIZE = {"page_width": 1000.0, "page_height": 1000.0}
 
 
@@ -2275,6 +2289,510 @@ def _table_artifacts_for_file(
     }
 
 
+def _artifact_chunk_and_locations(
+    dataset: dict[str, Any],
+    *,
+    doc_id: str,
+    artifact_id: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    with _connect_collection(dataset) as conn:
+        chunk = conn.execute(
+            "SELECT * FROM chunks WHERE doc_id = ? AND chunk_id = ?",
+            (doc_id, artifact_id),
+        ).fetchone()
+        if chunk is None:
+            raise HTTPException(status_code=404, detail="artifact not found")
+        locations = conn.execute(
+            """
+            SELECT *
+            FROM chunk_locations
+            WHERE doc_id = ? AND chunk_id = ?
+            ORDER BY location_index ASC
+            """,
+            (doc_id, artifact_id),
+        ).fetchall()
+    return _row_to_dict(chunk), [_row_to_dict(row) for row in locations]
+
+
+def _location_payload(row: dict[str, Any]) -> dict[str, Any]:
+    metadata = _parse_json_dict(row.get("metadata_json"))
+    bbox_list = _parse_json_list(row.get("bbox_json"))
+    source_refs = _parse_json_list(row.get("source_refs_json"))
+    payload = {
+        "location_id": row.get("location_id"),
+        "location_index": row.get("location_index"),
+        "page_start": row.get("page_start"),
+        "page_end": row.get("page_end"),
+        "slide_start": row.get("slide_start"),
+        "slide_end": row.get("slide_end"),
+        "sheet_name": row.get("sheet_name"),
+        "cell_range": row.get("cell_range"),
+        "heading_path": row.get("heading_path"),
+        "display_text": row.get("display_text"),
+        "bbox": bbox_list[0] if bbox_list else metadata.get("bbox"),
+        "bboxes": bbox_list,
+        "source_refs": source_refs,
+        "metadata": metadata,
+    }
+    for key in (
+        "block_id",
+        "block_type",
+        "paragraph_index",
+        "table_index",
+        "image_index",
+        "line_start",
+        "line_end",
+        "token_index",
+        "slide_number",
+        "slide_index",
+        "shape_index",
+        "shape_name",
+        "shape_type",
+        "notes_index",
+        "region_type",
+        "source_region_id",
+        "bounds",
+    ):
+        if key in metadata and payload.get(key) is None:
+            payload[key] = metadata.get(key)
+    return payload
+
+
+def _artifact_location_payloads(chunk: dict[str, Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    payloads = [_location_payload(row) for row in rows]
+    if payloads:
+        return payloads
+    metadata = _parse_json_dict(chunk.get("metadata_json"))
+    for idx, loc in enumerate(metadata.get("source_locations") or []):
+        if not isinstance(loc, dict):
+            continue
+        payload = dict(loc)
+        payload.setdefault("location_index", idx)
+        payload.setdefault("metadata", loc)
+        payloads.append(payload)
+    return payloads
+
+
+def _processed_blocks_path(dataset: dict[str, Any], file_type: str, stem: str) -> Optional[Path]:
+    root = _dataset_abs_root(dataset) / "1_processed" / file_type
+    candidates = [
+        root / stem / "blocks.json",
+        root / _strip_storage_prefix(stem) / "blocks.json",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+    if root.exists():
+        for path in sorted(root.glob("*/blocks.json")):
+            name = path.parent.name
+            if name == stem or name == _strip_storage_prefix(stem) or stem.endswith(name) or name.endswith(_strip_storage_prefix(stem)):
+                return path
+    return None
+
+
+def _source_view_base(
+    dataset: dict[str, Any],
+    item: dict[str, Any],
+    chunk: dict[str, Any],
+    locations: list[dict[str, Any]],
+    *,
+    artifact_kind: str,
+    renderer: str,
+) -> dict[str, Any]:
+    return {
+        "dataset_id": dataset["dataset_id"],
+        "file": {
+            "file_id": item.get("doc_id"),
+            "doc_id": item.get("doc_id"),
+            "original_filename": item.get("original_filename"),
+            "file_type": item.get("file_type"),
+            "stored_path": item.get("stored_path"),
+        },
+        "artifact": {
+            "id": chunk.get("chunk_id"),
+            "kind": artifact_kind,
+            "type": chunk.get("content_type"),
+            "title": chunk.get("title_path") or f"Chunk #{chunk.get('chunk_index')}",
+            "summary": chunk.get("summary"),
+            "source_ref": chunk.get("source_ref"),
+            "content": chunk.get("content"),
+        },
+        "renderer": renderer,
+        "file_type": item.get("file_type"),
+        "locations": locations,
+        "highlight_locations": [],
+        "model": {},
+        "message": "",
+    }
+
+
+def _bbox_xyxy(value: Any) -> Optional[dict[str, Any]]:
+    if isinstance(value, list) and len(value) >= 4:
+        try:
+            x0, y0, x1, y1 = [float(value[i]) for i in range(4)]
+        except (TypeError, ValueError):
+            return None
+        return {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
+    if isinstance(value, dict):
+        try:
+            if {"x0", "y0", "x1", "y1"}.issubset(value.keys()):
+                x0, y0, x1, y1 = float(value["x0"]), float(value["y0"]), float(value["x1"]), float(value["y1"])
+                return {"x0": x0, "y0": y0, "x1": x1, "y1": y1, "unit": value.get("unit")}
+            if {"left", "top", "width", "height"}.issubset(value.keys()):
+                x0 = float(value["left"])
+                y0 = float(value["top"])
+                width = float(value["width"])
+                height = float(value["height"])
+                return {"x0": x0, "y0": y0, "x1": x0 + width, "y1": y0 + height, "unit": value.get("unit")}
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _markdown_table_from_rows(rows: list[list[str]]) -> str:
+    if not rows:
+        return ""
+    header = rows[0]
+    lines = [
+        "| " + " | ".join(str(cell or "") for cell in header) + " |",
+        "| " + " | ".join("---" for _ in header) + " |",
+    ]
+    for row in rows[1:]:
+        lines.append("| " + " | ".join(str(cell or "") for cell in row) + " |")
+    return "\n".join(lines)
+
+
+def _ppt_source_view(
+    dataset: dict[str, Any],
+    item: dict[str, Any],
+    chunk: dict[str, Any],
+    locations: list[dict[str, Any]],
+    artifact_kind: str,
+) -> dict[str, Any]:
+    response = _source_view_base(dataset, item, chunk, locations, artifact_kind=artifact_kind, renderer="ppt")
+    source = Path(item["resolved_path"])
+    target_slides = {
+        _int_or_none(loc.get("slide_start") or loc.get("slide_number"))
+        for loc in locations
+        if _int_or_none(loc.get("slide_start") or loc.get("slide_number")) is not None
+    }
+    if not target_slides:
+        target_slides = {1}
+    try:
+        from pptx import Presentation  # type: ignore
+
+        prs = Presentation(str(source))
+        slides = []
+        for slide_number in sorted(target_slides):
+            if slide_number is None or slide_number < 1 or slide_number > len(prs.slides):
+                continue
+            slide = prs.slides[slide_number - 1]
+            shapes = []
+            for shape_index, shape in enumerate(slide.shapes, start=1):
+                bbox = {
+                    "x0": float(getattr(shape, "left", 0) or 0),
+                    "y0": float(getattr(shape, "top", 0) or 0),
+                    "x1": float((getattr(shape, "left", 0) or 0) + (getattr(shape, "width", 0) or 0)),
+                    "y1": float((getattr(shape, "top", 0) or 0) + (getattr(shape, "height", 0) or 0)),
+                    "unit": "emu",
+                }
+                text = ""
+                if getattr(shape, "has_text_frame", False):
+                    text = "\n".join(p.text for p in shape.text_frame.paragraphs if str(p.text or "").strip())
+                table_rows: list[list[str]] = []
+                if getattr(shape, "has_table", False):
+                    for row in shape.table.rows:
+                        table_rows.append([str(cell.text or "").strip() for cell in row.cells])
+                shapes.append(
+                    {
+                        "shape_index": shape_index,
+                        "name": str(getattr(shape, "name", "") or ""),
+                        "shape_type": str(getattr(shape, "shape_type", "") or ""),
+                        "bbox": bbox,
+                        "text": text,
+                        "table": table_rows,
+                    }
+                )
+            slides.append({"slide_number": slide_number, "shapes": shapes})
+        response["model"] = {
+            "slide_width": float(prs.slide_width),
+            "slide_height": float(prs.slide_height),
+            "slides": slides,
+        }
+    except Exception as exc:
+        response["model"] = {"slides": []}
+        response["message"] = f"Unable to render PPT source structure: {exc}"
+
+    highlights = []
+    for loc in locations:
+        bbox = _bbox_xyxy(loc.get("bbox"))
+        slide_number = _int_or_none(loc.get("slide_start") or loc.get("slide_number")) or 1
+        if bbox:
+            highlights.append(
+                {
+                    "kind": "ppt_shape",
+                    "slide_number": slide_number,
+                    "shape_index": loc.get("shape_index"),
+                    "bbox": bbox,
+                    "display_text": loc.get("display_text") or f"slide {slide_number}",
+                }
+            )
+        else:
+            highlights.append(
+                {
+                    "kind": "ppt_slide",
+                    "slide_number": slide_number,
+                    "display_text": loc.get("display_text") or f"slide {slide_number}",
+                }
+            )
+    response["highlight_locations"] = highlights
+    return response
+
+
+def _excel_source_view(
+    dataset: dict[str, Any],
+    item: dict[str, Any],
+    chunk: dict[str, Any],
+    locations: list[dict[str, Any]],
+    artifact_kind: str,
+) -> dict[str, Any]:
+    response = _source_view_base(dataset, item, chunk, locations, artifact_kind=artifact_kind, renderer="excel")
+    source = Path(item["resolved_path"])
+    target_ranges = []
+    for loc in locations:
+        sheet_name = loc.get("sheet_name") or loc.get("metadata", {}).get("sheet_name")
+        cell_range = loc.get("cell_range") or loc.get("metadata", {}).get("cell_range")
+        if sheet_name and cell_range:
+            target_ranges.append({"sheet_name": str(sheet_name), "cell_range": str(cell_range), "display_text": loc.get("display_text")})
+    if not target_ranges:
+        metadata = _parse_json_dict(chunk.get("metadata_json"))
+        sheet_name = metadata.get("sheet_name")
+        cell_range = metadata.get("union_cell_range")
+        if sheet_name and cell_range:
+            target_ranges.append({"sheet_name": str(sheet_name), "cell_range": str(cell_range), "display_text": f"{sheet_name}!{cell_range}"})
+
+    try:
+        from openpyxl import load_workbook  # type: ignore
+        from openpyxl.utils import get_column_letter  # type: ignore
+        from openpyxl.utils.cell import range_boundaries  # type: ignore
+
+        wb = load_workbook(str(source), read_only=True, data_only=False)
+        if not target_ranges and wb.sheetnames:
+            target_ranges.append({"sheet_name": wb.sheetnames[0], "cell_range": "A1:H30", "display_text": wb.sheetnames[0]})
+        sheets = []
+        highlights = []
+        for target in target_ranges[:4]:
+            sheet_name = target["sheet_name"]
+            if sheet_name not in wb.sheetnames:
+                continue
+            ws = wb[sheet_name]
+            try:
+                min_col, min_row, max_col, max_row = range_boundaries(target["cell_range"])
+            except Exception:
+                min_col, min_row, max_col, max_row = 1, 1, min(ws.max_column or 8, 8), min(ws.max_row or 30, 30)
+            view_min_col = max(1, min_col - 2)
+            view_max_col = min(max(ws.max_column or max_col, max_col), max_col + 2, view_min_col + 31)
+            view_min_row = max(1, min_row - 4)
+            view_max_row = min(max(ws.max_row or max_row, max_row), max_row + 4, view_min_row + 79)
+            rows = []
+            for row_idx in range(view_min_row, view_max_row + 1):
+                cells = []
+                for col_idx in range(view_min_col, view_max_col + 1):
+                    value = ws.cell(row=row_idx, column=col_idx).value
+                    cells.append(
+                        {
+                            "address": f"{get_column_letter(col_idx)}{row_idx}",
+                            "row": row_idx,
+                            "col": col_idx,
+                            "value": "" if value is None else str(value),
+                            "highlight": min_row <= row_idx <= max_row and min_col <= col_idx <= max_col,
+                        }
+                    )
+                rows.append({"row": row_idx, "cells": cells})
+            sheets.append(
+                {
+                    "sheet_name": sheet_name,
+                    "columns": [get_column_letter(i) for i in range(view_min_col, view_max_col + 1)],
+                    "min_row": view_min_row,
+                    "max_row": view_max_row,
+                    "min_col": view_min_col,
+                    "max_col": view_max_col,
+                    "rows": rows,
+                }
+            )
+            highlights.append(
+                {
+                    "kind": "excel_range",
+                    "sheet_name": sheet_name,
+                    "cell_range": target["cell_range"],
+                    "bounds": {"min_row": min_row, "max_row": max_row, "min_col": min_col, "max_col": max_col},
+                    "display_text": target.get("display_text") or f"{sheet_name}!{target['cell_range']}",
+                }
+            )
+        response["model"] = {"sheets": sheets}
+        response["highlight_locations"] = highlights
+    except Exception as exc:
+        response["model"] = {"sheets": []}
+        response["message"] = f"Unable to render Excel source structure: {exc}"
+    return response
+
+
+def _word_source_view(
+    dataset: dict[str, Any],
+    item: dict[str, Any],
+    chunk: dict[str, Any],
+    locations: list[dict[str, Any]],
+    artifact_kind: str,
+) -> dict[str, Any]:
+    response = _source_view_base(dataset, item, chunk, locations, artifact_kind=artifact_kind, renderer="word")
+    stem = Path(item["resolved_path"]).stem
+    blocks_path = _processed_blocks_path(dataset, "word", stem)
+    target_block_ids = {str(loc.get("block_id")) for loc in locations if loc.get("block_id")}
+    target_paragraphs = {_int_or_none(loc.get("paragraph_index")) for loc in locations if _int_or_none(loc.get("paragraph_index")) is not None}
+    target_tables = {_int_or_none(loc.get("table_index")) for loc in locations if _int_or_none(loc.get("table_index")) is not None}
+    target_images = {_int_or_none(loc.get("image_index")) for loc in locations if _int_or_none(loc.get("image_index")) is not None}
+    blocks = []
+    if blocks_path:
+        try:
+            data = _load_json_artifact(blocks_path)
+            source_blocks = data.get("blocks") if isinstance(data, dict) else data
+            if isinstance(source_blocks, list):
+                for block in source_blocks:
+                    if not isinstance(block, dict):
+                        continue
+                    loc = _parse_json_dict(block.get("source_location"))
+                    block_id = str(block.get("block_id") or loc.get("block_id") or "")
+                    paragraph_index = _int_or_none(block.get("paragraph_index") or loc.get("paragraph_index"))
+                    table_index = _int_or_none(block.get("table_index") or loc.get("table_index"))
+                    image_index = _int_or_none(block.get("image_index") or loc.get("image_index"))
+                    highlighted = (
+                        (block_id and block_id in target_block_ids)
+                        or (paragraph_index is not None and paragraph_index in target_paragraphs)
+                        or (table_index is not None and table_index in target_tables)
+                        or (image_index is not None and image_index in target_images)
+                    )
+                    blocks.append(
+                        {
+                            "block_id": block_id,
+                            "block_type": block.get("block_type") or loc.get("block_type") or "paragraph",
+                            "content": block.get("content") or "",
+                            "heading_path": block.get("heading_path") or loc.get("heading_path") or [],
+                            "paragraph_index": paragraph_index,
+                            "table_index": table_index,
+                            "image_index": image_index,
+                            "highlight": highlighted,
+                        }
+                    )
+        except Exception as exc:
+            response["message"] = f"Unable to read Word blocks: {exc}"
+    if not blocks:
+        blocks = [
+            {
+                "block_id": chunk.get("chunk_id"),
+                "block_type": chunk.get("content_type") or "word_section",
+                "content": chunk.get("content") or "",
+                "heading_path": chunk.get("title_path") or "",
+                "highlight": True,
+            }
+        ]
+    response["model"] = {"blocks": blocks}
+    response["highlight_locations"] = [
+        {
+            "kind": "word_block",
+            "block_id": loc.get("block_id"),
+            "paragraph_index": loc.get("paragraph_index"),
+            "table_index": loc.get("table_index"),
+            "image_index": loc.get("image_index"),
+            "display_text": loc.get("display_text"),
+        }
+        for loc in locations
+    ]
+    return response
+
+
+def _md_source_view(
+    dataset: dict[str, Any],
+    item: dict[str, Any],
+    chunk: dict[str, Any],
+    locations: list[dict[str, Any]],
+    artifact_kind: str,
+) -> dict[str, Any]:
+    response = _source_view_base(dataset, item, chunk, locations, artifact_kind=artifact_kind, renderer="md")
+    source = Path(item["resolved_path"])
+    ranges = []
+    for loc in locations:
+        line_start = _int_or_none(loc.get("line_start"))
+        line_end = _int_or_none(loc.get("line_end")) or line_start
+        if line_start is not None:
+            ranges.append({"line_start": line_start, "line_end": line_end, "display_text": loc.get("display_text")})
+    try:
+        raw_lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        raw_lines = []
+    if ranges:
+        min_line = max(1, min(item["line_start"] for item in ranges) - 8)
+        max_line = min(len(raw_lines), max(item["line_end"] for item in ranges) + 8)
+    else:
+        min_line, max_line = 1, min(len(raw_lines), 160)
+    lines = []
+    for line_no in range(min_line, max_line + 1):
+        highlighted = any(item["line_start"] <= line_no <= item["line_end"] for item in ranges)
+        lines.append({"line": line_no, "text": raw_lines[line_no - 1] if line_no - 1 < len(raw_lines) else "", "highlight": highlighted})
+    response["model"] = {"lines": lines, "line_count": len(raw_lines)}
+    response["highlight_locations"] = [{"kind": "md_lines", **item} for item in ranges]
+    if not ranges:
+        response["message"] = "No exact Markdown line range is available for this artifact."
+    return response
+
+
+def _pdf_source_view(
+    dataset: dict[str, Any],
+    item: dict[str, Any],
+    chunk: dict[str, Any],
+    location_rows: list[dict[str, Any]],
+    locations: list[dict[str, Any]],
+    artifact_kind: str,
+) -> dict[str, Any]:
+    response = _source_view_base(dataset, item, chunk, locations, artifact_kind=artifact_kind, renderer="pdf")
+    stem = Path(item["resolved_path"]).stem
+    page_sizes = _page_sizes_for_stem(dataset, stem)
+    pdf_locations = []
+    for row in location_rows:
+        pdf_locations.extend(_artifact_locations(row, page_sizes))
+    response["model"] = {"pdf_url": f"/datasets/{dataset['dataset_id']}/files/{item['doc_id']}/pdf"}
+    response["highlight_locations"] = pdf_locations
+    response["locations"] = pdf_locations
+    if not pdf_locations:
+        response["message"] = "No exact PDF bbox is available for this artifact."
+    return response
+
+
+def _build_source_view(
+    dataset: dict[str, Any],
+    item: dict[str, Any],
+    *,
+    artifact_id: str,
+    artifact_kind: str,
+) -> dict[str, Any]:
+    chunk, location_rows = _artifact_chunk_and_locations(dataset, doc_id=item["doc_id"], artifact_id=artifact_id)
+    locations = _artifact_location_payloads(chunk, location_rows)
+    file_type = str(item.get("file_type") or "").lower()
+    if file_type == "pdf":
+        return _pdf_source_view(dataset, item, chunk, location_rows, locations, artifact_kind)
+    if file_type == "ppt":
+        return _ppt_source_view(dataset, item, chunk, locations, artifact_kind)
+    if file_type == "excel":
+        return _excel_source_view(dataset, item, chunk, locations, artifact_kind)
+    if file_type == "word":
+        return _word_source_view(dataset, item, chunk, locations, artifact_kind)
+    if file_type == "md":
+        return _md_source_view(dataset, item, chunk, locations, artifact_kind)
+    response = _source_view_base(dataset, item, chunk, locations, artifact_kind=artifact_kind, renderer="text")
+    response["model"] = {"content": chunk.get("content") or ""}
+    response["message"] = f"No source renderer is available for file_type={file_type or 'unknown'}."
+    return response
+
+
 @router.get("/datasets")
 async def list_datasets():
     init_dataset_registry()
@@ -2352,6 +2870,23 @@ async def get_dataset_file_pdf(dataset_id: str, file_id: str):
         path,
         media_type="application/pdf",
         filename=item.get("original_filename") or path.name,
+    )
+
+
+@router.get("/datasets/{dataset_id}/files/{file_id}/source-view")
+async def get_dataset_file_source_view(
+    dataset_id: str,
+    file_id: str,
+    artifact_id: str = Query(..., min_length=1),
+    artifact_kind: str = Query("chunk"),
+):
+    dataset = _require_dataset(dataset_id)
+    item = _resolve_dataset_file(dataset, file_id)
+    return _build_source_view(
+        dataset,
+        item,
+        artifact_id=artifact_id,
+        artifact_kind=artifact_kind,
     )
 
 

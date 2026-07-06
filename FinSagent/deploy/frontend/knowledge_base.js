@@ -711,6 +711,238 @@
     loadPdfDocument();
   }
 
+  function sourceAnchor(value) {
+    return 'kb-src-' + String(value == null ? '' : value).replace(/[^a-zA-Z0-9_-]+/g, '-');
+  }
+
+  function markdownTableToHtml(value) {
+    const lines = String(value || '').split('\n').filter(function (line) {
+      return line.trim().startsWith('|') && line.trim().endsWith('|');
+    });
+    if (lines.length < 2) return '<pre>' + escapeHtml(value || '') + '</pre>';
+    const rows = lines.filter(function (line, index) {
+      return index !== 1 || !/^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|$/.test(line.trim());
+    }).map(function (line) {
+      return line.trim().slice(1, -1).split('|').map(function (cell) {
+        return cell.trim();
+      });
+    });
+    return '<table><tbody>' + rows.map(function (row, rowIndex) {
+      const tag = rowIndex === 0 ? 'th' : 'td';
+      return '<tr>' + row.map(function (cell) {
+        return '<' + tag + '>' + escapeHtml(cell) + '</' + tag + '>';
+      }).join('') + '</tr>';
+    }).join('') + '</tbody></table>';
+  }
+
+  function tableRowsToMarkdown(rows) {
+    if (!Array.isArray(rows) || !rows.length) return '';
+    return rows.map(function (row) {
+      return '| ' + (Array.isArray(row) ? row : []).map(function (cell) {
+        return String(cell == null ? '' : cell).replace(/\|/g, '\\|');
+      }).join(' | ') + ' |';
+    }).join('\n');
+  }
+
+  function sourceLocationLabel(renderer, loc, index) {
+    if (!loc) return '位置 ' + (index + 1);
+    if (loc.display_text) return loc.display_text;
+    if (renderer === 'ppt') return loc.slide_number ? ('slide ' + loc.slide_number) : ('位置 ' + (index + 1));
+    if (renderer === 'excel') return [loc.sheet_name, loc.cell_range].filter(Boolean).join(' · ') || ('位置 ' + (index + 1));
+    if (renderer === 'word') {
+      if (loc.paragraph_index != null) return 'paragraph ' + loc.paragraph_index;
+      if (loc.table_index != null) return 'table ' + loc.table_index;
+      if (loc.image_index != null) return 'image ' + loc.image_index;
+    }
+    if (renderer === 'md' && loc.line_start != null) {
+      return loc.line_end && loc.line_end !== loc.line_start ? ('lines ' + loc.line_start + '-' + loc.line_end) : ('line ' + loc.line_start);
+    }
+    return '位置 ' + (index + 1);
+  }
+
+  function sourceAnchorForLocation(renderer, loc, index) {
+    if (renderer === 'ppt') return sourceAnchor('ppt-slide-' + (loc.slide_number || 1));
+    if (renderer === 'excel') return sourceAnchor('excel-' + (loc.sheet_name || 'sheet'));
+    if (renderer === 'md') return sourceAnchor('md-line-' + (loc.line_start || 1));
+    if (renderer === 'word') {
+      if (loc.block_id) return sourceAnchor('word-block-' + loc.block_id);
+      if (loc.paragraph_index != null) return sourceAnchor('word-paragraph-' + loc.paragraph_index);
+      if (loc.table_index != null) return sourceAnchor('word-table-' + loc.table_index);
+      if (loc.image_index != null) return sourceAnchor('word-image-' + loc.image_index);
+    }
+    return sourceAnchor(renderer + '-' + index);
+  }
+
+  function renderSourceRail(data) {
+    const renderer = data.renderer || 'source';
+    const locations = Array.isArray(data.highlight_locations) ? data.highlight_locations : [];
+    if (!locations.length) {
+      return '<div class="kb-pdf-rail-title">定位位置</div><div class="kb-pdf-rail-empty">暂无精确来源位置</div>';
+    }
+    return '<div class="kb-pdf-rail-title">定位位置</div>' + locations.map(function (loc, index) {
+      const anchor = sourceAnchorForLocation(renderer, loc, index);
+      return '<button class="kb-pdf-rail-page' + (index === 0 ? ' active' : '') + '" type="button" data-source-anchor="' + escapeHtml(anchor) + '">' +
+        '<strong>' + escapeHtml(sourceLocationLabel(renderer, loc, index)) + '</strong>' +
+        '<small>' + escapeHtml(renderer) + '</small>' +
+      '</button>';
+    }).join('');
+  }
+
+  function renderPptSourceView(data) {
+    const model = data.model || {};
+    const highlights = Array.isArray(data.highlight_locations) ? data.highlight_locations : [];
+    const slideWidth = Number(model.slide_width || 9144000);
+    const slideHeight = Number(model.slide_height || 5143500);
+    const html = (model.slides || []).map(function (slide) {
+      const slideNumber = Number(slide.slide_number || 1);
+      const slideAnchor = sourceAnchor('ppt-slide-' + slideNumber);
+      const fullSlideHighlight = highlights.some(function (loc) {
+        return Number(loc.slide_number || 1) === slideNumber && !loc.bbox;
+      });
+      const shapes = (slide.shapes || []).map(function (shape) {
+        const box = shape.bbox || {};
+        const x0 = Number(box.x0 || 0);
+        const y0 = Number(box.y0 || 0);
+        const x1 = Number(box.x1 || x0);
+        const y1 = Number(box.y1 || y0);
+        const highlighted = highlights.some(function (loc) {
+          return Number(loc.slide_number || 1) === slideNumber && Number(loc.shape_index || -1) === Number(shape.shape_index || -2);
+        });
+        const style = 'left:' + (x0 / slideWidth * 100) + '%;top:' + (y0 / slideHeight * 100) + '%;width:' + ((x1 - x0) / slideWidth * 100) + '%;height:' + ((y1 - y0) / slideHeight * 100) + '%;';
+        const content = shape.table && shape.table.length
+          ? markdownTableToHtml(tableRowsToMarkdown(shape.table))
+          : escapeHtml(shape.text || shape.name || '');
+        return '<div class="kb-ppt-shape' + (highlighted ? ' highlight' : '') + '" style="' + style + '">' + content + '</div>';
+      }).join('');
+      return '<section class="kb-ppt-slide-wrap" id="' + escapeHtml(slideAnchor) + '">' +
+        '<div class="kb-source-caption">Slide ' + slideNumber + '</div>' +
+        '<div class="kb-ppt-slide' + (fullSlideHighlight ? ' highlight' : '') + '" style="aspect-ratio:' + slideWidth + '/' + slideHeight + '">' + shapes + '</div>' +
+      '</section>';
+    }).join('');
+    return html || '<div class="kb-empty-state"><div><h2>暂无 PPT 视图</h2><p>' + escapeHtml(data.message || '没有可渲染的 slide。') + '</p></div></div>';
+  }
+
+  function renderExcelSourceView(data) {
+    const sheets = (data.model && data.model.sheets) || [];
+    return sheets.map(function (sheet) {
+      const anchor = sourceAnchor('excel-' + sheet.sheet_name);
+      const head = '<thead><tr><th></th>' + (sheet.columns || []).map(function (col) {
+        return '<th>' + escapeHtml(col) + '</th>';
+      }).join('') + '</tr></thead>';
+      const body = '<tbody>' + (sheet.rows || []).map(function (row) {
+        return '<tr><th>' + escapeHtml(row.row) + '</th>' + (row.cells || []).map(function (cell) {
+          return '<td class="' + (cell.highlight ? 'highlight' : '') + '" title="' + escapeHtml(cell.address) + '">' + escapeHtml(cell.value) + '</td>';
+        }).join('') + '</tr>';
+      }).join('') + '</tbody>';
+      return '<section class="kb-excel-sheet" id="' + escapeHtml(anchor) + '">' +
+        '<div class="kb-source-caption">' + escapeHtml(sheet.sheet_name) + '</div>' +
+        '<div class="kb-excel-grid"><table>' + head + body + '</table></div>' +
+      '</section>';
+    }).join('') || '<div class="kb-empty-state"><div><h2>暂无 Excel 视图</h2><p>' + escapeHtml(data.message || '没有可渲染的 sheet。') + '</p></div></div>';
+  }
+
+  function wordAnchorForBlock(block, index) {
+    if (block.block_id) return sourceAnchor('word-block-' + block.block_id);
+    if (block.paragraph_index != null) return sourceAnchor('word-paragraph-' + block.paragraph_index);
+    if (block.table_index != null) return sourceAnchor('word-table-' + block.table_index);
+    if (block.image_index != null) return sourceAnchor('word-image-' + block.image_index);
+    return sourceAnchor('word-block-' + index);
+  }
+
+  function renderWordSourceView(data) {
+    const blocks = (data.model && data.model.blocks) || [];
+    return '<article class="kb-word-doc">' + blocks.map(function (block, index) {
+      const type = String(block.block_type || '');
+      const content = String(block.content || '');
+      const heading = Array.isArray(block.heading_path) ? block.heading_path.join(' > ') : String(block.heading_path || '');
+      const body = type.indexOf('table') >= 0 ? '<div class="kb-table-scroll">' + markdownTableToHtml(content) + '</div>' : '<div class="kb-word-text">' + escapeHtml(content) + '</div>';
+      return '<section class="kb-word-block' + (block.highlight ? ' highlight' : '') + '" id="' + escapeHtml(wordAnchorForBlock(block, index)) + '">' +
+        (heading ? '<div class="kb-source-caption">' + escapeHtml(heading) + '</div>' : '') +
+        body +
+      '</section>';
+    }).join('') + '</article>';
+  }
+
+  function renderMdSourceView(data) {
+    const lines = (data.model && data.model.lines) || [];
+    return '<div class="kb-md-lines">' + lines.map(function (line) {
+      const anchor = sourceAnchor('md-line-' + line.line);
+      return '<div class="kb-md-line' + (line.highlight ? ' highlight' : '') + '" id="' + escapeHtml(anchor) + '">' +
+        '<span>' + escapeHtml(line.line) + '</span><code>' + escapeHtml(line.text || '') + '</code>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  function renderStructuredSourceView(data) {
+    const renderer = data.renderer || 'source';
+    let body = '';
+    if (renderer === 'ppt') body = renderPptSourceView(data);
+    else if (renderer === 'excel') body = renderExcelSourceView(data);
+    else if (renderer === 'word') body = renderWordSourceView(data);
+    else if (renderer === 'md') body = renderMdSourceView(data);
+    else body = '<pre class="kb-source-pre">' + escapeHtml((data.model && data.model.content) || data.artifact && data.artifact.content || '') + '</pre>';
+    els.pdfBody.innerHTML =
+      '<div class="kb-pdf-layout kb-source-layout">' +
+        '<div class="kb-source-stage" id="kb-source-stage">' +
+          (data.message ? '<div class="kb-source-note">' + escapeHtml(data.message) + '</div>' : '') +
+          body +
+        '</div>' +
+        '<aside class="kb-pdf-rail" id="kb-source-rail" aria-label="定位位置">' + renderSourceRail(data) + '</aside>' +
+      '</div>';
+    const first = (data.highlight_locations || [])[0];
+    if (first) {
+      window.setTimeout(function () {
+        const target = document.getElementById(sourceAnchorForLocation(renderer, first, 0));
+        if (target) target.scrollIntoView({ block: 'center', inline: 'center' });
+      }, 0);
+    }
+  }
+
+  async function openArtifactSourcePreview(kind, index) {
+    const ctx = state.currentArtifacts;
+    if (!ctx) return;
+    const list = kind === 'table' ? ctx.tables : ctx.chunks;
+    const item = list[Number(index)];
+    if (!item) {
+      showToast('未找到该产物。');
+      return;
+    }
+    if (!item.id) {
+      if (ctx.fileType === 'pdf') {
+        openArtifactPdfPreview(kind, index);
+      } else {
+        showToast('该产物缺少 chunk_id，无法定位源文件。');
+      }
+      return;
+    }
+    els.pdfTitle.textContent = itemTitle(kind, item);
+    els.pdfBody.innerHTML = '<div class="kb-empty-state"><div><h2>正在加载源文件视图</h2><p>' + escapeHtml(ctx.fileType || 'document') + '</p></div></div>';
+    openModal(els.pdfModal);
+    try {
+      const data = await api('/datasets/' + encodeURIComponent(ctx.datasetId) + '/files/' + encodeURIComponent(ctx.fileId) + '/source-view?artifact_id=' + encodeURIComponent(item.id) + '&artifact_kind=' + encodeURIComponent(kind));
+      if (data.renderer === 'pdf') {
+        state.pdfPreview = {
+          doc: null,
+          locations: Array.isArray(data.highlight_locations) ? data.highlight_locations : normalizedPreviewLocations(kind, item),
+          currentIndex: 0,
+          url: data.model && data.model.pdf_url ? data.model.pdf_url : ('/datasets/' + encodeURIComponent(ctx.datasetId) + '/files/' + encodeURIComponent(ctx.fileId) + '/pdf'),
+          kind: kind,
+          item: item,
+        };
+        els.pdfBody.innerHTML =
+          '<div class="kb-pdf-layout">' +
+            '<div class="kb-pdf-stage" id="kb-pdf-stage"></div>' +
+            '<aside class="kb-pdf-rail" id="kb-pdf-rail" aria-label="定位页"></aside>' +
+          '</div>';
+        await loadPdfDocument();
+      } else {
+        renderStructuredSourceView(data);
+      }
+    } catch (err) {
+      setPdfError(err.message || '源文件视图加载失败。');
+    }
+  }
+
   async function loadPdfDocument() {
     const lib = window.pdfjsLib;
     if (!lib) {
@@ -988,9 +1220,22 @@
         }
         return;
       }
+      const sourceAnchorTarget = target.closest('[data-source-anchor]');
+      if (sourceAnchorTarget) {
+        const anchor = sourceAnchorTarget.getAttribute('data-source-anchor');
+        const node = anchor ? document.getElementById(anchor) : null;
+        if (node) {
+          document.querySelectorAll('[data-source-anchor]').forEach(function (button) {
+            button.classList.remove('active');
+          });
+          sourceAnchorTarget.classList.add('active');
+          node.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+        }
+        return;
+      }
       const artifactItem = target.closest('[data-artifact-kind]');
       if (artifactItem) {
-        openArtifactPdfPreview(
+        openArtifactSourcePreview(
           artifactItem.getAttribute('data-artifact-kind'),
           artifactItem.getAttribute('data-artifact-index')
         );
@@ -1029,7 +1274,7 @@
         const artifactItem = event.target.closest('[data-artifact-kind]');
         if (artifactItem) {
           event.preventDefault();
-          openArtifactPdfPreview(
+          openArtifactSourcePreview(
             artifactItem.getAttribute('data-artifact-kind'),
             artifactItem.getAttribute('data-artifact-index')
           );
