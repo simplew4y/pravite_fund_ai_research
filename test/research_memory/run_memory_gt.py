@@ -5,7 +5,7 @@ import sys, json, tempfile, shutil, urllib.request, traceback, os
 sys.path.insert(0, "FinSagent/src")
 from core.ResearchMemory import ResearchMemory
 
-GT_PATH = "test/gt/memory_gt.json"
+GT_PATH = "test/research_memory/memory_gt.json"
 SUITE = json.load(open(GT_PATH))
 
 def bge_embed(t):
