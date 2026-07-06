@@ -1,0 +1,8 @@
+[submodule "omnigent"]
+	path = omnigent
+	url = https://github.com/omnigent-ai/omnigent.git
+	branch = main
+[submodule "cc-haha"]
+	path = cc-haha
+	url = https://github.com/NanmiCoder/cc-haha.git
+	branch = main
