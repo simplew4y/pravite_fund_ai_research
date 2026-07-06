@@ -1,0 +1,138 @@
+[
+  {
+    "idx": 1,
+    "original_question": "极氪2024年毛利率是多少？",
+    "rewritten_question": ["What was Zeekr's gross margin for FY2024?"],
+    "answer": "15.2%。根据极氪2024年年报，其毛利率为15.2%，同比提升1.8个百分点。",
+    "memory_tags": ["single_hop_exact", "fact_retrieval"],
+    "scenario": "facts表精确匹配：entity=极氪, metric=毛利率, value=15.2%"
+  },
+  {
+    "idx": 2,
+    "original_question": "极氪的盈利能力怎么样？",
+    "rewritten_question": ["How is Zeekr's profitability?"],
+    "answer": "极氪2024年毛利率为15.2%，同比有所提升。这表明其盈利能力在改善，主要得益于供应链成本控制和规模效应。",
+    "memory_tags": ["single_hop_semantic", "cross_session"],
+    "scenario": "语义召回：'盈利能力'应召回'毛利率'事实，预期返回15.2%"
+  },
+  {
+    "idx": 3,
+    "original_question": "我们之前聊过极氪毛利率，那个数据是最新版吗？",
+    "rewritten_question": ["Is the gross margin figure we discussed for Zeekr the latest version?"],
+    "answer": "不是。最初我们讨论的15.2%是年报口径；后来中报口径修正为14.8%。您需要确认使用哪个口径。",
+    "memory_tags": ["multi_hop_version", "cross_session"],
+    "scenario": "版本追踪：两个session同entity+metric不同value，都应召回并提示版本差异"
+  },
+  {
+    "idx": 4,
+    "original_question": "那蔚来呢？",
+    "rewritten_question": ["What about NIO?"],
+    "answer": "蔚来2024年毛利率为12.1%。相比极氪的15.2%（或中报口径14.8%），蔚来毛利率略低。",
+    "memory_tags": ["multi_hop_session", "entity_comparison"],
+    "scenario": "Session上下文指代：上一轮讨论极氪毛利率，'那蔚来呢？'应理解指代并检索蔚来数据"
+  },
+  {
+    "idx": 5,
+    "original_question": "这个毛利率数据是从财务数据看到的吗？",
+    "rewritten_question": ["Is this gross margin figure from the financial data?"],
+    "answer": "是的。极氪的毛利率数据来源于其2024年年报（年报.pdf，第92页）。如果需要详细数据，我可以通过M-Agent直接调取其财务数据集。",
+    "memory_tags": ["citation_tracking"],
+    "scenario": "引用溯源：fact_citations关联年报.pdf p92"
+  },
+  {
+    "idx": 6,
+    "original_question": "之前讨论极氪毛利率的时候，引用的原文来源在哪？",
+    "rewritten_question": ["What is the original source for Zeekr's gross margin?"],
+    "answer": "引用来源包括：(1) 极氪2024年年报（年报.pdf p92）——记载毛利率15.2%；(2) 极氪中报（中报.pdf p45）——修正为14.8%。",
+    "memory_tags": ["citation_tracking", "version_tracking"],
+    "scenario": "多引用关联：一个fact可能有多个citation，fact_citations表应返回所有相关引用"
+  },
+  {
+    "idx": 7,
+    "original_question": "我之前说过我喜欢先看数据再看分析，记得吗？",
+    "rewritten_question": ["Do you remember my preference for data first, analysis second?"],
+    "answer": "记得。您偏好先看到数据结论，再看详细分析。回答相关问题时会优先给出准确数值。",
+    "memory_tags": ["global_memory", "user_preference"],
+    "scenario": "全局记忆：user_preference存储的偏好应在对话中自动注入"
+  },
+  {
+    "idx": 8,
+    "original_question": "比亚迪毛利率和极氪比怎么样？",
+    "rewritten_question": ["How does BYD's gross margin compare to Zeekr's?"],
+    "answer": "比亚迪2024年毛利率为17.1%，高于极氪的15.2%（年报口径）。比亚迪在成本控制上更有优势，但极氪改善速度更快。",
+    "memory_tags": ["cross_session", "entity_comparison"],
+    "scenario": "跨session实体对比：两个entity在不同session中的facts应同时召回"
+  },
+  {
+    "idx": 9,
+    "original_question": "我之前关于毛利率做了几轮分析，把关键节点总结一下",
+    "rewritten_question": ["Summarize the key milestones from our discussion on gross margin"],
+    "answer": "关于毛利率的讨论关键节点：(1) 最初确认极氪15.2% (年报)；(2) 中报修正为14.8%；(3) 对比了蔚来12.1%和比亚迪17.1%；(4) 最终结论是极氪毛利率改善趋势向好。",
+    "memory_tags": ["checkpoint_summary", "cross_session"],
+    "scenario": "长会话checkpoint：多轮/多session讨论应能归纳关键节点"
+  },
+  {
+    "idx": 10,
+    "original_question": "帮我查一下极氪销量的最新数据",
+    "rewritten_question": ["Look up the latest Zeekr sales data"],
+    "answer": "根据此前讨论，极氪2024年销量为222,123辆。",
+    "memory_tags": ["session_context", "fact_retrieval"],
+    "scenario": "Session内消息检索：同一session中之前讨论的销量数据应能通过qa_messages检索到"
+  },
+  {
+    "idx": 11,
+    "original_question": "我好像之前讨论过一家公司的毛利率，还想再问一下相关数据",
+    "rewritten_question": ["I discussed some company's gross margin before, can you remind me?"],
+    "answer": "您之前讨论过的公司包括：极氪（15.2%/14.8%）、蔚来（12.1%）、比亚迪（17.1%）。请问您想具体看哪一家？",
+    "memory_tags": ["cross_session", "global_retrieve"],
+    "scenario": "模糊召回：没有指定entity时，应返回所有相关实体供选择"
+  },
+  {
+    "idx": 12,
+    "original_question": "这个数据有没有在定期报告更新后修正过？",
+    "rewritten_question": ["Has this figure been revised after subsequent reports?"],
+    "answer": "是的。极氪毛利率最初基于年报为15.2%（版本1），后基于中报修正为14.8%（版本2，分析师user_a修正）。旧版本已标记为superseded，新版本为当前有效数据。",
+    "memory_tags": ["version_tracking", "superseded_at"],
+    "scenario": "版本演进：同一entity+metric的两个版本，旧版superseded新版有效"
+  },
+  {
+    "idx": 13,
+    "original_question": "我之前在分析极氪毛利率的时候，为什么有两版数据？",
+    "rewritten_question": ["Why are there two versions of Zeekr's gross margin?"],
+    "answer": "出现了两版数据是因为年报和中报的口径不一致：年报（2024年全年）口径毛利率15.2%，而中报（2024年上半年）口径为14.8%。两版都是正确的，只是统计时间段不同。",
+    "memory_tags": ["version_tracking", "multi_hop"],
+    "scenario": "版本解释：系统应能列出同一entity+metric的所有版本及其差异"
+  },
+  {
+    "idx": 14,
+    "original_question": "分析师A和B各自关注的毛利率数据分别是什么？",
+    "rewritten_question": ["What are the gross margin figures tracked by analysts A and B respectively?"],
+    "answer": "分析师A（关注极氪）：极氪毛利率15.2%（年报口径）。分析师B（关注新能源）：蔚来毛利率12.1%、比亚迪毛利率17.1%。不同分析师的数据通过analyst_id隔离。",
+    "memory_tags": ["analyst_isolation", "cross_session"],
+    "scenario": "分析师隔离：不同analyst_id写入的数据应被正确路由和隔离"
+  },
+  {
+    "idx": 15,
+    "original_question": "你记得我的分析习惯吗？",
+    "rewritten_question": ["Do you remember my analysis workflow preference?"],
+    "answer": "根据我的记录，您偏好先看数据再看分析，每次会要求对比同行。我会按照这个习惯组织回答。",
+    "memory_tags": ["global_memory", "user_preference"],
+    "scenario": "全局记忆自动注入：无需显式查询，global_memory_text应自动在对话上下文中"
+  },
+  {
+    "idx": 16,
+    "original_question": "给我把所有毛利率相关的事实列一个表格",
+    "rewritten_question": ["List all gross margin related facts in a table"],
+    "answer": "| 公司 | 毛利率 | 期间 | 版本 | 来源 |\n|------|--------|------|------|------|\n| 极氪 | 15.2% | FY2024 | v1 | 年报.pdf p92 |\n| 极氪 | 14.8% (中报口径) | FY2024 | v2 | 中报.pdf p45 |\n| 蔚来 | 12.1% | FY2024 | v1 | - |\n| 比亚迪 | 17.1% | FY2024 | v1 | - |",
+    "memory_tags": ["global_retrieve", "cross_session"],
+    "scenario": "全局检索：跨session返回所有匹配的facts，含版本号和来源"
+  },
+  {
+    "idx": 17,
+    "original_question": "无意义的测试字符串123xyz",
+    "rewritten_question": ["Meaningless test string 123xyz"],
+    "answer": "抱歉，我没有找到与您问题相关的记忆或信息。请提供更多上下文。",
+    "memory_tags": ["empty_query", "no_match"],
+    "scenario": "无匹配：不存在的实体不应返回假阳性的检索结果"
+  }
+]
