@@ -501,13 +501,13 @@ class ResearchMemory(MemoryManager):
         merged: List[Dict[str, Any]] = []
 
         for item in exact:
-            key = item["source"][:60]
+            key = item["content"][:80]
             if key not in seen:
                 merged.append(item)
                 seen.add(key)
 
         for item in semantic:
-            key = item["source"][:60]
+            key = item["content"][:80]
             if key not in seen and len(merged) < top_k * 2:
                 item["score"] *= 0.7
                 merged.append(item)
