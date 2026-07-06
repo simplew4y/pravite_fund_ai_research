@@ -4,10 +4,10 @@
 
 | 负责人 | 模块 | 主要交付物 | 测试目录 | 当前状态 | 进度 |
 |---|---|---|---|---|---:|
-| 雷雷 | Project DB / Company Collection / Analyst Space 总体 DB 结构 | [project_db_and_personal_memory_design.md](docs/project_db_and_personal_memory_design.md) | [test/project_db/](test/project_db/) | 方案已修订，待实现 | 15% |
-| 廖 | Research Memory | [research_memory_design.md](docs/research_memory_design.md) | [test/research_memory/](test/research_memory/) | 方案已修订，待实现 | 15% |
-| 朝龙 | Memo Generation | [memo_generation_design.md](docs/memo_generation_design.md) | [test/memo_generation/](test/memo_generation/) | 方案已修订，待实现 | 15% |
-| 程景逸 | Evidence Schema / Citation / Provenance | [evidence_schema_design.md](docs/evidence_schema_design.md) | [test/evidence_schema/](test/evidence_schema/) | 方案已修订，待实现 | 15% |
+| 雷雷 | Project DB / Company Collection / Analyst Space 总体 DB 结构 | [project_db_and_personal_memory_design.md](docs/project_db_and_personal_memory_design.md) | [test/project_db/](test/project_db/) | 初始设计完成，待实现 | 10% |
+| 廖 | Research Memory | [research_memory_design.md](docs/research_memory_design.md) | [test/research_memory/](test/research_memory/) | 初始设计完成，待实现 | 10% |
+| 朝龙 | Memo Generation | [memo_generation_design.md](docs/memo_generation_design.md) | [test/memo_generation/](test/memo_generation/) | 初始设计完成，待实现 | 10% |
+| 程景逸 | Evidence Schema / Citation / Provenance | [evidence_schema_design.md](docs/evidence_schema_design.md) | [test/evidence_schema/](test/evidence_schema/) | 第一阶段实现 PR 已送审，待修复后合并 | 30% |
 
 ## 测试目录要求
 
@@ -61,7 +61,6 @@
 |---|---|---|---|---|
 | 2026-06-24 | 创建 Research Memory 设计文档。 | `docs/research_memory_design.md` | 文档已覆盖 QA 写入链路、SQLite/Markdown/OpenViking 分工、正确性验证。 | done |
 | 2026-06-24 | 新增模块测试目录要求。 | `README.md`, `test/research_memory/README.md` | 确认 Research Memory 后续测试统一归档到 `test/research_memory/`。 | done |
-| 2026-06-25 | 修订 Research Memory 设计文档: 加架构图/API/验收表; OpenViking 实际方案; P0/P1 分层。 | `docs/research_memory_design.md` | 文档含 10 项验收标准，覆盖写入/追溯/检索/审计。 | done |
 
 ### 朝龙：Memo Generation
 
@@ -96,15 +95,16 @@
 |---|---|---|---|---|
 | 2026-06-24 | 创建 Evidence Schema 与溯源设计文档。 | `docs/evidence_schema_design.md` | 文档已覆盖各文档类型 evidence 格式、citation schema、追溯测试。 | done |
 | 2026-06-24 | 新增模块测试目录要求。 | `README.md`, `test/evidence_schema/README.md` | 确认 Evidence Schema 后续测试统一归档到 `test/evidence_schema/`。 | done |
+| 2026-06-28 | 第一阶段实现已提交 PR #1：统一 evidence/location/citation schema、稳定 ID、PDF/Excel/PPT/Word/Markdown/QA/Memo adapter、citation display、内存版追溯 repository 和 citation gate；当前仍为 draft，待修复 review 问题后合并。 | `README.md`, PR #1: `src/evidence_schema/*`, `test/evidence_schema/*` | 在 PR #1 临时 worktree 运行 `pytest test/evidence_schema/`，结果 36 passed；review 发现 Excel 空 block 过滤和 Memo display 两项合并前修复点。 | review |
 
 ## 模块进度看板
 
 | 模块 | Owner | 阶段目标 | 测试目录 | 下一步 | 阻塞项 |
 |---|---|---|---|---|---|
 | Project DB | 雷雷 | 固化 SQLite schema、目录结构和 repository API。 | `test/project_db/` | 输出第一版 schema.sql、初始化脚本和 DB 回溯测试。 | 暂无 |
-| Research Memory | 廖 | QA 后完整写入原文、facts、citations、audit，并进入语义索引。 | `test/research_memory/` | 实现最小 QA memory 闭环和对应测试 fixture。 | 暂无 |
+| Research Memory | 廖 | QA 后完整写入原文、facts、citations、audit，并进入语义索引。 | `test/research_memory/` | 实现最小 QA memory 闭环和对应测试 fixture。 | OpenViking 接入方案待确认 |
 | Memo Generation | 朝龙 | 固定模板 memo + evidence pack + citation gate。 | `test/memo_generation/` | 实现 memo 最小端到端 demo 和 citation gate 测试。 | 依赖 Evidence Schema 和 Memory API |
-| Evidence Schema | 程景逸 | 统一 evidence/citation/provenance schema。 | `test/evidence_schema/` | 实现 PDF 和 Excel 两个最小 adapter 及 location 渲染测试。 | 需要和 DB schema 对齐 |
+| Evidence Schema | 程景逸 | 第一阶段统一 evidence/citation/provenance 中间层 PR 已送审。 | `test/evidence_schema/` | 修复 Excel 空 block 过滤和 Memo display 后，将 PR #1 从 draft 转 ready 并合并；随后对接 SQLite repository。 | 需要和 DB schema、Research Memory citation 字段继续对齐 |
 
 ## 员工 Coding Agent 更新规范
 
