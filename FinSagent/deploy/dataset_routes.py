@@ -54,6 +54,9 @@ MD_LOAD_TABLE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_md" / "load_table_chroma.
 WORD_PIPELINE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_word" / "word2chunk_pipeline.py"
 WORD_LOAD_DATA_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_word" / "load_data.py"
 WORD_LOAD_TABLE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_word" / "load_table_chroma.py"
+PPT_PIPELINE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_ppt" / "ppt2chunk_pipeline.py"
+PPT_LOAD_DATA_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_ppt" / "load_data.py"
+PPT_LOAD_TABLE_SCRIPT = DATA_PIPELINE_DIR / "file2chunk_ppt" / "load_table_chroma.py"
 CONFIG_PATH = REPO_ROOT / "config" / "production.yaml"
 
 DATASET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,62}$")
@@ -1855,6 +1858,7 @@ def _ingest_subprocess_worker(
     word_docs: list[dict[str, Any]],
     excel_docs: list[dict[str, Any]],
     md_docs: list[dict[str, Any]],
+    ppt_docs: list[dict[str, Any]],
     config_path: str,
     extra_args: list[str],
     log_file: str,
@@ -1869,6 +1873,7 @@ def _ingest_subprocess_worker(
         *(str(doc["doc_id"]) for doc in word_docs),
         *(str(doc["doc_id"]) for doc in excel_docs),
         *(str(doc["doc_id"]) for doc in md_docs),
+        *(str(doc["doc_id"]) for doc in ppt_docs),
     ]
     _update_job(
         dataset,
@@ -1892,7 +1897,7 @@ def _ingest_subprocess_worker(
             log_f.write(f"{'=' * 80}\n[dataset ingest {job_id}] started at {_now()}\n")
             log_f.write(
                 "Batches: "
-                f"pdf={len(pdf_doc_ids)}, word={len(word_docs)}, excel={len(excel_docs)}, md={len(md_docs)}, "
+                f"pdf={len(pdf_doc_ids)}, word={len(word_docs)}, excel={len(excel_docs)}, md={len(md_docs)}, ppt={len(ppt_docs)}, "
                 f"skip_load={skip_load}, skip_load_table={skip_load_table}\n"
             )
             log_f.flush()
@@ -1977,6 +1982,28 @@ def _ingest_subprocess_worker(
             total_chunks += md_chunks
             errors.extend(md_errors)
             warnings.extend(md_warnings)
+
+            dataset = _require_dataset(dataset_id, refresh=False)
+            ppt_chunks, ppt_errors, ppt_warnings = _run_semantic_file_batch(
+                job_id=job_id,
+                dataset=dataset,
+                docs=ppt_docs,
+                file_type="ppt",
+                pipeline_script=PPT_PIPELINE_SCRIPT,
+                load_data_script=PPT_LOAD_DATA_SCRIPT,
+                load_table_script=PPT_LOAD_TABLE_SCRIPT,
+                input_arg="--file",
+                default_doc_type="research_deck",
+                log_f=log_f,
+                env=env,
+                skip_load=skip_load,
+                skip_load_table=skip_load_table,
+                enable_word_image_ocr=False,
+                mineru_bin="",
+            )
+            total_chunks += ppt_chunks
+            errors.extend(ppt_errors)
+            warnings.extend(ppt_warnings)
 
         dataset = _require_dataset(dataset_id, refresh=False)
         refreshed = _refresh_dataset_status(dataset, force=True)
@@ -2484,6 +2511,7 @@ async def upload_dataset_files(
     word_docs: list[dict[str, Any]] = []
     excel_docs: list[dict[str, Any]] = []
     md_docs: list[dict[str, Any]] = []
+    ppt_docs: list[dict[str, Any]] = []
     unsupported_docs: list[dict[str, Any]] = []
 
     for item in files:
@@ -2547,6 +2575,8 @@ async def upload_dataset_files(
             excel_docs.append(doc)
         elif file_type == "md":
             md_docs.append(doc)
+        elif file_type == "ppt" and ext == ".pptx":
+            ppt_docs.append(doc)
         else:
             unsupported_docs.append(doc)
 
@@ -2554,7 +2584,8 @@ async def upload_dataset_files(
     has_word = bool(word_docs)
     has_excel = bool(excel_docs)
     has_md = bool(md_docs)
-    has_processable = has_pdf or has_word or has_excel or has_md
+    has_ppt = bool(ppt_docs)
+    has_processable = has_pdf or has_word or has_excel or has_md or has_ppt
     missing_scripts: list[str] = []
     if has_pdf and not INGEST_SCRIPT.is_file():
         missing_scripts.append(str(INGEST_SCRIPT))
@@ -2576,6 +2607,12 @@ async def upload_dataset_files(
             for path in (MD_PIPELINE_SCRIPT, MD_LOAD_DATA_SCRIPT, MD_LOAD_TABLE_SCRIPT)
             if not path.is_file()
         )
+    if has_ppt:
+        missing_scripts.extend(
+            str(path)
+            for path in (PPT_PIPELINE_SCRIPT, PPT_LOAD_DATA_SCRIPT, PPT_LOAD_TABLE_SCRIPT)
+            if not path.is_file()
+        )
     if missing_scripts:
         raise HTTPException(status_code=500, detail=f"未找到入库脚本: {', '.join(missing_scripts)}")
 
@@ -2585,7 +2622,7 @@ async def upload_dataset_files(
     job_type = "index" if has_processable else "upload"
     message = (
         f"已保存 {len(saved_docs)} 个文件；将按类型顺序解析："
-        f"PDF {len(pdf_doc_ids)} 个、Word {len(word_docs)} 个、Excel {len(excel_docs)} 个、Markdown {len(md_docs)} 个。"
+        f"PDF {len(pdf_doc_ids)} 个、Word {len(word_docs)} 个、Excel {len(excel_docs)} 个、Markdown {len(md_docs)} 个、PPT {len(ppt_docs)} 个。"
         f"另有 {len(unsupported_docs)} 个文件暂未接入主流程。"
         if has_processable
         else f"已保存 {len(saved_docs)} 个文件；这些格式暂未接入主流程，仅完成登记。"
@@ -2651,16 +2688,17 @@ async def upload_dataset_files(
                     len(saved_docs),
                     _relative_path(log_file),
                     message,
-                    0 if not has_pdf else None,
+                    0 if not has_processable else None,
                     created_at,
                     None,
-                    created_at if not has_pdf else None,
+                    created_at if not has_processable else None,
                     json.dumps(
                         {
                             "pdf_doc_ids": pdf_doc_ids,
                             "word_doc_ids": [doc["doc_id"] for doc in word_docs],
                             "excel_doc_ids": [doc["doc_id"] for doc in excel_docs],
                             "md_doc_ids": [doc["doc_id"] for doc in md_docs],
+                            "ppt_doc_ids": [doc["doc_id"] for doc in ppt_docs],
                             "unsupported_doc_ids": [doc["doc_id"] for doc in unsupported_docs],
                             "skip_process_table": skip_process_table,
                             "skip_load": skip_load,
@@ -2680,6 +2718,7 @@ async def upload_dataset_files(
             *(doc["doc_id"] for doc in word_docs),
             *(doc["doc_id"] for doc in excel_docs),
             *(doc["doc_id"] for doc in md_docs),
+            *(doc["doc_id"] for doc in ppt_docs),
         ]
         _update_documents_status(dataset, process_doc_ids, "indexing")
         _set_dataset_status(dataset_id, "indexing")
@@ -2692,6 +2731,7 @@ async def upload_dataset_files(
             word_docs=word_docs,
             excel_docs=excel_docs,
             md_docs=md_docs,
+            ppt_docs=ppt_docs,
             config_path=str(pipeline_config or CONFIG_PATH),
             extra_args=extra,
             log_file=str(log_file.resolve()),
@@ -2712,6 +2752,7 @@ async def upload_dataset_files(
             "word": len(word_docs),
             "excel": len(excel_docs),
             "md": len(md_docs),
+            "ppt": len(ppt_docs),
             "unsupported": len(unsupported_docs),
         },
         "files": response_files,
