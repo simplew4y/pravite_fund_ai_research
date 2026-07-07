@@ -1,8 +1,0 @@
-[submodule "omnigent"]
-	path = omnigent
-	url = https://github.com/HFHL/omnigent.git
-	branch = codex/finsagent-research-demo-20260707
-[submodule "cc-haha"]
-	path = cc-haha
-	url = https://github.com/HFHL/cc-haha.git
-	branch = codex/finsagent-research-demo-20260707
