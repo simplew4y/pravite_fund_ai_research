@@ -60,6 +60,10 @@ from data_pipeline.ingest_documents_db import (
     try_insert_document_rows,
     try_update_job_documents,
 )
+from data_pipeline.private_fund_directory_ingest import (
+    ingest_directory as ingest_private_fund_directory,
+    result_to_dict as private_fund_result_to_dict,
+)
 
 # 配置日志
 API_LOG_PATH = os.environ.get(
@@ -113,6 +117,8 @@ FALLBACK_SESSION_HISTORY_DB = os.environ.get(
 )
 _ingest_jobs_lock = threading.Lock()
 _ingest_jobs: dict[str, dict[str, Any]] = {}
+_private_fund_ingest_jobs_lock = threading.Lock()
+_private_fund_ingest_jobs: dict[str, dict[str, Any]] = {}
 # 每个入库任务独立日志文件，避免多请求并发写同一文件导致错乱。可通过环境变量覆盖目录。
 INGEST_LOG_DIR = os.environ.get(
     "INGEST_LOG_DIR",
@@ -123,6 +129,13 @@ os.makedirs(INGEST_LOG_DIR, exist_ok=True)
 
 def _ingest_job_log_path(job_id: str) -> str:
     return os.path.join(INGEST_LOG_DIR, f"{job_id}.log")
+
+
+def _private_fund_workspace_root() -> Path:
+    override = os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
+    if override:
+        return Path(override).expanduser().resolve()
+    return Path(PROJECT_ROOT).resolve() / "output" / "private_fund_datasets"
 
 
 def load_config():
@@ -370,6 +383,20 @@ class PdfResearchAskRequest(BaseModel):
 class PdfResearchMemoRequest(BaseModel):
     company_name: str = "Tesla, Inc."
     ticker: str = "TSLA"
+
+
+class PrivateFundDirectoryIngestRequest(BaseModel):
+    """本地目录级私募投研资料包入库请求。"""
+
+    directory_path: str
+    workspace_root: Optional[str] = None
+    dataset_id: Optional[str] = None
+    dataset_name: Optional[str] = None
+    company_name: str = ""
+    company_ticker: str = ""
+    recursive: bool = True
+    reset: bool = False
+    background: bool = True
 
 
 def _jsonable(value: Any) -> Any:
@@ -1117,6 +1144,117 @@ async def ingest_jobs_list(
         "page_size": page_size,
         "has_more": has_more,
     }
+
+
+def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
+    with _private_fund_ingest_jobs_lock:
+        _private_fund_ingest_jobs[job_id] = {
+            **_private_fund_ingest_jobs.get(job_id, {}),
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+    try:
+        result = ingest_private_fund_directory(
+            directory_path=payload["directory_path"],
+            workspace_root=payload.get("workspace_root") or str(_private_fund_workspace_root()),
+            dataset_id=payload.get("dataset_id"),
+            dataset_name=payload.get("dataset_name"),
+            company_name=payload.get("company_name") or "",
+            company_ticker=payload.get("company_ticker") or "",
+            recursive=bool(payload.get("recursive", True)),
+            reset=bool(payload.get("reset", False)),
+            job_id=job_id,
+        )
+        with _private_fund_ingest_jobs_lock:
+            _private_fund_ingest_jobs[job_id] = {
+                "job_id": job_id,
+                "status": result.status,
+                "started_at": result.started_at,
+                "finished_at": result.finished_at,
+                "result": private_fund_result_to_dict(result),
+            }
+    except Exception as exc:
+        logger.exception("private fund directory ingest failed: job_id=%s", job_id)
+        with _private_fund_ingest_jobs_lock:
+            _private_fund_ingest_jobs[job_id] = {
+                **_private_fund_ingest_jobs.get(job_id, {}),
+                "job_id": job_id,
+                "status": "failed",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "message": str(exc),
+            }
+
+
+@app.post("/private-fund/ingest-directory")
+async def private_fund_ingest_directory(
+    request: PrivateFundDirectoryIngestRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    对一个本地目录执行私募投研资料包入库。
+
+    - PDF：直接抽文本，按 document/page/speaker turn 存 evidence。
+    - Excel：存 workbook/sheet/region summary，同时写 excel_cells 与 metric_facts。
+    - DB：写入 workspace_root/datasets.sqlite3 与 workspace_root/{dataset_id}/meta/collection.sqlite3。
+    """
+    directory_path = Path(request.directory_path).expanduser().resolve()
+    if not directory_path.is_dir():
+        raise HTTPException(status_code=400, detail=f"directory_path 不是目录: {directory_path}")
+
+    workspace_root = (
+        Path(request.workspace_root).expanduser().resolve()
+        if request.workspace_root
+        else _private_fund_workspace_root()
+    )
+    job_id = uuid.uuid4().hex[:16]
+    payload = request.model_dump() if hasattr(request, "model_dump") else request.dict()
+    payload["directory_path"] = str(directory_path)
+    payload["workspace_root"] = str(workspace_root)
+
+    with _private_fund_ingest_jobs_lock:
+        _private_fund_ingest_jobs[job_id] = {
+            "job_id": job_id,
+            "status": "queued" if request.background else "running",
+            "directory_path": str(directory_path),
+            "workspace_root": str(workspace_root),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    if request.background:
+        background_tasks.add_task(_private_fund_ingest_worker, job_id, payload)
+        return {
+            "job_id": job_id,
+            "status": "queued",
+            "directory_path": str(directory_path),
+            "workspace_root": str(workspace_root),
+            "message": "已排队执行私募投研目录入库；用 GET /private-fund/ingest-jobs/{job_id} 查询状态。",
+        }
+
+    _private_fund_ingest_worker(job_id, payload)
+    with _private_fund_ingest_jobs_lock:
+        job = dict(_private_fund_ingest_jobs.get(job_id) or {})
+    if job.get("status") == "failed":
+        raise HTTPException(status_code=500, detail=job.get("message") or "private fund ingest failed")
+    return job
+
+
+@app.get("/private-fund/ingest-jobs/{job_id}")
+async def private_fund_ingest_job_status(job_id: str):
+    """查询目录级私募投研入库任务状态。"""
+    with _private_fund_ingest_jobs_lock:
+        job = _private_fund_ingest_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="未知 job_id")
+    return dict(job)
+
+
+@app.get("/private-fund/ingest-jobs")
+async def private_fund_ingest_jobs_list():
+    """列出当前进程内的目录级私募投研入库任务。"""
+    with _private_fund_ingest_jobs_lock:
+        jobs = list(_private_fund_ingest_jobs.values())
+    jobs.sort(key=lambda item: item.get("created_at") or item.get("started_at") or "", reverse=True)
+    return {"jobs": jobs}
 
 
 @app.get("/metadata/{collection_name}/{doc_id}")

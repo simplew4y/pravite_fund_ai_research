@@ -11,6 +11,7 @@ LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_CONFIG="$OMNIGENT_DIR/.tmp-litellm-dashscope.yaml"
 LITELLM_LOG="$OMNIGENT_DIR/.tmp-litellm.log"
 LITELLM_TMUX_SESSION="${LITELLM_TMUX_SESSION:-omnigent-litellm}"
+OMNIGENT_SERVER_URL="${OMNIGENT_SERVER_URL:-http://127.0.0.1:6767}"
 
 read_yaml_value() {
   local key="$1"
@@ -43,11 +44,21 @@ if [[ ! -x "$CC_HAHA_BIN" ]]; then
   exit 1
 fi
 
-export DASHSCOPE_BASE_URL="${DASHSCOPE_BASE_URL:-$(read_yaml_value llm_base_url)}"
-export DASHSCOPE_API_KEY="${DASHSCOPE_API_KEY:-$(read_yaml_value llm_api_key)}"
+export LITELLM_TARGET_MODEL_NAME="${LITELLM_TARGET_MODEL_NAME:-$(read_yaml_value llm_model_name)}"
+export LITELLM_TARGET_API_BASE="${LITELLM_TARGET_API_BASE:-${OPENAI_BASE_URL:-${DEEPSEEK_BASE_URL:-${DASHSCOPE_BASE_URL:-$(read_yaml_value llm_base_url)}}}}"
+export LITELLM_TARGET_API_KEY="${LITELLM_TARGET_API_KEY:-${OPENAI_API_KEY:-${DEEPSEEK_API_KEY:-${DASHSCOPE_API_KEY:-$(read_yaml_value llm_api_key)}}}}"
 
-if [[ -z "$DASHSCOPE_BASE_URL" || -z "$DASHSCOPE_API_KEY" ]]; then
-  echo "Missing llm_base_url or llm_api_key in $FINSAGENT_CONFIG" >&2
+if [[ -z "${LITELLM_TARGET_PROVIDER:-}" ]]; then
+  case "$LITELLM_TARGET_API_BASE" in
+    *deepseek*) LITELLM_TARGET_PROVIDER="deepseek" ;;
+    *dashscope*) LITELLM_TARGET_PROVIDER="dashscope" ;;
+    *) LITELLM_TARGET_PROVIDER="openai" ;;
+  esac
+fi
+export LITELLM_TARGET_PROVIDER
+
+if [[ -z "$LITELLM_TARGET_MODEL_NAME" || -z "$LITELLM_TARGET_API_BASE" || -z "$LITELLM_TARGET_API_KEY" ]]; then
+  echo "Missing llm_model_name, llm_base_url, or llm_api_key in $FINSAGENT_CONFIG" >&2
   exit 1
 fi
 
@@ -80,7 +91,7 @@ fi
 export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-${ANTHROPIC_AUTH_TOKEN:-sk-local-cc-haha}}"
 unset ANTHROPIC_AUTH_TOKEN
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-$proxy_url}"
-export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-qwen3-max}"
+export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$LITELLM_TARGET_MODEL_NAME}"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-$ANTHROPIC_MODEL}"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-$ANTHROPIC_MODEL}"
 export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-$ANTHROPIC_MODEL}"
@@ -88,6 +99,7 @@ export API_TIMEOUT_MS="${API_TIMEOUT_MS:-3000000}"
 export DISABLE_TELEMETRY="${DISABLE_TELEMETRY:-1}"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
 export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-low}"
+export OMNIGENT_CLAUDE_NATIVE_AUTO_APPROVE="${OMNIGENT_CLAUDE_NATIVE_AUTO_APPROVE:-1}"
 
 claude_extra_args=()
 if [[ -n "$PRIVATE_FUND_SYSTEM_PROMPT_FILE" ]]; then
@@ -106,6 +118,7 @@ fi
 
 cd "$OMNIGENT_DIR"
 exec uv run omnigent claude \
+  --server "$OMNIGENT_SERVER_URL" \
   --command "$CC_HAHA_BIN" \
   --use-native-config \
   "${claude_extra_args[@]}" \

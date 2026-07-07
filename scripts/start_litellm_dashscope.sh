@@ -35,21 +35,36 @@ raise SystemExit(1)
 PY
 }
 
-export DASHSCOPE_BASE_URL="${DASHSCOPE_BASE_URL:-$(read_yaml_value llm_base_url)}"
-export DASHSCOPE_API_KEY="${DASHSCOPE_API_KEY:-$(read_yaml_value llm_api_key)}"
+export LITELLM_TARGET_MODEL_NAME="${LITELLM_TARGET_MODEL_NAME:-$(read_yaml_value llm_model_name)}"
+export LITELLM_TARGET_API_BASE="${LITELLM_TARGET_API_BASE:-${OPENAI_BASE_URL:-${DEEPSEEK_BASE_URL:-${DASHSCOPE_BASE_URL:-$(read_yaml_value llm_base_url)}}}}"
+export LITELLM_TARGET_API_KEY="${LITELLM_TARGET_API_KEY:-${OPENAI_API_KEY:-${DEEPSEEK_API_KEY:-${DASHSCOPE_API_KEY:-$(read_yaml_value llm_api_key)}}}}"
 
-if [[ -z "$DASHSCOPE_BASE_URL" || -z "$DASHSCOPE_API_KEY" ]]; then
-  echo "Missing llm_base_url or llm_api_key in $FINSAGENT_CONFIG" >&2
+if [[ -z "${LITELLM_TARGET_PROVIDER:-}" ]]; then
+  case "$LITELLM_TARGET_API_BASE" in
+    *deepseek*) LITELLM_TARGET_PROVIDER="deepseek" ;;
+    *dashscope*) LITELLM_TARGET_PROVIDER="dashscope" ;;
+    *) LITELLM_TARGET_PROVIDER="openai" ;;
+  esac
+fi
+export LITELLM_TARGET_PROVIDER
+
+if [[ -z "$LITELLM_TARGET_MODEL_NAME" || -z "$LITELLM_TARGET_API_BASE" || -z "$LITELLM_TARGET_API_KEY" ]]; then
+  echo "Missing llm_model_name, llm_base_url, or llm_api_key in $FINSAGENT_CONFIG" >&2
   exit 1
 fi
 
 python3 - "$LITELLM_CONFIG" <<'PY'
+import os
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
+target_model_name = os.environ["LITELLM_TARGET_MODEL_NAME"]
+target_provider = os.environ["LITELLM_TARGET_PROVIDER"].strip().strip("/")
+target_model = target_model_name if "/" in target_model_name else f"{target_provider}/{target_model_name}"
+
 model_names = [
-    "qwen3-max",
+    target_model_name,
     "claude-sonnet-4-6",
     "claude-sonnet-4-5",
     "claude-opus-4-6",
@@ -65,9 +80,9 @@ for name in model_names:
         [
             f"  - model_name: {name}",
             "    litellm_params:",
-            "      model: dashscope/qwen3-max",
-            "      api_base: os.environ/DASHSCOPE_BASE_URL",
-            "      api_key: os.environ/DASHSCOPE_API_KEY",
+            f"      model: {target_model}",
+            "      api_base: os.environ/LITELLM_TARGET_API_BASE",
+            "      api_key: os.environ/LITELLM_TARGET_API_KEY",
         ]
     )
 

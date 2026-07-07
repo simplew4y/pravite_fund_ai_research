@@ -17,8 +17,11 @@ from .models import Citation
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PDF_PATH = PROJECT_ROOT / "tesla_extracted/20260129_10-K_0001628280-26-003952.pdf"
-DEFAULT_TEXT_PATH = PROJECT_ROOT / "tmp/pdfs/tesla_text/20260129_10-K_0001628280-26-003952.txt"
+DEFAULT_PDF_PATH = (
+    PROJECT_ROOT
+    / "output/private_fund_datasets/ygdy/raw/阳光电源300274近况交流会260701_原文.pdf"
+)
+DEFAULT_TEXT_PATH = PROJECT_ROOT / "tmp/pdfs/ygdy_text/阳光电源300274近况交流会260701_原文.txt"
 
 
 class AskRequest(BaseModel):
@@ -87,8 +90,8 @@ def create_app(
     pdf_path: str | Path = DEFAULT_PDF_PATH,
     text_path: str | Path | None = None,
     *,
-    company_name: str = "Tesla, Inc.",
-    ticker: str = "TSLA",
+    company_name: str = "阳光电源",
+    ticker: str = "300274",
     use_llm: bool = False,
     llm_config_path: str | Path | None = None,
     llm_client: ChatClient | None = None,
@@ -497,7 +500,7 @@ INDEX_HTML = """<!doctype html>
       <section class="panel" aria-label="Question Answering">
         <h2>Question</h2>
         <form id="askForm">
-          <textarea id="question" name="question">What does Tesla say about Robotaxi and FSD?</textarea>
+          <textarea id="question" name="question">谁负责市场判断多一点？请给出来源。</textarea>
           <div class="row">
             <button id="askButton" type="submit">Ask</button>
             <span id="qaState" class="small"></span>
