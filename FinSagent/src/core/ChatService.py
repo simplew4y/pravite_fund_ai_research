@@ -325,6 +325,7 @@ class ChatService:
             "original_query": question,
             "user_query_raw": question,
             "chat_history": session_manager.get_chat_history_copy(),
+            "memory_context": self._get_memory_context(question, session_manager.session_id),
             "rag": self.rag,
             "session_manager": session_manager,
             "config": self.config,
@@ -1460,6 +1461,10 @@ class ChatService:
             self.memory.record_turn(
                 session_id=session_id, question=question, answer=answer,
                 audit={'model_name': 'memory', 'latency_ms': 0, 'status': 'ok'})
+            try:
+                self.memory.extract_preferences_from_turn(question, answer)
+            except Exception:
+                pass
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning('Memory record failed: %s', e)

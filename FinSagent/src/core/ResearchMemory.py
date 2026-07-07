@@ -134,6 +134,17 @@ class ResearchMemory(MemoryManager):
                 PRIMARY KEY (fact_id, citation_id)
             );
 
+            CREATE TABLE IF NOT EXISTS preference_votes (
+                key TEXT NOT NULL,
+                analyst_id TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL,
+                value TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 1,
+                first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+                last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (key, analyst_id)
+            );
+
             CREATE TABLE IF NOT EXISTS global_memory (
                 key TEXT NOT NULL,
                 analyst_id TEXT NOT NULL DEFAULT '',
@@ -666,6 +677,122 @@ class ResearchMemory(MemoryManager):
         import hashlib
         key = "obs_" + hashlib.md5(observation.encode()).hexdigest()[:12]
         self.set_global_memory(key, observation, category="observation", analyst_id=analyst_id)
+
+    def _vote_preference(self, key, value, category, analyst_id, threshold=2):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute(
+            'INSERT INTO preference_votes (key, analyst_id, category, value, count, last_seen) '
+            'VALUES (?, ?, ?, ?, 1, datetime(\'now\')) '
+            'ON CONFLICT(key, analyst_id) DO UPDATE SET '
+            'count=count+1, last_seen=datetime(\'now\'), value=excluded.value, category=excluded.category',
+            (key, analyst_id, category, value),
+        )
+        conn.commit()
+        row = conn.execute(
+            'SELECT count FROM preference_votes WHERE key=? AND analyst_id=?',
+            (key, analyst_id),
+        ).fetchone()
+        current_count = row[0] if row else 0
+        conn.close()
+        if current_count >= threshold:
+            self.set_global_memory(key, value, category=category, analyst_id=analyst_id)
+            return True
+        return False
+
+    def list_pending_preferences(self, analyst_id=""):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            'SELECT pv.* FROM preference_votes pv '
+            'LEFT JOIN global_memory gm ON pv.key=gm.key AND pv.analyst_id=gm.analyst_id '
+            'WHERE gm.key IS NULL AND pv.analyst_id=? '
+            'ORDER BY pv.count DESC, pv.last_seen DESC',
+            (analyst_id,),
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def extract_preferences_from_turn(self, question, answer, analyst_id=""):
+        if not self._llm:
+            return 0
+        prompt = (
+            'Does the user express a preference, habit, or rule below?\n'
+            'Answer ONLY with the format specified. No thinking, no explanation.\n\n'
+            'Preference: user says what format/style/order they want.\n'
+            '  "no tables" -> format_preference|use text not tables|preference\n'
+            '  "numbers first" -> data_first|先看数字|preference\n'
+            'Habit: user recurringly asks for comparisons/rankings.\n'
+            '  "compare peers" -> compare_peers|对比同行|habit\n'
+            '  "ranking?" -> ranking|问排名|habit\n'
+            'Rule: user sets a firm requirement.\n'
+            '  "always cite sources" -> cite_sources|always cite sources|rule\n\n'
+            'No preference: return empty string (nothing at all)\n\n'
+            'Q&A:\n'
+            f'User: {question}\n'
+            f'Assistant: {answer}\n\n'
+            'Output:'
+        )
+        try:
+            raw = self._llm(prompt)
+            raw = re.sub(r'<think>.*?(</think>|$)', '', raw, flags=re.DOTALL).strip()
+            if not raw:
+                return 0
+            written = 0
+            for line in raw.split('\n'):
+                line = line.strip()
+                if not line or '|' not in line:
+                    continue
+                parts = line.split('|')
+                if len(parts) >= 3:
+                    key = parts[0].strip()
+                    value = parts[1].strip()
+                    category = parts[2].strip()
+                    if category in ('preference', 'habit', 'rule'):
+                        confirmed = self._vote_preference(key, value, category, analyst_id)
+                        if confirmed:
+                            written += 1
+            return written
+        except Exception:
+            return 0
+        if not self._llm:
+            return 0
+        prompt = (
+            "Does the user express a preference, habit, or rule below?\n"
+            "Answer ONLY with the format specified. No thinking, no explanation.\n\n"
+            "Preference example: User says \"不要给我表格\" -> format_preference|use text not tables|preference\n"
+            "Habit example #1: User says \"对比一下同行\" -> compare_peers|对比同行|habit\n"
+            "Habit example #2: User says \"排名怎么样\" -> ranking|问排名|habit\n"
+            "Rule example: User says \"每个数据都要给来源\" -> cite_sources|always cite sources|rule\n"
+            "No preference: return empty string (nothing at all)\n\n"
+            "Q&A:\n"
+            f"User: {question}\n"
+            f"Assistant: {answer}\n\n"
+            "Output:"
+        )
+        try:
+            raw = self._llm(prompt)
+            # Strip thinking blocks (for reasoning models like xiaomoxing/deepseek)
+            import re
+            # Strip <think> blocks (handle both closed and unclosed tags)
+            raw = re.sub(r"<think>.*?(</think>|$)", "", raw, flags=re.DOTALL).strip()
+            if not raw:
+                return 0
+            count = 0
+            for line in raw.split("\n"):
+                line = line.strip()
+                if not line or "|" not in line:
+                    continue
+                parts = line.split("|")
+                if len(parts) >= 3:
+                    key = parts[0].strip()
+                    value = parts[1].strip()
+                    category = parts[2].strip()
+                    if category in ("preference", "habit", "rule"):
+                        self.set_global_memory(key, value, category=category, analyst_id=analyst_id)
+                        count += 1
+            return count
+        except Exception:
+            return 0
 
     # ---- Embedding & LLM injection ----
 
