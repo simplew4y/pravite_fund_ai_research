@@ -2,15 +2,10 @@ import { type DragEvent, type ReactNode, useEffect, useMemo, useRef, useState } 
 import { Link, useNavigate, useSearchParams } from "@/lib/routing";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  MonitorIcon,
-  MonitorCloudIcon,
   CheckIcon,
-  CircleHelpIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  DatabaseIcon,
-  GitBranchIcon,
   ArrowUpIcon,
   FileTextIcon,
   FolderIcon,
@@ -19,7 +14,6 @@ import {
   PaperclipIcon,
   PlusIcon,
   SearchIcon,
-  TagIcon,
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
@@ -45,15 +39,12 @@ import { authenticatedFetch } from "@/lib/identity";
 import { isImeCompositionKeyEvent } from "@/lib/ime";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
-import { sandboxOptionLabel } from "@/lib/capabilities";
 import { isSlashCommandText, SlashCommandMenu } from "@/components/SlashCommandMenu";
-import { setPendingInitialPrompt } from "@/store/chatStore";
+import { composerAttachmentKey, setPendingInitialPrompt, useChatStore } from "@/store/chatStore";
 import { appendPromptHistoryEntry } from "@/hooks/usePromptHistory";
 import { useIsMobileViewport } from "@/hooks/useIsMobileViewport";
 import { CliCommandBlock } from "./CliCommandBlock";
-import { WorkspacePicker, isNavigablePath } from "./WorkspacePicker";
 import { getCliServerUrl } from "@/lib/host";
-import { getOmnigentHostConfig } from "@/lib/host";
 import { readLastAgentId, writeLastAgentId } from "@/lib/agentPreferences";
 import { readHarnessOptions, writeHarnessOption } from "@/lib/modePreferences";
 import { BRAIN_HARNESS_LABELS } from "@/lib/agentLabels";
@@ -68,7 +59,6 @@ import {
 } from "@/lib/nativeCodingAgents";
 import { useHosts, type Host } from "@/hooks/useHosts";
 import {
-  controlHost,
   getHostIdentity,
   isElectronShell,
   onHostStatusChanged,
@@ -77,19 +67,17 @@ import {
 import { useAvailableAgents, type AvailableAgent } from "@/hooks/useAvailableAgents";
 import { useAutoGrowTextarea } from "@/hooks/useAutoGrowTextarea";
 import { useRecentWorkspaces } from "@/hooks/useRecentWorkspaces";
-import { useDirectorySessions } from "@/hooks/useDirectorySessions";
-import { useRunnerHealthRegistration } from "@/hooks/RunnerHealthProvider";
 import { useHostFilesystem, type HostFilesystemEntry } from "@/hooks/useHostFilesystem";
 import { useNativeServerSwitcherForMainSurface } from "@/hooks/useNativeServerSwitcher";
 import type { WorkspaceFile } from "@/hooks/useWorkspaceChangedFiles";
 import type { Conversation } from "@/hooks/useConversations";
-import { useProjects, PROJECT_LABEL_KEY } from "@/hooks/useConversations";
 import { FileMentionMenu } from "@/components/FileMentionMenu";
 import { useMentionBrowser } from "@/hooks/useMentionBrowser";
 import {
   buildMentionPreamble,
   detectMentionAt,
   mentionItemPath,
+  type MentionItem,
   type MentionState,
   parseMentionToken,
   rankMentionEntries,
@@ -118,7 +106,6 @@ import {
 // `kimi` / `kimi-code` are the headless SDK harness (kept for sub-agent / `run
 // --harness kimi` use) — the picker offers only the native TUI (`kimi-native-ui`).
 const NEW_SESSION_HIDDEN_AGENTS = new Set(["nessie", "kimi", "kimi-code"]);
-const PRIVATE_FUND_RESEARCH_ENTRY = "research";
 const PRIVATE_FUND_RESEARCH_AGENT_NAME = "claude-native-ui";
 const EMPTY_HOSTS: Host[] = [];
 const EMPTY_PRIVATE_FUND_PROJECTS: PrivateFundProject[] = [];
@@ -296,35 +283,6 @@ const CODEX_NATIVE_BYPASS_SANDBOX_LABEL_KEY = "omnigent.codex_native.bypass_sand
 // A typed confirmation makes the dangerous mode impossible to enable by an
 // accidental click; the toggle stays off until this is entered verbatim.
 const CODEX_NATIVE_BYPASS_SANDBOX_CONFIRM_PHRASE = "bypass sandbox";
-
-function HostOption({ host, subtitle }: { host: Host; subtitle?: string }) {
-  const isOnline = host.status === "online";
-  return (
-    <span className="flex min-w-0 items-center gap-2">
-      {host.name.toLowerCase().includes("cloud") ? (
-        <MonitorCloudIcon className="size-4 shrink-0 text-muted-foreground" />
-      ) : (
-        <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
-      )}
-      <span className="flex min-w-0 flex-col">
-        <span className="flex items-center gap-2">
-          <span className="truncate text-xs">{host.name}</span>
-          <span
-            className={`inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase tracking-wider ${isOnline ? "text-green-600" : "text-muted-foreground"}`}
-          >
-            <span
-              className={`inline-block size-1.5 rounded-full ${isOnline ? "bg-green-500" : "bg-muted-foreground"}`}
-            />
-            {host.status}
-          </span>
-        </span>
-        {subtitle && (
-          <span className="text-[10px] leading-tight text-muted-foreground">{subtitle}</span>
-        )}
-      </span>
-    </span>
-  );
-}
 
 export function ConnectHostInstructions({
   serverUrl,
@@ -739,128 +697,6 @@ export function deriveHomeDir(entries: HostFilesystemEntry[]): string | null {
  * and an inline "New project…" input. Selection is local state on the landing
  * composer; the label is applied right after the session is created.
  */
-function LandingProjectPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (project: string) => void;
-}) {
-  const { data: projects = [] } = useProjects();
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [creatingNew, setCreatingNew] = useState(false);
-  const [newName, setNewName] = useState("");
-  const newRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (creatingNew) newRef.current?.focus();
-  }, [creatingNew]);
-
-  const filtered = search
-    ? projects.filter((name) => name.toLowerCase().includes(search.toLowerCase()))
-    : projects;
-
-  function pick(project: string) {
-    onChange(project);
-    setOpen(false);
-    setSearch("");
-    setCreatingNew(false);
-    setNewName("");
-  }
-
-  function commitNew() {
-    const name = newName.trim();
-    if (name) pick(name);
-  }
-
-  const itemClass =
-    "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground";
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="flex h-6 items-center gap-1 rounded-full px-2.5 text-13 font-normal text-muted-foreground transition-colors hover:text-foreground"
-          data-testid="new-chat-landing-project-chip"
-        >
-          <TagIcon className="size-4 shrink-0" />
-          {/* Label collapses to icon-only on narrow viewports (mobile),
-              matching the host/workspace/worktree chips. */}
-          <span className={`hidden max-w-32 truncate sm:block ${value ? "text-foreground" : ""}`}>
-            {value || "No project"}
-          </span>
-          <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="w-56 p-1"
-        // Don't snap focus back to the chip when the popover closes after a
-        // pick — that programmatic refocus paints the browser's focus outline
-        // on the chip. Keyboard users still get the ring when they tab to it.
-        onCloseAutoFocus={(e) => e.preventDefault()}
-      >
-        {/* Combobox-style search: a leading magnifier inside a borderless
-            input, with a divider beneath separating it from the results. */}
-        <div className="flex items-center gap-2 border-b px-2 py-1.5">
-          <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <input
-            className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            placeholder="Search projects"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="max-h-48 overflow-y-auto">
-          <button type="button" className={itemClass} onClick={() => pick("")}>
-            <span className="flex-1 truncate">No project</span>
-            {value === "" && <CheckIcon className="size-3.5 shrink-0 text-primary" />}
-          </button>
-          {filtered.map((name) => (
-            <button key={name} type="button" className={itemClass} onClick={() => pick(name)}>
-              <span className="flex-1 truncate">{name}</span>
-              {value === name && <CheckIcon className="size-3.5 shrink-0 text-primary" />}
-            </button>
-          ))}
-          {filtered.length === 0 && !creatingNew && (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">No projects yet.</p>
-          )}
-        </div>
-        <div className="border-t pt-1">
-          {creatingNew ? (
-            <div className="flex items-center gap-1 px-2 py-1">
-              <input
-                ref={newRef}
-                className="flex-1 bg-transparent text-xs outline-none"
-                placeholder="Project name…"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    commitNew();
-                  }
-                  if (e.key === "Escape") {
-                    setCreatingNew(false);
-                    setNewName("");
-                  }
-                }}
-              />
-            </div>
-          ) : (
-            <button type="button" className={itemClass} onClick={() => setCreatingNew(true)}>
-              <PlusIcon className="size-3.5 shrink-0" />
-              New project…
-            </button>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 function ResearchProjectPicker({
   projects,
   value,
@@ -898,7 +734,7 @@ function ResearchProjectPicker({
           className="flex h-6 items-center gap-1 rounded-full px-2.5 text-13 font-normal text-muted-foreground transition-colors hover:text-foreground"
           data-testid="new-chat-landing-research-project-chip"
         >
-          <DatabaseIcon className="size-4 shrink-0" />
+          <FolderIcon className="size-4 shrink-0" />
           <span
             className={`hidden max-w-40 truncate sm:block ${selected ? "text-foreground" : ""}`}
           >
@@ -1784,10 +1620,6 @@ export function NewChatLandingScreen() {
   const { data: hosts } = useHosts();
   const { data: privateFundProjectsData } = usePrivateFundProjects();
   const privateFundProjects = privateFundProjectsData ?? EMPTY_PRIVATE_FUND_PROJECTS;
-  // Sessions the caller can access, to warn when a new session would share a
-  // working directory with a live one (see the conflict tooltip below).
-  const { data: directorySessions } = useDirectorySessions(true);
-
   const agentList = useMemo(
     () =>
       sortAgentsForDisplay((agents ?? []).filter((a) => !NEW_SESSION_HIDDEN_AGENTS.has(a.name))),
@@ -1824,6 +1656,7 @@ export function NewChatLandingScreen() {
   const [message, setMessage] = useState<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
+  const pendingComposerAttachments = useChatStore((s) => s.pendingComposerAttachments);
   // maxRows 9 = 180px of 20px lines, matching the composer's 200px
   // border-box max (180px content + 16px top / 4px bottom padding).
   useAutoGrowTextarea(textareaRef, message, 9);
@@ -1875,20 +1708,6 @@ export function NewChatLandingScreen() {
   const info = useServerInfo();
   const managedSandboxesEnabled = info !== "loading" && info.managed_sandboxes_enabled;
   const smartRoutingEnabled = info !== "loading" && info.smart_routing_enabled;
-  // Provider-named label for the sandbox option (e.g. "Modal Sandbox"),
-  // falling back to the generic "New Sandbox" when the server names no
-  // provider.
-  const sandboxLabel = sandboxOptionLabel(info !== "loading" ? info.sandbox_provider : null);
-  // Embed-only docs seam: when the host passes additional docs and managed
-  // sandboxes are unavailable, keep the sandbox row visible but disabled and
-  // attach a help tooltip with a clickable link.
-  const docsLinks = getOmnigentHostConfig().docsLinks;
-  const newSandboxTooltipContent = docsLinks?.newSandbox;
-  // Embed-only docs seam for Databricks git auth setup. Standalone leaves this
-  // undefined, so no tooltip is rendered.
-  const databricksGitCredentialsTooltipContent = docsLinks?.databricksGitCredentials;
-  const showDisabledSandboxWithDocs = !managedSandboxesEnabled && !!newSandboxTooltipContent;
-
   // Seeded from the persisted last pick so a returning user starts on the
   // agent they used last; validated against the live list in
   // effectiveAgentId below (a stale id falls back to the default).
@@ -1901,43 +1720,30 @@ export function NewChatLandingScreen() {
   // Desktop-shell host status for THIS machine (null outside Electron), so the
   // picker can tag the current machine and offer to auto-connect it.
   const [desktopHost, setDesktopHost] = useState<HostIdentity | null>(null);
-  const [connectingThisMachine, setConnectingThisMachine] = useState(false);
-  // Defer the connect until the dropdown has actually closed (set on select,
-  // consumed in the menu's onOpenChange) — connecting while the menu is open
-  // looks janky. A ref so the close handler sees it synchronously.
-  const pendingConnectRef = useRef(false);
   // Sandbox repository inputs — composed into the managed create's
   // `workspace` string (`<url>[#<branch>]`); both blank = empty
   // server-created workspace.
-  const [sandboxRepoUrl, setSandboxRepoUrl] = useState<string>("");
-  const [sandboxRepoBranch, setSandboxRepoBranch] = useState<string>("");
+  const [sandboxRepoUrl] = useState<string>("");
+  const [sandboxRepoBranch] = useState<string>("");
   const [workspace, setWorkspace] = useState<string>("");
-  const [branchName, setBranchName] = useState<string>("");
-  const [baseBranch, setBaseBranch] = useState<string>("");
-  // Project to file the new session under (an implicit collection stored as a
-  // conversation_labels row). Empty = unfiled. Applied right after create.
-  // Pre-filled from a `?project=` query param so the sidebar's per-project
-  // "new session" pencil can land here with the project already selected.
-  const projectParam = searchParams.get("project") ?? "";
-  const [selectedProject, setSelectedProject] = useState<string>(() => projectParam);
-  // The landing screen stays mounted while the `?project=` param changes (e.g.
-  // clicking a different project's pencil), so the lazy initializer above won't
-  // re-run — sync the selection to the param whenever it changes.
-  useEffect(() => {
-    setSelectedProject(projectParam);
-  }, [projectParam]);
+  const [branchName] = useState<string>("");
+  const [baseBranch] = useState<string>("");
   const privateFundProjectParam = searchParams.get("private_fund_project") ?? "";
   const privateFundModeParam = searchParams.get("private_fund_mode") ?? "";
-  const privateFundEntryParam = searchParams.get("private_fund_entry") ?? "";
-  const privateFundWorkspaceParam = searchParams.get("private_fund_workspace") ?? "";
-  const privateFundResearchEntry =
-    privateFundProjectParam !== "" && privateFundEntryParam === PRIVATE_FUND_RESEARCH_ENTRY;
+  const privateFundResearchEntry = true;
   const [selectedPrivateFundProjectId, setSelectedPrivateFundProjectId] = useState<string>(
-    () => privateFundProjectParam || readActivePrivateFundProjectId(),
+    () => privateFundProjectParam || readActivePrivateFundProjectId() || "阳光电源",
   );
   useEffect(() => {
     if (privateFundProjectParam) setSelectedPrivateFundProjectId(privateFundProjectParam);
   }, [privateFundProjectParam]);
+  useEffect(() => {
+    if (selectedPrivateFundProjectId || privateFundProjects.length === 0) return;
+    const preferred =
+      privateFundProjects.find((project) => project.datasetId === "阳光电源") ?? privateFundProjects[0];
+    setSelectedPrivateFundProjectId(preferred.datasetId);
+    writeActivePrivateFundProjectId(preferred.datasetId);
+  }, [privateFundProjects, selectedPrivateFundProjectId]);
   const selectedPrivateFundProject = useMemo(
     () =>
       privateFundProjects.find((project) => project.datasetId === selectedPrivateFundProjectId) ??
@@ -1957,17 +1763,15 @@ export function NewChatLandingScreen() {
     setPickedHarness(null);
     privateFundAgentSeededRef.current = true;
   }, [agentList, privateFundResearchEntry]);
-  const privateFundWorkspaceSeededRef = useRef<string | null>(null);
   useEffect(() => {
-    const workspaceParam = privateFundWorkspaceParam.trim();
-    if (!privateFundResearchEntry || !workspaceParam) {
-      privateFundWorkspaceSeededRef.current = null;
-      return;
-    }
-    if (privateFundWorkspaceSeededRef.current === workspaceParam) return;
-    privateFundWorkspaceSeededRef.current = workspaceParam;
-    setWorkspace(workspaceParam);
-  }, [privateFundResearchEntry, privateFundWorkspaceParam]);
+    if (!selectedPrivateFundProject) return;
+    const projectWorkspace =
+      selectedPrivateFundProject.datasetRoot ||
+      selectedPrivateFundProject.sourceDir ||
+      selectedPrivateFundProject.uploadsDir ||
+      "";
+    if (projectWorkspace) setWorkspace(projectWorkspace);
+  }, [selectedPrivateFundProject]);
   useEffect(() => {
     if (privateFundModeParam !== "memo") return;
     if (!selectedPrivateFundProject) return;
@@ -2011,8 +1815,6 @@ export function NewChatLandingScreen() {
   // (null) defers to the agent spec's default and is omitted from
   // the create body.
   const [costControlMode, setCostControlMode] = useState<CostControlMode>(null);
-  // Controls the working-directory popover so picking a directory closes it.
-  const [workspacePopoverOpen, setWorkspacePopoverOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   // "Connect a host" instructions modal, opened from the host dropdown.
@@ -2021,18 +1823,12 @@ export function NewChatLandingScreen() {
   const { recent, addRecent } = useRecentWorkspaces(selectedHostId);
 
   const allHosts = hosts ?? EMPTY_HOSTS;
-  const onlineHosts = allHosts.filter((h) => h.status === "online");
-  const offlineHosts = allHosts.filter((h) => h.status === "offline");
 
   // Identify the current desktop machine and whether we can connect it. When
   // it's already in the host list (online or offline) we connect via that row;
   // only when it's absent do we show a standalone "Run on this machine" item —
   // so the machine never appears twice.
   const thisMachineHostId = desktopHost?.hostId ?? null;
-  const thisMachineInList =
-    thisMachineHostId != null && allHosts.some((h) => h.host_id === thisMachineHostId);
-  const canConnectThisMachine = Boolean(desktopHost?.cliInstalled);
-  const showConnectThisMachine = canConnectThisMachine && !thisMachineInList;
 
   // Track this machine's host status from the desktop shell (no-op in a browser).
   useEffect(() => {
@@ -2217,30 +2013,6 @@ export function NewChatLandingScreen() {
   );
   const workspaceTrimmed = workspace.trim();
   const workspaceValid = isValidWorkspace(workspace);
-  const isCloudHost =
-    sandboxSelected || (selectedHost?.name?.toLowerCase().includes("cloud") ?? false);
-
-  // Sessions on the selected host that have a workspace — candidates for a
-  // directory conflict, fed to the runner-health poll so only *connected*
-  // agents count (same /health signal as the sidebar dots).
-  const conflictCandidates = useMemo(
-    () =>
-      (directorySessions ?? []).filter((s) => s.host_id === selectedHostId && s.workspace != null),
-    [directorySessions, selectedHostId],
-  );
-  const runnerHealth = useRunnerHealthRegistration(conflictCandidates);
-  // Count of live agents per normalized directory on this host. The file
-  // browser uses this to warn when you navigate into an occupied directory.
-  const occupancyByDir = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const s of conflictCandidates) {
-      if (s.workspace == null || runnerHealth.get(s.id) !== true) continue;
-      const dir = normalizeWorkspacePath(s.workspace);
-      if (dir === null) continue;
-      counts.set(dir, (counts.get(dir) ?? 0) + 1);
-    }
-    return counts;
-  }, [conflictCandidates, runnerHealth]);
 
   // Sandbox repo inputs are valid when blank (empty workspace), or when
   // the URL passes the shape check; a branch without a URL is dangling.
@@ -2379,6 +2151,7 @@ export function NewChatLandingScreen() {
   const {
     mentionIndex,
     mentionedItems,
+    setMentionedItems,
     attachMention,
     openMentionDir,
     removeMentionedItem,
@@ -2392,6 +2165,29 @@ export function NewChatLandingScreen() {
     setText: setMessage,
     textareaRef,
   });
+
+  useEffect(() => {
+    useChatStore.getState().setActiveComposerAttachments(mentionedItems);
+    return () => useChatStore.getState().setActiveComposerAttachments([]);
+  }, [mentionedItems]);
+
+  useEffect(() => {
+    if (pendingComposerAttachments.length === 0) return;
+    setMentionedItems((prev) => {
+      const seen = new Set(prev.map(composerAttachmentKey));
+      const fresh: MentionItem[] = [];
+      for (const attachment of pendingComposerAttachments) {
+        const key = composerAttachmentKey(attachment);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        fresh.push(attachment);
+      }
+      return fresh.length > 0 ? [...prev, ...fresh] : prev;
+    });
+    useChatStore.getState().clearPendingComposerAttachments();
+    textareaRef.current?.focus();
+    return () => useChatStore.getState().clearPendingComposerAttachments();
+  }, [pendingComposerAttachments, setMentionedItems]);
 
   const canSubmit =
     message.trim().length > 0 &&
@@ -2410,7 +2206,7 @@ export function NewChatLandingScreen() {
     : sandboxSelected && !sandboxRepoValid
       ? "Please enter a valid repository URL"
       : !sandboxSelected && (!selectedHostId || !workspaceValid)
-        ? "Please choose a host and working directory"
+        ? "Waiting for the research project workspace"
         : selectedPrivateFundProject == null
           ? "Select a research project first"
           : !selectedPrivateFundProject.indexReady
@@ -2423,20 +2219,6 @@ export function NewChatLandingScreen() {
   const workspaceLabel = workspaceTrimmed
     ? (workspaceTrimmed.split("/").filter(Boolean).pop() ?? workspaceTrimmed)
     : "Working directory";
-  const hostLabel = connectingThisMachine
-    ? "Connecting…"
-    : sandboxSelected
-      ? sandboxLabel
-      : (selectedHost?.name ?? (onlineHosts.length === 0 ? "No hosts" : "Select host"));
-  const worktreeLabel = branchName.trim() || "No worktree";
-  // Sandbox repository chip label: repo name (server's clone-dir rule)
-  // plus the pinned branch, e.g. "repo#main"; placeholder when unset.
-  const sandboxRepoName = deriveRepoName(sandboxRepoUrl);
-  const sandboxRepoLabel = sandboxRepoName
-    ? sandboxRepoBranch.trim()
-      ? `${sandboxRepoName}#${sandboxRepoBranch.trim()}`
-      : sandboxRepoName
-    : "Repository";
   // The trigger label is just the agent name; the run-config knobs live in
   // the picker's per-entry submenu, so duplicating their values here would be
   // redundant.
@@ -2454,51 +2236,6 @@ export function NewChatLandingScreen() {
     setPickedAgentId(PENDING_AGENT_ID);
     setPickedHarness(null);
   };
-
-  function selectHost(hostId: string) {
-    // Re-selecting the current host is a no-op. Clearing the workspace here
-    // would empty the field for good: the seeding effect's deps (host id,
-    // recents, derived home) are all unchanged on a same-host pick, so it
-    // never re-runs to fill the field back in — and a host the user already
-    // has selected (e.g. the auto-picked first online host) is exactly the
-    // one they're most likely to click in the menu.
-    if (hostId === selectedHostId) return;
-    setSandboxSelected(false);
-    setSelectedHostId(hostId);
-    // Workspace is host-specific — clear it and let the seeding effect run for
-    // the new host.
-    setWorkspace("");
-    seededHostRef.current = null;
-  }
-
-  function selectSandbox() {
-    if (sandboxSelected) return;
-    // Mirror selectHost: a managed session's host and workspace are both
-    // server-chosen, so clear any prior host pick and its workspace.
-    setSandboxSelected(true);
-    setSelectedHostId(null);
-    setWorkspace("");
-    seededHostRef.current = null;
-  }
-
-  // Connect THIS desktop machine as a host for the current server, then select
-  // it — so the user doesn't have to run `omni host` in a terminal first. The
-  // bridge's controlHost resolves once the host is connected; we then read its
-  // id, refresh the host list, and pick it.
-  async function connectThisMachine() {
-    if (connectingThisMachine) return;
-    setConnectingThisMachine(true);
-    try {
-      const res = await controlHost("start");
-      if (!res.ok) return;
-      const identity = await getHostIdentity();
-      setDesktopHost(identity);
-      await queryClient.invalidateQueries({ queryKey: ["hosts"] });
-      if (identity?.hostId) selectHost(identity.hostId);
-    } finally {
-      setConnectingThisMachine(false);
-    }
-  }
 
   async function handleCreate() {
     // Mirror the Send button's disabled condition (canSubmit) so the Enter-key
@@ -2615,26 +2352,6 @@ export function NewChatLandingScreen() {
         }
         data = (await res.json()) as { id: string };
       }
-      // File the new session under the chosen project (an implicit collection
-      // stored as a conversation_labels row). Awaited so the conversations
-      // refetch below already sees the label; non-fatal if it fails — the
-      // session is created either way, just unfiled.
-      if (selectedProject) {
-        try {
-          await authenticatedFetch(`/v1/sessions/${data.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ labels: { [PROJECT_LABEL_KEY]: selectedProject } }),
-          });
-          void queryClient.invalidateQueries({ queryKey: ["projects"] });
-          // Refetch the target project folder's own paginated list so the new
-          // session shows up immediately (the folder fetches via
-          // useProjectSessions, separate from the global conversations list).
-          void queryClient.invalidateQueries({ queryKey: ["project-sessions"] });
-        } catch {
-          // Leave the session unfiled; the user can file it from the sidebar.
-        }
-      }
       // Sandbox creates have no user-picked workspace to remember.
       if (!sandboxSelected) addRecent(workspaceTrimmed);
       // Fire-and-forget: don't block navigation on the sidebar list refresh.
@@ -2676,28 +2393,6 @@ export function NewChatLandingScreen() {
       setCreating(false);
     }
   }
-
-  // The working-directory chip — a single Popover trigger button that opens
-  // the file browser. The directory-conflict warning lives inside the browser
-  // (a banner on the occupied folder), not on the chip.
-  const workspaceChip = (
-    <button
-      type="button"
-      className="flex h-6 items-center gap-1 rounded-full px-2.5 text-13 font-normal text-muted-foreground transition-colors hover:text-foreground"
-      data-testid="new-chat-landing-workspace-chip"
-    >
-      <FolderIcon className="size-4 shrink-0" />
-      {/* Label collapses to icon-only on narrow viewports (mobile). Capped
-          tight so a long working-directory path truncates instead of pushing
-          the chip row onto a second line. */}
-      <span
-        className={`hidden max-w-40 truncate sm:block ${workspaceTrimmed !== "" ? "text-foreground" : ""}`}
-      >
-        {workspaceLabel}
-      </span>
-      <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
-    </button>
-  );
 
   return (
     // pb-12 lifts the content slightly above the geometric center, where
@@ -3041,15 +2736,9 @@ export function NewChatLandingScreen() {
               </div>
             </div>
           </form>
-          {/* Composer footer tray — host / working directory / worktree
-              selectors. Renders below the pill at z-0 while the pill sits
-              at z-10: -mt-9 cancels the wrapper's gap-3 (12px) and tucks
-              the tray's top 24px underneath the pill's rounded bottom
-              edge. Height is padding-driven (pt-8 + h-6 chips + pb-2 =
-              the same 64px as before when the chips fit one row) so the
-              chip row can wrap on narrow screens — with a fixed h-16 the
-              chips overflowed the viewport on phones, widening the whole
-              page (#sidebar-wider-than-screen on the landing page). */}
+          {/* Composer footer tray — private-fund project scope only. The host and
+              filesystem workspace are selected automatically from the project,
+              so users cannot browse into arbitrary root directories here. */}
           <div className="relative z-0 -mt-9 flex w-full items-center rounded-b-2xl bg-tray/40 pt-8 pr-3 pb-2 pl-2">
             <div className="flex flex-wrap items-center gap-1">
               <ResearchProjectPicker
@@ -3057,349 +2746,13 @@ export function NewChatLandingScreen() {
                 value={selectedPrivateFundProjectId}
                 onChange={setSelectedPrivateFundProjectId}
               />
-              {/* Host chip */}
-              <DropdownMenu
-                onOpenChange={(open) => {
-                  // Run a requested "connect this machine" only once the menu
-                  // has closed.
-                  if (!open && pendingConnectRef.current) {
-                    pendingConnectRef.current = false;
-                    void connectThisMachine();
-                  }
-                }}
+              <span
+                className="hidden max-w-[24rem] truncate rounded-full px-2.5 text-13 text-muted-foreground sm:inline-flex"
+                title={workspaceTrimmed || undefined}
               >
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex h-6 items-center gap-1 rounded-full px-2.5 text-13 font-normal text-muted-foreground transition-colors hover:text-foreground"
-                    data-testid="new-chat-landing-host-chip"
-                  >
-                    {isCloudHost ? (
-                      <MonitorCloudIcon className="size-4 shrink-0" />
-                    ) : (
-                      <MonitorIcon className="size-4 shrink-0" />
-                    )}
-                    <span
-                      className={`hidden max-w-32 truncate sm:block ${sandboxSelected || selectedHost != null || connectingThisMachine ? "text-foreground" : ""}`}
-                    >
-                      {hostLabel}
-                    </span>
-                    <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="min-w-52">
-                  {/* Server-provisioned sandbox — only advertised when
-                    /v1/info reports managed_sandboxes_enabled. Pinned
-                    first, above the connected-host list. */}
-                  {(managedSandboxesEnabled || showDisabledSandboxWithDocs) && (
-                    <>
-                      {managedSandboxesEnabled ? (
-                        <DropdownMenuItem
-                          onSelect={selectSandbox}
-                          data-testid="new-chat-landing-sandbox-option"
-                          data-active={sandboxSelected ? "true" : undefined}
-                          className="text-xs data-[active=true]:bg-accent/60"
-                        >
-                          <span className="flex items-center gap-2">
-                            <MonitorCloudIcon className="size-4 text-muted-foreground" />
-                            <span className="text-xs">{sandboxLabel}</span>
-                          </span>
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem
-                          aria-disabled="true"
-                          onSelect={(e) => e.preventDefault()}
-                          className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground opacity-60"
-                          data-testid="new-chat-landing-sandbox-option-disabled"
-                        >
-                          <span className="flex items-center gap-2">
-                            <MonitorCloudIcon className="size-4 text-muted-foreground" />
-                            <span className="text-xs">New Sandbox</span>
-                          </span>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground/80 hover:text-foreground"
-                                aria-label="Why New Sandbox is unavailable"
-                                onClick={(e) => e.stopPropagation()}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") e.stopPropagation();
-                                }}
-                              >
-                                <CircleHelpIcon className="size-3.5" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-64">
-                              {newSandboxTooltipContent}
-                            </TooltipContent>
-                          </Tooltip>
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                  {allHosts.length === 0 && !showConnectThisMachine && (
-                    <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                      No hosts connected yet.
-                    </div>
-                  )}
-                  {onlineHosts.map((host) => (
-                    <DropdownMenuItem
-                      key={host.host_id}
-                      onSelect={() => selectHost(host.host_id)}
-                      data-active={host.host_id === selectedHostId ? "true" : undefined}
-                      className="text-xs data-[active=true]:bg-accent/60"
-                    >
-                      <HostOption
-                        host={host}
-                        subtitle={host.host_id === thisMachineHostId ? "this machine" : undefined}
-                      />
-                    </DropdownMenuItem>
-                  ))}
-                  {offlineHosts.map((host) => {
-                    // This machine, offline: make the row itself the connect
-                    // affordance instead of a disabled entry + a duplicate "Run
-                    // on this machine" item. Connect after the menu closes.
-                    if (host.host_id === thisMachineHostId && canConnectThisMachine) {
-                      return (
-                        <DropdownMenuItem
-                          key={host.host_id}
-                          onSelect={() => {
-                            pendingConnectRef.current = true;
-                          }}
-                          disabled={connectingThisMachine}
-                          data-testid="new-chat-landing-run-on-this-machine"
-                          className="text-xs"
-                        >
-                          <HostOption
-                            host={host}
-                            subtitle={
-                              connectingThisMachine
-                                ? "connecting…"
-                                : "this machine · select to connect"
-                            }
-                          />
-                        </DropdownMenuItem>
-                      );
-                    }
-                    return (
-                      <DropdownMenuItem key={host.host_id} disabled className="text-xs">
-                        <HostOption
-                          host={host}
-                          subtitle={host.host_id === thisMachineHostId ? "this machine" : undefined}
-                        />
-                      </DropdownMenuItem>
-                    );
-                  })}
-                  {/* Desktop shell, machine not in the list yet: offer to connect
-                    it in one click. */}
-                  {showConnectThisMachine && (
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        pendingConnectRef.current = true;
-                      }}
-                      disabled={connectingThisMachine}
-                      data-testid="new-chat-landing-run-on-this-machine"
-                      className="gap-2 text-xs"
-                    >
-                      <MonitorIcon className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="text-xs">
-                        {connectingThisMachine ? "Connecting this machine…" : "Run on this machine"}
-                      </span>
-                    </DropdownMenuItem>
-                  )}
-                  {(allHosts.length > 0 || showConnectThisMachine) && <DropdownMenuSeparator />}
-                  {/* Persistent escape hatch: open the connect-a-host
-                    instructions. Present even with zero hosts so a fresh user
-                    is never stuck. */}
-                  <DropdownMenuItem
-                    onSelect={() => setConnectOpen(true)}
-                    data-testid="new-chat-landing-connect-host"
-                    className="gap-2 text-xs text-muted-foreground"
-                  >
-                    <PlusIcon className="size-3.5" />
-                    Connect new host
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Sandbox repository chip — the sandbox counterpart of the
-                working-directory chip. There is no filesystem to browse
-                before the sandbox exists, so the workspace is specified as
-                a git repository URL (+ optional branch) the server clones
-                at create time. Blank = empty server-created workspace. */}
-              {sandboxSelected && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex h-6 items-center gap-1 rounded-full px-2.5 text-13 font-normal text-muted-foreground transition-colors hover:text-foreground"
-                      data-testid="new-chat-landing-repo-chip"
-                    >
-                      <GitBranchIcon className="size-4 shrink-0" />
-                      <span
-                        className={`hidden max-w-40 truncate sm:block ${sandboxRepoName ? "text-foreground" : "text-muted-foreground"}`}
-                      >
-                        {sandboxRepoLabel}
-                      </span>
-                      <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-96 p-3">
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <label
-                          htmlFor="landing-repo-url"
-                          className="text-xs font-medium text-foreground"
-                        >
-                          Repository (optional)
-                        </label>
-                        {databricksGitCredentialsTooltipContent && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                className="inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
-                                aria-label="How to set up Databricks git credentials"
-                              >
-                                <CircleHelpIcon className="size-3.5" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-64">
-                              {databricksGitCredentialsTooltipContent}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                      </div>
-                      <input
-                        id="landing-repo-url"
-                        type="text"
-                        value={sandboxRepoUrl}
-                        onChange={(e) => setSandboxRepoUrl(e.target.value)}
-                        placeholder="https://github.com/org/repo"
-                        className="rounded-md border border-input bg-background px-3 py-2 text-xs outline-none transition-colors focus-visible:border-ring"
-                        data-testid="new-chat-landing-repo-input"
-                      />
-                      <input
-                        type="text"
-                        value={sandboxRepoBranch}
-                        onChange={(e) => setSandboxRepoBranch(e.target.value)}
-                        placeholder="Branch (defaults to the repo's default)"
-                        aria-label="Repository branch"
-                        className="rounded-md border border-input bg-background px-3 py-2 text-xs outline-none transition-colors focus-visible:border-ring"
-                        data-testid="new-chat-landing-repo-branch-input"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Cloned into the sandbox as the session's working directory. Leave blank to
-                        start in an empty workspace.
-                      </p>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
-
-              {/* Working directory chip — opens the file browser directly (no
-                separate "browse" toggle). onNavigate updates the workspace
-                live as the user browses (no "Select" button); the popover
-                closes on click-out. The directory-conflict warning shows as a
-                banner inside the browser on the occupied folder. Hidden for
-                sandbox sessions — the repository chip above replaces it (the
-                server creates the directory inside the sandbox). */}
-              {!sandboxSelected && (
-                <Popover open={workspacePopoverOpen} onOpenChange={setWorkspacePopoverOpen}>
-                  <PopoverTrigger asChild>{workspaceChip}</PopoverTrigger>
-                  {/* Cap to the viewport so the 420px browser can't overflow a
-                  narrow screen; desktop still gets the full width. */}
-                  <PopoverContent align="start" className="w-[min(420px,calc(100vw-2rem))] p-0">
-                    {selectedHostId ? (
-                      <WorkspacePicker
-                        hostId={selectedHostId}
-                        initialPath={
-                          isNavigablePath(workspaceTrimmed) ? workspaceTrimmed : undefined
-                        }
-                        onNavigate={setWorkspace}
-                        // Warn when browsing into a directory other live agents
-                        // occupy. Suppressed once a git branch is named — that
-                        // starts an isolated worktree, so there's no shared-dir
-                        // conflict regardless of the picked directory.
-                        occupancyForPath={
-                          branchName.trim() === ""
-                            ? (abs) => occupancyByDir.get(normalizeWorkspacePath(abs) ?? "") ?? 0
-                            : undefined
-                        }
-                      />
-                    ) : (
-                      <p className="p-3 text-xs text-muted-foreground">Select a host first.</p>
-                    )}
-                  </PopoverContent>
-                </Popover>
-              )}
-
-              {/* Git worktree chip — hidden for sandbox sessions (worktree
-                creation requires a caller-supplied host_id). */}
-              {!sandboxSelected && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex h-6 items-center gap-1 rounded-full px-2.5 text-13 font-normal text-muted-foreground transition-colors hover:text-foreground"
-                      data-testid="new-chat-landing-branch-chip"
-                    >
-                      <GitBranchIcon className="size-4 shrink-0" />
-                      <span
-                        className={`hidden max-w-32 truncate sm:block ${branchName.trim() ? "text-foreground" : ""}`}
-                      >
-                        {worktreeLabel}
-                      </span>
-                      <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] p-3">
-                    <div className="flex flex-col gap-2">
-                      <label
-                        htmlFor="landing-branch-name"
-                        className="text-xs font-medium text-foreground"
-                      >
-                        Git worktree branch (optional)
-                      </label>
-                      <input
-                        id="landing-branch-name"
-                        type="text"
-                        value={branchName}
-                        onChange={(e) => setBranchName(e.target.value)}
-                        placeholder="feature/my-branch"
-                        className="rounded-md border border-input bg-background px-3 py-2 text-xs outline-none transition-colors focus-visible:border-ring"
-                        data-testid="new-chat-landing-branch-input"
-                      />
-                      {branchName.trim() !== "" && (
-                        <input
-                          type="text"
-                          value={baseBranch}
-                          onChange={(e) => setBaseBranch(e.target.value)}
-                          placeholder="Base branch (defaults to current branch)"
-                          aria-label="Base branch"
-                          className="rounded-md border border-input bg-background px-3 py-2 text-xs outline-none transition-colors focus-visible:border-ring"
-                          data-testid="new-chat-landing-base-branch-input"
-                        />
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Creates an isolated git worktree for a new branch. Leave blank to start
-                        directly in the working directory.
-                      </p>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
-
-              {/* Project chip — files the session under a named project on
-                create. Sits after the worktree chip. */}
-              <LandingProjectPicker value={selectedProject} onChange={setSelectedProject} />
+                {workspaceTrimmed ? `Workspace: ${workspaceLabel}` : "Workspace follows project"}
+              </span>
             </div>
-            {/* The agent / harness picker moved out of the tray and into the
-                composer's right action cluster (next to Send) — see
-                AgentHarnessPicker above. The tray now holds only the
-                host / working-directory / worktree / project chips. */}
           </div>
 
           {/* Warn (don't block) when the selected agent's harness isn't

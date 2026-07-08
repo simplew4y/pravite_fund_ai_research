@@ -19,6 +19,7 @@ import {
   CheckIcon as CheckMarkIcon,
   ChevronRightIcon,
   CircleStopIcon,
+  FileTextIcon,
   FolderIcon,
   FolderInputIcon,
   FolderMinusIcon,
@@ -122,6 +123,15 @@ import { useResizableSidebar } from "@/hooks/useResizableSidebar";
 import { useSessionSwitchHotkey } from "@/hooks/useSessionSwitchHotkey";
 import { usePinnedSessionHotkeys } from "@/hooks/usePinnedSessionHotkeys";
 import { absoluteTime, relativeTime } from "@/lib/relativeTime";
+import { usePrivateFundProject, usePrivateFundProjects } from "@/hooks/usePrivateFundProjects";
+import {
+  ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT,
+  PRIVATE_FUND_DATASET_ID_LABEL_KEY,
+  type PrivateFundFile,
+  type PrivateFundProject,
+  readActivePrivateFundProjectId,
+} from "@/lib/privateFundApi";
+import { composerAttachmentKey, useChatStore } from "@/store/chatStore";
 import { SettingsSidebarBody, useSettingsRoute } from "./settingsNav";
 import {
   type ActiveChatOverride,
@@ -144,9 +154,10 @@ import {
 // on mobile it sits left of the always-visible controls (right-[4.5rem]).
 const TIME_MARKER_SLOT_CLASS =
   "-translate-y-1/2 pointer-events-none absolute top-1/2 right-[4.5rem] flex h-5 items-center transition-opacity md:right-2 md:group-hover:opacity-0 md:group-has-[:focus-visible]:opacity-0 md:group-has-[[aria-expanded=true]]:opacity-0";
+const CORPUS_COLLAPSED_STORAGE_KEY = "omnigent.sidebar.privateFundCorpusCollapsed";
 
 // Highlight applied to a drop target while a draggable session hovers it: a
-// subtle background tint — no border, no shadow. Keyed on --primary like the
+// subtle background tint 鈥?no border, no shadow. Keyed on --primary like the
 // row-selection highlight in this file, at /5 (half the original /10) so it's a
 // gentler gray in light mode (a gentler glow in dark mode) and reads as "active
 // area" without the heavy fill. Pair with `transition-colors` so it eases in.
@@ -170,11 +181,11 @@ interface SidebarProps {
  * route.
  *
  * The inbox route has no param to key off, and the sidebar is basename-agnostic
- * (in embedded mode the routing seam rebases `to="/inbox"` → `${basename}/inbox`
+ * (in embedded mode the routing seam rebases `to="/inbox"` 鈫?`${basename}/inbox`
  * behind its back), so `useMatch` / `NavLink` can't be used without knowing the
  * mount path. Instead compare the active route's last non-empty path segment,
  * which is `inbox` in both standalone and embedded modes. Conversation ids are
- * `conv_…`-prefixed, so a chat route's leaf can never collide with `inbox`.
+ * `conv_鈥-prefixed, so a chat route's leaf can never collide with `inbox`.
  */
 function useActiveNavItem(): {
   isNewChatPage: boolean;
@@ -193,9 +204,9 @@ function useActiveNavItem(): {
 }
 
 /**
- * Sidebar — brand mark, "New chat" button, conversations list.
+ * Sidebar 鈥?brand mark, "New chat" button, conversations list.
  *
- * Responsive layout (mobile overlay vs desktop push) — see AppShell for
+ * Responsive layout (mobile overlay vs desktop push) 鈥?see AppShell for
  * the layout side of the contract. Auto-close behavior is also
  * viewport-conditional:
  *
@@ -208,7 +219,7 @@ function useActiveNavItem(): {
  *     scrollback is fine; users typically want the conversations list
  *     to stay visible while they switch around.
  */
-/** Toast body shown after archiving a session — links to its new home. */
+/** Toast body shown after archiving a session 鈥?links to its new home. */
 function ArchivedToast() {
   return (
     <span>
@@ -223,6 +234,154 @@ function ArchivedToast() {
 /** Fire the post-archive toast. Hoisted so it isn't a render-scoped closure. */
 function showArchivedToast() {
   showToast(<ArchivedToast />);
+}
+
+function readCorpusCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(CORPUS_COLLAPSED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeCorpusCollapsed(collapsed: boolean): void {
+  try {
+    if (collapsed) window.localStorage.setItem(CORPUS_COLLAPSED_STORAGE_KEY, "1");
+    else window.localStorage.removeItem(CORPUS_COLLAPSED_STORAGE_KEY);
+  } catch {
+    // Sidebar preference only.
+  }
+}
+
+function normalizePrivateFundFilePath(
+  file: PrivateFundFile,
+  project: PrivateFundProject | undefined,
+): string {
+  const rawPath = file.storedPath || file.sourcePath;
+  if (!rawPath) return file.name;
+
+  const path = rawPath.replace(/\\/g, "/");
+  const roots = [project?.datasetRoot, project?.sourceDir, project?.uploadsDir]
+    .filter((root): root is string => !!root)
+    .map((root) => root.replace(/\\/g, "/").replace(/\/+$/, ""));
+
+  for (const root of roots) {
+    if (path === root) return file.name;
+    if (path.startsWith(`${root}/`)) return path.slice(root.length + 1) || file.name;
+  }
+
+  return path.startsWith("/") ? file.name : path;
+}
+
+function PrivateFundCorpusSection({ activeDatasetId }: { activeDatasetId: string | null }) {
+  const projectsQuery = usePrivateFundProjects();
+  const projects = projectsQuery.data ?? [];
+  const [storedActiveDatasetId, setStoredActiveDatasetId] = useState(readActivePrivateFundProjectId);
+  const datasetId =
+    activeDatasetId ||
+    storedActiveDatasetId ||
+    projects.find((project) => project.datasetId === "阳光电源")?.datasetId ||
+    projects[0]?.datasetId ||
+    "阳光电源";
+  const projectQuery = usePrivateFundProject(datasetId);
+  const project = projectQuery.data?.project;
+  const files = projectQuery.data?.files ?? [];
+  const [collapsed, setCollapsed] = useState(readCorpusCollapsed);
+  const pendingComposerAttachments = useChatStore((s) => s.pendingComposerAttachments);
+  const activeComposerAttachments = useChatStore((s) => s.activeComposerAttachments);
+  const attachedPathKeys = useMemo(
+    () =>
+      new Set([
+        ...activeComposerAttachments.map(composerAttachmentKey),
+        ...pendingComposerAttachments.map(composerAttachmentKey),
+      ]),
+    [activeComposerAttachments, pendingComposerAttachments],
+  );
+
+  useEffect(() => {
+    const syncFromStorage = () => setStoredActiveDatasetId(readActivePrivateFundProjectId());
+    const handleActiveProjectChanged = (event: Event) => {
+      const datasetId =
+        event instanceof CustomEvent && typeof event.detail?.datasetId === "string"
+          ? event.detail.datasetId
+          : readActivePrivateFundProjectId();
+      setStoredActiveDatasetId(datasetId);
+    };
+    window.addEventListener("storage", syncFromStorage);
+    window.addEventListener(ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT, handleActiveProjectChanged);
+    return () => {
+      window.removeEventListener("storage", syncFromStorage);
+      window.removeEventListener(
+        ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT,
+        handleActiveProjectChanged,
+      );
+    };
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((current) => {
+      const next = !current;
+      writeCorpusCollapsed(next);
+      return next;
+    });
+  }
+
+  function attachFile(file: PrivateFundFile) {
+    const path = normalizePrivateFundFilePath(file, project);
+    const attachment = { path, isDir: false };
+    useChatStore.getState().addComposerAttachment(attachment);
+  }
+
+  return (
+    <section className="mb-3">
+      <SectionHeader
+        title={project?.name ?? datasetId}
+        icon={<FolderIcon className="size-4 shrink-0" />}
+        collapsed={collapsed}
+        onToggleCollapsed={toggleCollapsed}
+      />
+      {!collapsed && (
+        <div className="mt-0.5 flex flex-col gap-1">
+          {projectQuery.isLoading ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground">正在加载项目资料...</p>
+          ) : files.length === 0 ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground">暂无项目资料</p>
+          ) : (
+            <ul className="flex flex-col gap-0.5">
+              {files.map((file) => {
+                const attachmentPath = normalizePrivateFundFilePath(file, project);
+                const isAttached = attachedPathKeys.has(
+                  composerAttachmentKey({ path: attachmentPath, isDir: false }),
+                );
+                return (
+                  <li key={`${file.name}-${file.docId ?? file.sourcePath ?? ""}`}>
+                    <button
+                      type="button"
+                      className="group flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => attachFile(file)}
+                    >
+                      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium">{file.name}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {file.fileType.toUpperCase()}
+                        </span>
+                      </span>
+                      {isAttached && (
+                        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          已加入
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
@@ -279,7 +438,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // One paginated session list — sessions are no longer split by
+  // One paginated session list 鈥?sessions are no longer split by
   // connection state, so the sidebar fetches a single undifferentiated
   // list. Archived sessions are included (`includeArchived: true`) and
   // peeled into their own "Archived" section at the bottom of the list.
@@ -287,19 +446,25 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
     reconcileWhileConnected: true,
   });
 
-  // The scrollable list container — used as the IntersectionObserver root for
+  // The scrollable list container 鈥?used as the IntersectionObserver root for
   // infinite scroll (auto-loading the next page as the sentinel nears view).
   const scrollContainerRef = useRef<HTMLElement>(null);
 
-  // Inbox badge — total approval prompts across loaded rows. Same
+  // Inbox badge 鈥?total approval prompts across loaded rows. Same
   // `pending_elicitations_count` the per-row "awaiting" hand badge
   // reads (live via WS /v1/sessions/updates), just summed.
   const loadedRows = useMemo(
     () => (conversationsQuery.data?.pages ?? []).flatMap((page) => page.data),
     [conversationsQuery.data],
   );
+  const { conversationId: activeConversationId } = useParams<{ conversationId: string }>();
+  const activeCorpusDatasetId = useMemo(() => {
+    if (!activeConversationId) return null;
+    const activeConversation = loadedRows.find((conversation) => conversation.id === activeConversationId);
+    return activeConversation?.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY] ?? null;
+  }, [activeConversationId, loadedRows]);
   const pendingApprovals = useMemo(() => sumPendingApprovals(loadedRows), [loadedRows]);
-  // Plus unseen file comments — the badge counts everything the Inbox
+  // Plus unseen file comments 鈥?the badge counts everything the Inbox
   // page lists. Comment queries are shared with the page/FileViewer
   // (same ["comments", id] keys), so this adds no duplicate fetches.
   const unseenComments = useCommentInbox(loadedRows).items.length;
@@ -308,7 +473,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
   // Click handler for conversation-row Links in the sidebar. The Link
   // handles navigation natively, so cmd/ctrl/middle-click opens new
   // tabs. We still want to close on mobile after a plain primary click,
-  // but NOT for modifier/middle clicks that open a new tab — those
+  // but NOT for modifier/middle clicks that open a new tab 鈥?those
   // don't change the current view.
   function onNavClick(e: MouseEvent<HTMLAnchorElement>) {
     if (e.defaultPrevented) return;
@@ -321,13 +486,13 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
   const { isNewChatPage, isInboxPage, isResearchProjectsPage } = useActiveNavItem();
 
   // On /settings the card keeps its chrome but swaps the conversation list
-  // for the settings section nav (see settingsNav.tsx) — entering settings
+  // for the settings section nav (see settingsNav.tsx) 鈥?entering settings
   // shouldn't replace the whole sidebar.
   const { inSettings } = useSettingsRoute();
 
   // Sync pinned ids to localStorage whenever state changes. Keeping
   // the write here (instead of inside the state updater) preserves the
-  // purity contract of React updaters — important under StrictMode,
+  // purity contract of React updaters 鈥?important under StrictMode,
   // which may invoke updaters twice.
   useEffect(() => {
     writePinnedConversationIds(pinnedConversationIds);
@@ -339,12 +504,12 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
 
   // Desktop-only drag-to-resize, mirroring the right rail. The width is
   // exposed as a CSS variable consumed by the ``md:w-[var(--sidebar-width)]``
-  // class so it only applies on desktop — on mobile the sidebar is a
+  // class so it only applies on desktop 鈥?on mobile the sidebar is a
   // full-screen overlay (``fixed inset-0``) and the variable is ignored.
   const { width: sidebarWidth, handleProps: resizeHandleProps } = useResizableSidebar();
 
   // While the iOS edge-swipe is dragging, the overlay is on-screen and
-  // interactive even though `open` hasn't flipped yet — treat a live drag as
+  // interactive even though `open` hasn't flipped yet 鈥?treat a live drag as
   // visually open so it isn't `inert`/`aria-hidden` mid-gesture.
   const dragging = dragProgress != null;
   const effectiveOpen = open || dragging;
@@ -353,20 +518,19 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
     <aside
       aria-label="Conversations"
       className={cn(
-        // Base: bg + flex column. No transition — expand/collapse snaps
+        // Base: bg + flex column. No transition 鈥?expand/collapse snaps
         // instantly (animating the width also lagged drag-to-resize).
         // conversations-sidebar only matters under the macOS Electron
         // shell, where it pushes the card below the traffic lights
         // (see the [data-electron-mac] rules in index.css).
         "conversations-sidebar flex flex-col bg-card md:select-none",
         // Mobile (default): fixed full-screen overlay, slide via
-        // translate-x. Stays edge-to-edge — the floating-card
+        // translate-x. Stays edge-to-edge 鈥?the floating-card
         // treatment below is desktop-only.
         // bg-card-solid (opaque): the overlay sits on top of the chat, and
         // WebKit drops the glass rule's backdrop-filter once a Radix popper
         // opens (and never repaints it), letting the chat bleed through the
-        // 60%-alpha glass --card. Desktop keeps the translucent bg-card —
-        // there the sidebar pushes content aside, so nothing sits behind it.
+        // 60%-alpha glass --card. Desktop keeps the translucent bg-card 鈥?        // there the sidebar pushes content aside, so nothing sits behind it.
         "max-md:bg-card-solid",
         "fixed inset-0 z-50",
         // Mobile only: animate the slide so the iOS edge-swipe settles
@@ -379,7 +543,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
         // Desktop: a floating card. Detached from the window edges by a
         // margin, rounded, and lifted off the bg-sidebar canvas with a
         // full border + shadow. Width (the user-resizable variable) animates
-        // →0 to push main; when closed the margin/border collapse too so
+        // 鈫? to push main; when closed the margin/border collapse too so
         // nothing lingers.
         "md:relative md:inset-auto md:translate-x-0 md:overflow-hidden",
         open
@@ -389,8 +553,8 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
       style={
         {
           "--sidebar-width": `${sidebarWidth}px`,
-          // Track the finger: map the 0→1 open fraction to translateX
-          // -100%→0% and kill the transition so it follows the drag exactly.
+          // Track the finger: map the 0鈫? open fraction to translateX
+          // -100%鈫?% and kill the transition so it follows the drag exactly.
           ...(dragging
             ? { transform: `translateX(${(dragProgress - 1) * 100}%)`, transition: "none" }
             : null),
@@ -473,7 +637,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
                     onClick={onClose}
                     className="rounded-full"
                   >
-                    {/* panel-right-open while the sidebar IS open — this button
+                    {/* panel-right-open while the sidebar IS open 鈥?this button
                     only renders in the open state (ChatHeader's PanelLeftIcon
                     covers the collapsed state). */}
                     <PanelRightOpenIcon className="size-4" />
@@ -572,6 +736,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
             ref={scrollContainerRef}
             className="relative flex-1 overflow-y-auto px-3 pb-3 max-md:pb-16 [scrollbar-gutter:stable]"
           >
+            <PrivateFundCorpusSection activeDatasetId={activeCorpusDatasetId} />
             <ConversationList
               conversationsQuery={conversationsQuery}
               scrollContainerRef={scrollContainerRef}
@@ -588,8 +753,8 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
           </nav>
 
           {/* Settings entry. Always present (every deploy): the full settings
-          surface — appearance, keyboard shortcuts, archived chats, and the
-          account/sign-out controls when accounts auth is on — lives behind
+          surface 鈥?appearance, keyboard shortcuts, archived chats, and the
+          account/sign-out controls when accounts auth is on 鈥?lives behind
           this on the /settings page.
 
           Desktop: a full-width footer row pinned below the flex-1 nav, the
@@ -615,7 +780,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
               {/* No onNavClick here: on mobile the sidebar is a full-screen
               overlay, and entering settings swaps it to the section list
               (SettingsSidebarBody). Closing the overlay would skip that list
-              and drop straight onto the default section's content — instead we
+              and drop straight onto the default section's content 鈥?instead we
               keep it open so mobile lands on the section list, then tapping a
               section (which DOES use onNavClick) closes it to show content. */}
               <Link to="/settings" aria-label="Settings">
@@ -682,8 +847,7 @@ function InfiniteScrollSentinel({
       {isFetching ? (
         <>
           <Loader2Icon className="size-3 animate-spin" />
-          Loading…
-        </>
+          Loading鈥?        </>
       ) : (
         "Load more"
       )}
@@ -751,7 +915,7 @@ function ProjectFolder({
     };
   }, [projectRenderedIdsRef, name, expanded, conversations]);
 
-  // While the first page loads, show a "Loading…" footer instead of the "No
+  // While the first page loads, show a "Loading鈥? footer instead of the "No
   // chats" empty state (which would otherwise flash before rows arrive).
   const loadingFirstPage = expanded && query.isLoading;
 
@@ -769,7 +933,7 @@ function ProjectFolder({
       ref={setNodeRef}
       className={cn(
         "rounded-md transition-colors",
-        // Subtle background tint on drag-over — no border, no shadow.
+        // Subtle background tint on drag-over 鈥?no border, no shadow.
         isOver && DROP_TARGET_HIGHLIGHT,
       )}
     >
@@ -799,7 +963,7 @@ function ProjectFolder({
         headerAction={<ProjectFolderActions projectName={name} onNavigate={onRowClick} />}
         footer={
           loadingFirstPage ? (
-            <p className="px-2 py-1 pl-7 text-muted-foreground text-xs">Loading…</p>
+            <p className="px-2 py-1 pl-7 text-muted-foreground text-xs">Loading...</p>
           ) : (
             <InfiniteScrollSentinel
               hasMore={query.hasNextPage}
@@ -910,11 +1074,11 @@ function ConversationList({
     );
     // NOTE: empty projects are intentionally NOT filtered out. A project comes
     // from the server project list (useProjects), so it can have zero *loaded*
-    // conversations — either genuinely empty or because its chats live on an
+    // conversations 鈥?either genuinely empty or because its chats live on an
     // unloaded page. We render it as a folder with a "No chats" placeholder
     // rather than hiding it (matches the target sidebar layout).
 
-    // Chats / Shared: the remainder — not archived, not pinned, and not in any
+    // Chats / Shared: the remainder 鈥?not archived, not pinned, and not in any
     // project.
     const rest = allConversations.filter(
       (c) => c.archived !== true && !pinnedIdSet.has(c.id) && !filedIds.has(c.id),
@@ -938,7 +1102,7 @@ function ConversationList({
     projectNames,
   ]);
 
-  // Collapsed section titles — persisted like pins so the preference
+  // Collapsed section titles 鈥?persisted like pins so the preference
   // survives reloads. Lifted here (not per-section state) because the
   // baseline group's "Recent" title comes and goes with its siblings.
   const [collapsedSections, setCollapsedSections] = useState<string[]>(
@@ -979,12 +1143,12 @@ function ConversationList({
       }
     : toggleSectionCollapsed;
 
-  // Project folders default to COLLAPSED, so we track the inverse — names the
-  // user has expanded — persisted across reloads. A project shows its rows only
+  // Project folders default to COLLAPSED, so we track the inverse 鈥?names the
+  // user has expanded 鈥?persisted across reloads. A project shows its rows only
   // while its name is in this set.
   const [expandedProjects, setExpandedProjects] = useState<string[]>(readExpandedProjectSections);
   // True only while the open set was produced by "Expand all" and hasn't been
-  // touched since. This — not "do all folders happen to be open" — is what gates
+  // touched since. This 鈥?not "do all folders happen to be open" 鈥?is what gates
   // the revert affordance, so a user who opens every folder by hand (forced with
   // a single project) never sees a "Revert to last state" button backed by an
   // empty snapshot that would destructively collapse everything.
@@ -1000,8 +1164,7 @@ function ConversationList({
     });
   }, []);
   // Expand a project (idempotent). Called right after a session is filed into
-  // one, so the freshly populated folder — especially a brand-new project —
-  // opens to reveal the session instead of appearing collapsed.
+  // one, so the freshly populated folder 鈥?especially a brand-new project 鈥?  // opens to reveal the session instead of appearing collapsed.
   const expandProject = useCallback((projectName: string) => {
     setExpandedProjects((prev) => {
       if (prev.includes(projectName)) return prev;
@@ -1012,11 +1175,11 @@ function ConversationList({
     });
   }, []);
 
-  // ── Drag-and-drop: file sessions into / out of projects ────────────────────
+  // 鈹€鈹€ Drag-and-drop: file sessions into / out of projects 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   // A session row can be dragged onto a project folder (file it there), onto the
   // "Chats" list / a fallback strip (unfile it), or onto "Pinned" (pin it, which
   // floats it out of its project). "Shared with me" is deliberately not a drop
-  // target — you can't file sessions there. The kebab "Move session" menu + the
+  // target 鈥?you can't file sessions there. The kebab "Move session" menu + the
   // pin button remain the keyboard-accessible paths; DnD is a pointer
   // enhancement on top of them, so the sensors are pointer-only.
   const moveToProject = useMoveToProject();
@@ -1030,8 +1193,7 @@ function ConversationList({
     project: string | null;
     isPinned: boolean;
   } | null>(null);
-  // A drop-to-ungroup that turned out to remove the project's last session —
-  // held here to confirm (the implicit project vanishes with it), mirroring the
+  // A drop-to-ungroup that turned out to remove the project's last session 鈥?  // held here to confirm (the implicit project vanishes with it), mirroring the
   // kebab's "Remove from project" flow. `unpin` carries through whether the
   // dragged session was also pinned (and so must be unpinned to leave Pinned).
   const [pendingUngroup, setPendingUngroup] = useState<{
@@ -1110,7 +1272,7 @@ function ConversationList({
 
   // "Expand all" opens every project folder at once and remembers the set that
   // was open beforehand, so a follow-up "Revert to last state" restores exactly
-  // what was open (not collapse-everything). The snapshot is session-only — not
+  // what was open (not collapse-everything). The snapshot is session-only 鈥?not
   // persisted.
   const [revertSnapshot, setRevertSnapshot] = useState<string[]>([]);
   const expandAllProjects = useCallback((allNames: string[]) => {
@@ -1122,8 +1284,8 @@ function ConversationList({
     });
   }, []);
   // "Revert to last state" restores the set that was open before "Expand all".
-  // When there's no real last state — folders were opened by hand, not via the
-  // button (expandedViaButton is false, so any leftover snapshot is stale) — it
+  // When there's no real last state 鈥?folders were opened by hand, not via the
+  // button (expandedViaButton is false, so any leftover snapshot is stale) 鈥?it
   // collapses everything instead.
   const revertProjects = useCallback(() => {
     setExpandedProjects(() => {
@@ -1136,7 +1298,7 @@ function ConversationList({
 
   // The project the currently-selected session is filed under, if any. Derived
   // as a primitive so the auto-expand effect below only fires when the
-  // selection (or its project) changes — not on every background list refetch,
+  // selection (or its project) changes 鈥?not on every background list refetch,
   // which would re-open a folder the user just collapsed.
   const activeProjectName = useMemo(() => {
     if (!activeId) return null;
@@ -1150,14 +1312,13 @@ function ConversationList({
     if (activeProjectName) expandProject(activeProjectName);
   }, [activeProjectName, expandProject]);
 
-  // Visible rows in render order (collapsed sections excluded) for the Cmd+↑/↓
-  // session hotkey. Titles must match the <ConversationSection> props below.
+  // Visible rows in render order (collapsed sections excluded) for the Cmd+鈫?鈫?  // session hotkey. Titles must match the <ConversationSection> props below.
   const orderedConversationIds = useMemo(() => {
     const visible = (title: string, list: readonly Conversation[]) =>
       effectiveCollapsedSections.includes(title) ? [] : list;
     // A project's chats are navigable only when the "Projects" group is
     // expanded AND that individual project folder is expanded (folders are
-    // collapsed unless explicitly opened — inverse of the fixed sections).
+    // collapsed unless explicitly opened 鈥?inverse of the fixed sections).
     const projectsCollapsed = effectiveCollapsedSections.includes("Projects");
     const projectVisible = (name: string, list: readonly Conversation[]) =>
       !projectsCollapsed && expandedProjects.includes(name) ? list : [];
@@ -1216,7 +1377,7 @@ function ConversationList({
   ]);
 
   if (conversationsQuery.isLoading) {
-    return <p className="px-2 py-1 text-muted-foreground text-xs">Loading…</p>;
+    return <p className="px-2 py-1 text-muted-foreground text-xs">Loading...</p>;
   }
   if (conversationsQuery.isError) {
     const err = conversationsQuery.error;
@@ -1241,7 +1402,7 @@ function ConversationList({
     sections.projectGroups.reduce((sum, g) => sum + g.conversations.length, 0);
 
   // Section structure comes from the muted micro-headers + whitespace
-  // alone (Linear-style) — no icons or counts in the headers, no divider
+  // alone (Linear-style) 鈥?no icons or counts in the headers, no divider
   // rules between groups.
   return (
     <DndContext
@@ -1256,7 +1417,7 @@ function ConversationList({
     >
       <div className="flex flex-col gap-3">
         {/* Removing a filed session from its project means dropping it back
-            onto the flat "Chats" list — so the Chats section itself is the
+            onto the flat "Chats" list 鈥?so the Chats section itself is the
             ungroup target (wrapped below). This top strip is only a FALLBACK
             for when there are no ungrouped chats yet, so the Chats section
             isn't rendered and there'd otherwise be nowhere to drop. */}
@@ -1266,7 +1427,7 @@ function ConversationList({
         ) : (
           <>
             {sections.pinned.length > 0 && (
-              // Drop a session here to pin it — pin-precedence then floats it
+              // Drop a session here to pin it 鈥?pin-precedence then floats it
               // out of any project into this section. Active only while dragging
               // an unpinned session; outline-only highlight.
               <PinDropZone active={activeDrag != null && !activeDrag.isPinned}>
@@ -1296,12 +1457,12 @@ function ConversationList({
                 onToggleCollapsed={() => effectiveToggleSectionCollapsed("Projects")}
                 headerAction={(() => {
                   // The "Projects" group itself is collapsed: its folders aren't
-                  // rendered, so expand-all / revert would be a no-op — show no
+                  // rendered, so expand-all / revert would be a no-op 鈥?show no
                   // control at all.
                   if (effectiveCollapsedSections.includes("Projects")) return null;
                   const allNames = sections.projectGroups.map((g) => g.name);
                   // Once every folder is open the only useful move is to undo it,
-                  // so the control flips to "revert" — which restores the set open
+                  // so the control flips to "revert" 鈥?which restores the set open
                   // before "Expand all", or collapses everything when there's no
                   // real last state (folders opened by hand). Otherwise it expands.
                   const allExpanded = allNames.every((n) => expandedProjects.includes(n));
@@ -1373,7 +1534,7 @@ function ConversationList({
               </SectionGroup>
             )}
             {sections.sessions.length > 0 && (
-              // Drop a session here to send it to the flat "Chats" list — where
+              // Drop a session here to send it to the flat "Chats" list 鈥?where
               // unfiled, unpinned sessions live. Active while dragging a filed
               // session (removes it from its project) or a pinned one (unpins
               // it), since both have somewhere to land here.
@@ -1410,10 +1571,10 @@ function ConversationList({
                 onProjectAssigned={expandProject}
               />
             )}
-            {/* Archived sessions are no longer listed here — they live on the
+            {/* Archived sessions are no longer listed here 鈥?they live on the
               Settings page ("Archived chats"), reachable from the footer. */}
             {/* Infinite-scroll sentinel for the global list. Pagination extends
-              the Chats list, so it hides with a collapsed Chats group — a loader
+              the Chats list, so it hides with a collapsed Chats group 鈥?a loader
               under a collapsed group reads orphaned. */}
             {!effectiveCollapsedSections.includes("Chats") && (
               <InfiniteScrollSentinel
@@ -1489,7 +1650,7 @@ function ConversationList({
 /** Wraps the flat "Chats" section as an ungroup drop target: a filed session
     released here is removed from its project (back to the flat list, where
     unfiled sessions live). `active` gates the droppable so it only intercepts
-    drops while a filed session is being dragged — at rest it's an inert
+    drops while a filed session is being dragged 鈥?at rest it's an inert
     wrapper. Outline-only highlight on drag-over (no background fill), matching
     the project folders. */
 function ChatsDropZone({ active, children }: { active: boolean; children: ReactNode }) {
@@ -1512,7 +1673,7 @@ function ChatsDropZone({ active, children }: { active: boolean; children: ReactN
 /** Wraps the "Pinned" section as a pin drop target: a session released here is
     pinned, which (via the list's pin-precedence) floats it out of any project
     into this section. `active` gates the droppable so it only intercepts drops
-    while dragging an unpinned session — at rest, or for an already-pinned
+    while dragging an unpinned session 鈥?at rest, or for an already-pinned
     session, it's an inert wrapper. Outline-only highlight on drag-over,
     matching the project folders and {@link ChatsDropZone}. */
 function PinDropZone({ active, children }: { active: boolean; children: ReactNode }) {
@@ -1582,7 +1743,7 @@ function projectMarkerState(conversations: Conversation[]): SessionState | null 
 }
 
 // The shared collapsible header used by every sidebar section and section
-// group, so they all align and animate identically (icon · title · marker ·
+// group, so they all align and animate identically (icon 路 title 路 marker 路
 // hover-chevron). Headers carry no count badge.
 function SectionHeader({
   title,
@@ -1622,7 +1783,7 @@ function SectionHeader({
             "md:opacity-0 md:group-hover:opacity-100 md:group-focus-visible:opacity-100",
           )}
         />
-        {/* A hidden row inside this collapsed section carries a marker — surface
+        {/* A hidden row inside this collapsed section carries a marker 鈥?surface
             the exact same badge a row would show, pinned to the right edge. */}
         {collapsed && marker && (
           <span
@@ -1676,9 +1837,9 @@ function SectionGroup({
           // control (e.g. "expand all projects") is a pointer convenience, so it
           // stays hidden until the header is hovered and never floats on touch
           // viewports where there's no hover. Reveal on :focus-visible (keyboard)
-          // — NOT :focus-within — so clicking the button with the mouse doesn't
+          // 鈥?NOT :focus-within 鈥?so clicking the button with the mouse doesn't
           // leave it stuck visible: React reuses the same node when it swaps
-          // expand↔revert, so the clicked button keeps focus afterward.
+          // expand鈫攔evert, so the clicked button keeps focus afterward.
           <div className="absolute top-0.5 right-1 hidden items-center transition-opacity md:flex md:opacity-0 md:has-[:focus-visible]:opacity-100 md:group-hover/header:opacity-100">
             {headerAction}
           </div>
@@ -1737,13 +1898,13 @@ function ConversationSection({
       can expand that (possibly brand-new) project folder. */
   onProjectAssigned?: (projectName: string) => void;
 }) {
-  // An untitled section is always open — there's no header to collapse it.
+  // An untitled section is always open 鈥?there's no header to collapse it.
   const isCollapsed = title != null && collapsed;
   return (
     <section className="group/section relative">
       {title && (
         // Header + its hover-revealed kebab share a `group/header` scope so the
-        // kebab keys off hovering the header alone — NOT the whole section,
+        // kebab keys off hovering the header alone 鈥?NOT the whole section,
         // which would also reveal it when hovering a child row.
         <div className="group/header relative">
           <SectionHeader
@@ -1796,7 +1957,7 @@ function ConversationSection({
 
 // The minimal item-prop shape shared by the dropdown- and context-menu
 // primitive families (both wrappers accept a superset). Typing the bundle
-// against this — rather than `ComponentProps<typeof DropdownMenuItem>` — lets
+// against this 鈥?rather than `ComponentProps<typeof DropdownMenuItem>` 鈥?lets
 // either family satisfy `MenuComponents` so `ConversationMenuItems` can author
 // the menu body once and render it under either menu kind.
 type MenuItemProps = {
@@ -1840,13 +2001,13 @@ const contextBundle: MenuComponents = {
 };
 
 /**
- * The conversation row's action menu body — authored once and rendered under
+ * The conversation row's action menu body 鈥?authored once and rendered under
  * both the kebab {@link DropdownMenu} and the row's right-click {@link ContextMenu}
  * via the {@link MenuComponents} bundle, so the two menus stay identical.
  *
  * Radix requires a menu's Content and its Item/Sub* descendants to come from the
  * same primitive family (roving focus / keyboard nav), so the items can't simply
- * be shared as elements — they're rendered through the injected `components` set.
+ * be shared as elements 鈥?they're rendered through the injected `components` set.
  */
 function ConversationMenuItems({
   components: C,
@@ -1895,7 +2056,7 @@ function ConversationMenuItems({
 }) {
   return (
     <>
-      {/* Pin/Unpin — mobile-only (md:hidden); desktop uses the
+      {/* Pin/Unpin 鈥?mobile-only (md:hidden); desktop uses the
           hover-revealed quick-pin button. Archived rows omit it (archive
           outranks pin). */}
       {!isArchived && (
@@ -1957,14 +2118,14 @@ function ConversationMenuItems({
             {currentProject ? "Move session" : "Add to project"}
           </C.SubTrigger>
           <C.SubContent className="w-56 p-1 [&_[role=menuitem]]:text-xs">
-            {/* A native submenu flyout — no separate popover layer, so no
+            {/* A native submenu flyout 鈥?no separate popover layer, so no
                 open/dismiss race with the parent menu. */}
             <ProjectPickerMenu
               components={C}
               currentProject={currentProject}
               onSelect={(project) => {
                 setMenuOpen(false);
-                // Moving to another project is harmless — apply it now,
+                // Moving to another project is harmless 鈥?apply it now,
                 // and expand that (possibly new) project so the session
                 // is visible in it rather than hidden in a collapsed folder.
                 if (project !== "") {
@@ -2002,7 +2163,7 @@ function ConversationMenuItems({
           divider: lifecycle-ending actions separated from the everyday
           ones above. */}
       <C.Separator />
-      {/* Stop session — only on stoppable sessions whose runner isn't
+      {/* Stop session 鈥?only on stoppable sessions whose runner isn't
         already known-offline (canStop). Owner-gated like Delete:
         non-owners see it disabled with an explanatory tooltip. */}
       {canStop &&
@@ -2117,19 +2278,19 @@ function ConversationRow({
   const { conversationId: activeId } = useParams<{ conversationId: string }>();
   // The sidebar lists only top-level sessions; child (sub-agent) rows are
   // omitted. When the user clicks a sub-agent in the Agents rail the active
-  // id becomes the child's, which matches no row here — so highlighting on
+  // id becomes the child's, which matches no row here 鈥?so highlighting on
   // the raw id alone would leave the owning session unhighlighted. Resolve
   // the active conversation's top-level root and highlight against that, so
   // the parent row stays selected while viewing any of its descendants.
   // While the resolution loads (`null`), fall back to the raw id for that
-  // render — a top-level session resolves to itself, so the common case is
+  // render 鈥?a top-level session resolves to itself, so the common case is
   // unaffected.
   const activeRootId = useActiveRootSessionId(activeId ?? null);
   const isActive = (activeRootId ?? activeId) === conversation.id;
   const navigate = useNavigate();
   // Track the *live* active conversation id. Delete is fire-and-forget,
   // so the user can navigate to another conversation before the mutation
-  // resolves — the onSuccess redirect must key off where they are now,
+  // resolves 鈥?the onSuccess redirect must key off where they are now,
   // not the `isActive` captured when delete was initiated.
   const activeIdRef = useRef(activeId);
   useEffect(() => {
@@ -2149,18 +2310,17 @@ function ConversationRow({
   const moveToProject = useMoveToProject();
   // Archive stops the runner first (resource hygiene): a hidden session
   // shouldn't keep a runner alive. This is NOT the user-facing Stop action
-  // (the kebab's "Stop session" item below, backed by its own mutation) —
-  // it's an internal step of archiving. Unarchive + a message relaunches
+  // (the kebab's "Stop session" item below, backed by its own mutation) 鈥?  // it's an internal step of archiving. Unarchive + a message relaunches
   // on the live host under the non-sticky-stop model.
   const stopForArchive = useStopSession();
-  // The kebab's user-facing "Stop session" action — separate mutation
+  // The kebab's user-facing "Stop session" action 鈥?separate mutation
   // instance so its pending/error state can't bleed into archiving's.
   const stopSession = useStopSession();
   const isArchived = conversation.archived === true;
   const [isEditing, setIsEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
-  // True while confirming "Remove from project" — implicit projects vanish when
+  // True while confirming "Remove from project" 鈥?implicit projects vanish when
   // their last session leaves, so the removal is confirmed to make that explicit.
   const [removeProjectOpen, setRemoveProjectOpen] = useState(false);
   // The kebab menu is controlled so the project submenu can close the whole
@@ -2169,8 +2329,8 @@ function ConversationRow({
   // Opt-in "delete local branch" checkbox (worktree sessions only).
   const [deleteBranch, setDeleteBranch] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  // True while an archive is in flight. Drives the "Archiving…" status
-  // row, mirroring delete's "Deleting…" indicator — without it the row
+  // True while an archive is in flight. Drives the "Archiving鈥? status
+  // row, mirroring delete's "Deleting鈥? indicator 鈥?without it the row
   // shows nothing while the archive completes.
   const [isArchiving, setIsArchiving] = useState(false);
   const gitBranch = conversation.git_branch ?? null;
@@ -2178,8 +2338,8 @@ function ConversationRow({
   const canEdit = conversation.permission_level === null || conversation.permission_level >= 2;
   const canManage = conversation.permission_level === null || conversation.permission_level >= 3;
   // Gates the kebab's "Stop session" item. `false` = runner known-offline
-  // (already stopped — hide the destructive control); `undefined` = not yet
-  // observed, don't block. Non-sticky Stop: no "Resume" affordance — the
+  // (already stopped 鈥?hide the destructive control); `undefined` = not yet
+  // observed, don't block. Non-sticky Stop: no "Resume" affordance 鈥?the
   // next message relaunches the runner on a live host.
   const runnerOnline = useSessionRunnerOnline(conversation.id);
   const canStop =
@@ -2189,8 +2349,7 @@ function ConversationRow({
       runnerId: conversation.runner_id,
     }) && runnerOnline !== false;
 
-  // The session's current project (reserved label), or null when unfiled —
-  // drives the kebab submenu label ("Add to project" vs "Change project").
+  // The session's current project (reserved label), or null when unfiled 鈥?  // drives the kebab submenu label ("Add to project" vs "Change project").
   const currentProject = conversation.labels?.[PROJECT_LABEL_KEY] ?? null;
 
   const label = conversationDisplayLabel(conversation);
@@ -2198,7 +2357,7 @@ function ConversationRow({
     !isActive &&
     isConversationUnseen(conversation.id, conversation.updated_at, conversation.status);
   // Badge precedence: a pending approval ("Needs response") outranks the
-  // unread dot — a session that's both unread and awaiting input should
+  // unread dot 鈥?a session that's both unread and awaiting input should
   // surface the actionable approval tag. The row still renders bold (the
   // unread signal) via `hasUnseenMessages` below.
   const derivedState = getSessionState(conversation);
@@ -2288,7 +2447,7 @@ function ConversationRow({
     );
   }
 
-  // Archiving runs stop→archive (see runArchive); show a status row for
+  // Archiving runs stop鈫抋rchive (see runArchive); show a status row for
   // the whole span instead of leaving the row looking idle. On success
   // the list refetches and the row drops out of the default view (or
   // flips to its archived state under "Show archived"); on failure the
@@ -2307,7 +2466,7 @@ function ConversationRow({
         // If the user is *still* viewing the conversation we just
         // deleted, bounce back to `/` so the chat surface doesn't
         // 404-loop on the now-missing id. Read the live activeId (ref)
-        // — they may have navigated away while the delete was in flight.
+        // 鈥?they may have navigated away while the delete was in flight.
         if (activeIdRef.current === conversation.id) navigate("/", { replace: true });
       },
     });
@@ -2315,8 +2474,8 @@ function ConversationRow({
 
   function confirmDelete() {
     // Fire-and-forget: close the dialog immediately so the user isn't
-    // blocked on the (potentially slow) DELETE — worktree cleanup can
-    // take seconds. The row renders its own "Deleting…" indicator while
+    // blocked on the (potentially slow) DELETE 鈥?worktree cleanup can
+    // take seconds. The row renders its own "Deleting鈥? indicator while
     // `del.isPending`, and a retryable error state if it fails.
     const args = { id: conversation.id, deleteBranch: gitBranch !== null && deleteBranch };
     setDeleteOpen(false);
@@ -2326,16 +2485,15 @@ function ConversationRow({
 
   function runArchive() {
     const nextArchived = !isArchived;
-    // Unarchiving is a quick flag flip — no status row.
+    // Unarchiving is a quick flag flip 鈥?no status row.
     if (!nextArchived) {
       archive.mutate({ id: conversation.id, archived: false });
       return;
     }
-    // Archiving runs stop→archive: stop the runner first (best-effort) so a
+    // Archiving runs stop鈫抋rchive: stop the runner first (best-effort) so a
     // hidden session doesn't leave a runner orphaned, then flip the flag.
-    // Show "Archiving…" for the whole span; cleared on the archive's settle
-    // (success → row leaves the default list or shows archived; failure →
-    // interactive row returns for a retry). The stop is best-effort — an
+    // Show "Archiving鈥? for the whole span; cleared on the archive's settle
+    // (success 鈫?row leaves the default list or shows archived; failure 鈫?    // interactive row returns for a retry). The stop is best-effort 鈥?an
     // already-offline / wedged runner must not block the archive.
     setIsArchiving(true);
     stopForArchive.mutate(conversation.id, {
@@ -2343,7 +2501,7 @@ function ConversationRow({
         archive.mutate(
           { id: conversation.id, archived: true },
           {
-            // Point the user at where the session went — it's no longer in
+            // Point the user at where the session went 鈥?it's no longer in
             // the sidebar list, so surface its new home in Settings.
             onSuccess: showArchivedToast,
             onSettled: () => setIsArchiving(false),
@@ -2356,7 +2514,7 @@ function ConversationRow({
   // Shared by the kebab dropdown and the right-click context menu so the two
   // menus render identical items. `setMenuOpen` is supplied per-call (the
   // controlled kebab passes the real setter; the uncontrolled context menu a
-  // no-op — Radix closes it on select).
+  // no-op 鈥?Radix closes it on select).
   const menuItemProps = {
     conversation,
     isPinned,
@@ -2414,7 +2572,7 @@ function ConversationRow({
     >
       {/* Row 1: the session name. Status markers (working, needs-approval,
           unseen) render in the trailing time-marker slot below, replacing
-          the timestamp — not inline here. Leading icons (agent type, pin,
+          the timestamp 鈥?not inline here. Leading icons (agent type, pin,
           shared) were removed to keep rows text-clean; pinned rows still
           group under "Pinned". */}
       <div className="flex w-full items-center gap-1.5">
@@ -2507,7 +2665,7 @@ function ConversationRow({
             // `inline-flex` and relies on it for `items-center justify-center`
             // to center the icon. `md:block` would override that display and
             // collapse the centering, leaving the glyph pinned to the top-left
-            // of the button — so keep the flex display when revealing it.
+            // of the button 鈥?so keep the flex display when revealing it.
             "hidden md:inline-flex",
             "md:opacity-0 md:group-hover:opacity-100",
             "md:group-has-[:focus-visible]:opacity-100 md:group-has-[[aria-expanded=true]]:opacity-100",
@@ -2573,7 +2731,7 @@ function ConversationRow({
       >
         <DialogContent
           // Don't trigger the surrounding Link when the modal opens
-          // — the dialog content is a portal, but defensively belt-
+          // 鈥?the dialog content is a portal, but defensively belt-
           // and-braces the click path.
           onClick={(e) => e.stopPropagation()}
         >
@@ -2631,7 +2789,7 @@ function ConversationRow({
         </DialogContent>
       </Dialog>
       {/* The stale-error reset lives on the kebab item's onSelect (the only
-          open path) — onOpenChange only fires for Radix-initiated closes. */}
+          open path) 鈥?onOpenChange only fires for Radix-initiated closes. */}
       <Dialog open={stopOpen} onOpenChange={setStopOpen}>
         <DialogContent
           // Keep dialog clicks off the surrounding Link (same defensive
@@ -2648,7 +2806,7 @@ function ConversationRow({
           {stopSession.isError && (
             // 503 = runner couldn't deliver the kill; keep the dialog open.
             <p className="text-sm text-destructive" role="alert">
-              Couldn't stop the session — it may still be running. Try again in a moment.
+              Couldn't stop the session 鈥?it may still be running. Try again in a moment.
             </p>
           )}
           <DialogFooter>
@@ -2738,7 +2896,7 @@ function DeletingRow({
         role="alert"
       >
         <AlertTriangleIcon className="size-3.5 shrink-0 text-destructive" />
-        {/* Name the session in the visible text — with multiple failed
+        {/* Name the session in the visible text 鈥?with multiple failed
             deletes the user must be able to tell the rows apart. */}
         <span
           className="min-w-0 flex-1 truncate text-destructive"
@@ -2771,14 +2929,14 @@ function DeletingRow({
       <span className="min-w-0 flex-1 truncate" title={label}>
         {label}
       </span>
-      <span className="shrink-0 text-xs">Deleting…</span>
+      <span className="shrink-0 text-xs">Deleting...</span>
     </div>
   );
 }
 
 /**
  * In-flight status row shown while a session is being archived (the
- * stop→archive sequence in ConversationRow.runArchive). Mirrors the
+ * stop鈫抋rchive sequence in ConversationRow.runArchive). Mirrors the
  * non-error arm of {@link DeletingRow}; archive failures fall back to
  * the interactive row rather than a persistent error state, so there's
  * no retry/dismiss affordance here.
@@ -2794,12 +2952,12 @@ function ArchivingRow({ label }: { label: string }) {
       <span className="min-w-0 flex-1 truncate" title={label}>
         {label}
       </span>
-      <span className="shrink-0 text-xs">Archiving…</span>
+      <span className="shrink-0 text-xs">Archiving...</span>
     </div>
   );
 }
 
-// ── ProjectFolderActions ──────────────────────────────────────────────────────
+// 鈹€鈹€ ProjectFolderActions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 /**
  * The hover-revealed controls on a project-folder header: a kebab menu and a
@@ -2812,7 +2970,7 @@ function ProjectFolderActions({
   onNavigate,
 }: {
   projectName: string;
-  /** Plain-left-click nav handler — closes the mobile overlay so the
+  /** Plain-left-click nav handler 鈥?closes the mobile overlay so the
       pre-filed new-session page isn't left hidden behind the sidebar. */
   onNavigate: (e: MouseEvent<HTMLAnchorElement>) => void;
 }) {
@@ -2843,7 +3001,7 @@ function ProjectFolderActions({
   );
 }
 
-// ── ProjectFolderMenu ─────────────────────────────────────────────────────────
+// 鈹€鈹€ ProjectFolderMenu 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 /**
  * The kebab on a project-folder header. Currently just "Delete project", which
@@ -2923,7 +3081,7 @@ function ProjectFolderMenu({ projectName }: { projectName: string }) {
                 });
               }}
             >
-              {deleteProject.isPending ? "Deleting…" : "Delete project"}
+              {deleteProject.isPending ? "Deleting..." : "Delete project"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2932,13 +3090,12 @@ function ProjectFolderMenu({ projectName }: { projectName: string }) {
   );
 }
 
-// ── ProjectPickerMenu ─────────────────────────────────────────────────────────
+// 鈹€鈹€ ProjectPickerMenu 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 /**
  * Project picker rendered as the body of a {@link DropdownMenuSubContent}.
  *
- * Lives inside the kebab menu's submenu flyout rather than a separate popover —
- * that avoids the open/dismiss race that made a standalone popover flash open
+ * Lives inside the kebab menu's submenu flyout rather than a separate popover 鈥? * that avoids the open/dismiss race that made a standalone popover flash open
  * and vanish. The search / new-project inputs stop key events from bubbling so
  * the menu's built-in typeahead and arrow-key navigation don't hijack typing.
  */
@@ -3011,7 +3168,7 @@ function ProjectPickerMenu({
             <input
               ref={newInputRef}
               className="flex-1 bg-transparent text-xs outline-none"
-              placeholder="Project name…"
+              placeholder="Project name"
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
               onKeyDown={(e) => {
@@ -3052,7 +3209,7 @@ function ProjectPickerMenu({
   );
 }
 
-// ── ConversationEditRow ──────────────────────────────────────────────────────
+// 鈹€鈹€ ConversationEditRow 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 interface ConversationEditRowProps {
   initialTitle: string;
@@ -3065,7 +3222,7 @@ interface ConversationEditRowProps {
  *
  * Auto-focuses on mount and selects the whole title so the user can
  * start typing to replace. Enter commits, Escape cancels, blur
- * commits — matches the spec's "lose focus or press enter" wording.
+ * commits 鈥?matches the spec's "lose focus or press enter" wording.
  * The blur-commits-on-Escape case is avoided by clearing the value
  * with the dedicated cancel handler before blur fires.
  */
@@ -3377,7 +3534,7 @@ function BulkActionBar({
 
 /**
  * Returns true on mobile viewports (below the `md` breakpoint of
- * 768px). Used to gate the auto-close-on-navigation behavior — on
+ * 768px). Used to gate the auto-close-on-navigation behavior 鈥?on
  * mobile the sidebar is a full-screen overlay so dismissing on action
  * is what reveals the destination; on desktop the sidebar pushes content
  * aside and staying open is more useful.
@@ -3464,7 +3621,7 @@ function writeExpandedProjectSections(names: string[]) {
   try {
     window.localStorage.setItem(EXPANDED_PROJECT_SECTIONS_STORAGE_KEY, JSON.stringify(names));
   } catch {
-    // Same as collapse state — a lost local preference is harmless.
+    // Same as collapse state 鈥?a lost local preference is harmless.
   }
 }
 

@@ -3,6 +3,7 @@ import {
   ChevronLeftIcon,
   EllipsisVerticalIcon,
   FileIcon,
+  FileTextIcon,
   InfoIcon,
   ListIcon,
   ListTodoIcon,
@@ -51,6 +52,10 @@ interface MobileSessionMenuProps {
   shellsPanelOpen: boolean;
   /** True while the mobile tasks drawer is open. */
   todosPanelOpen: boolean;
+  /** True while the mobile private-fund memo drawer is open. */
+  memoPanelOpen: boolean;
+  /** Whether this session is scoped to a private-fund research project. */
+  isPrivateFundSession: boolean;
   /** Hide the Shells entry (claude-native sub-agents only). */
   hideTerminalsTab: boolean;
   /** Whether the Shells entry is available. */
@@ -82,6 +87,8 @@ interface MobileSessionMenuProps {
   onOpenSubagents: () => void;
   /** Open the mobile tasks drawer. */
   onOpenTodos: () => void;
+  /** Open the mobile memo drawer. */
+  onOpenMemo: () => void;
   /** Open the main execution-log push panel. */
   onOpenMainExecutionLog: () => void;
 }
@@ -399,6 +406,7 @@ export function ChatHeader({
           !mobileMenu.subagentsPanelOpen &&
           !mobileMenu.shellsPanelOpen &&
           !mobileMenu.todosPanelOpen &&
+          !mobileMenu.memoPanelOpen &&
           (hasRailContent || mobileMenu.debugMode) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -427,6 +435,15 @@ export function ChatHeader({
                         {mobileMenu.changedCount}
                       </span>
                     )}
+                  </DropdownMenuItem>
+                )}
+                {mobileMenu.isPrivateFundSession && (
+                  <DropdownMenuItem
+                    onSelect={mobileMenu.onOpenMemo}
+                    className="gap-2.5 px-2.5 py-2 text-base"
+                  >
+                    <FileTextIcon className="size-4" />
+                    Memo
                   </DropdownMenuItem>
                 )}
                 {/* Agents — always present (the panel lists at least

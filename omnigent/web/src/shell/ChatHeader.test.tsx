@@ -17,6 +17,8 @@ const mobileMenu = {
   subagentsPanelOpen: false,
   shellsPanelOpen: false,
   todosPanelOpen: false,
+  memoPanelOpen: false,
+  isPrivateFundSession: false,
   hideTerminalsTab: false,
   showShellsTab: false,
   terminalsLength: 0,
@@ -31,6 +33,7 @@ const mobileMenu = {
   onOpenShells: () => {},
   onOpenSubagents: () => {},
   onOpenTodos: () => {},
+  onOpenMemo: () => {},
   onOpenMainExecutionLog: () => {},
 };
 

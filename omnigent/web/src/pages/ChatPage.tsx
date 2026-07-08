@@ -120,6 +120,13 @@ import {
   parseMentionToken,
   rankMentionEntries,
 } from "@/lib/composerMentions";
+import {
+  TRUSTED_MEMO_SOURCES_UPDATED_EVENT,
+  notifyTrustedMemoSourcesUpdated,
+  readTrustedMemoSources,
+  type TrustedMemoSource,
+  writeTrustedMemoSources,
+} from "@/lib/privateFundMemo";
 import { useMentionBrowser } from "@/hooks/useMentionBrowser";
 // Re-exported so existing tests importing these from "./ChatPage" keep working
 // after the pure helpers moved to the shared lib.
@@ -253,6 +260,17 @@ export function collectBubbleMarkdown(items: RenderItem[]): string {
     .map((item) => item.text)
     .join("\n\n")
     .trim();
+}
+
+/** Picks the final assistant answer text for memo-source capture. */
+export function collectTrustedMemoMarkdown(items: RenderItem[]): string {
+  const textItems = items.filter(
+    (item): item is Extract<RenderItem, { kind: "text" }> => item.kind === "text",
+  );
+  const finalText = [...textItems]
+    .reverse()
+    .find((item) => item.final && item.text.trim().length > 0);
+  return (finalText ?? textItems[textItems.length - 1])?.text.trim() ?? "";
 }
 
 // All chat-column elements must share this width to stay aligned.
@@ -908,6 +926,64 @@ export function ChatPage() {
   const codexModelOptions = useChatStore((s) => s.codexModelOptions);
   const selectedModel = useChatStore((s) => s.selectedModel);
   const llmModel = useChatStore((s) => s.llmModel);
+  const privateFundDatasetId =
+    activeSession?.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY] ??
+    activeConv?.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY] ??
+    null;
+  const privateFundProjectLabel =
+    activeSession?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
+    activeConv?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
+    privateFundDatasetId;
+  const [trustedMemoSources, setTrustedMemoSources] = useState<TrustedMemoSource[]>(() =>
+    urlConvId ? readTrustedMemoSources(urlConvId) : [],
+  );
+  useEffect(() => {
+    setTrustedMemoSources(urlConvId ? readTrustedMemoSources(urlConvId) : []);
+  }, [urlConvId]);
+  useEffect(() => {
+    if (!urlConvId) return;
+    const handleTrustedSourcesUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId?: string }>).detail;
+      if (detail?.conversationId !== urlConvId) return;
+      setTrustedMemoSources(readTrustedMemoSources(urlConvId));
+    };
+    window.addEventListener(TRUSTED_MEMO_SOURCES_UPDATED_EVENT, handleTrustedSourcesUpdated);
+    return () =>
+      window.removeEventListener(TRUSTED_MEMO_SOURCES_UPDATED_EVENT, handleTrustedSourcesUpdated);
+  }, [urlConvId]);
+  const trustedMemoSourceIds = useMemo(
+    () => new Set(trustedMemoSources.map((source) => source.responseId)),
+    [trustedMemoSources],
+  );
+  const handleAddTrustedMemoSource = useCallback(
+    (responseId: string, content: string) => {
+      if (!urlConvId || !privateFundDatasetId) return;
+      const trimmed = content.trim();
+      if (!trimmed) return;
+      const firstLine =
+        trimmed
+          .split(/\n+/)
+          .map((line) => line.replace(/^#+\s*/, "").trim())
+          .find(Boolean) ?? "AI 研究结论";
+      const source: TrustedMemoSource = {
+        id: `${urlConvId}:${responseId}`,
+        conversationId: urlConvId,
+        responseId,
+        datasetId: privateFundDatasetId,
+        title: firstLine.slice(0, 56),
+        content: trimmed,
+        createdAt: new Date().toISOString(),
+      };
+      setTrustedMemoSources((prev) => {
+        if (prev.some((item) => item.responseId === responseId)) return prev;
+        const next = [source, ...prev];
+        writeTrustedMemoSources(urlConvId, next);
+        notifyTrustedMemoSourcesUpdated(urlConvId);
+        return next;
+      });
+    },
+    [privateFundDatasetId, urlConvId],
+  );
 
   // Loading + error gates for `/c/:id` hydration.
   if (urlConvId) {
@@ -1005,15 +1081,6 @@ export function ChatPage() {
     selectedModel ?? llmModel,
   );
   const showEffort = shouldShowEffortPicker(capabilitySource) && effortLevels.length > 0;
-  const privateFundDatasetId =
-    activeSession?.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY] ??
-    activeConv?.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY] ??
-    null;
-  const privateFundProjectLabel =
-    activeSession?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
-    activeConv?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
-    privateFundDatasetId;
-
   // When inside a session, only show the bound agent — the session is
   // tied 1:1 to its runner and can't be reassigned. Show all agents on
   // `/` (no active session) so the picker still works for future CLI-
@@ -1069,6 +1136,9 @@ export function ChatPage() {
       costRoutingEligible={costRoutingEligible}
       subAgentLabel={subAgentLabel}
       privateFundProjectLabel={privateFundProjectLabel}
+      privateFundDatasetId={privateFundDatasetId}
+      trustedMemoSourceIds={trustedMemoSourceIds}
+      onAddTrustedMemoSource={handleAddTrustedMemoSource}
     />
   );
 
@@ -1308,6 +1378,10 @@ interface MainAgentSurfaceProps {
   subAgentLabel: string | null;
   /** Private-fund research project bound to this session, when present. */
   privateFundProjectLabel: string | null;
+  /** Private-fund dataset id bound to this session, when present. */
+  privateFundDatasetId: string | null;
+  trustedMemoSourceIds: Set<string>;
+  onAddTrustedMemoSource: (responseId: string, content: string) => void;
 }
 
 /**
@@ -1374,6 +1448,9 @@ function MainAgentSurface({
   costRoutingEligible,
   subAgentLabel,
   privateFundProjectLabel,
+  privateFundDatasetId,
+  trustedMemoSourceIds,
+  onAddTrustedMemoSource,
 }: MainAgentSurfaceProps) {
   const terminalFirst = useTerminalFirst();
   // Mirrors ChatPage's `sandboxLaunching`: while the managed-sandbox
@@ -1624,7 +1701,14 @@ function MainAgentSurface({
             ) : (
               <>
                 {streamBubbles.map((bubble) => (
-                  <BubbleView key={bubbleKey(bubble)} bubble={bubble} />
+                  <BubbleView
+                    key={bubbleKey(bubble)}
+                    bubble={bubble}
+                    privateFundDatasetId={privateFundDatasetId}
+                    conversationWorking={showsWorking}
+                    trustedMemoSourceIds={trustedMemoSourceIds}
+                    onAddTrustedMemoSource={onAddTrustedMemoSource}
+                  />
                 ))}
                 {/* Pending elicitation cards, floated to the bottom of the
                     chat so an outstanding question stays in view (stick-to-
@@ -2740,12 +2824,27 @@ function CompactionLoadingIndicator() {
   );
 }
 
+const EMPTY_TRUSTED_MEMO_SOURCE_IDS = new Set<string>();
+const NOOP_ADD_TRUSTED_MEMO_SOURCE = () => {};
+
 // Memoized so a streaming delta (which rebuilds the whole bubble array) only
 // re-renders the bubble that actually changed, not every prior message's
 // markdown/syntax-highlighting subtree. See `bubblesEqual`. Exported for
 // the user-bubble markdown render tests.
 export const BubbleView = memo(
-  function BubbleView({ bubble }: { bubble: Bubble }) {
+  function BubbleView({
+    bubble,
+    privateFundDatasetId = null,
+    conversationWorking = false,
+    trustedMemoSourceIds = EMPTY_TRUSTED_MEMO_SOURCE_IDS,
+    onAddTrustedMemoSource = NOOP_ADD_TRUSTED_MEMO_SOURCE,
+  }: {
+    bubble: Bubble;
+    privateFundDatasetId?: string | null;
+    conversationWorking?: boolean;
+    trustedMemoSourceIds?: Set<string>;
+    onAddTrustedMemoSource?: (responseId: string, content: string) => void;
+  }) {
     if (bubble.kind === "user") return <UserBubble bubble={bubble} />;
     if (bubble.kind === "compaction_loading") {
       return <CompactionLoadingIndicator />;
@@ -2761,9 +2860,21 @@ export const BubbleView = memo(
         />
       );
     }
-    return <AssistantBubble bubble={bubble} />;
+    return (
+      <AssistantBubble
+        bubble={bubble}
+        privateFundDatasetId={privateFundDatasetId}
+        conversationWorking={conversationWorking}
+        isTrustedMemoSource={trustedMemoSourceIds.has(bubble.responseId)}
+        onAddTrustedMemoSource={onAddTrustedMemoSource}
+      />
+    );
   },
-  (prev, next) => bubblesEqual(prev.bubble, next.bubble),
+  (prev, next) =>
+    bubblesEqual(prev.bubble, next.bubble) &&
+    prev.privateFundDatasetId === next.privateFundDatasetId &&
+    prev.conversationWorking === next.conversationWorking &&
+    prev.trustedMemoSourceIds === next.trustedMemoSourceIds,
 );
 
 function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
@@ -2924,7 +3035,19 @@ function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
   );
 }
 
-function AssistantBubble({ bubble }: { bubble: Extract<Bubble, { kind: "assistant" }> }) {
+function AssistantBubble({
+  bubble,
+  privateFundDatasetId,
+  conversationWorking,
+  isTrustedMemoSource,
+  onAddTrustedMemoSource,
+}: {
+  bubble: Extract<Bubble, { kind: "assistant" }>;
+  privateFundDatasetId: string | null;
+  conversationWorking: boolean;
+  isTrustedMemoSource: boolean;
+  onAddTrustedMemoSource: (responseId: string, content: string) => void;
+}) {
   // The walker only emits an assistant bubble when at least one
   // assistant-side block exists, so `items` is non-empty here in the
   // common case. The "Working…" shimmer for the empty-items / streaming
@@ -2938,11 +3061,19 @@ function AssistantBubble({ bubble }: { bubble: Extract<Bubble, { kind: "assistan
   if (bubble.items.length === 0) return null;
 
   const markdownText = collectBubbleMarkdown(bubble.items);
+  const trustedMemoMarkdownText = collectTrustedMemoMarkdown(bubble.items);
 
   // Elicitation cards (e.g. AskUserQuestion form) want full chat-column
   // width to match the composer, not the default w-fit shrink-to-content.
   const hasElicitation = bubble.items.some((it) => it.kind === "elicitation");
   const isWide = hasElicitation || containsMarkdownTable(bubble.items);
+  const canAddTrustedMemoSource =
+    !!privateFundDatasetId &&
+    !!trustedMemoMarkdownText &&
+    !conversationWorking &&
+    bubble.lifecycle !== "streaming" &&
+    bubble.lifecycle !== "failed" &&
+    bubble.lifecycle !== "cancelled";
 
   const handleCopy = async () => {
     if (!markdownText || !navigator?.clipboard?.writeText) return;
@@ -2992,6 +3123,22 @@ function AssistantBubble({ bubble }: { bubble: Extract<Bubble, { kind: "assistan
                 onClick={() => forkDialog.openForkDialog({ upToResponseId: bubble.responseId })}
               >
                 <GitForkIcon size={14} />
+              </MessageAction>
+            )}
+            {canAddTrustedMemoSource && (
+              <MessageAction
+                tooltip={isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}
+                label={isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}
+                size="sm"
+                variant={isTrustedMemoSource ? "secondary" : "ghost"}
+                className="h-7 gap-1 px-2 text-xs"
+                disabled={isTrustedMemoSource}
+                onClick={() =>
+                  onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText)
+                }
+              >
+                {isTrustedMemoSource ? <CheckIcon size={14} /> : <FileTextIcon size={14} />}
+                <span>{isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}</span>
               </MessageAction>
             )}
           </MessageActions>
@@ -3811,6 +3958,11 @@ export function Composer({
   // Depends on mentionedItems (from the hook above), so it's computed here.
   const hasDraft = value.trim().length > 0 || files.length > 0 || mentionedItems.length > 0;
   const showInterruptButton = isWorking && !hasDraft;
+
+  useEffect(() => {
+    useChatStore.getState().setActiveComposerAttachments(mentionedItems);
+    return () => useChatStore.getState().setActiveComposerAttachments([]);
+  }, [mentionedItems]);
 
   // Drain externally-queued attachments (file viewer "Attach to agent") into
   // the local mention chips, deduping against what's already tagged, then

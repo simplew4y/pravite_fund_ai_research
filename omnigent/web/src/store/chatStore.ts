@@ -370,6 +370,12 @@ export interface ChatState {
    */
   pendingComposerAttachments: ComposerAttachment[];
   /**
+   * The active composer's current "@"-mention chips. This mirrors the local
+   * composer hook state so distant UI (for example the private-fund corpus
+   * list) can reflect add/remove state without keeping its own stale copy.
+   */
+  activeComposerAttachments: ComposerAttachment[];
+  /**
    * LLM model identifier from the bound agent's spec for the active
    * session, e.g. ``"anthropic/claude-sonnet-4-6"``. Populated from
    * the session snapshot on bind; ``null`` before bind or when the
@@ -553,6 +559,8 @@ export interface ChatState {
   addComposerAttachment: (attachment: ComposerAttachment) => void;
   /** Drain the queued composer attachments (called by the composer). */
   clearPendingComposerAttachments: () => void;
+  /** Mirror the active composer's current "@" chips for sibling panels. */
+  setActiveComposerAttachments: (attachments: ComposerAttachment[]) => void;
   /**
    * Compact the active session's context. Posts a ``compact`` event to the
    * server, which summarises the conversation history in-place. No-ops when
@@ -755,6 +763,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   oldestItemId: null,
   flashItemId: null,
   pendingComposerAttachments: [],
+  activeComposerAttachments: [],
   llmModel: null,
   sessionHarness: null,
   subAgentName: null,
@@ -1253,6 +1262,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // session's composer (which drains the store on mount). Same reset
         // discipline as ``viewers`` above.
         pendingComposerAttachments: [],
+        activeComposerAttachments: [],
         sandboxStatus: null,
         abortController: null,
         historyGeneration: s.historyGeneration + 1,
@@ -1331,6 +1341,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearPendingComposerAttachments: () => set({ pendingComposerAttachments: [] }),
+
+  setActiveComposerAttachments: (attachments) => set({ activeComposerAttachments: attachments }),
 
   compact: async () => {
     const { conversationId } = get();

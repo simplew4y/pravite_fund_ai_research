@@ -3,6 +3,8 @@ import { authenticatedFetch } from "./identity";
 export const PRIVATE_FUND_DATASET_ID_LABEL_KEY = "private_fund.dataset_id";
 export const PRIVATE_FUND_DATASET_NAME_LABEL_KEY = "private_fund.dataset_name";
 export const ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY = "omnigent.privateFund.activeProject";
+export const ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT =
+  "omnigent.privateFund.activeProjectChanged";
 
 export interface PrivateFundPipelineJob {
   jobId: string;
@@ -289,6 +291,9 @@ export function writeActivePrivateFundProjectId(datasetId: string): void {
     } else {
       window.localStorage.removeItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY);
     }
+    window.dispatchEvent(
+      new CustomEvent(ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT, { detail: { datasetId } }),
+    );
   } catch {
     // Local persistence is a convenience only.
   }

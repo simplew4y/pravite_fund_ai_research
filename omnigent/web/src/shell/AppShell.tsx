@@ -68,8 +68,13 @@ import { Toaster } from "@/components/ui/toast";
 import { ForkSessionDialog } from "./ForkSessionDialog";
 import { ForkDialogContextProvider, type ForkDialogContextValue } from "./ForkDialogContext";
 import { InlineTerminalsSection } from "./InlineTerminalsSection";
+import { PrivateFundMemoContent, PrivateFundWorkspacePanel } from "./PrivateFundMemoPanel";
 import { WorkspacePanel } from "./WorkspacePanel";
 import type { RightRailTab } from "./railTabs";
+import {
+  PRIVATE_FUND_DATASET_ID_LABEL_KEY,
+  PRIVATE_FUND_DATASET_NAME_LABEL_KEY,
+} from "@/lib/privateFundApi";
 
 /**
  * Top-level layout. The sidebar and right panels are responsive:
@@ -210,6 +215,7 @@ export function AppShell() {
   const [subagentsPanelOpen, setSubagentsPanelOpen] = useState(false);
   const [shellsPanelOpen, setShellsPanelOpen] = useState(false);
   const [todosPanelOpen, setTodosPanelOpen] = useState(false);
+  const [memoPanelOpen, setMemoPanelOpen] = useState(false);
   // The right "Workspace" rail (WorkspacePanel) is open by default and
   // remembers its open/closed state per session — a brand-new session starts
   // open; reopening a session restores how the user last left it. Toggled
@@ -299,6 +305,15 @@ export function AppShell() {
   // this merge an added claude-native agent loses its terminal-first
   // toggle. Snapshot wins on conflict; spreading undefined is a no-op.
   const sessionLabels = { ...activeConv?.labels, ...activeSession?.labels };
+  const sessionLabelsResolved =
+    !conversationId ||
+    activeConv !== null ||
+    activeSession !== null ||
+    (!sessionLoading && conversationsData !== undefined);
+  const privateFundDatasetId = sessionLabels[PRIVATE_FUND_DATASET_ID_LABEL_KEY] ?? null;
+  const privateFundDatasetName =
+    sessionLabels[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ?? privateFundDatasetId;
+  const isPrivateFundSession = privateFundDatasetId !== null && privateFundDatasetId !== "";
   const terminalFirst = sessionLabels["omnigent.ui"] === "terminal";
   const isClaudeNative = sessionLabels["omnigent.wrapper"] === "claude-code-native-ui";
   // Native-CLI wrapper of either family. Keys harness behavior gates
@@ -433,13 +448,24 @@ export function AppShell() {
   // of truth shared by the tab-fallback effect below, the rail's mount
   // gate, and the header's collapse toggle, so they can never disagree.
   const railTabsAvailable = useMemo(
-    () =>
-      ({
-        files: showFilesPanel,
+    () => {
+      if (!sessionLabelsResolved) {
+        return {
+          memo: false,
+          files: false,
+          sources: false,
+          subagents: false,
+          terminals: false,
+          todos: false,
+        } as const;
+      }
+      return {
+        memo: isPrivateFundSession,
+        files: !isPrivateFundSession && showFilesPanel,
         sources: selectedPdfSource !== null,
         // Agents tab is unconditional: the panel always lists at least
         // the main agent (its "main" row), so there's never a dead end.
-        subagents: true,
+        subagents: !isPrivateFundSession,
         // Shells tab: shown by default when the agent's spec declares
         // shell access (the empty state offers "+ New shell"), or once a
         // shell exists for agents that don't. Inventory view: the
@@ -449,11 +475,17 @@ export function AppShell() {
         // is label-derived and starts false; ``railTerminals`` starts
         // empty and ``agentSupportsShells`` starts false while the agent
         // loads, so native sessions don't flash the tab.
-        terminals: !hideTerminalsTab && (railTerminals.length > 0 || agentSupportsShells),
-        todos: isClaudeNative && todos.length > 0,
-      }) as const,
+        terminals:
+          !isPrivateFundSession &&
+          !hideTerminalsTab &&
+          (railTerminals.length > 0 || agentSupportsShells),
+        todos: !isPrivateFundSession && isClaudeNative && todos.length > 0,
+      } as const;
+    },
     [
+      sessionLabelsResolved,
       showFilesPanel,
+      isPrivateFundSession,
       selectedPdfSource,
       hideTerminalsTab,
       railTerminals.length,
@@ -475,7 +507,7 @@ export function AppShell() {
   // convergent even when several tabs vanish at once.
   useEffect(() => {
     if (railTabsAvailable[rightRailTab]) return;
-    const next = (["files", "sources", "subagents", "terminals", "todos"] as const).find(
+    const next = (["memo", "files", "sources", "subagents", "terminals", "todos"] as const).find(
       (t) => railTabsAvailable[t],
     );
     if (next) setRightRailTab(next);
@@ -526,6 +558,7 @@ export function AppShell() {
     setSubagentsPanelOpen(false);
     setShellsPanelOpen(false);
     setTodosPanelOpen(false);
+    setMemoPanelOpen(false);
     setFilesPanelShowHidden(false);
     setSelectedPdfSource(null);
     if (!conversationId) {
@@ -742,6 +775,7 @@ export function AppShell() {
       setSubagentsPanelOpen(false);
       setShellsPanelOpen(false);
       setTodosPanelOpen(false);
+      setMemoPanelOpen(false);
       setRightRailTab("sources");
       setRightPanelOpen(true);
       if (conversationId) writeSessionWorkspaceState(conversationId, { open: true });
@@ -888,6 +922,7 @@ export function AppShell() {
     setSubagentsPanelOpen(false); // close mobile agents drawer
     setShellsPanelOpen(false); // close mobile shells drawer
     setTodosPanelOpen(false); // close mobile tasks drawer
+    setMemoPanelOpen(false); // close mobile memo drawer
     setPanelInitialKey(key);
   }
 
@@ -900,6 +935,7 @@ export function AppShell() {
     setSubagentsPanelOpen(false); // close mobile agents drawer
     setShellsPanelOpen(false); // close mobile shells drawer
     setTodosPanelOpen(false); // close mobile tasks drawer
+    setMemoPanelOpen(false); // close mobile memo drawer
     setExecutionLogsKey(key);
   }
 
@@ -915,6 +951,7 @@ export function AppShell() {
     setSubagentsPanelOpen(false); // close mobile agents drawer
     setShellsPanelOpen(false); // close mobile shells drawer
     setTodosPanelOpen(false); // close mobile tasks drawer
+    setMemoPanelOpen(false); // close mobile memo drawer
     setFilesPanelOpen(true);
   }
 
@@ -944,6 +981,7 @@ export function AppShell() {
     setFilesPanelOpen(false); // close files drawer
     setSubagentsPanelOpen(false); // close mobile agents drawer
     setTodosPanelOpen(false); // close mobile tasks drawer
+    setMemoPanelOpen(false); // close mobile memo drawer
     setShellsPanelOpen(true);
   }
 
@@ -958,7 +996,20 @@ export function AppShell() {
     setFilesPanelOpen(false); // close files drawer
     setSubagentsPanelOpen(false); // close mobile agents drawer
     setShellsPanelOpen(false); // close mobile shells drawer
+    setMemoPanelOpen(false); // close mobile memo drawer
     setTodosPanelOpen(true);
+  }
+
+  function openMemoPanel() {
+    setSelectedFilePath(null);
+    clearFileViewerUrl();
+    setPanelInitialKey(null);
+    setExecutionLogsKey(null);
+    setFilesPanelOpen(false);
+    setSubagentsPanelOpen(false);
+    setShellsPanelOpen(false);
+    setTodosPanelOpen(false);
+    setMemoPanelOpen(true);
   }
 
   function openMainExecutionLog() {
@@ -1136,7 +1187,7 @@ export function AppShell() {
                   hasAgentInfo={hasAgentInfo}
                   onAgentInfo={() => setAgentInfoOpen(true)}
                   hasHeaderMenu={hasHeaderMenu}
-                  showFilesPanel={showFilesPanel}
+                  showFilesPanel={!isPrivateFundSession && showFilesPanel}
                   hasRailContent={hasRailContent}
                   rightPanelOpen={rightPanelOpen}
                   onToggleRightPanel={toggleRightPanel}
@@ -1149,6 +1200,8 @@ export function AppShell() {
                     subagentsPanelOpen,
                     shellsPanelOpen,
                     todosPanelOpen,
+                    memoPanelOpen,
+                    isPrivateFundSession,
                     hideTerminalsTab,
                     showShellsTab: railTabsAvailable.terminals,
                     terminalsLength: railTerminals.length,
@@ -1163,6 +1216,7 @@ export function AppShell() {
                     onOpenShells: openShellsPanel,
                     onOpenSubagents: openSubagentsPanel,
                     onOpenTodos: openTodosPanel,
+                    onOpenMemo: openMemoPanel,
                     onOpenMainExecutionLog: openMainExecutionLog,
                   }}
                 />
@@ -1186,39 +1240,53 @@ export function AppShell() {
                   (terminalFirst || !panelOpen) &&
                   !executionLogsOpen &&
                   !filesPanelOpen && (
-                    <WorkspacePanel
-                      conversationId={conversationId}
-                      width={inlinePanelWidth}
-                      inert={inlinePanelWidth === 0}
-                      handleProps={inlinePanelHandleProps}
-                      rightRailTab={rightRailTab}
-                      onRightRailTabChange={handleRightRailTabChange}
-                      showFilesPanel={showFilesPanel}
-                      changedCount={changedCount}
-                      showShellsTab={railTabsAvailable.terminals}
-                      terminalsLength={railTerminals.length}
-                      subagentsWorking={subagentsWorking}
-                      agentCount={agentCount}
-                      isClaudeNative={isClaudeNative}
-                      todosCompleted={todosCompleted}
-                      todosTotal={todos.length}
-                      rootSessionId={rootSessionId}
-                      selectedFilePath={selectedFilePath}
-                      pdfSourceSelection={selectedPdfSource}
-                      openFiles={openFiles}
-                      openFileViewer={openFileViewer}
-                      onCloseFile={closeFile}
-                      onShowScopeView={showScopeView}
-                      onCommentsOpenChange={setFileViewerCommentsOpen}
-                      openTerminalsPanel={openTerminalsPanel}
-                      permissionLevel={permissionLevel}
-                      filesPanelSort={filesPanelSort}
-                      onSortChange={handleFilesSortChange}
-                      filesPanelFlatView={filesPanelFlatView}
-                      onFlatViewChange={handleFilesFlatViewChange}
-                      filesPanelShowHidden={filesPanelShowHidden}
-                      onShowHiddenChange={setFilesPanelShowHidden}
-                    />
+                    isPrivateFundSession && privateFundDatasetId ? (
+                      <PrivateFundWorkspacePanel
+                        conversationId={conversationId}
+                        datasetId={privateFundDatasetId}
+                        datasetName={privateFundDatasetName ?? privateFundDatasetId}
+                        width={inlinePanelWidth}
+                        inert={inlinePanelWidth === 0}
+                        handleProps={inlinePanelHandleProps}
+                        rightRailTab={rightRailTab}
+                        onRightRailTabChange={handleRightRailTabChange}
+                        pdfSourceSelection={selectedPdfSource}
+                      />
+                    ) : (
+                      <WorkspacePanel
+                        conversationId={conversationId}
+                        width={inlinePanelWidth}
+                        inert={inlinePanelWidth === 0}
+                        handleProps={inlinePanelHandleProps}
+                        rightRailTab={rightRailTab}
+                        onRightRailTabChange={handleRightRailTabChange}
+                        showFilesPanel={showFilesPanel}
+                        changedCount={changedCount}
+                        showShellsTab={railTabsAvailable.terminals}
+                        terminalsLength={railTerminals.length}
+                        subagentsWorking={subagentsWorking}
+                        agentCount={agentCount}
+                        isClaudeNative={isClaudeNative}
+                        todosCompleted={todosCompleted}
+                        todosTotal={todos.length}
+                        rootSessionId={rootSessionId}
+                        selectedFilePath={selectedFilePath}
+                        pdfSourceSelection={selectedPdfSource}
+                        openFiles={openFiles}
+                        openFileViewer={openFileViewer}
+                        onCloseFile={closeFile}
+                        onShowScopeView={showScopeView}
+                        onCommentsOpenChange={setFileViewerCommentsOpen}
+                        openTerminalsPanel={openTerminalsPanel}
+                        permissionLevel={permissionLevel}
+                        filesPanelSort={filesPanelSort}
+                        onSortChange={handleFilesSortChange}
+                        filesPanelFlatView={filesPanelFlatView}
+                        onFlatViewChange={handleFilesFlatViewChange}
+                        filesPanelShowHidden={filesPanelShowHidden}
+                        onShowHiddenChange={setFilesPanelShowHidden}
+                      />
+                    )
                   )}
               </div>
 
@@ -1247,7 +1315,7 @@ export function AppShell() {
                   onClose={() => setExecutionLogsKey(null)}
                 />
               )}
-              {conversationId && showFilesPanel && (
+              {conversationId && !isPrivateFundSession && showFilesPanel && (
                 <FilesPanelDrawer
                   open={filesPanelOpen}
                   onClose={() => setFilesPanelOpen(false)}
@@ -1295,6 +1363,20 @@ export function AppShell() {
                   testId="todos-panel-drawer"
                 >
                   <TodoPanel frameless />
+                </MobilePanelDrawer>
+              )}
+              {conversationId && isPrivateFundSession && privateFundDatasetId && (
+                <MobilePanelDrawer
+                  open={memoPanelOpen}
+                  title="Memo"
+                  onClose={() => setMemoPanelOpen(false)}
+                  testId="private-fund-memo-drawer"
+                >
+                  <PrivateFundMemoContent
+                    conversationId={conversationId}
+                    datasetId={privateFundDatasetId}
+                    datasetName={privateFundDatasetName ?? privateFundDatasetId}
+                  />
                 </MobilePanelDrawer>
               )}
               {/* Mobile-only push panel — on desktop the viewer lives inside the inline aside. */}
