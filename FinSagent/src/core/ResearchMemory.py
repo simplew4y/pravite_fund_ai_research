@@ -24,6 +24,11 @@ class ResearchMemory(MemoryManager):
     def __init__(self, base_dir: str = ".memory"):
         super().__init__(base_dir)
         self._init_p0_tables()
+        self._cache_l1 = {}
+        self._cache_l1_emb = {}
+        self._cache_l2 = {}
+        self._cache_l3 = {}
+        self._cache_l3_max = 100
         self._embed = None
         self._llm = None
 
@@ -165,6 +170,49 @@ class ResearchMemory(MemoryManager):
         conn.close()
 
     # ── 写入 ───────────────────────────────────────
+
+    def cache_answer(self, question, answer, session_id="", citations=None):
+        import hashlib
+        key = "qa_" + hashlib.md5(question.encode()).hexdigest()[:16]
+        self._cache_l1[key] = {"question": question, "answer": answer, "session_id": session_id, "citations": citations or []}
+
+    def lookup_cached_answer(self, question, threshold=0.92):
+        if not self._cache_l1:
+            return None
+        # 1. Exact match (no embedding needed)
+        for key, entry in self._cache_l1.items():
+            if "question" in entry and entry["question"] == question:
+                return entry
+        # 2. Semantic match (needs embedding)  # TODO: L1 semantic test edge cases
+        if not self._embed:
+            return None
+        try:
+            q_emb = self._embed_cached(question)
+            if q_emb is None:
+                return None
+            best_key, best_score = None, 0.0
+            count = 0
+            for key, entry in self._cache_l1.items():
+                count += 1
+                if count > 50:
+                    break
+                if "question" not in entry:
+                    continue
+                cached_q = entry["question"]
+                c_emb = self._cache_l1_emb.get(cached_q)
+                if c_emb is None:
+                    c_emb = self._embed_cached(cached_q)
+                    if c_emb is None:
+                        continue
+                    self._cache_l1_emb[cached_q] = c_emb
+                score = self._cosine_similarity(q_emb, c_emb)
+                if score > best_score:
+                    best_score, best_key = score, key
+            if best_score >= threshold and best_key:
+                return self._cache_l1[best_key]
+        except Exception:
+            pass
+        return None
 
     def record_turn(
         self,
@@ -333,6 +381,7 @@ class ResearchMemory(MemoryManager):
         except Exception:
             pass  # 文件系统写入失败不阻塞
 
+        self._cache_l3.clear()
         # Phase 4: checkpoint
         try:
             tc = self._count_messages(session_id)
@@ -346,6 +395,10 @@ class ResearchMemory(MemoryManager):
         except Exception:
             pass
 
+        try:
+            self.cache_answer(question, answer, session_id, cit_ids)
+        except Exception:
+            pass
         return {"ok": True, "message_id": msg_asst_id, "citation_ids": cit_ids}
 
     # ── 查询 ───────────────────────────────────────
@@ -355,6 +408,10 @@ class ResearchMemory(MemoryManager):
     ) -> List[Dict[str, Any]]:
         if not query or not query.strip():
             return []
+        # FIXME: L3 cache key collides when session_id is None
+        cache_key = f"{session_id or ''}:{query}:{top_k}"
+        if cache_key in self._cache_l3:
+            return self._cache_l3[cache_key]
         """两层检索（精确 + 语义）并合并排序。
 
         Args:
@@ -367,7 +424,11 @@ class ResearchMemory(MemoryManager):
         """
         exact = self._search_exact(query, top_k * 2, session_id=session_id)
         semantic = self._search_semantic(query, top_k * 2, session_id=session_id)
-        return self._merge(exact, semantic, top_k)
+        merged = self._merge(exact, semantic, top_k)
+        if len(self._cache_l3) < self._cache_l3_max:
+            cache_key = f"{session_id or ''}:{query}:{top_k}"
+            self._cache_l3[cache_key] = merged
+        return merged
 
     def retrieve_for_prompt(
         self, query: str, top_k: int = 5, session_id: str = None
@@ -473,7 +534,7 @@ class ResearchMemory(MemoryManager):
         """语义检索。支持 session 内结果加权。"""
         if not self._embed:
             return []
-        q_emb = self._embed(query)
+        q_emb = self._embed_cached(query)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -799,6 +860,22 @@ class ResearchMemory(MemoryManager):
     def set_embedding_fn(self, fn):
         self._embed = fn
 
+    def _embed_cached(self, text):
+        """L2: embedding cache wrapper."""
+        try:
+            fn = self._embed
+            if not fn:
+                return None
+            key = text[:200]
+            if key in self._cache_l2:
+                return self._cache_l2[key]
+            emb = fn(text)
+            if emb and len(self._cache_l2) < 1000:
+                self._cache_l2[key] = emb
+            return emb
+        except Exception:
+            return None
+
     def set_llm_fn(self, fn):
         self._llm = fn
 
@@ -844,7 +921,7 @@ class ResearchMemory(MemoryManager):
             return
         try:
             import json, sqlite3
-            emb = self._embed(content[:1000])
+            emb = self._embed_cached(content[:1000])
             conn = sqlite3.connect(self.db_path)
             conn.execute("UPDATE memory_index SET embedding=? WHERE uri=?", (json.dumps(emb), uri))
             conn.commit()
