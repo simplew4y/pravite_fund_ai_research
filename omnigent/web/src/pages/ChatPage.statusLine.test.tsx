@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChatStore } from "@/store/chatStore";
@@ -66,12 +66,15 @@ function statusLine(): Element | null {
 
 describe("Composer status line (branch + context ring)", () => {
   beforeEach(() => {
+    localStorage.clear();
     useChatStore.setState({
       conversationId: "conv_test",
       skills: [],
       contextWindow: null,
       tokensUsed: null,
       sessionCostUsd: null,
+      sessionTokenUsage: null,
+      sessionUsageByModel: null,
       gitBranch: null,
       llmModel: null,
       selectedModel: null,
@@ -86,6 +89,7 @@ describe("Composer status line (branch + context ring)", () => {
 
   afterEach(() => {
     cleanup();
+    localStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -113,6 +117,35 @@ describe("Composer status line (branch + context ring)", () => {
     // 25k of 100k → 25% used; a wrong value means the ring wired the
     // wrong store fields through its props.
     expect(screen.getByLabelText("25% of context used")).toBeInTheDocument();
+  });
+
+  it("shows compact visual token usage and the per-model breakdown", async () => {
+    useChatStore.setState({
+      contextWindow: 100_000,
+      tokensUsed: 25_000,
+      sessionUsageByModel: {
+        "claude-sonnet-4-6": {
+          inputTokens: 18_000,
+          outputTokens: 4_000,
+          totalTokens: 22_000,
+          cacheReadInputTokens: 8_000,
+          cacheCreationInputTokens: 1_000,
+          totalCostUsd: 0.12,
+        },
+      },
+    });
+    renderComposer();
+
+    const indicator = screen.getByTestId("composer-token-usage");
+    expect(indicator).toHaveAttribute("role", "progressbar");
+    expect(indicator).toHaveAttribute("aria-valuenow", "25000");
+    expect(screen.getByTestId("composer-token-usage-summary")).toHaveTextContent(
+      "25K / 100K · 25%",
+    );
+
+    fireEvent.focus(indicator);
+    await waitFor(() => expect(screen.getAllByText("claude-sonnet-4-6").length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/Input 18K.*Output 4K.*Cache read 8K/).length).toBeGreaterThan(0);
   });
 
   it("shows the harness label immediately left of the context ring", () => {
@@ -245,6 +278,100 @@ describe("Composer status line (branch + context ring)", () => {
     const harness = screen.getByTestId("composer-harness");
     expect(plan.compareDocumentPosition(harness) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("shows and persists private-fund research mode and injects it into each task", () => {
+    const onSend = vi.fn();
+    renderComposer({
+      onSend,
+      privateFundProjectLabel: "阳光电源",
+      privateFundDatasetId: "sungrow",
+    });
+
+    expect(screen.getByTestId("composer-private-fund-research-mode")).toBeInTheDocument();
+    expect(screen.getByTestId("composer-private-fund-research-mode-standard")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    const input = screen.getByLabelText("Message the agent");
+    fireEvent.change(input, { target: { value: "先做常规梳理" } });
+    fireEvent.submit(input.closest("form")!);
+    expect(onSend.mock.calls[0]?.[0]).toContain("研究级别：常规研究");
+    expect(onSend.mock.calls[0]?.[0]).toContain("关键事实、时间、金额和事件必须逐条溯源");
+
+    fireEvent.click(screen.getByTestId("composer-private-fund-research-mode-deep"));
+    expect(localStorage.getItem("omnigent.privateFund.researchMode")).toBe("deep");
+    fireEvent.change(input, { target: { value: "再做深度核验" } });
+    fireEvent.submit(input.closest("form")!);
+
+    expect(onSend.mock.calls[1]?.[0]).toContain("研究级别：深度研究");
+    expect(onSend.mock.calls[1]?.[0]).toContain("提高 top_k");
+    expect(onSend.mock.calls[1]?.[0]).toContain("再做深度核验");
+  });
+
+  it("shows cumulative token consumption inside private-fund conversations", async () => {
+    useChatStore.setState({
+      contextWindow: 100_000,
+      tokensUsed: 25_000,
+      sessionTokenUsage: {
+        inputTokens: 18_000,
+        outputTokens: 4_000,
+        totalTokens: 31_000,
+        cacheReadInputTokens: 8_000,
+        cacheCreationInputTokens: 1_000,
+        totalCostUsd: 0.12,
+      },
+      sessionUsageByModel: {
+        "claude-sonnet-4-6": {
+          inputTokens: 18_000,
+          outputTokens: 4_000,
+          totalTokens: 31_000,
+          cacheReadInputTokens: 8_000,
+          cacheCreationInputTokens: 1_000,
+          totalCostUsd: 0.12,
+        },
+        "stale-model-before-switch": {
+          inputTokens: 10_000,
+          outputTokens: 2_000,
+          totalTokens: 12_000,
+          cacheReadInputTokens: null,
+          cacheCreationInputTokens: null,
+          totalCostUsd: 0.04,
+        },
+      },
+    });
+    renderComposer({
+      privateFundProjectLabel: "阳光电源",
+      privateFundDatasetId: "sungrow",
+    });
+
+    const indicator = screen.getByTestId("private-fund-conversation-token-usage");
+    expect(indicator).toHaveTextContent("31K tokens");
+    expect(screen.queryByTestId("composer-token-usage")).toBeNull();
+
+    fireEvent.focus(indicator);
+    await waitFor(() => expect(screen.getAllByText("本会话 Token 消耗").length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/累计 31,000 tokens/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/当前上下文 25,000 \/ 100,000 · 25%/).length).toBeGreaterThan(0);
+  });
+
+  it("hides research mode outside private-fund sessions", () => {
+    renderComposer();
+    expect(screen.queryByTestId("composer-private-fund-research-mode")).toBeNull();
+  });
+
+  it("restores a persisted deep-research choice", () => {
+    localStorage.setItem("omnigent.privateFund.researchMode", "deep");
+    renderComposer({
+      privateFundProjectLabel: "阳光电源",
+      privateFundDatasetId: "sungrow",
+    });
+
+    expect(screen.getByTestId("composer-private-fund-research-mode-deep")).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
   });
 });

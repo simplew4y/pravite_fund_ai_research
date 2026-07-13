@@ -1,0 +1,4 @@
+interface:
+  display_name: "Private Fund Report Update"
+  short_description: "Create a traceable revision of a report"
+  default_prompt: "Update the prior research report with newly checked nodes and preserve a version trail."

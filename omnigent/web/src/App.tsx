@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { ChatPage } from "@/pages/ChatPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { PrivateFundWorkbenchRedirect } from "@/pages/PrivateFundWorkbenchRedirect";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
 import { AppShell } from "@/shell/AppShell";
 
@@ -28,9 +29,6 @@ const ApprovePage = lazy(() =>
 const InboxPage = lazy(() => import("@/pages/InboxPage").then((m) => ({ default: m.InboxPage })));
 const SettingsPage = lazy(() =>
   import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
-);
-const ResearchProjectsPage = lazy(() =>
-  import("@/pages/ResearchProjectsPage").then((m) => ({ default: m.ResearchProjectsPage })),
 );
 
 interface AppProps {
@@ -126,10 +124,10 @@ function App({ basename }: AppProps = {}) {
           <Route path={prefix || "/"} element={<ChatPage />} />
           <Route path={`${prefix}/c/:conversationId`} element={<ChatPage />} />
           <Route path={`${prefix}/inbox`} element={<InboxPage />} />
-          <Route path={`${prefix}/research-projects`} element={<ResearchProjectsPage />} />
+          <Route path={`${prefix}/research-projects`} element={<PrivateFundWorkbenchRedirect />} />
           <Route
             path={`${prefix}/research-projects/:datasetId`}
-            element={<ResearchProjectsPage />}
+            element={<PrivateFundWorkbenchRedirect />}
           />
           {/* Settings renders into the chat outlet so the conversations
               sidebar stays put — entering settings only swaps the card's

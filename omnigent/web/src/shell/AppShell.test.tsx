@@ -54,7 +54,19 @@ vi.mock("@/hooks/useAgents", () => ({
 }));
 
 vi.mock("./Sidebar", () => ({
-  Sidebar: () => <div data-testid="sidebar" />,
+  Sidebar: ({
+    privateFundWorkspace,
+    activePrivateFundDatasetId,
+  }: {
+    privateFundWorkspace?: boolean;
+    activePrivateFundDatasetId?: string | null;
+  }) => (
+    <div
+      data-testid="sidebar"
+      data-private-fund-workspace={privateFundWorkspace ? "true" : "false"}
+      data-private-fund-dataset-id={activePrivateFundDatasetId ?? ""}
+    />
+  ),
 }));
 vi.mock("./FilesPanel", () => ({
   // Scope-only stand-in matching the real FilesPanel after the open-file tabs
@@ -438,6 +450,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("AppShell header", () => {
+  it("keeps the private-fund shell active on a project landing URL", () => {
+    mockConversations([]);
+    renderShell("/?private_fund_project=beta");
+
+    expect(screen.getByTestId("app-shell")).toHaveAttribute("data-private-fund-workspace", "true");
+    expect(screen.getByTestId("sidebar")).toHaveAttribute("data-private-fund-workspace", "true");
+    expect(screen.getByTestId("sidebar")).toHaveAttribute("data-private-fund-dataset-id", "beta");
+    expect(screen.queryByRole("button", { name: /sidebar/i })).toBeNull();
+  });
+
   it("renders the sidebar toggle on all pages", () => {
     mockConversations([]);
     renderShell("/");

@@ -324,6 +324,12 @@ export interface Session {
    */
   totalCostUsd?: number | null;
   /**
+   * Authoritative flat cumulative token buckets for this session subtree.
+   * Use this for totals; `usageByModel` is attribution detail and may contain
+   * overlapping cumulative buckets after a native runtime changes models.
+   */
+  tokenUsage?: ModelUsage | null;
+  /**
    * Per-model breakdown of the same subtree usage, keyed by the raw harness
    * model id (e.g. `"claude-sonnet-4-6"`). Each value is the model's token
    * buckets + optional USD cost. `null`/absent when no per-model usage has

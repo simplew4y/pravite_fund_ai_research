@@ -16,6 +16,8 @@ export interface PdfSourceSelection {
   workbookName?: string;
   sheetName?: string;
   rangeRef?: string;
+  windowRow?: number;
+  windowCol?: number;
   datasetId?: string;
 }
 

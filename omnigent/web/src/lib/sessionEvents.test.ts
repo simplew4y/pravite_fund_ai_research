@@ -1104,6 +1104,28 @@ describe("session.usage (FLAT envelope)", () => {
     expect(ev.usageByModel!["model-b"].totalCostUsd).toBeNull();
   });
 
+  it("lifts the authoritative flat token_usage summary", () => {
+    const out = parse("session.usage", {
+      type: "session.usage",
+      conversation_id: "conv_abc",
+      token_usage: {
+        input_tokens: 1000,
+        output_tokens: 500,
+        total_tokens: 1700,
+        cache_read_input_tokens: 200,
+      },
+    });
+    expect(out).toHaveLength(1);
+    expect((out[0] as SessionUsageEvent).tokenUsage).toEqual({
+      inputTokens: 1000,
+      outputTokens: 500,
+      totalTokens: 1700,
+      cacheReadInputTokens: 200,
+      cacheCreationInputTokens: null,
+      totalCostUsd: null,
+    });
+  });
+
   it("accepts a usage_by_model-only broadcast (no flat fields)", () => {
     const out = parse("session.usage", {
       type: "session.usage",

@@ -26,7 +26,7 @@ from omnigent.spec import load, materialize_bundle
 # (builder attribute, the spec entry that proves the bundle was assembled,
 # whether the source is a shipped example that a stripped deployment may omit)
 _BUILDERS = [
-    ("_build_claude_native_bundle", "claude-native-ui.yaml", False),
+    ("_build_claude_native_bundle", "config.yaml", False),
     ("_build_codex_native_bundle", "codex-native-ui.yaml", False),
     ("_build_kiro_native_bundle", "kiro-native-ui.yaml", False),
     ("_build_debby_bundle", "config.yaml", True),
@@ -71,6 +71,47 @@ def test_bundle_builder_produces_valid_tarball(
     assert any(m.lstrip("./") == spec_entry or m.endswith("/" + spec_entry) for m in members), (
         f"{builder} tarball is missing its spec entry {spec_entry!r}; members={members!r}."
     )
+
+
+def test_claude_native_bundle_contains_private_fund_skills() -> None:
+    """The default Claude agent ships the complete durable-research workflow."""
+    members = {member.lstrip("./") for member in _tar_members(app._build_claude_native_bundle())}
+    expected = {
+        f"skills/{name}/SKILL.md"
+        for name in (
+            "private-fund-memo",
+            "private-fund-node",
+            "private-fund-report",
+            "private-fund-report-update",
+        )
+    }
+    assert expected <= members
+
+
+def test_claude_native_bundle_loads_private_fund_surface(tmp_path: Path) -> None:
+    """The shipped bundle parses with all skills and structured tools enabled."""
+    spec = load(
+        app._build_claude_native_bundle(),
+        dest=tmp_path / "claude-native-bundle",
+        expand_env=False,
+    )
+    assert {skill.name for skill in spec.skills} == {
+        "private-fund-memo",
+        "private-fund-node",
+        "private-fund-report",
+        "private-fund-report-update",
+    }
+    assert {tool.name for tool in spec.tools.builtins} >= {
+        "private_fund_dataset_status",
+        "private_fund_dataset_search",
+        "private_fund_source_detail",
+        "private_fund_dataset_memo",
+        "private_fund_equity_report_generate",
+        "private_fund_equity_report_status",
+        "private_fund_equity_report_get",
+        "private_fund_research_context",
+        "private_fund_research_node_save",
+    }
 
 
 @pytest.mark.parametrize(("builder", "spec_entry", "shipped_example"), _BUILDERS)

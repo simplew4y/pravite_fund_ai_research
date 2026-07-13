@@ -11,6 +11,13 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Conversation } from "@/hooks/useConversations";
+import {
+  ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY,
+  PRIVATE_FUND_DATASET_ID_LABEL_KEY,
+  type PrivateFundFile,
+  type PrivateFundProject,
+} from "@/lib/privateFundApi";
+import { useChatStore } from "@/store/chatStore";
 
 // Project mocks are declared via vi.hoisted so they exist before the hoisted
 // vi.mock factory runs. projectsMock is mutated per-test to drive project
@@ -22,6 +29,10 @@ const {
   fetchProjectSessionIdsMock,
   conversationsRef,
   projectSessionsMock,
+  privateFundProjectsRef,
+  privateFundProjectDetailsRef,
+  deletePrivateFundProjectSpy,
+  deletePrivateFundFilesSpy,
 } = vi.hoisted(() => ({
   projectsMock: [] as string[],
   moveToProjectSpy: vi.fn(),
@@ -38,6 +49,12 @@ const {
   // serves exactly those rows instead of deriving from the global list — used to
   // prove a folder fetches its members independently of the global window.
   projectSessionsMock: { current: {} as Record<string, unknown[]> },
+  privateFundProjectsRef: { current: [] as PrivateFundProject[] },
+  privateFundProjectDetailsRef: {
+    current: {} as Record<string, { project: PrivateFundProject; files: PrivateFundFile[] }>,
+  },
+  deletePrivateFundProjectSpy: vi.fn(),
+  deletePrivateFundFilesSpy: vi.fn(),
 }));
 
 // Mutation hooks are only invoked on row actions; stub them. useConversations
@@ -88,6 +105,30 @@ vi.mock("@/hooks/useConversations", () => ({
   fetchProjectSessionIds: fetchProjectSessionIdsMock,
   PROJECT_LABEL_KEY: "omni_project",
 }));
+vi.mock("@/hooks/usePrivateFundProjects", () => ({
+  usePrivateFundProjects: () => ({
+    data: privateFundProjectsRef.current,
+    isLoading: false,
+  }),
+  usePrivateFundProject: (datasetId: string | null | undefined) => ({
+    data: datasetId ? privateFundProjectDetailsRef.current[datasetId] : undefined,
+    isLoading: false,
+  }),
+  useDeletePrivateFundProject: () => ({
+    mutateAsync: deletePrivateFundProjectSpy,
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  }),
+  useDeletePrivateFundFiles: () => ({
+    mutateAsync: deletePrivateFundFilesSpy,
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  }),
+}));
 // Header / dialog children that pull their own context — stub to keep the
 // test scoped to the conversation list + funnel.
 vi.mock("@/components/PermissionsModal", () => ({ PermissionsModal: () => null }));
@@ -108,6 +149,49 @@ function conv(id: string, agentName: string, partial: Partial<Conversation> = {}
     permission_level: null,
     agent_name: agentName,
     ...partial,
+  };
+}
+
+function privateFundProject(partial: Partial<PrivateFundProject> = {}): PrivateFundProject {
+  return {
+    datasetId: "acme",
+    name: "Acme Solar",
+    status: "ready",
+    sourceDir: null,
+    datasetRoot: "/funds/acme",
+    uploadsDir: null,
+    companyName: null,
+    companyTicker: null,
+    fileCount: 2,
+    uploadCount: 0,
+    documentCount: 2,
+    indexedDocumentCount: 2,
+    failedDocumentCount: 0,
+    chunkCount: 0,
+    indexCount: 0,
+    memoCount: 0,
+    latestMemoPath: null,
+    latestMemoName: null,
+    createdAt: null,
+    updatedAt: null,
+    indexReady: true,
+    latestJob: null,
+    ...partial,
+  };
+}
+
+function privateFundFile(name: string, storedPath: string): PrivateFundFile {
+  return {
+    name,
+    fileType: "pdf",
+    size: 10,
+    uploadedAt: null,
+    sourcePath: null,
+    status: "ready",
+    docId: name,
+    chunkCount: 0,
+    errorMessage: null,
+    storedPath,
   };
 }
 
@@ -146,17 +230,40 @@ function mockConversations(convs: Conversation[]) {
   useConvMock.mockImplementation(() => result(convs));
 }
 
-function renderSidebar(open = true, initialEntry = "/") {
+function renderSidebar(
+  open = true,
+  initialEntry = "/",
+  activePrivateFundDatasetId: string | null = null,
+  privateFundWorkspace = false,
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <TooltipProvider>
         <MemoryRouter initialEntries={[initialEntry]}>
-          <Sidebar open={open} onClose={vi.fn()} />
+          <Sidebar
+            open={open}
+            onClose={vi.fn()}
+            activePrivateFundDatasetId={activePrivateFundDatasetId}
+            privateFundWorkspace={privateFundWorkspace}
+          />
         </MemoryRouter>
       </TooltipProvider>
     </QueryClientProvider>,
   );
+}
+
+function seedPrivateFundCorpus() {
+  const project = privateFundProject();
+  const files = [
+    privateFundFile("alpha.pdf", "/funds/acme/reports/alpha.pdf"),
+    privateFundFile("beta.pdf", "/funds/acme/reports/beta.pdf"),
+  ];
+  privateFundProjectsRef.current = [project];
+  privateFundProjectDetailsRef.current = {
+    [project.datasetId]: { project, files },
+  };
+  return { project, files };
 }
 
 beforeEach(() => {
@@ -165,11 +272,290 @@ beforeEach(() => {
   projectsMock.length = 0;
   moveToProjectSpy.mockReset();
   deleteProjectSpy.mockReset();
+  deletePrivateFundProjectSpy.mockReset();
+  deletePrivateFundProjectSpy.mockResolvedValue(undefined);
+  deletePrivateFundFilesSpy.mockReset();
+  deletePrivateFundFilesSpy.mockResolvedValue(undefined);
   fetchProjectSessionIdsMock.mockReset();
   fetchProjectSessionIdsMock.mockResolvedValue([]);
   projectSessionsMock.current = {};
+  privateFundProjectsRef.current = [];
+  privateFundProjectDetailsRef.current = {};
+  useChatStore.setState({
+    pendingComposerAttachments: [],
+    pendingComposerAttachmentRemovals: [],
+    activeComposerAttachments: [],
+  });
 });
 afterEach(cleanup);
+
+describe("Sidebar private fund corpus attachments", () => {
+  it("opens the unified new research project dialog from the left project header", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
+
+    fireEvent.click(screen.getByRole("button", { name: "新建研究项目" }));
+    expect(screen.getByRole("dialog", { name: "新建研究项目" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建并进入工作台" })).toBeDisabled();
+  });
+
+  it("opens document upload from the left source section", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
+
+    fireEvent.click(screen.getByRole("button", { name: "从资料来源上传文档" }));
+    expect(screen.getByRole("dialog", { name: "上传资料并建立索引" })).toBeInTheDocument();
+  });
+
+  it("renders projects as an image-free list and links each project to its latest conversation", () => {
+    const acme = privateFundProject();
+    const beta = privateFundProject({
+      datasetId: "beta",
+      name: "Beta Wind",
+      tokenUsage: {
+        datasetId: "beta",
+        sessionCount: 2,
+        sessionsWithTokenUsage: 2,
+        sessionsWithTotalTokens: 2,
+        sessionsWithCost: 2,
+        inputTokens: 8_000,
+        outputTokens: 1_400,
+        totalTokens: 12_400,
+        cacheReadInputTokens: 2_000,
+        cacheCreationInputTokens: 1_000,
+        totalCostUsd: 0.42,
+      },
+    });
+    const empty = privateFundProject({ datasetId: "empty", name: "Empty Project" });
+    privateFundProjectsRef.current = [acme, beta, empty];
+    privateFundProjectDetailsRef.current = {
+      acme: { project: acme, files: [] },
+      beta: { project: beta, files: [] },
+      empty: { project: empty, files: [] },
+    };
+    mockConversations([
+      conv("conv_acme", "Codex", {
+        title: "Acme research chat",
+        labels: { [PRIVATE_FUND_DATASET_ID_LABEL_KEY]: "acme" },
+      }),
+      conv("conv_beta", "Codex", {
+        updated_at: 1,
+        title: "Beta research chat",
+        labels: { [PRIVATE_FUND_DATASET_ID_LABEL_KEY]: "beta" },
+      }),
+      conv("conv_beta_archived", "Codex", {
+        archived: true,
+        updated_at: 2,
+        title: "Archived Beta research chat",
+        labels: { [PRIVATE_FUND_DATASET_ID_LABEL_KEY]: "beta" },
+      }),
+    ]);
+
+    renderSidebar(true, "/c/conv_acme", "acme", true);
+
+    const projectList = screen.getByTestId("private-fund-project-list");
+    expect(projectList.querySelector("img")).toBeNull();
+    expect(screen.getByTestId("private-fund-project-beta")).toHaveAttribute(
+      "href",
+      "/c/conv_beta?private_fund_project=beta",
+    );
+    expect(screen.getByTestId("private-fund-project-empty")).toHaveAttribute(
+      "href",
+      "/?private_fund_project=empty",
+    );
+    expect(screen.getByTestId("private-fund-project-token-usage-beta")).toHaveTextContent(
+      "12.4K tokens",
+    );
+    expect(screen.getByTestId("private-fund-project-token-bar-beta")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "投研工作台" })).toHaveAttribute(
+      "href",
+      "/?private_fund_project=acme",
+    );
+    expect(screen.getByRole("link", { name: /开始新研究/ })).toHaveAttribute(
+      "href",
+      "/?private_fund_project=acme",
+    );
+  });
+
+  it("shows only the selected project's conversations and switches the list with the project", async () => {
+    const acme = privateFundProject();
+    const beta = privateFundProject({ datasetId: "beta", name: "Beta Wind" });
+    const empty = privateFundProject({ datasetId: "empty", name: "Empty Project" });
+    privateFundProjectsRef.current = [acme, beta, empty];
+    privateFundProjectDetailsRef.current = {
+      acme: { project: acme, files: [] },
+      beta: { project: beta, files: [] },
+      empty: { project: empty, files: [] },
+    };
+    localStorage.setItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY, "acme");
+    mockConversations([
+      conv("conv_acme", "Codex", {
+        title: "Acme research chat",
+        labels: { [PRIVATE_FUND_DATASET_ID_LABEL_KEY]: "acme" },
+      }),
+      conv("conv_beta", "Codex", {
+        title: "Beta research chat",
+        labels: { [PRIVATE_FUND_DATASET_ID_LABEL_KEY]: "beta" },
+      }),
+      conv("conv_unscoped", "Codex", { title: "Unscoped chat" }),
+    ]);
+
+    renderSidebar();
+
+    expect(screen.getByText("Acme research chat")).toBeInTheDocument();
+    expect(screen.queryByText("Beta research chat")).toBeNull();
+    expect(screen.queryByText("Unscoped chat")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("private-fund-project-beta"), { ctrlKey: true });
+    expect(localStorage.getItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY)).toBe("acme");
+    expect(screen.getByText("Acme research chat")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("private-fund-project-beta"));
+    await waitFor(() => {
+      expect(screen.getByText("Beta research chat")).toBeInTheDocument();
+      expect(screen.queryByText("Acme research chat")).toBeNull();
+    });
+
+    fireEvent.click(screen.getByTestId("private-fund-project-empty"));
+    await waitFor(() => {
+      expect(screen.getByText("当前项目暂无会话")).toBeInTheDocument();
+      expect(screen.queryByText("Beta research chat")).toBeNull();
+    });
+  });
+
+  it("uses the active session dataset for direct links and lets an explicit project URL win", () => {
+    const acme = privateFundProject();
+    const beta = privateFundProject({ datasetId: "beta", name: "Beta Wind" });
+    privateFundProjectsRef.current = [acme, beta];
+    privateFundProjectDetailsRef.current = {
+      acme: { project: acme, files: [] },
+      beta: { project: beta, files: [] },
+    };
+    localStorage.setItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY, "beta");
+    mockConversations([
+      conv("conv_acme", "Codex", {
+        title: "Acme direct chat",
+        labels: { [PRIVATE_FUND_DATASET_ID_LABEL_KEY]: "acme" },
+      }),
+      conv("conv_beta", "Codex", {
+        title: "Beta direct chat",
+        labels: { [PRIVATE_FUND_DATASET_ID_LABEL_KEY]: "beta" },
+      }),
+    ]);
+
+    const directLink = renderSidebar(true, "/c/conv_acme", "acme");
+    expect(screen.getByText("Acme direct chat")).toBeInTheDocument();
+    expect(screen.queryByText("Beta direct chat")).toBeNull();
+
+    directLink.unmount();
+    renderSidebar(true, "/?private_fund_project=beta", "acme");
+    expect(screen.getByText("Beta direct chat")).toBeInTheDocument();
+    expect(screen.queryByText("Acme direct chat")).toBeNull();
+  });
+
+  it("queues a normalized file attachment when a file checkbox is checked", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar();
+
+    const alphaCheckbox = screen.getByRole("checkbox", {
+      name: "选择资料来源 alpha.pdf",
+    }) as HTMLInputElement;
+    expect(alphaCheckbox.closest("button")).toBeNull();
+
+    fireEvent.click(alphaCheckbox);
+
+    expect(useChatStore.getState().pendingComposerAttachments).toEqual([
+      { path: "reports/alpha.pdf", isDir: false },
+    ]);
+    expect(alphaCheckbox.checked).toBe(true);
+  });
+
+  it("queues removal and immediately unchecks a file already present in composer chips", () => {
+    seedPrivateFundCorpus();
+    useChatStore.setState({
+      activeComposerAttachments: [{ path: "reports/alpha.pdf", isDir: false }],
+    });
+    mockConversations([]);
+    renderSidebar();
+
+    const alphaCheckbox = screen.getByRole("checkbox", {
+      name: "选择资料来源 alpha.pdf",
+    }) as HTMLInputElement;
+    expect(alphaCheckbox.checked).toBe(true);
+
+    fireEvent.click(alphaCheckbox);
+
+    expect(useChatStore.getState().pendingComposerAttachmentRemovals).toEqual([
+      { path: "reports/alpha.pdf", isDir: false },
+    ]);
+    expect(alphaCheckbox.checked).toBe(false);
+  });
+
+  it("uses a mixed project checkbox and toggles all current project files", () => {
+    seedPrivateFundCorpus();
+    useChatStore.setState({
+      activeComposerAttachments: [{ path: "reports/alpha.pdf", isDir: false }],
+    });
+    mockConversations([]);
+    renderSidebar();
+
+    const projectCheckbox = screen.getByRole("checkbox", {
+      name: "全选Acme Solar的资料来源",
+    }) as HTMLInputElement;
+    expect(projectCheckbox.closest("button")).toBeNull();
+    expect(projectCheckbox).toHaveAttribute("aria-checked", "mixed");
+    expect(projectCheckbox.indeterminate).toBe(true);
+
+    fireEvent.click(projectCheckbox);
+
+    expect(useChatStore.getState().pendingComposerAttachments).toEqual([
+      { path: "reports/beta.pdf", isDir: false },
+    ]);
+    expect(projectCheckbox.checked).toBe(true);
+
+    fireEvent.click(projectCheckbox);
+
+    expect(useChatStore.getState().pendingComposerAttachments).toEqual([]);
+    expect(useChatStore.getState().pendingComposerAttachmentRemovals).toEqual([
+      { path: "reports/alpha.pdf", isDir: false },
+    ]);
+    expect(projectCheckbox.checked).toBe(false);
+  });
+
+  it("selects every source and confirms bulk deletion", async () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选Acme Solar的资料来源" }));
+    expect(screen.getAllByRole("checkbox", { name: "选择资料来源 alpha.pdf" })).toHaveLength(1);
+    expect(screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "选择资料来源 beta.pdf" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "删除已选资料来源 2 项" }));
+    expect(screen.getByRole("heading", { name: "删除 2 份资料来源？" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() =>
+      expect(deletePrivateFundFilesSpy).toHaveBeenCalledWith(["alpha.pdf", "beta.pdf"]),
+    );
+  });
+
+  it("confirms permanent deletion of a research project", async () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
+
+    fireEvent.click(screen.getByRole("button", { name: "删除研究项目 Acme Solar" }));
+    expect(screen.getByRole("heading", { name: "删除研究项目？" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => expect(deletePrivateFundProjectSpy).toHaveBeenCalledWith("acme"));
+    expect(localStorage.getItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY)).toBeNull();
+  });
+});
 
 describe("Sidebar session list", () => {
   it("renders no filter funnel and requests the list with archived included", () => {

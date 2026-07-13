@@ -118,7 +118,11 @@ function getServerSnapshot(): number | null {
  * rail width. Pass `null` when there is no active conversation (the panel then
  * uses the default width and resizes are not persisted).
  */
-export function useResizableInlinePanel(sessionId: string | null, minWidthPx = MIN_WIDTH_PX) {
+export function useResizableInlinePanel(
+  sessionId: string | null,
+  minWidthPx = MIN_WIDTH_PX,
+  defaultWidthOverride?: number,
+) {
   const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   // On a session switch the module store still holds the previous session's
   // width until the effect below re-seeds it after commit. Derive this render's
@@ -131,10 +135,13 @@ export function useResizableInlinePanel(sessionId: string | null, minWidthPx = M
     effectiveRaw =
       sessionId !== null ? (readSessionWorkspaceState(sessionId).widthPx ?? null) : null;
   }
-  const resolvedWidth = clamp(effectiveRaw ?? defaultWidthPx(), minWidthPx);
+  const resolvedDefaultWidth = defaultWidthOverride ?? defaultWidthPx();
+  const resolvedWidth = clamp(effectiveRaw ?? resolvedDefaultWidth, minWidthPx);
   const dragging = useRef(false);
   const minWidthRef = useRef(minWidthPx);
+  const defaultWidthRef = useRef(resolvedDefaultWidth);
   minWidthRef.current = minWidthPx;
+  defaultWidthRef.current = resolvedDefaultWidth;
 
   // Load the active session's saved width into the module store (and re-load
   // when it changes) so the live store and the drag handlers operate on the
@@ -150,7 +157,7 @@ export function useResizableInlinePanel(sessionId: string | null, minWidthPx = M
     function onResize() {
       setStoredWidth((prev) => {
         const base = preferredWidth ?? prev;
-        return base !== null ? clamp(base, minWidthRef.current) : defaultWidthPx();
+        return base !== null ? clamp(base, minWidthRef.current) : defaultWidthRef.current;
       });
     }
     window.addEventListener("resize", onResize);

@@ -120,6 +120,18 @@ def test_builtin_names_size_matches_registry() -> None:
                 "download_file",
                 "search_conversations",
                 "export_agent",
+                # Structured private-fund project tools. These are
+                # opt-in builtins for generic SDK agents and execute
+                # runner-local against the session-bound dataset.
+                "private_fund_dataset_status",
+                "private_fund_dataset_search",
+                "private_fund_source_detail",
+                "private_fund_dataset_memo",
+                "private_fund_equity_report_generate",
+                "private_fund_equity_report_status",
+                "private_fund_equity_report_get",
+                "private_fund_research_context",
+                "private_fund_research_node_save",
                 # Framework-owned (need runtime context, not
                 # user-instantiable). Policy ASKs surface as
                 # MCP-shape elicitations on the SSE stream and

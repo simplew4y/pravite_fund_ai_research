@@ -85,6 +85,7 @@ describe("createSession", () => {
       lastTaskError: undefined,
       lastTotalTokens: undefined,
       totalCostUsd: undefined,
+      tokenUsage: null,
       usageByModel: null,
       llmModel: undefined,
       harness: null,
@@ -602,6 +603,32 @@ describe("getSession", () => {
     );
     const session = await getSession("conv_abc");
     expect(session.permissionLevel).toBe(4);
+  });
+
+  it("maps authoritative flat token usage from the wire", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse({
+        id: "conv_abc",
+        agent_id: "ag",
+        status: "idle",
+        created_at: 0,
+        token_usage: {
+          input_tokens: 1200,
+          output_tokens: 300,
+          total_tokens: 1800,
+          cache_read_input_tokens: 300,
+        },
+      }),
+    );
+    const session = await getSession("conv_abc");
+    expect(session.tokenUsage).toEqual({
+      inputTokens: 1200,
+      outputTokens: 300,
+      totalTokens: 1800,
+      cacheReadInputTokens: 300,
+      cacheCreationInputTokens: null,
+      totalCostUsd: null,
+    });
   });
 
   it("treats a missing permission_level as null", async () => {

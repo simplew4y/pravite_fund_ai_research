@@ -463,6 +463,8 @@ export interface SessionStatusEvent {
  *   (server-computed, the cost-budget total). Present only when the
  *   session is priced; absent on an unpriced session or a broadcast
  *   carrying no cost change, in which case the cached value is kept.
+ * - `tokenUsage`: authoritative flat cumulative subtree token buckets;
+ *   absent when no token bucket changed.
  * - `usageByModel`: per-model breakdown of the subtree usage, keyed by
  *   raw harness model id; absent on a broadcast carrying no per-model
  *   change (the client keeps its cached map).
@@ -473,6 +475,7 @@ export interface SessionUsageEvent {
   contextTokens?: number;
   contextWindow?: number;
   totalCostUsd?: number;
+  tokenUsage?: ModelUsage;
   usageByModel?: Record<string, ModelUsage>;
 }
 

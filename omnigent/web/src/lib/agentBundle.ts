@@ -31,6 +31,14 @@ export interface AgentBundleInput {
   harness: string;
   /** Model identifier, e.g. "claude-sonnet-4-20250514". Required by the omnigent executor. */
   model: string;
+  /** Optional OpenAI-compatible endpoint for direct API-backed agents. */
+  baseUrl?: string;
+  /** Optional API key paired with `baseUrl`. Kept only in the uploaded local agent bundle. */
+  apiKey?: string;
+  /** Select the OpenAI Responses API (`true`) or Chat Completions (`false`). */
+  useResponses?: boolean;
+  /** Include the structured private-fund project tools in this agent. */
+  privateFundTools?: boolean;
   /** MCP server declarations to include as inline tools entries. */
   mcpServers?: MCPServerInput[];
 }
@@ -54,14 +62,33 @@ export async function buildAgentBundle(input: AgentBundleInput): Promise<File> {
   lines.push("executor:");
   lines.push("  type: omnigent");
   lines.push(`  model: ${input.model}`);
+  if (input.useResponses !== undefined) {
+    lines.push(`  use_responses: ${input.useResponses}`);
+  }
   lines.push("  config:");
   lines.push(`    harness: ${input.harness}`);
+  if (input.apiKey) {
+    lines.push("  auth:");
+    lines.push("    type: api_key");
+    lines.push(`    api_key: ${yamlQuote(input.apiKey)}`);
+    if (input.baseUrl) {
+      lines.push(`    base_url: ${yamlQuote(input.baseUrl)}`);
+    }
+  }
   lines.push("");
 
   lines.push("tools:");
   lines.push("  builtins:");
   lines.push("    - web_search");
   lines.push("    - web_fetch");
+  if (input.privateFundTools) {
+    lines.push("    - private_fund_dataset_status");
+    lines.push("    - private_fund_dataset_search");
+    lines.push("    - private_fund_source_detail");
+    lines.push("    - private_fund_dataset_memo");
+    lines.push("    - private_fund_research_context");
+    lines.push("    - private_fund_research_node_save");
+  }
   // Inline MCP server declarations (parsed by _parse_inline_mcp_servers).
   if (input.mcpServers?.length) {
     for (const mcp of input.mcpServers) {

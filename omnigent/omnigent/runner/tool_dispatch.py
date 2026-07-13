@@ -253,6 +253,24 @@ _WEB_FETCH_TOOLS = frozenset({"web_fetch"})
 # web_search known-failure.
 _WEB_SEARCH_TOOLS = frozenset({"web_search"})
 
+# Priority 5f.1c: private-fund structured dataset tools. They are opt-in
+# builtins and execute in the runner against the session's selected project
+# workspace. Native harnesses receive the same tools through their relay when
+# the agent spec declares them.
+_PRIVATE_FUND_DATASET_TOOLS = frozenset(
+    {
+        "private_fund_dataset_status",
+        "private_fund_dataset_search",
+        "private_fund_source_detail",
+        "private_fund_dataset_memo",
+        "private_fund_equity_report_generate",
+        "private_fund_equity_report_status",
+        "private_fund_equity_report_get",
+        "private_fund_research_context",
+        "private_fund_research_node_save",
+    }
+)
+
 # Priority 5f.2: sys_list_models — runner-local because provider resolution
 # reads the runner host's config/credentials, same as the spawn paths.
 _LIST_MODELS_TOOLS = frozenset({"sys_list_models"})
@@ -325,6 +343,7 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     | _AGENT_TOOLS
     | _POLICY_TOOLS
     | _TERMINAL_TOOLS
+    | _PRIVATE_FUND_DATASET_TOOLS
 )
 
 
@@ -454,6 +473,7 @@ _ALL_LOCAL_TOOLS = (
     | _SESSION_QUERY_TOOLS
     | _WEB_FETCH_TOOLS
     | _WEB_SEARCH_TOOLS
+    | _PRIVATE_FUND_DATASET_TOOLS
     | _TIMER_TOOLS
     | _TASK_LIFECYCLE_TOOLS
     | _SKILL_TOOLS
@@ -613,6 +633,85 @@ async def _execute_spec_callable_tool(
     else:
         result = await asyncio.to_thread(resolved, **args)
     return str(result) if result is not None else ""
+
+
+async def _execute_private_fund_dataset_tool(
+    tool_name: str,
+    arguments: str,
+    *,
+    conversation_id: str | None,
+    task_id: str | None,
+    agent_id: str | None,
+    agent_spec: Any | None,
+    runner_workspace: Path | None,
+    server_client: httpx.AsyncClient | None = None,
+) -> str:
+    """Execute an opt-in structured private-fund tool in the runner.
+
+    The schema is registered through :class:`ToolManager`; execution is
+    centralized here so the tool receives the actual session workspace rather
+    than the extracted agent-bundle directory used while loading schemas.
+    """
+    declared_builtins = getattr(getattr(agent_spec, "tools", None), "builtins", None) or []
+    if not any(getattr(entry, "name", None) == tool_name for entry in declared_builtins):
+        return f"Error: private-fund dataset tool {tool_name!r} is not declared by this agent"
+
+    workspace = runner_workspace
+    bound_dataset_id: str | None = None
+    binding_required = server_client is not None and bool(conversation_id)
+    if server_client is not None and conversation_id:
+        try:
+            response = await server_client.get(
+                f"/v1/sessions/{conversation_id}",
+                timeout=30.0,
+            )
+            if response.status_code == 200:
+                snapshot = response.json()
+                raw_workspace = snapshot.get("workspace")
+                if isinstance(raw_workspace, str) and raw_workspace.strip():
+                    workspace = Path(raw_workspace).expanduser().resolve()
+                labels = snapshot.get("labels")
+                if isinstance(labels, dict):
+                    raw_dataset_id = labels.get("private_fund.dataset_id")
+                    if isinstance(raw_dataset_id, str) and raw_dataset_id.strip():
+                        bound_dataset_id = raw_dataset_id.strip()
+        except (httpx.HTTPError, OSError, ValueError):
+            _logger.warning(
+                "Could not resolve private-fund session binding for %s",
+                conversation_id,
+                exc_info=True,
+            )
+
+    if binding_required and bound_dataset_id is None:
+        return "Error: this session is not bound to a private-fund research project"
+
+    bound_arguments = arguments
+    if bound_dataset_id is not None:
+        try:
+            payload = json.loads(arguments) if arguments else {}
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            payload["dataset_id"] = bound_dataset_id
+            bound_arguments = json.dumps(payload, ensure_ascii=False)
+
+    from omnigent.tools.builtins.private_fund_dataset import (
+        build_private_fund_dataset_tools,
+    )
+
+    tools = {tool.name(): tool for tool in build_private_fund_dataset_tools(workspace)}
+    tool = tools.get(tool_name)
+    if tool is None:
+        return f"Error: unknown private-fund dataset tool {tool_name!r}"
+    ctx = ToolContext(
+        task_id=task_id or conversation_id or "private-fund-tool",
+        agent_id=agent_id
+        or getattr(agent_spec, "name", "private-fund-agent")
+        or "private-fund-agent",
+        workspace=workspace,
+        conversation_id=conversation_id,
+    )
+    return await asyncio.to_thread(tool.invoke, bound_arguments, ctx)
 
 
 # ── Unity Catalog function dispatch ───────────────────────────
@@ -4112,6 +4211,17 @@ async def execute_tool(
                 conversation_id=conversation_id,
                 task_id=task_id,
                 agent_id=agent_id,
+            )
+        elif tool_name in _PRIVATE_FUND_DATASET_TOOLS:
+            output = await _execute_private_fund_dataset_tool(
+                tool_name,
+                arguments,
+                conversation_id=conversation_id,
+                task_id=task_id,
+                agent_id=agent_id,
+                agent_spec=agent_spec,
+                runner_workspace=runner_workspace,
+                server_client=server_client,
             )
         elif tool_name in _TIMER_TOOLS:
             if tool_name == "sys_timer_set":

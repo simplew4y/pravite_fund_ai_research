@@ -1794,11 +1794,10 @@ describe("chatStore — send (first-send ordering)", () => {
     expect(useChatStore.getState().pendingUserMessages).toEqual([]);
   });
 
-  it("surfaces a visible error block with friendly copy when the runner is unavailable (503)", async () => {
-    // The fresh-send failure mode: POST /events 503s because a host-bound
-    // runner never came online. Before this, finalizeActive was a no-op (no
-    // activeResponse) so the user was left on a silent, empty composer. Now
-    // the failure must render as an error block explaining what happened.
+  it("distinguishes an unbound legacy session from a runner startup timeout", async () => {
+    // An old imported/seeded session can have no runner binding at all. That
+    // is not a startup timeout, so the banner must tell the user to reconnect
+    // or start a new project conversation instead of suggesting a blind retry.
     useChatStore.setState({
       conversationId: "conv_existing",
       abortController: new AbortController(),
@@ -1824,16 +1823,44 @@ describe("chatStore — send (first-send ordering)", () => {
     // Optimistic bubble rolled back, turn settled to idle.
     expect(state.pendingUserMessages).toEqual([]);
     expect(state.status).toBe("idle");
-    // A standalone error block is appended carrying the friendly, retryable
-    // copy — NOT the server's terse "No runner bound for session" — and no
-    // raw code in the banner (code "" → clean "Error" title).
+    // A standalone error block is appended with an actionable explanation —
+    // not the misleading startup-timeout copy — and no raw machine code.
     const errorBlocks = state.blocks.filter((b) => b.type === "error");
     expect(errorBlocks).toHaveLength(1);
     expect(errorBlocks[0]).toMatchObject({
       type: "error",
-      message: "The runner didn't come online in time. Please try again.",
+      message:
+        "This session isn't connected to a runner. Reconnect it or start a new project conversation.",
       code: "",
     });
+  });
+
+  it("keeps the retry message for a host-bound runner that did time out", async () => {
+    useChatStore.setState({
+      conversationId: "conv_existing",
+      abortController: new AbortController(),
+      status: "idle",
+      blocks: [],
+      pendingUserMessages: [],
+    });
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input).endsWith("/v1/sessions/conv_existing/events")) {
+        return mockResponse(
+          { error: { code: "runner_unavailable", message: "Runner did not connect in time" } },
+          { ok: false, status: 503 },
+        );
+      }
+      return defaultFetchHandler(input, init);
+    });
+
+    await useChatStore.getState().send("hi", "agent_xyz");
+
+    expect(useChatStore.getState().blocks.filter((b) => b.type === "error")).toContainEqual(
+      expect.objectContaining({
+        message: "The runner didn't come online in time. Please try again.",
+        code: "",
+      }),
+    );
   });
 
   it("carries a non-runner send failure's own message into the error block", async () => {

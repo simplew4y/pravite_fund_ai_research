@@ -7,16 +7,16 @@ generate a memo PDF. They do not build a persistent chunk index.
 
 from __future__ import annotations
 
-import logging
-import os
 import hashlib
 import json
+import logging
+import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
-import subprocess
 import unicodedata
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
@@ -25,9 +25,25 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, BackgroundTasks, File as FastApiFile, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
+from fastapi import (
+    File as FastApiFile,
+)
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from omnigent.runtime.policies.builder import load_session_usage
+from omnigent.server import private_fund_workflow
+from omnigent.server.auth import AuthProvider
+from omnigent.server.routes._auth_helpers import require_user
+from omnigent.stores.conversation_store import ConversationStore
 
 _logger = logging.getLogger(__name__)
 
@@ -49,12 +65,37 @@ SOURCE_RENDER_DIR = _PRIVATE_FUND_ROOT / "output/pdf_sources"
 SOURCE_RENDER_DPI = 144
 DATASET_WORKSPACE_DIR = _PRIVATE_FUND_ROOT / "output/private_fund_datasets"
 EXCEL_FILE_TYPES = {"xlsx", "xls", "xlsm", "csv"}
+EXCEL_MAX_ROW = 1_048_576
+EXCEL_MAX_COLUMN = 16_384
+EXCEL_SOURCE_MAX_GRID_CELLS = 4_000
+EXCEL_SOURCE_MAX_ROWS = 200
+EXCEL_SOURCE_MAX_COLUMNS = 80
+EXCEL_SOURCE_NEARBY_RADIUS = 8
 PROJECT_UPLOADS_DIRNAME = "_uploads"
+PROJECT_UPLOADS_MARKER = ".source-initialized"
 PRIVATE_FUND_PROJECT_LABEL_ID = "private_fund.dataset_id"
 PRIVATE_FUND_PROJECT_LABEL_NAME = "private_fund.dataset_name"
-SUPPORTED_PROJECT_UPLOAD_SUFFIXES = {".pdf", ".xlsx", ".xlsm"}
+SUPPORTED_PROJECT_UPLOAD_SUFFIXES = {
+    ".pdf",
+    ".xlsx",
+    ".xlsm",
+    ".docx",
+    ".pptx",
+    ".csv",
+    ".md",
+    ".markdown",
+    ".txt",
+}
 _PRIVATE_FUND_PIPELINE_JOBS_LOCK = threading.Lock()
 _PRIVATE_FUND_PIPELINE_JOBS: dict[str, dict[str, Any]] = {}
+_PROJECT_USAGE_PAGE_SIZE = 1000
+_PROJECT_USAGE_TOKEN_KEYS = (
+    "input_tokens",
+    "output_tokens",
+    "total_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+)
 
 
 @dataclass(frozen=True)
@@ -161,8 +202,61 @@ class CreateProjectRequest(BaseModel):
 
 
 class RunProjectPipelineRequest(BaseModel):
-    reset: bool = True
+    reset: bool = False
     recursive: bool = True
+
+
+class DeleteProjectFilesRequest(BaseModel):
+    file_names: list[str] = Field(default_factory=list)
+
+
+class DeleteResearchAssetsRequest(BaseModel):
+    asset_ids: list[str] = Field(default_factory=list)
+
+
+class SelectResearchNodeRequest(BaseModel):
+    node_id: str
+
+
+class StartResearchNodeRequest(BaseModel):
+    prompt_snapshot: str | None = None
+    model_name: str | None = None
+
+
+class CompleteResearchNodeRequest(BaseModel):
+    output_markdown: str
+    structured_output: dict[str, Any] | None = None
+    evidence_ids: list[str] = Field(default_factory=list)
+    source_response_id: str | None = None
+    model_name: str | None = None
+
+
+class AddResearchAssumptionRequest(BaseModel):
+    content: str
+    source_response_id: str | None = None
+
+
+class CreateResearchReportRequest(BaseModel):
+    title: str | None = None
+    report_type: str = "investment_memo"
+
+
+class SetResearchContextRequest(BaseModel):
+    node_ids: list[str] = Field(default_factory=list)
+
+
+class SaveResearchAssetRequest(BaseModel):
+    asset_type: str = "information"
+    title: str
+    summary: str = ""
+    content_markdown: str
+    source_response_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+
+
+class SetResearchAssetContextRequest(BaseModel):
+    asset_ids: list[str] = Field(default_factory=list)
 
 
 def _jsonable(value: Any) -> Any:
@@ -200,7 +294,9 @@ def _safe_upload_name(name: str | None) -> str:
     suffix = Path(raw).suffix.lower()
     if suffix not in SUPPORTED_PROJECT_UPLOAD_SUFFIXES:
         supported = ", ".join(sorted(SUPPORTED_PROJECT_UPLOAD_SUFFIXES))
-        raise HTTPException(status_code=400, detail=f"Unsupported file type. Supported: {supported}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported file type. Supported: {supported}"
+        )
     return raw
 
 
@@ -211,6 +307,10 @@ def _project_uploads_root(workspace_root: Path | None = None) -> Path:
 
 def _project_uploads_dir(dataset_id: str, workspace_root: Path | None = None) -> Path:
     return _project_uploads_root(workspace_root) / _safe_dataset_id(dataset_id)
+
+
+def _project_uploads_initialized(directory: Path) -> bool:
+    return (directory / PROJECT_UPLOADS_MARKER).is_file() or bool(_supported_files_in(directory))
 
 
 def _project_dataset_root(dataset_id: str, workspace_root: Path | None = None) -> Path:
@@ -256,13 +356,17 @@ def _project_row(dataset_id: str) -> sqlite3.Row | None:
         return None
     with sqlite3.connect(str(registry), timeout=5) as conn:
         conn.row_factory = sqlite3.Row
-        return conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
+        return conn.execute(
+            "SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)
+        ).fetchone()
 
 
 def _require_project_row(dataset_id: str) -> sqlite3.Row:
     row = _project_row(dataset_id)
     if row is None:
-        raise HTTPException(status_code=404, detail=f"Private-fund project not found: {dataset_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Private-fund project not found: {dataset_id}"
+        )
     return row
 
 
@@ -278,7 +382,9 @@ def _latest_project_job(dataset_id: str) -> dict[str, Any] | None:
             if job.get("dataset_id") == dataset_id
         ]
     if in_memory:
-        in_memory.sort(key=lambda item: item.get("created_at") or item.get("started_at") or "", reverse=True)
+        in_memory.sort(
+            key=lambda item: item.get("created_at") or item.get("started_at") or "", reverse=True
+        )
         return in_memory[0]
 
     collection_db = _collection_db_path(dataset_id)
@@ -303,6 +409,30 @@ def _latest_project_job(dataset_id: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
+def _persisted_project_pipeline_job(job_id: str) -> dict[str, Any] | None:
+    """Find a pipeline job after the server's in-memory job cache is lost."""
+    workspace = _dataset_workspace_root()
+    for collection_db in sorted(workspace.glob("*/meta/collection.sqlite3")):
+        try:
+            with sqlite3.connect(str(collection_db), timeout=5) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    """
+                    SELECT job_id, dataset_id, job_type, status, file_count, message,
+                           returncode, created_at, started_at, finished_at, metadata_json
+                    FROM ingest_jobs
+                    WHERE job_id = ?
+                    LIMIT 1
+                    """,
+                    (job_id,),
+                ).fetchone()
+        except sqlite3.Error:
+            continue
+        if row is not None:
+            return dict(row)
+    return None
+
+
 def _project_index_stats(dataset_id: str) -> dict[str, Any]:
     collection_db = _collection_db_path(dataset_id)
     stats: dict[str, Any] = {
@@ -318,7 +448,10 @@ def _project_index_stats(dataset_id: str) -> dict[str, Any]:
         with sqlite3.connect(str(collection_db), timeout=5) as conn:
             conn.row_factory = sqlite3.Row
             stats["document_count"] = int(
-                conn.execute("SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL").fetchone()[0] or 0
+                conn.execute("SELECT COUNT(*) FROM documents WHERE deleted_at IS NULL").fetchone()[
+                    0
+                ]
+                or 0
             )
             stats["indexed_document_count"] = int(
                 conn.execute(
@@ -332,9 +465,24 @@ def _project_index_stats(dataset_id: str) -> dict[str, Any]:
                 ).fetchone()[0]
                 or 0
             )
-            stats["chunk_count"] = int(conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0] or 0)
+            stats["chunk_count"] = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM chunks c
+                    JOIN documents d ON d.doc_id = c.doc_id
+                    WHERE c.dataset_id = ?
+                      AND d.dataset_id = ?
+                      AND d.deleted_at IS NULL
+                    """,
+                    (dataset_id, dataset_id),
+                ).fetchone()[0]
+                or 0
+            )
             stats["index_count"] = int(
-                conn.execute("SELECT COUNT(*) FROM index_registry WHERE dataset_id = ?", (dataset_id,)).fetchone()[0]
+                conn.execute(
+                    "SELECT COUNT(*) FROM index_registry WHERE dataset_id = ?", (dataset_id,)
+                ).fetchone()[0]
                 or 0
             )
     except sqlite3.Error:
@@ -344,11 +492,19 @@ def _project_index_stats(dataset_id: str) -> dict[str, Any]:
 
 def _project_memo_stats(dataset_id: str) -> dict[str, Any]:
     memos_dir = _project_dataset_root(dataset_id) / "memos"
-    files = sorted(
-        (path for path in memos_dir.glob("*") if path.is_file() and path.suffix.lower() in {".md", ".html", ".pdf"}),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    ) if memos_dir.is_dir() else []
+    files = (
+        sorted(
+            (
+                path
+                for path in memos_dir.glob("*")
+                if path.is_file() and path.suffix.lower() in {".md", ".html", ".pdf"}
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if memos_dir.is_dir()
+        else []
+    )
     latest = files[0] if files else None
     return {
         "memo_count": len(files),
@@ -357,14 +513,162 @@ def _project_memo_stats(dataset_id: str) -> dict[str, Any]:
     }
 
 
+def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
+    """Project documents, agent outputs and saved excerpts into one asset catalog."""
+    collection_db = _collection_db_path(dataset_id)
+    workflow = private_fund_workflow.get_or_create_workflow(collection_db, dataset_id)
+    saved = private_fund_workflow.list_saved_assets(collection_db, dataset_id)
+    assets: list[dict[str, Any]] = []
+
+    for file in _project_files_payload(dataset_id):
+        file_key = str(file.get("doc_id") or file.get("name") or "")
+        assets.append(
+            {
+                "asset_id": f"document:{file_key}",
+                "asset_type": "document",
+                "title": file.get("name") or "未命名资料",
+                "summary": (
+                    f"{str(file.get('file_type') or '').upper()} · "
+                    f"{int(file.get('chunk_count') or 0)} 个可检索片段"
+                ),
+                "content_markdown": "",
+                "format": file.get("file_type") or "file",
+                "status": file.get("status") or "pending",
+                "source_kind": "document",
+                "source_id": file.get("doc_id"),
+                "tags": [],
+                "created_at": file.get("uploaded_at"),
+                "updated_at": file.get("uploaded_at"),
+                "version_no": 1,
+                "evidence_count": int(file.get("chunk_count") or 0),
+                "file_type": file.get("file_type"),
+                "stored_path": file.get("stored_path") or file.get("source_path"),
+                "metadata": {"size": int(file.get("size") or 0)},
+            }
+        )
+
+    for node in workflow.get("nodes", []):
+        node_id = str(node["node_id"])
+        blocks = node.get("content_blocks") or []
+        evidence_count = len(node.get("evidence_sources") or [])
+        assets.append(
+            {
+                "asset_id": f"node:{node_id}",
+                "asset_type": "analysis",
+                "title": node.get("title") or "Agent 分析",
+                "summary": node.get("summary") or "",
+                "content_markdown": node.get("latest_output") or "",
+                "format": "rich" if blocks else "markdown",
+                "status": node.get("status") or "completed",
+                "source_kind": "research_node",
+                "source_id": node_id,
+                "tags": [],
+                "created_at": node.get("created_at"),
+                "updated_at": node.get("updated_at"),
+                "version_no": int(node.get("current_version_no") or 0),
+                "evidence_count": evidence_count,
+                "metadata": {"node_type": node.get("node_type")},
+            }
+        )
+        for index, block in enumerate(blocks):
+            block_type = str(block.get("type") or "markdown")
+            if block_type == "markdown":
+                continue
+            block_title = str(block.get("title") or f"{node.get('title')} · {block_type}")
+            assets.append(
+                {
+                    "asset_id": f"block:{node_id}:{index}",
+                    "asset_type": "infographic" if block_type == "html" else block_type,
+                    "title": block_title,
+                    "summary": f"来自分析资产《{node.get('title') or ''}》",
+                    "content_markdown": json.dumps(block, ensure_ascii=False),
+                    "format": block_type,
+                    "status": node.get("status") or "completed",
+                    "source_kind": "research_node_block",
+                    "source_id": node_id,
+                    "tags": [],
+                    "created_at": node.get("created_at"),
+                    "updated_at": node.get("updated_at"),
+                    "version_no": int(node.get("current_version_no") or 0),
+                    "evidence_count": len(block.get("evidence_ids") or []),
+                    "metadata": {"block_index": index, "block": block},
+                }
+            )
+
+    artifact_dirs = (
+        (_project_dataset_root(dataset_id) / "memos", "memo", "memo"),
+        (_project_dataset_root(dataset_id) / "reports", "report", "equity_report"),
+    )
+    for memos_dir, asset_type, source_kind in artifact_dirs:
+        if not memos_dir.is_dir():
+            continue
+        for path in sorted(
+            memos_dir.glob("*"), key=lambda item: item.stat().st_mtime, reverse=True
+        ):
+            if not path.is_file() or path.suffix.lower() not in {".md", ".html", ".pdf"}:
+                continue
+            stat = path.stat()
+            content = ""
+            if path.suffix.lower() == ".md":
+                try:
+                    content = path.read_text(encoding="utf-8")[:100_000]
+                except OSError:
+                    content = ""
+            timestamp = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+            key = hashlib.sha256(str(path).encode()).hexdigest()[:16]
+            assets.append(
+                {
+                    "asset_id": f"{asset_type}:{key}",
+                    "asset_type": asset_type,
+                    "title": path.stem,
+                    "summary": f"版本化报告产物 · {path.suffix.lower().lstrip('.').upper()}",
+                    "content_markdown": content,
+                    "format": path.suffix.lower().lstrip("."),
+                    "status": "completed",
+                    "source_kind": source_kind,
+                    "source_id": str(path),
+                    "tags": [],
+                    "created_at": timestamp,
+                    "updated_at": timestamp,
+                    "version_no": 1,
+                    "evidence_count": 0,
+                    "file_type": path.suffix.lower().lstrip("."),
+                    "stored_path": str(path),
+                    "metadata": {"size": stat.st_size},
+                }
+            )
+
+    for item in saved["assets"]:
+        assets.append(
+            {
+                **item,
+                "format": "markdown",
+                "status": "completed",
+                "source_kind": "saved_information",
+                "source_id": item.get("source_response_id"),
+                "version_no": 1,
+                "evidence_count": 0,
+            }
+        )
+    context_ids = list(saved["context_asset_ids"])
+    if not context_ids:
+        context_ids = [f"node:{node_id}" for node_id in workflow.get("context_node_ids", [])]
+    return {"assets": assets, "context_asset_ids": context_ids}
+
+
+def _project_index_ready(status: str, chunk_count: int) -> bool:
+    return chunk_count > 0 and status in {"completed", "completed_with_warnings"}
+
+
 def _project_payload(row: sqlite3.Row) -> dict[str, Any]:
     dataset_id = str(row["dataset_id"])
-    uploads = _supported_files_in(_project_uploads_dir(dataset_id))
+    uploads_dir = _project_uploads_dir(dataset_id)
+    uploads = _supported_files_in(uploads_dir)
     raw = _supported_files_in(_project_dataset_root(dataset_id) / "raw")
     stats = _project_index_stats(dataset_id)
     memo_stats = _project_memo_stats(dataset_id)
     latest_job = _latest_project_job(dataset_id)
-    upload_count = len(uploads) if uploads else len(raw)
+    upload_count = len(uploads) if _project_uploads_initialized(uploads_dir) else len(raw)
     return {
         "dataset_id": dataset_id,
         "name": row["name"],
@@ -378,7 +682,7 @@ def _project_payload(row: sqlite3.Row) -> dict[str, Any]:
         "upload_count": upload_count,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
-        "index_ready": stats["chunk_count"] > 0 and row["status"] == "completed",
+        "index_ready": _project_index_ready(str(row["status"]), stats["chunk_count"]),
         "latest_job": latest_job,
         **stats,
         **memo_stats,
@@ -393,7 +697,9 @@ def _list_projects_payload() -> list[dict[str, Any]]:
     if registry.exists():
         with sqlite3.connect(str(registry), timeout=5) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM datasets ORDER BY updated_at DESC, name ASC").fetchall()
+            rows = conn.execute(
+                "SELECT * FROM datasets ORDER BY updated_at DESC, name ASC"
+            ).fetchall()
         for row in rows:
             seen.add(str(row["dataset_id"]))
             projects.append(_project_payload(row))
@@ -438,10 +744,117 @@ def _list_projects_payload() -> list[dict[str, Any]]:
     return projects
 
 
+def _empty_project_token_usage(dataset_id: str) -> dict[str, Any]:
+    return {
+        "dataset_id": dataset_id,
+        "session_count": 0,
+        "sessions_with_token_usage": 0,
+        "sessions_with_total_tokens": 0,
+        "sessions_with_cost": 0,
+        "input_tokens": None,
+        "output_tokens": None,
+        "total_tokens": None,
+        "cache_read_input_tokens": None,
+        "cache_creation_input_tokens": None,
+        "total_cost_usd": None,
+    }
+
+
+def _add_usage_to_project_summary(summary: dict[str, Any], usage: dict[str, Any]) -> None:
+    """Merge one top-level session subtree's usage into a project summary."""
+    summary["session_count"] += 1
+    has_token_usage = any(usage.get(key) is not None for key in _PROJECT_USAGE_TOKEN_KEYS)
+    if has_token_usage:
+        summary["sessions_with_token_usage"] += 1
+
+    for key in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ):
+        value = usage.get(key)
+        if value is None:
+            continue
+        token_value = max(0, int(value))
+        summary[key] = (summary[key] or 0) + token_value
+
+    total_value = usage.get("total_tokens")
+    if total_value is not None:
+        summary["sessions_with_total_tokens"] += 1
+        summary["total_tokens"] = (summary["total_tokens"] or 0) + max(0, int(total_value))
+
+    cost_value = usage.get("total_cost_usd")
+    if cost_value is not None:
+        summary["sessions_with_cost"] += 1
+        summary["total_cost_usd"] = (summary["total_cost_usd"] or 0.0) + max(
+            0.0, float(cost_value)
+        )
+
+
+def _project_token_usage_by_dataset(
+    conversation_store: ConversationStore,
+    *,
+    accessible_by: str | None,
+    target_dataset_id: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Aggregate real persisted token usage for accessible private-fund sessions."""
+    summaries: dict[str, dict[str, Any]] = {}
+    after: str | None = None
+    seen_cursors: set[str] = set()
+    while True:
+        page = conversation_store.list_conversations(
+            limit=_PROJECT_USAGE_PAGE_SIZE,
+            after=after,
+            kind="default",
+            has_agent_id=True,
+            order="desc",
+            sort_by="updated_at",
+            accessible_by=accessible_by,
+            include_archived=True,
+        )
+        for conversation in page.data:
+            dataset_id = conversation.labels.get(PRIVATE_FUND_PROJECT_LABEL_ID)
+            if not dataset_id or (
+                target_dataset_id is not None and dataset_id != target_dataset_id
+            ):
+                continue
+            summary = summaries.setdefault(dataset_id, _empty_project_token_usage(dataset_id))
+            _add_usage_to_project_summary(
+                summary,
+                load_session_usage(
+                    conversation.id,
+                    conversation_store,
+                    include_archived=True,
+                ),
+            )
+        if not page.has_more or not page.last_id or page.last_id in seen_cursors:
+            break
+        seen_cursors.add(page.last_id)
+        after = page.last_id
+    return summaries
+
+
+def _attach_project_token_usage(
+    projects: list[dict[str, Any]],
+    usage_by_dataset: dict[str, dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    for project in projects:
+        dataset_id = str(project["dataset_id"])
+        project["token_usage"] = (
+            usage_by_dataset.get(dataset_id, _empty_project_token_usage(dataset_id))
+            if usage_by_dataset is not None
+            else None
+        )
+    return projects
+
+
 def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
-    uploads = _supported_files_in(_project_uploads_dir(dataset_id))
+    uploads_dir = _project_uploads_dir(dataset_id)
+    uploads = _supported_files_in(uploads_dir)
     raw = _supported_files_in(_project_dataset_root(dataset_id) / "raw")
-    source_files = uploads if uploads else raw
+    uploads_initialized = _project_uploads_initialized(uploads_dir)
+    source_files = uploads if uploads_initialized else raw
     indexed: dict[str, sqlite3.Row] = {}
     collection_db = _collection_db_path(dataset_id)
     if collection_db.exists():
@@ -482,23 +895,24 @@ def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
                 "stored_path": row["stored_path"] if row else None,
             }
         )
-    for name, row in indexed.items():
-        if name in seen:
-            continue
-        files.append(
-            {
-                "name": name,
-                "file_type": row["file_type"],
-                "size": int(row["file_size"] or 0),
-                "uploaded_at": row["created_at"],
-                "source_path": None,
-                "status": row["status"],
-                "doc_id": row["doc_id"],
-                "chunk_count": int(row["chunk_count"] or 0),
-                "error_message": row["error_message"],
-                "stored_path": row["stored_path"],
-            }
-        )
+    if not uploads_initialized:
+        for name, row in indexed.items():
+            if name in seen:
+                continue
+            files.append(
+                {
+                    "name": name,
+                    "file_type": row["file_type"],
+                    "size": int(row["file_size"] or 0),
+                    "uploaded_at": row["created_at"],
+                    "source_path": None,
+                    "status": row["status"],
+                    "doc_id": row["doc_id"],
+                    "chunk_count": int(row["chunk_count"] or 0),
+                    "error_message": row["error_message"],
+                    "stored_path": row["stored_path"],
+                }
+            )
     return files
 
 
@@ -512,11 +926,14 @@ def _create_project_row(request: CreateProjectRequest) -> dict[str, Any]:
     uploads_dir = _project_uploads_dir(dataset_id, workspace)
     now = _now_iso()
     with _connect_global_registry(workspace) as conn:
-        existing = conn.execute("SELECT dataset_id FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
+        existing = conn.execute(
+            "SELECT dataset_id FROM datasets WHERE dataset_id = ?", (dataset_id,)
+        ).fetchone()
         if existing:
             raise HTTPException(status_code=409, detail=f"Project already exists: {dataset_id}")
         dataset_root.mkdir(parents=True, exist_ok=True)
         uploads_dir.mkdir(parents=True, exist_ok=True)
+        (uploads_dir / PROJECT_UPLOADS_MARKER).touch(exist_ok=True)
         conn.execute(
             """
             INSERT INTO datasets (
@@ -546,13 +963,18 @@ def _create_project_row(request: CreateProjectRequest) -> dict[str, Any]:
 def _seed_uploads_from_raw(dataset_id: str) -> Path:
     uploads_dir = _project_uploads_dir(dataset_id)
     uploads_dir.mkdir(parents=True, exist_ok=True)
+    marker = uploads_dir / PROJECT_UPLOADS_MARKER
+    if marker.is_file():
+        return uploads_dir
     if _supported_files_in(uploads_dir):
+        marker.touch(exist_ok=True)
         return uploads_dir
     raw_dir = _project_dataset_root(dataset_id) / "raw"
     for raw_file in _supported_files_in(raw_dir):
         target = uploads_dir / raw_file.name
         if not target.exists():
             shutil.copy2(raw_file, target)
+    marker.touch(exist_ok=True)
     return uploads_dir
 
 
@@ -566,11 +988,14 @@ def _save_uploaded_project_files(dataset_id: str, files: list[UploadFile]) -> di
         body = uploaded.file.read()
         if not body:
             raise HTTPException(status_code=400, detail=f"Uploaded file is empty: {filename}")
+        replaced = False
         if target.exists():
             digest = hashlib.sha256(body).hexdigest()[:8]
             existing = hashlib.sha256(target.read_bytes()).hexdigest()[:8]
-            if digest != existing:
-                target = uploads_dir / f"{Path(filename).stem}_{digest}{Path(filename).suffix}"
+            replaced = digest != existing
+        # The upload name is the logical source path. Replacing it lets the
+        # ingest pipeline create a new document version; raw history remains
+        # immutable in the dataset's versioned storage.
         target.write_bytes(body)
         saved.append(
             {
@@ -578,15 +1003,24 @@ def _save_uploaded_project_files(dataset_id: str, files: list[UploadFile]) -> di
                 "file_type": target.suffix.lower().lstrip("."),
                 "size": target.stat().st_size,
                 "source_path": str(target),
+                "replaced": replaced,
             }
         )
     with _connect_global_registry() as conn:
         conn.execute(
-            "UPDATE datasets SET status = CASE WHEN status = 'completed' THEN status ELSE 'draft' END, source_dir = ?, file_count = ?, updated_at = ? WHERE dataset_id = ?",
+            """
+            UPDATE datasets
+            SET status = 'draft', source_dir = ?, file_count = ?, updated_at = ?
+            WHERE dataset_id = ?
+            """,
             (str(uploads_dir), len(_supported_files_in(uploads_dir)), _now_iso(), dataset_id),
         )
         conn.commit()
-    return {"dataset_id": dataset_id, "files": saved, "project": _project_payload(_require_project_row(dataset_id))}
+    return {
+        "dataset_id": dataset_id,
+        "files": saved,
+        "project": _project_payload(_require_project_row(dataset_id)),
+    }
 
 
 def _set_active_dataset(dataset_id: str) -> dict[str, Any]:
@@ -598,6 +1032,95 @@ def _set_active_dataset(dataset_id: str) -> dict[str, Any]:
         )
         conn.commit()
     return {"active_dataset_id": dataset_id}
+
+
+def _delete_project_files(dataset_id: str, file_names: list[str]) -> dict[str, Any]:
+    _require_project_row(dataset_id)
+    safe_names = [Path(name).name for name in dict.fromkeys(file_names) if Path(name).name.strip()]
+    if not safe_names:
+        raise HTTPException(status_code=400, detail="Select at least one source file.")
+    uploads_dir = _seed_uploads_from_raw(dataset_id)
+    project_files = {
+        str(file.get("name") or ""): file for file in _project_files_payload(dataset_id)
+    }
+    missing = [name for name in safe_names if not (uploads_dir / name).is_file()]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"File not found: {missing[0]}")
+    for name in safe_names:
+        (uploads_dir / name).unlink()
+    collection_db = _collection_db_path(dataset_id)
+    if collection_db.exists():
+        private_fund_workflow.delete_assets(
+            collection_db,
+            dataset_id,
+            [
+                f"document:{project_files[name].get('doc_id') or name}"
+                for name in safe_names
+                if name in project_files
+            ],
+        )
+    count = len(_supported_files_in(uploads_dir))
+    with _connect_global_registry() as conn:
+        conn.execute(
+            """
+            UPDATE datasets
+            SET status = 'draft', file_count = ?, updated_at = ?
+            WHERE dataset_id = ?
+            """,
+            (count, _now_iso(), dataset_id),
+        )
+        conn.commit()
+    row = _require_project_row(dataset_id)
+    return {
+        "project": _project_payload(row),
+        "files": _project_files_payload(dataset_id),
+        "deleted_file_names": safe_names,
+    }
+
+
+def _delete_project(dataset_id: str) -> dict[str, Any]:
+    _require_project_row(dataset_id)
+    latest_job = _latest_project_job(dataset_id)
+    with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
+        running = any(
+            job.get("dataset_id") == dataset_id and job.get("status") in {"queued", "running"}
+            for job in _PRIVATE_FUND_PIPELINE_JOBS.values()
+        )
+    if running or latest_job and latest_job.get("status") in {"queued", "running"}:
+        raise HTTPException(
+            status_code=409,
+            detail="The project has an indexing job in progress. Try again after it finishes.",
+        )
+
+    workspace = _dataset_workspace_root().resolve()
+    dataset_root = _project_dataset_root(dataset_id, workspace).resolve()
+    uploads_dir = _project_uploads_dir(dataset_id, workspace).resolve()
+    for path in (dataset_root, uploads_dir):
+        if not path.is_relative_to(workspace):
+            raise HTTPException(status_code=400, detail="Unsafe project path.")
+        if path.exists():
+            shutil.rmtree(path)
+
+    with _connect_global_registry(workspace) as conn:
+        conn.execute("DELETE FROM datasets WHERE dataset_id = ?", (dataset_id,))
+        conn.execute(
+            """
+            UPDATE dataset_state
+            SET active_dataset_id = NULL, updated_at = ?
+            WHERE id = 1 AND active_dataset_id = ?
+            """,
+            (_now_iso(), dataset_id),
+        )
+        conn.commit()
+    with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
+        stale_job_ids = [
+            job_id
+            for job_id, job in _PRIVATE_FUND_PIPELINE_JOBS.items()
+            if job.get("dataset_id") == dataset_id
+        ]
+        for job_id in stale_job_ids:
+            _PRIVATE_FUND_PIPELINE_JOBS.pop(job_id, None)
+    return {"deleted_dataset_id": dataset_id}
 
 
 def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
@@ -620,9 +1143,10 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
             company_name=payload.get("company_name") or "",
             company_ticker=payload.get("company_ticker") or "",
             recursive=bool(payload.get("recursive", True)),
-            reset=bool(payload.get("reset", True)),
+            reset=bool(payload.get("reset", False)),
             job_id=job_id,
         )
+        private_fund_workflow.get_or_create_workflow(_collection_db_path(dataset_id), dataset_id)
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
                 "job_id": job_id,
@@ -634,7 +1158,9 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
                 "message": result.message,
             }
     except Exception as exc:  # noqa: BLE001
-        _logger.exception("private fund project pipeline failed: job_id=%s dataset_id=%s", job_id, dataset_id)
+        _logger.exception(
+            "private fund project pipeline failed: job_id=%s dataset_id=%s", job_id, dataset_id
+        )
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
                 **_PRIVATE_FUND_PIPELINE_JOBS.get(job_id, {}),
@@ -767,12 +1293,13 @@ def _dataset_document_by_name(
                     OR source_name = ?
                     OR title = ?
                     OR stored_path LIKE ?
+                    OR ? LIKE '%' || original_filename
                   )
                   {type_filter}
                 ORDER BY original_filename
                 LIMIT 1
                 """,
-                params,
+                [*params[:4], clean_name, *params[4:]],
             ).fetchone()
     except sqlite3.Error:
         return None
@@ -895,7 +1422,6 @@ def _dataset_pdf_path_by_evidence_id(
                 JOIN documents d ON d.doc_id = c.doc_id
                 WHERE c.chunk_id = ?
                   AND d.file_type = 'pdf'
-                  AND d.deleted_at IS NULL
                 LIMIT 1
                 """,
                 (raw_id,),
@@ -915,13 +1441,17 @@ def _dataset_memo_artifact_path(raw_path: str) -> Path:
     try:
         candidate = Path(raw_path).expanduser().resolve()
     except OSError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid memo artifact path: {raw_path}") from exc
+        raise HTTPException(
+            status_code=400, detail=f"Invalid memo artifact path: {raw_path}"
+        ) from exc
     if candidate.suffix.lower() not in {".pdf", ".html"}:
         raise HTTPException(status_code=400, detail="Only memo PDF/HTML artifacts can be opened.")
     try:
         candidate.relative_to(workspace_root)
     except ValueError as exc:
-        raise HTTPException(status_code=403, detail="Memo artifact is outside the dataset workspace.") from exc
+        raise HTTPException(
+            status_code=403, detail="Memo artifact is outside the dataset workspace."
+        ) from exc
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail=f"Memo artifact not found: {candidate}")
     return candidate
@@ -1000,7 +1530,6 @@ def _best_dataset_pdf_chunk(
              SELECT MIN(location_index) FROM chunk_locations WHERE chunk_id = c.chunk_id
          )
         WHERE d.file_type = 'pdf'
-          AND d.deleted_at IS NULL
           AND c.content_type IN ('pdf_speaker_turn', 'pdf_page')
     """
     params: list[Any] = []
@@ -1009,6 +1538,7 @@ def _best_dataset_pdf_chunk(
         params.append(raw_evidence_id)
     else:
         sql += """
+          AND d.deleted_at IS NULL
           AND (
             d.stored_path = ?
             OR d.original_filename = ?
@@ -1152,6 +1682,12 @@ def _column_label(index: int) -> str:
     return "".join(reversed(chars))
 
 
+def _excel_range_ref(row_min: int, col_min: int, row_max: int, col_max: int) -> str:
+    start = f"{_column_label(col_min)}{row_min}"
+    end = f"{_column_label(col_max)}{row_max}"
+    return start if start == end else f"{start}:{end}"
+
+
 def _parse_excel_range(range_ref: str) -> tuple[int, int, int, int]:
     clean = range_ref.strip().replace("$", "")
     match = re.fullmatch(
@@ -1166,9 +1702,59 @@ def _parse_excel_range(range_ref: str) -> tuple[int, int, int, int]:
     end_row = int(match.group(4) or match.group(2))
     row_min, row_max = sorted((start_row, end_row))
     col_min, col_max = sorted((start_col, end_col))
-    if (row_max - row_min + 1) * (col_max - col_min + 1) > 4000:
-        raise HTTPException(status_code=400, detail="Excel source range is too large to render.")
+    if row_max > EXCEL_MAX_ROW or col_max > EXCEL_MAX_COLUMN:
+        raise HTTPException(
+            status_code=400, detail=f"Excel range exceeds worksheet limits: {range_ref}"
+        )
     return row_min, row_max, col_min, col_max
+
+
+def _excel_sheet_key(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).replace("\u00a0", " ").strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] == "'":
+        normalized = normalized[1:-1].replace("''", "'")
+    return " ".join(normalized.split()).casefold()
+
+
+def _excel_range_window(
+    bounds: tuple[int, int, int, int],
+    *,
+    window_row: int | None = None,
+    window_col: int | None = None,
+) -> dict[str, int | bool | None | str]:
+    row_min, row_max, col_min, col_max = bounds
+    requested_rows = row_max - row_min + 1
+    requested_cols = col_max - col_min + 1
+    page_cols = min(requested_cols, EXCEL_SOURCE_MAX_COLUMNS)
+    page_rows = min(
+        requested_rows,
+        EXCEL_SOURCE_MAX_ROWS,
+        max(1, EXCEL_SOURCE_MAX_GRID_CELLS // page_cols),
+    )
+    # Respect an explicit cursor even when the final window is shorter than a
+    # full page. Back-shifting to fill the page would make adjacent windows
+    # overlap and cause users to review the same evidence twice.
+    row_start = min(max(window_row or row_min, row_min), row_max)
+    col_start = min(max(window_col or col_min, col_min), col_max)
+    row_end = min(row_max, row_start + page_rows - 1)
+    col_end = min(col_max, col_start + page_cols - 1)
+    return {
+        "row_start": row_start,
+        "row_end": row_end,
+        "col_start": col_start,
+        "col_end": col_end,
+        "row_count": row_end - row_start + 1,
+        "col_count": col_end - col_start + 1,
+        "truncated": row_start > row_min
+        or row_end < row_max
+        or col_start > col_min
+        or col_end < col_max,
+        "display_range_ref": _excel_range_ref(row_start, col_start, row_end, col_end),
+        "previous_row_start": max(row_min, row_start - page_rows) if row_start > row_min else None,
+        "next_row_start": row_end + 1 if row_end < row_max else None,
+        "previous_col_start": max(col_min, col_start - page_cols) if col_start > col_min else None,
+        "next_col_start": col_end + 1 if col_end < col_max else None,
+    }
 
 
 def _excel_workbook_source(
@@ -1177,10 +1763,14 @@ def _excel_workbook_source(
     sheet_name: str | None = None,
     range_ref: str | None = None,
     dataset_id: str | None = None,
+    window_row: int | None = None,
+    window_col: int | None = None,
 ) -> dict[str, Any]:
     document = _dataset_document_by_name(workbook_name, dataset_id, file_types=EXCEL_FILE_TYPES)
     if document is None:
-        raise HTTPException(status_code=404, detail=f"Excel workbook not found in dataset: {workbook_name}")
+        raise HTTPException(
+            status_code=404, detail=f"Excel workbook not found in dataset: {workbook_name}"
+        )
     doc, collection_db, active_dataset = document
     doc_id = str(doc["doc_id"])
 
@@ -1198,7 +1788,7 @@ def _excel_workbook_source(
                 """,
                 (doc_id,),
             ).fetchall()
-            sheet_lookup = {str(row["sheet_name"]).lower(): row for row in sheets}
+            sheet_lookup = {_excel_sheet_key(str(row["sheet_name"])): row for row in sheets}
 
             if not sheet_name:
                 return {
@@ -1211,7 +1801,7 @@ def _excel_workbook_source(
                     "sheets": [_excel_sheet_payload(row) for row in sheets],
                 }
 
-            sheet = sheet_lookup.get(sheet_name.lower())
+            sheet = sheet_lookup.get(_excel_sheet_key(sheet_name))
             if sheet is None:
                 raise HTTPException(
                     status_code=404,
@@ -1241,7 +1831,77 @@ def _excel_workbook_source(
                     "regions": [_excel_region_payload(row) for row in regions],
                 }
 
-            row_min, row_max, col_min, col_max = _parse_excel_range(range_ref)
+            requested_bounds = _parse_excel_range(range_ref)
+            requested_row_min, requested_row_max, requested_col_min, requested_col_max = (
+                requested_bounds
+            )
+            indexed_stats = conn.execute(
+                """
+                SELECT COUNT(*) AS cell_count,
+                       MIN(row_index) AS first_row,
+                       MIN(col_index) AS first_col
+                FROM excel_cells
+                WHERE doc_id = ?
+                  AND lower(sheet_name) = lower(?)
+                  AND row_index BETWEEN ? AND ?
+                  AND col_index BETWEEN ? AND ?
+                """,
+                (
+                    doc_id,
+                    sheet["sheet_name"],
+                    requested_row_min,
+                    requested_row_max,
+                    requested_col_min,
+                    requested_col_max,
+                ),
+            ).fetchone()
+            window = _excel_range_window(
+                requested_bounds,
+                window_row=window_row,
+                window_col=window_col,
+            )
+            # A citation may cover a large, sparse rectangle whose first tile is
+            # blank. On the initial request, jump to the first indexed content
+            # instead of returning a misleading empty preview.
+            if (
+                window_row is None
+                and window_col is None
+                and indexed_stats
+                and int(indexed_stats["cell_count"] or 0) > 0
+            ):
+                first_cell = conn.execute(
+                    """
+                    SELECT row_index, col_index
+                    FROM excel_cells
+                    WHERE doc_id = ?
+                      AND lower(sheet_name) = lower(?)
+                      AND row_index BETWEEN ? AND ?
+                      AND col_index BETWEEN ? AND ?
+                    ORDER BY row_index, col_index
+                    LIMIT 1
+                    """,
+                    (
+                        doc_id,
+                        sheet["sheet_name"],
+                        requested_row_min,
+                        requested_row_max,
+                        requested_col_min,
+                        requested_col_max,
+                    ),
+                ).fetchone()
+                if first_cell and not (
+                    int(window["row_start"])
+                    <= int(first_cell["row_index"])
+                    <= int(window["row_end"])
+                    and int(window["col_start"])
+                    <= int(first_cell["col_index"])
+                    <= int(window["col_end"])
+                ):
+                    window = _excel_range_window(
+                        requested_bounds,
+                        window_row=max(requested_row_min, int(first_cell["row_index"]) - 1),
+                        window_col=max(requested_col_min, int(first_cell["col_index"]) - 1),
+                    )
             cells = conn.execute(
                 """
                 SELECT cell_ref, row_index, col_index, display_value, raw_value,
@@ -1254,8 +1914,52 @@ def _excel_workbook_source(
                   AND col_index BETWEEN ? AND ?
                 ORDER BY row_index, col_index
                 """,
-                (doc_id, sheet["sheet_name"], row_min, row_max, col_min, col_max),
+                (
+                    doc_id,
+                    sheet["sheet_name"],
+                    int(window["row_start"]),
+                    int(window["row_end"]),
+                    int(window["col_start"]),
+                    int(window["col_end"]),
+                ),
             ).fetchall()
+            nearby_cells: list[sqlite3.Row] = []
+            empty_reason: str | None = None
+            if int(indexed_stats["cell_count"] or 0) == 0:
+                indexed_sheet_count = conn.execute(
+                    """
+                    SELECT COUNT(*) FROM excel_cells
+                    WHERE doc_id = ? AND lower(sheet_name) = lower(?)
+                    """,
+                    (doc_id, sheet["sheet_name"]),
+                ).fetchone()[0]
+                empty_reason = (
+                    "requested_range_empty"
+                    if int(indexed_sheet_count or 0) > 0
+                    else "cell_index_unavailable"
+                )
+                nearby_cells = conn.execute(
+                    """
+                    SELECT cell_ref, row_index, col_index, display_value, raw_value,
+                           numeric_value, formula, cached_value, number_format,
+                           row_label, col_label, period, unit, is_formula
+                    FROM excel_cells
+                    WHERE doc_id = ?
+                      AND lower(sheet_name) = lower(?)
+                      AND row_index BETWEEN ? AND ?
+                      AND col_index BETWEEN ? AND ?
+                    ORDER BY row_index, col_index
+                    LIMIT 120
+                    """,
+                    (
+                        doc_id,
+                        sheet["sheet_name"],
+                        max(1, requested_row_min - EXCEL_SOURCE_NEARBY_RADIUS),
+                        min(EXCEL_MAX_ROW, requested_row_max + EXCEL_SOURCE_NEARBY_RADIUS),
+                        max(1, requested_col_min - EXCEL_SOURCE_NEARBY_RADIUS),
+                        min(EXCEL_MAX_COLUMN, requested_col_max + EXCEL_SOURCE_NEARBY_RADIUS),
+                    ),
+                ).fetchall()
     except HTTPException:
         raise
     except sqlite3.Error as exc:
@@ -1269,13 +1973,73 @@ def _excel_workbook_source(
         "file_name": doc["original_filename"],
         "stored_path": doc["stored_path"],
         "sheet": _excel_sheet_payload(sheet),
-        "range_ref": range_ref,
-        "row_min": row_min,
-        "row_max": row_max,
-        "col_min": col_min,
-        "col_max": col_max,
-        "column_labels": [_column_label(index) for index in range(col_min, col_max + 1)],
+        "range_ref": str(window["display_range_ref"]),
+        "requested_range_ref": range_ref,
+        "row_min": int(window["row_start"]),
+        "row_max": int(window["row_end"]),
+        "col_min": int(window["col_start"]),
+        "col_max": int(window["col_end"]),
+        "requested_row_min": requested_row_min,
+        "requested_row_max": requested_row_max,
+        "requested_col_min": requested_col_min,
+        "requested_col_max": requested_col_max,
+        "column_labels": [
+            _column_label(index)
+            for index in range(int(window["col_start"]), int(window["col_end"]) + 1)
+        ],
         "cells": [_excel_cell_payload(row) for row in cells],
+        "nearby_cells": [_excel_cell_payload(row) for row in nearby_cells],
+        "empty_reason": empty_reason,
+        "total_non_empty_cell_count": int(indexed_stats["cell_count"] or 0),
+        "window": window,
+    }
+
+
+def _document_text_preview(file_name: str, dataset_id: str) -> dict[str, Any]:
+    document = _dataset_document_by_name(file_name, dataset_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=f"Document not found: {file_name}")
+    doc, collection_db, active_dataset = document
+    try:
+        with sqlite3.connect(str(collection_db), timeout=5) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=5000")
+            rows = conn.execute(
+                """
+                SELECT chunk_index, content, content_type, title_path, summary
+                FROM chunks
+                WHERE doc_id = ?
+                ORDER BY chunk_index
+                LIMIT 400
+                """,
+                (doc["doc_id"],),
+            ).fetchall()
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Could not read document preview: {exc}"
+        ) from exc
+
+    parts: list[str] = []
+    total_chars = 0
+    for row in rows:
+        content = str(row["content"] or row["summary"] or "").strip()
+        if not content:
+            continue
+        remaining = 200_000 - total_chars
+        if remaining <= 0:
+            break
+        parts.append(content[:remaining])
+        total_chars += min(len(content), remaining)
+    return {
+        "kind": "document_text",
+        "dataset_id": active_dataset,
+        "doc_id": doc["doc_id"],
+        "file_name": doc["original_filename"],
+        "file_type": doc["file_type"],
+        "stored_path": doc["stored_path"],
+        "chunk_count": len(rows),
+        "content_markdown": "\n\n".join(parts),
+        "truncated": len(rows) >= 400 or total_chars >= 200_000,
     }
 
 
@@ -1324,30 +2088,57 @@ def _excel_cell_payload(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def _render_page_image(pdf_path: Path, page_no: int, dpi: int = SOURCE_RENDER_DPI) -> tuple[Path, int, int]:
+def _render_page_image(
+    pdf_path: Path, page_no: int, dpi: int = SOURCE_RENDER_DPI
+) -> tuple[Path, int, int]:
     page = _safe_page_no(page_no)
     SOURCE_RENDER_DIR.mkdir(parents=True, exist_ok=True)
     cache_key = _render_cache_key(pdf_path, page, dpi)
     prefix = SOURCE_RENDER_DIR / cache_key
     image_path = prefix.with_suffix(".png")
     if not image_path.is_file():
-        command = [
-            _require_tool("pdftoppm"),
-            "-f",
-            str(page),
-            "-l",
-            str(page),
-            "-singlefile",
-            "-png",
-            "-r",
-            str(dpi),
-            str(pdf_path),
-            str(prefix),
-        ]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
-        if result.returncode != 0 or not image_path.is_file():
-            detail = (result.stderr or result.stdout or "Could not render PDF page.").strip()
-            raise HTTPException(status_code=400, detail=detail)
+        pdftoppm = shutil.which("pdftoppm")
+        if pdftoppm:
+            command = [
+                pdftoppm,
+                "-f",
+                str(page),
+                "-l",
+                str(page),
+                "-singlefile",
+                "-png",
+                "-r",
+                str(dpi),
+                str(pdf_path),
+                str(prefix),
+            ]
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=30, check=False
+            )
+            if result.returncode != 0 or not image_path.is_file():
+                detail = (result.stderr or result.stdout or "Could not render PDF page.").strip()
+                raise HTTPException(status_code=400, detail=detail)
+        else:
+            try:
+                import fitz  # type: ignore[import-not-found]
+
+                with fitz.open(str(pdf_path)) as document:
+                    if page > document.page_count:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"PDF has {document.page_count} pages; page {page} is invalid.",
+                        )
+                    pdf_page = document.load_page(page - 1)
+                    scale = dpi / 72.0
+                    pixmap = pdf_page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+                    pixmap.save(str(image_path))
+            except HTTPException:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(
+                    status_code=500,
+                    detail="Could not render PDF page: install pdftoppm or PyMuPDF.",
+                ) from exc
     width, height = _png_size(image_path)
     return image_path, width, height
 
@@ -1360,7 +2151,9 @@ def _extract_page_words(pdf_path: Path, page_no: int) -> tuple[float, float, lis
     return _extract_page_words_with_pdftotext(pdf_path, page_no)
 
 
-def _extract_page_words_with_pymupdf(pdf_path: Path, page_no: int) -> tuple[float, float, list[_BboxWord]]:
+def _extract_page_words_with_pymupdf(
+    pdf_path: Path, page_no: int
+) -> tuple[float, float, list[_BboxWord]]:
     page = _safe_page_no(page_no)
     try:
         import fitz  # type: ignore[import-not-found]
@@ -1386,7 +2179,9 @@ def _extract_page_words_with_pymupdf(pdf_path: Path, page_no: int) -> tuple[floa
     return float(rect.width), float(rect.height), words
 
 
-def _extract_page_words_with_pdftotext(pdf_path: Path, page_no: int) -> tuple[float, float, list[_BboxWord]]:
+def _extract_page_words_with_pdftotext(
+    pdf_path: Path, page_no: int
+) -> tuple[float, float, list[_BboxWord]]:
     page = _safe_page_no(page_no)
     command = [
         _require_tool("pdftotext"),
@@ -1620,11 +2415,7 @@ def _expand_span_to_semantic_block(
 
     blocks = _speaker_blocks(lines)
     current_block_index = next(
-        (
-            index
-            for index, block in enumerate(blocks)
-            if block.start <= expanded_start < block.end
-        ),
+        (index for index, block in enumerate(blocks) if block.start <= expanded_start < block.end),
         None,
     )
     if current_block_index is None:
@@ -1639,13 +2430,18 @@ def _expand_span_to_semantic_block(
         and blocks[next_block_index].speaker_id != current_block.speaker_id
     ):
         answer_speaker = blocks[next_block_index].speaker_id
-        while next_block_index < len(blocks) and blocks[next_block_index].speaker_id == answer_speaker:
+        while (
+            next_block_index < len(blocks)
+            and blocks[next_block_index].speaker_id == answer_speaker
+        ):
             expanded_end = blocks[next_block_index].end
             next_block_index += 1
     return expanded_start, expanded_end
 
 
-def _best_highlight_rects(words: list[_BboxWord], quote: str | None) -> list[tuple[float, float, float, float]]:
+def _best_highlight_rects(
+    words: list[_BboxWord], quote: str | None
+) -> list[tuple[float, float, float, float]]:
     tokens = _query_tokens(quote)
     if not tokens:
         return []
@@ -1790,7 +2586,9 @@ class _PrivateFundPdfWorkspace:
         if self.document is None:
             raise HTTPException(status_code=409, detail="Register a PDF before generating a memo.")
 
-        company_name = (request.company_name if request and request.company_name else self.company_name).strip()
+        company_name = (
+            request.company_name if request and request.company_name else self.company_name
+        ).strip()
         ticker = (request.ticker if request and request.ticker else self.ticker).strip()
         if not company_name or not ticker:
             raise HTTPException(status_code=400, detail="Company name and ticker are required.")
@@ -1820,24 +2618,28 @@ class _PrivateFundPdfWorkspace:
     ) -> Path:
         if pdf_path:
             resolved = Path(pdf_path).expanduser().resolve()
-        elif pdf_name:
-            resolved = _dataset_pdf_path_by_name(pdf_name, dataset_id=dataset_id)
-            if resolved is None:
-                raise HTTPException(status_code=404, detail=f"PDF not found in dataset: {pdf_name}")
         elif evidence_id:
             resolved = _dataset_pdf_path_by_evidence_id(evidence_id, dataset_id=dataset_id)
             if resolved is None:
-                raise HTTPException(status_code=404, detail=f"PDF source not found for evidence: {evidence_id}")
+                raise HTTPException(
+                    status_code=404, detail=f"PDF source not found for evidence: {evidence_id}"
+                )
+        elif pdf_name:
+            resolved = _dataset_pdf_path_by_name(pdf_name, dataset_id=dataset_id)
+            if resolved is None:
+                raise HTTPException(
+                    status_code=404, detail=f"PDF not found in dataset: {pdf_name}"
+                )
         else:
             with self._lock:
                 registered_pdf = (
-                    Path(self.document.file_path).expanduser().resolve()
-                    if self.document
-                    else None
+                    Path(self.document.file_path).expanduser().resolve() if self.document else None
                 )
             resolved = None
             if page_no:
-                resolved = _dataset_pdf_path_by_page_quote(page_no, quote=quote, dataset_id=dataset_id)
+                resolved = _dataset_pdf_path_by_page_quote(
+                    page_no, quote=quote, dataset_id=dataset_id
+                )
             if resolved is None:
                 resolved = registered_pdf
             if resolved is None:
@@ -1866,15 +2668,31 @@ class _PrivateFundPdfWorkspace:
         }
 
 
-def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = None) -> APIRouter:
+def create_private_fund_pdf_router(
+    workspace: _PrivateFundPdfWorkspace | None = None,
+    *,
+    conversation_store: ConversationStore | None = None,
+    auth_provider: AuthProvider | None = None,
+) -> APIRouter:
     """Create local private-fund PDF endpoints mounted under ``/v1``."""
     router = APIRouter()
     active_workspace = workspace or _PrivateFundPdfWorkspace()
 
     @router.get("/private-fund/projects")
-    def list_projects() -> dict[str, Any]:
+    def list_projects(request: Request) -> dict[str, Any]:
+        usage_by_dataset = (
+            _project_token_usage_by_dataset(
+                conversation_store,
+                accessible_by=require_user(request, auth_provider),
+            )
+            if conversation_store is not None
+            else None
+        )
         return {
-            "projects": _list_projects_payload(),
+            "projects": _attach_project_token_usage(
+                _list_projects_payload(),
+                usage_by_dataset,
+            ),
             "labels": {
                 "dataset_id": PRIVATE_FUND_PROJECT_LABEL_ID,
                 "dataset_name": PRIVATE_FUND_PROJECT_LABEL_NAME,
@@ -1887,9 +2705,23 @@ def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = 
         return {"project": project}
 
     @router.get("/private-fund/projects/{dataset_id}")
-    def get_project(dataset_id: str) -> dict[str, Any]:
+    def get_project(dataset_id: str, request: Request) -> dict[str, Any]:
         row = _require_project_row(dataset_id)
-        return {"project": _project_payload(row), "files": _project_files_payload(dataset_id)}
+        usage_by_dataset = (
+            _project_token_usage_by_dataset(
+                conversation_store,
+                accessible_by=require_user(request, auth_provider),
+                target_dataset_id=dataset_id,
+            )
+            if conversation_store is not None
+            else None
+        )
+        project = _attach_project_token_usage([_project_payload(row)], usage_by_dataset)[0]
+        return {"project": project, "files": _project_files_payload(dataset_id)}
+
+    @router.delete("/private-fund/projects/{dataset_id}")
+    def delete_project(dataset_id: str) -> dict[str, Any]:
+        return _delete_project(dataset_id)
 
     @router.post("/private-fund/projects/{dataset_id}/activate")
     def activate_project(dataset_id: str) -> dict[str, Any]:
@@ -1906,29 +2738,15 @@ def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = 
 
     @router.delete("/private-fund/projects/{dataset_id}/files/{file_name}")
     def delete_project_file(dataset_id: str, file_name: str) -> dict[str, Any]:
-        _require_project_row(dataset_id)
-        safe_name = Path(file_name).name
-        candidates = [
-            _project_uploads_dir(dataset_id) / safe_name,
-            _project_dataset_root(dataset_id) / "raw" / safe_name,
-        ]
-        deleted = False
-        for path in candidates:
-            if path.exists() and path.is_file():
-                path.unlink()
-                deleted = True
-        if not deleted:
-            raise HTTPException(status_code=404, detail=f"File not found: {safe_name}")
-        uploads_dir = _project_uploads_dir(dataset_id)
-        count = len(_supported_files_in(uploads_dir)) if uploads_dir.exists() else len(_supported_files_in(_project_dataset_root(dataset_id) / "raw"))
-        with _connect_global_registry() as conn:
-            conn.execute(
-                "UPDATE datasets SET file_count = ?, updated_at = ? WHERE dataset_id = ?",
-                (count, _now_iso(), dataset_id),
-            )
-            conn.commit()
-        row = _require_project_row(dataset_id)
-        return {"project": _project_payload(row), "files": _project_files_payload(dataset_id)}
+        # Raw files are immutable version evidence. Deleting a project source
+        # only removes the current authoritative upload copy.
+        return _delete_project_files(dataset_id, [file_name])
+
+    @router.post("/private-fund/projects/{dataset_id}/files/delete")
+    def delete_project_files(
+        dataset_id: str, request: DeleteProjectFilesRequest
+    ) -> dict[str, Any]:
+        return _delete_project_files(dataset_id, request.file_names)
 
     @router.post("/private-fund/projects/{dataset_id}/pipeline")
     def run_project_pipeline(
@@ -1939,7 +2757,10 @@ def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = 
         row = _require_project_row(dataset_id)
         uploads_dir = _seed_uploads_from_raw(dataset_id)
         if not _supported_files_in(uploads_dir):
-            raise HTTPException(status_code=400, detail="Upload at least one PDF/XLSX/XLSM file before running pipeline.")
+            raise HTTPException(
+                status_code=400,
+                detail="Upload at least one supported document before running pipeline.",
+            )
         job_id = hashlib.sha256(f"{dataset_id}\0{_now_iso()}".encode("utf-8")).hexdigest()[:16]
         payload = {
             "dataset_id": dataset_id,
@@ -1949,7 +2770,7 @@ def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = 
             "directory_path": str(uploads_dir),
             "workspace_root": str(_dataset_workspace_root()),
             "recursive": request.recursive if request else True,
-            "reset": request.reset if request else True,
+            "reset": request.reset if request else False,
         }
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
@@ -1968,8 +2789,240 @@ def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = 
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             job = _PRIVATE_FUND_PIPELINE_JOBS.get(job_id)
         if not job:
+            job = _persisted_project_pipeline_job(job_id)
+        if not job:
             raise HTTPException(status_code=404, detail="Unknown private-fund pipeline job.")
         return {"job": dict(job)}
+
+    @router.get("/private-fund/projects/{dataset_id}/workflow")
+    def get_project_workflow(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return private_fund_workflow.get_or_create_workflow(
+            _collection_db_path(dataset_id), dataset_id
+        )
+
+    @router.get("/private-fund/projects/{dataset_id}/assets")
+    def get_project_assets(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return _project_assets_payload(dataset_id)
+
+    @router.post("/private-fund/projects/{dataset_id}/assets")
+    def save_project_asset(dataset_id: str, request: SaveResearchAssetRequest) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            private_fund_workflow.save_asset(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                asset_type=request.asset_type,
+                title=request.title,
+                summary=request.summary,
+                content_markdown=request.content_markdown,
+                source_response_id=request.source_response_id,
+                metadata=request.metadata,
+                tags=request.tags,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _project_assets_payload(dataset_id)
+
+    @router.post("/private-fund/projects/{dataset_id}/assets/context")
+    def set_project_asset_context(
+        dataset_id: str, request: SetResearchAssetContextRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        private_fund_workflow.set_asset_context(
+            _collection_db_path(dataset_id), dataset_id, request.asset_ids
+        )
+        return _project_assets_payload(dataset_id)
+
+    @router.post("/private-fund/projects/{dataset_id}/assets/delete")
+    def delete_project_assets(
+        dataset_id: str, request: DeleteResearchAssetsRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        requested = [
+            str(asset_id).strip()
+            for asset_id in dict.fromkeys(request.asset_ids)
+            if str(asset_id).strip()
+        ]
+        if not requested:
+            raise HTTPException(status_code=400, detail="Select at least one asset.")
+        catalog = _project_assets_payload(dataset_id)
+        by_id = {str(asset["asset_id"]): asset for asset in catalog["assets"]}
+        unknown = [asset_id for asset_id in requested if asset_id not in by_id]
+        if unknown:
+            raise HTTPException(status_code=404, detail=f"Asset not found: {unknown[0]}")
+
+        document_names = [
+            str(by_id[asset_id]["title"])
+            for asset_id in requested
+            if by_id[asset_id].get("source_kind") == "document"
+        ]
+        if document_names:
+            _delete_project_files(dataset_id, document_names)
+
+        private_fund_workflow.delete_assets(_collection_db_path(dataset_id), dataset_id, requested)
+
+        dataset_root = _project_dataset_root(dataset_id).resolve()
+        for asset_id in requested:
+            asset = by_id[asset_id]
+            if asset.get("source_kind") not in {"memo", "equity_report"}:
+                continue
+            stored_path = asset.get("stored_path")
+            if not stored_path:
+                continue
+            path = Path(str(stored_path)).expanduser().resolve()
+            if not path.is_relative_to(dataset_root) or path.parent.name not in {
+                "memos",
+                "reports",
+            }:
+                raise HTTPException(status_code=400, detail="Unsafe asset path.")
+            if path.is_file():
+                path.unlink()
+
+        return {
+            **_project_assets_payload(dataset_id),
+            "deleted_asset_ids": requested,
+        }
+
+    @router.post("/private-fund/projects/{dataset_id}/workflow/initialize")
+    def initialize_project_workflow(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return private_fund_workflow.get_or_create_workflow(
+            _collection_db_path(dataset_id), dataset_id
+        )
+
+    @router.post("/private-fund/projects/{dataset_id}/workflow/current-node")
+    def select_project_workflow_node(
+        dataset_id: str, request: SelectResearchNodeRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_workflow.select_current_node(
+                _collection_db_path(dataset_id), dataset_id, request.node_id
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown research node: {exc.args[0]}"
+            ) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/workflow/context")
+    def set_project_workflow_context(
+        dataset_id: str, request: SetResearchContextRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_workflow.set_context_nodes(
+                _collection_db_path(dataset_id), dataset_id, request.node_ids
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown research node: {exc.args[0]}"
+            ) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/workflow/nodes/{node_id}/start")
+    def start_project_workflow_node(
+        dataset_id: str,
+        node_id: str,
+        request: StartResearchNodeRequest | None = None,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        payload = request or StartResearchNodeRequest()
+        try:
+            return private_fund_workflow.start_node(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                node_id,
+                prompt_snapshot=payload.prompt_snapshot,
+                model_name=payload.model_name,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown research node: {exc.args[0]}"
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/workflow/nodes/{node_id}/complete")
+    def complete_project_workflow_node(
+        dataset_id: str,
+        node_id: str,
+        request: CompleteResearchNodeRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_workflow.complete_node(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                node_id,
+                output_markdown=request.output_markdown,
+                structured_output=request.structured_output,
+                evidence_ids=request.evidence_ids,
+                source_response_id=request.source_response_id,
+                model_name=request.model_name,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown research node: {exc.args[0]}"
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/workflow/nodes/{node_id}/assumptions")
+    def add_project_workflow_assumption(
+        dataset_id: str,
+        node_id: str,
+        request: AddResearchAssumptionRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_workflow.add_assumption(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                node_id,
+                content=request.content,
+                source_response_id=request.source_response_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown research node: {exc.args[0]}"
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/private-fund/projects/{dataset_id}/workflow/nodes/{node_id}/versions")
+    def list_project_workflow_node_versions(dataset_id: str, node_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "versions": private_fund_workflow.list_node_versions(
+                _collection_db_path(dataset_id), dataset_id, node_id
+            )
+        }
+
+    @router.get("/private-fund/projects/{dataset_id}/workflow/reports")
+    def list_project_workflow_reports(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "reports": private_fund_workflow.list_reports(
+                _collection_db_path(dataset_id), dataset_id
+            )
+        }
+
+    @router.post("/private-fund/projects/{dataset_id}/workflow/reports")
+    def create_project_workflow_report(
+        dataset_id: str,
+        request: CreateResearchReportRequest | None = None,
+    ) -> dict[str, Any]:
+        row = _require_project_row(dataset_id)
+        payload = request or CreateResearchReportRequest()
+        return {
+            "report": private_fund_workflow.create_report_version(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                title=payload.title or f"{row['name']}投资研究报告",
+                report_type=payload.report_type,
+            )
+        }
 
     @router.get("/private-fund/pdf/status")
     def status() -> dict[str, Any]:
@@ -2004,7 +3057,53 @@ def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = 
             if artifact_path.suffix.lower() == ".pdf"
             else "text/html; charset=utf-8"
         )
-        return FileResponse(artifact_path, media_type=media_type, filename=artifact_path.name)
+        return FileResponse(
+            artifact_path,
+            media_type=media_type,
+            filename=artifact_path.name,
+            content_disposition_type="inline",
+        )
+
+    @router.get("/private-fund/dataset/document/file")
+    def dataset_document_file(
+        dataset_id: str = Query(..., min_length=1, max_length=240),
+        file_name: str = Query(..., min_length=1, max_length=240),
+    ) -> FileResponse:
+        _require_project_row(dataset_id)
+        document = _dataset_document_by_name(file_name, dataset_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail=f"Document not found: {file_name}")
+        row, _collection_db, _active_dataset = document
+        stored_path = Path(str(row["stored_path"] or "")).expanduser().resolve()
+        if not stored_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Document file is missing: {file_name}")
+        media_types = {
+            ".pdf": "application/pdf",
+            ".md": "text/markdown; charset=utf-8",
+            ".markdown": "text/markdown; charset=utf-8",
+            ".txt": "text/plain; charset=utf-8",
+            ".csv": "text/csv; charset=utf-8",
+        }
+        media_type = media_types.get(stored_path.suffix.lower())
+        if media_type is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Browser-native preview is unavailable for {stored_path.suffix}",
+            )
+        return FileResponse(
+            stored_path,
+            media_type=media_type,
+            filename=stored_path.name,
+            content_disposition_type="inline",
+        )
+
+    @router.get("/private-fund/dataset/document/preview")
+    def dataset_document_preview(
+        dataset_id: str = Query(..., min_length=1, max_length=240),
+        file_name: str = Query(..., min_length=1, max_length=240),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return _document_text_preview(file_name, dataset_id)
 
     @router.get("/private-fund/pdf/source/page")
     def source_page(
@@ -2120,12 +3219,16 @@ def create_private_fund_pdf_router(workspace: _PrivateFundPdfWorkspace | None = 
         sheet_name: str | None = Query(default=None, max_length=120),
         range_ref: str | None = Query(default=None, max_length=80),
         dataset_id: str | None = Query(default=None),
+        window_row: int | None = Query(default=None, ge=1, le=EXCEL_MAX_ROW),
+        window_col: int | None = Query(default=None, ge=1, le=EXCEL_MAX_COLUMN),
     ) -> dict[str, Any]:
         return _excel_workbook_source(
             workbook_name,
             sheet_name=sheet_name,
             range_ref=range_ref,
             dataset_id=dataset_id,
+            window_row=window_row,
+            window_col=window_col,
         )
 
     return router

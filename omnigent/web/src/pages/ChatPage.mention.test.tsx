@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatStore } from "@/store/chatStore";
@@ -182,6 +182,8 @@ describe("Composer @-file-mention browser (native sessions)", () => {
       conversationId: `conv_test_${++convSeq}`,
       sessionHarness: "claude-native",
       pendingComposerAttachments: [],
+      pendingComposerAttachmentRemovals: [],
+      activeComposerAttachments: [],
     });
   });
   afterEach(() => {
@@ -395,6 +397,28 @@ describe("Composer @-file-mention browser (native sessions)", () => {
     });
     renderWithTooltips(<Composer {...composerProps()} />);
     expect(screen.getAllByText(":2-9")).toHaveLength(1);
+  });
+
+  it("drains externally queued attachment removals from chips", async () => {
+    const attachment = { path: "readme.md", isDir: false };
+    useChatStore.setState({
+      pendingComposerAttachments: [attachment],
+      pendingComposerAttachmentRemovals: [],
+      activeComposerAttachments: [],
+    });
+    renderWithTooltips(<Composer {...composerProps()} />);
+
+    await waitFor(() => expect(screen.getByText("@readme.md")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(useChatStore.getState().activeComposerAttachments).toEqual([attachment]),
+    );
+
+    act(() => {
+      useChatStore.getState().removeComposerAttachment(attachment);
+    });
+
+    await waitFor(() => expect(screen.queryByText("@readme.md")).toBeNull());
+    expect(useChatStore.getState().pendingComposerAttachmentRemovals).toEqual([]);
   });
 
   // ── Dismissal + loading feedback (M3, M1, M6) ─────────────────────────────

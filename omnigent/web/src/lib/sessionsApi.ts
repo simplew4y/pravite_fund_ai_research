@@ -135,6 +135,8 @@ interface SessionResponseWire {
   context_window?: number | null;
   last_total_tokens?: number | null;
   total_cost_usd?: number | null;
+  /** Authoritative flat cumulative usage for the session subtree. */
+  token_usage?: ModelUsageWire | null;
   /**
    * Per-model breakdown of the same subtree usage, keyed by the raw harness
    * model id. Each value is a `ModelUsage` (the five token buckets + optional
@@ -233,20 +235,25 @@ export const SESSION_HISTORY_PAGE_SIZE = 20;
  * A `null`/absent value (or `null` token bucket) maps to `null` on the
  * camelCase side so the UI omits that row.
  */
+function modelUsageFromWire(usage: ModelUsageWire | null | undefined): ModelUsage | null {
+  if (usage == null) return null;
+  return {
+    inputTokens: usage.input_tokens ?? null,
+    outputTokens: usage.output_tokens ?? null,
+    totalTokens: usage.total_tokens ?? null,
+    cacheReadInputTokens: usage.cache_read_input_tokens ?? null,
+    cacheCreationInputTokens: usage.cache_creation_input_tokens ?? null,
+    totalCostUsd: usage.total_cost_usd ?? null,
+  };
+}
+
 function usageByModelFromWire(
   wire: Record<string, ModelUsageWire> | null | undefined,
 ): Record<string, ModelUsage> | null {
   if (wire == null) return null;
   const out: Record<string, ModelUsage> = {};
   for (const [model, usage] of Object.entries(wire)) {
-    out[model] = {
-      inputTokens: usage.input_tokens ?? null,
-      outputTokens: usage.output_tokens ?? null,
-      totalTokens: usage.total_tokens ?? null,
-      cacheReadInputTokens: usage.cache_read_input_tokens ?? null,
-      cacheCreationInputTokens: usage.cache_creation_input_tokens ?? null,
-      totalCostUsd: usage.total_cost_usd ?? null,
-    };
+    out[model] = modelUsageFromWire(usage)!;
   }
   return out;
 }
@@ -275,6 +282,7 @@ function sessionFromWire(wire: SessionResponseWire): Session {
     contextWindow: wire.context_window,
     lastTotalTokens: wire.last_total_tokens,
     totalCostUsd: wire.total_cost_usd,
+    tokenUsage: modelUsageFromWire(wire.token_usage),
     usageByModel: usageByModelFromWire(wire.usage_by_model),
     lastTaskError: wire.last_task_error,
     pendingElicitations: wire.pending_elicitations ?? [],

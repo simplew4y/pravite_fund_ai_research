@@ -197,4 +197,40 @@ describe("buildAgentBundle", () => {
     expect(yaml).toContain("harness: openai-agents");
     expect(yaml).toContain("model: gpt-4o");
   });
+
+  it("includes direct OpenAI-compatible API credentials when provided", async () => {
+    const input: AgentBundleInput = {
+      name: "qwen-research",
+      harness: "openai-agents",
+      model: "qwen3-max",
+      baseUrl: "https://dashscope.example.com/compatible-mode/v1",
+      apiKey: "secret:test-key",
+      useResponses: false,
+      privateFundTools: true,
+    };
+    const yaml = await extractConfigYaml(await buildAgentBundle(input));
+    expect(yaml).toContain("  auth:\n");
+    expect(yaml).toContain("    type: api_key");
+    expect(yaml).toContain('    api_key: "secret:test-key"');
+    expect(yaml).toContain('    base_url: "https://dashscope.example.com/compatible-mode/v1"');
+    expect(yaml).toContain("  use_responses: false");
+    expect(yaml).toContain("    - private_fund_dataset_status");
+    expect(yaml).toContain("    - private_fund_dataset_search");
+    expect(yaml).toContain("    - private_fund_source_detail");
+    expect(yaml).toContain("    - private_fund_dataset_memo");
+    expect(yaml).toContain("    - private_fund_research_context");
+    expect(yaml).toContain("    - private_fund_research_node_save");
+  });
+
+  it("omits API auth when no key is provided", async () => {
+    const input: AgentBundleInput = {
+      name: "local-agent",
+      harness: "openai-agents",
+      model: "gpt-4o",
+      baseUrl: "https://unused.example.com/v1",
+    };
+    const yaml = await extractConfigYaml(await buildAgentBundle(input));
+    expect(yaml).not.toContain("  auth:\n");
+    expect(yaml).not.toContain("base_url:");
+  });
 });

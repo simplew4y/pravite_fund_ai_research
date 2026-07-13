@@ -1,5 +1,7 @@
 # Private Fund AI Research
 
+> 📝 2026-07-13：更新为资料项目驱动的私募投研工作台、证据核验与 FinRobot 对齐报告链路。
+
 本仓库是一套本地私募投研 demo：把 Omnigent 网页会话、Claude Code Haha、LiteLLM、DashScope、本地 PDF evidence、可点击溯源和 Memo PDF 生成串成一个可部署系统。
 
 当前目标是先跑通最小闭环：
@@ -56,6 +58,8 @@ Browser chat + right-side PDF source panel
 | 文档 | 内容 |
 |---|---|
 | [Omnigent + Claude Code Haha 系统架构](docs/omnigent_cc_haha_system_architecture_20260706.md) | Omnigent、cc-haha、LiteLLM、DashScope、本地 PDF QA、Memo PDF、来源点击面板的完整运行链路 |
+| [Omnigent 本地服务运行手册](docs/omnigent_runtime_services.md) | LiteLLM、Server、Host 的统一 tmux 启停、状态检查和故障恢复 |
+| [私募研究工作流实现](docs/private_fund_research_workflow.md) | 真实研究节点、依赖、版本、假设、失效传播和长期报告快照 |
 | [私募 PDF Research Demo 代码架构](docs/private_fund_code_architecture_20260706.md) | `src/pdf_research_demo`、FinSagent 接入、脚本、测试和 Omnigent 补丁的代码结构 |
 | [Omnigent 私募研究集成补丁](patches/omnigent_private_fund_integration_20260706.patch) | 对 `omnigent` submodule 应用的私募研究改动 |
 
@@ -67,6 +71,7 @@ Browser chat + right-side PDF source panel
 | `scripts/run_pdf_research_demo.py` | 命令行一键跑 PDF QA + Memo PDF |
 | `scripts/run_pdf_research_web_app.py` | 独立 PDF Evidence Workbench |
 | `scripts/start_litellm_dashscope.sh` | 启动 LiteLLM，将 Claude / Anthropic 模型名映射到 DashScope qwen3-max |
+| `scripts/manage_omnigent_services.sh` | 在同一个 tmux session 中统一管理 LiteLLM、Omnigent Server 和 Host |
 | `scripts/run_omnigent_cc_haha.sh` | 启动完整 Omnigent + Claude Code Haha 链路 |
 | `scripts/setup_full_system.sh` | 新机器部署脚本：初始化 submodule、应用 Omnigent patch、安装依赖 |
 | `FinSagent/deploy/` | FinSagent Research Chat fallback 接入 |
@@ -126,6 +131,9 @@ scripts/setup_full_system.sh
 - 给 `omnigent` 执行 `uv sync`。
 - 检查 `tmux`、`uv`、`bun`、`pdftotext`、`pdftoppm` 等依赖。
 
+私募投研目录入库的 Excel 解析依赖 `openpyxl`，由 `omnigent/pyproject.toml`
+管理；执行 `omnigent` 下的 `uv sync` 后会安装到 Omnigent 运行环境。
+
 ### 4. 配置模型
 
 不要把真实 key 提交到仓库。部署机器上用环境变量：
@@ -149,7 +157,21 @@ llm_base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
 llm_api_key: <your-key>
 ```
 
-### 5. 启动完整 Omnigent + Claude Code Haha 链路
+### 5. 启动长期运行服务
+
+```bash
+scripts/manage_omnigent_services.sh start
+```
+
+该命令在 `omnigent-stack` tmux session 中依次启动并检查 LiteLLM、Omnigent Server 和 Omnigent Host。日常维护使用：
+
+```bash
+scripts/manage_omnigent_services.sh status
+scripts/manage_omnigent_services.sh restart
+scripts/manage_omnigent_services.sh logs
+```
+
+### 6. 启动 Omnigent + Claude Code Haha 交互链路
 
 ```bash
 scripts/run_omnigent_cc_haha.sh
@@ -222,7 +244,7 @@ patches/omnigent_private_fund_integration_20260706.patch
 补丁内容包括：
 
 - `omnigent/CLAUDE.md` 私募研究系统提示词。
-- `.claude/skills/private-fund-memo/SKILL.md`。
+- 内置 Claude Native bundle 中的 `private-fund-memo`、`private-fund-node`、`private-fund-report`、`private-fund-report-update` 四个投研 Skills（源码位于 `omnigent/omnigent/resources/private_fund_skills/`）。
 - Claude Code 启动公告页 `Press Enter to continue` 自动处理。
 - `/v1/private-fund/*` 后端 API。
 - 回答中 `[p.113]` / `10-K p.113, para.1` 自动 linkify。

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -29,8 +29,10 @@ import { useDirectorySessions } from "@/hooks/useDirectorySessions";
 import { useRunnerHealthRegistration } from "@/hooks/RunnerHealthProvider";
 import type { Conversation } from "@/hooks/useConversations";
 import { setOmnigentHostConfig } from "@/lib/host";
-import { setPendingInitialPrompt } from "@/store/chatStore";
+import { setPendingInitialPrompt, useChatStore } from "@/store/chatStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
+const privateFundProjectsState = vi.hoisted(() => ({ projects: [] as unknown[] }));
 
 // Only authenticatedFetch is stubbed (the create POST under test);
 // the module's other exports stay real for any other consumer in the tree.
@@ -51,6 +53,9 @@ vi.mock("@/hooks/useDirectorySessions", () => ({
 }));
 vi.mock("@/hooks/RunnerHealthProvider", () => ({
   useRunnerHealthRegistration: vi.fn(),
+}));
+vi.mock("@/hooks/usePrivateFundProjects", () => ({
+  usePrivateFundProjects: () => ({ data: privateFundProjectsState.projects }),
 }));
 // The composer's project chip lists projects via useProjects; stub it to an
 // empty list so it doesn't fire its own authenticatedFetch (which would skew
@@ -541,6 +546,7 @@ function mockAgents(agents: AvailableAgent[]) {
 // directory-session / runner-health / filesystem stubs, and a persisted
 // recent workspace so the working-directory field seeds to a known path.
 function setupLandingMocks() {
+  privateFundProjectsState.projects = [];
   authenticatedFetchMock.mockReset();
   useHostsMock.mockReset();
   useAvailableAgentsMock.mockReset();
@@ -556,6 +562,11 @@ function setupLandingMocks() {
     data: [],
   } as unknown as ReturnType<typeof useDirectorySessions>);
   useRunnerHealthMock.mockReturnValue(new Map<string, boolean>());
+  useChatStore.setState({
+    pendingComposerAttachments: [],
+    pendingComposerAttachmentRemovals: [],
+    activeComposerAttachments: [],
+  });
   useHostFilesystemMock.mockReturnValue({
     data: undefined,
     isLoading: false,
@@ -1659,6 +1670,171 @@ describe("NewChatLandingScreen attachments", () => {
   });
 });
 
+describe("NewChatLandingScreen private-fund research mode", () => {
+  beforeEach(() => {
+    setupLandingMocks();
+    setPendingInitialPromptMock.mockReset();
+    privateFundProjectsState.projects = [
+      {
+        datasetId: "阳光电源",
+        name: "阳光电源",
+        status: "ready",
+        datasetRoot: "/Users/corey/repo",
+        sourceDir: null,
+        uploadsDir: null,
+        companyName: "阳光电源",
+        companyTicker: "300274",
+        fileCount: 3,
+        uploadCount: 3,
+        documentCount: 3,
+        indexedDocumentCount: 3,
+        failedDocumentCount: 0,
+        chunkCount: 10,
+        indexCount: 10,
+        memoCount: 0,
+        indexReady: true,
+        latestJob: null,
+        tokenUsage: {
+          datasetId: "阳光电源",
+          sessionCount: 2,
+          sessionsWithTokenUsage: 2,
+          sessionsWithTotalTokens: 2,
+          sessionsWithCost: 2,
+          inputTokens: 8_000,
+          outputTokens: 1_400,
+          totalTokens: 12_400,
+          cacheReadInputTokens: 2_000,
+          cacheCreationInputTokens: 1_000,
+          totalCostUsd: 0.42,
+        },
+      },
+    ];
+    authenticatedFetchMock.mockImplementation(
+      async (url) =>
+        ({
+          ok: true,
+          json: async () => (url === "/v1/sessions" ? { id: "conv_new" } : {}),
+        }) as Response,
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+  });
+
+  it("uses the private-fund project launcher without technical workspace controls", async () => {
+    renderLanding({}, "/?private_fund_project=%E9%98%B3%E5%85%89%E7%94%B5%E6%BA%90");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("private-fund-project-landing-title")).toHaveTextContent(
+        "阳光电源",
+      ),
+    );
+    expect(screen.getByTestId("new-chat-landing")).toHaveAttribute(
+      "data-private-fund-project-landing",
+      "true",
+    );
+    expect(screen.getByTestId("new-chat-landing-input")).toHaveAttribute(
+      "placeholder",
+      "输入研究问题，例如：复核海外收入增速与估值敏感性…",
+    );
+    expect(screen.queryByText("What should we do?")).toBeNull();
+    expect(screen.queryByText("Claude Code")).toBeNull();
+    expect(screen.queryByText(/Workspace:/)).toBeNull();
+    expect(screen.queryByText("Workspace follows project")).toBeNull();
+    expect(screen.getAllByText("3 份")).toHaveLength(2);
+    expect(screen.getByTestId("private-fund-project-token-summary")).toHaveTextContent("12.4K");
+  });
+
+  it("puts the selected research level and citation rules into the initial prompt", async () => {
+    renderLanding();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("new-chat-landing-research-mode")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("new-chat-landing-research-mode-standard")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(screen.getByTestId("new-chat-landing-research-mode-deep"));
+    expect(localStorage.getItem("omnigent.privateFund.researchMode")).toBe("deep");
+
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "核验最近业绩变化" },
+    });
+    const submit = screen.getByTestId("new-chat-landing-submit") as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalled());
+    const [, payload] = setPendingInitialPromptMock.mock.calls[0]!;
+    const prompt = (payload as { text: string }).text;
+    expect(prompt).toContain("研究级别：深度研究");
+    expect(prompt).toContain("关键事实、时间、金额和事件必须逐条溯源");
+    expect(prompt).toContain("可点击的 Markdown 引用");
+    expect(prompt).toContain("资料未覆盖/需复核");
+    expect(prompt).toContain("核验最近业绩变化");
+  });
+
+  it("prefers Claude Native over the OpenAI Agents research fallback", async () => {
+    mockAgents([
+      {
+        id: "ag_qwen_research",
+        name: "qwen-research",
+        display_name: "Qwen Research",
+        description: null,
+        harness: "openai-agents",
+        skills: [],
+      },
+      {
+        id: "ag_claude_native",
+        name: "claude-native-ui",
+        display_name: "Claude Code",
+        description: null,
+        harness: "claude-native",
+        skills: [],
+      },
+    ]);
+    renderLanding();
+
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "分析近期经营变化" },
+    });
+    const submit = screen.getByTestId("new-chat-landing-submit") as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(authenticatedFetchMock).toHaveBeenCalledWith(
+        "/v1/sessions",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"agent_id":"ag_claude_native"'),
+        }),
+      ),
+    );
+  });
+
+  it("keeps a native slash command first while appending private-fund rules", async () => {
+    renderLanding();
+
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "/deep-research 核验业绩" },
+    });
+    const submit = screen.getByTestId("new-chat-landing-submit") as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalled());
+    const [, payload] = setPendingInitialPromptMock.mock.calls[0]!;
+    const prompt = (payload as { text: string }).text;
+    expect(prompt).toMatch(/^\/deep-research 核验业绩\n\n/);
+    expect(prompt).toContain("dataset_id: 阳光电源");
+    expect(prompt).toContain("关键事实、时间、金额和事件必须逐条溯源");
+  });
+});
+
 // The "@"-file-mention browser on the launcher mirrors the in-session
 // composer, but its file source is the *host filesystem* (no session/runner
 // exists yet) and its paths are converted from the host's absolute form to
@@ -1835,6 +2011,28 @@ describe("NewChatLandingScreen @-file-mention", () => {
     expect(screen.getByText("@README.md")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Remove README.md"));
     expect(screen.queryByText("@README.md")).not.toBeInTheDocument();
+  });
+
+  it("drains externally queued attachment removals from chips", async () => {
+    const attachment = { path: "README.md", isDir: false };
+    useChatStore.setState({
+      pendingComposerAttachments: [attachment],
+      pendingComposerAttachmentRemovals: [],
+      activeComposerAttachments: [],
+    });
+    renderLanding();
+
+    await waitFor(() => expect(screen.getByText("@README.md")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(useChatStore.getState().activeComposerAttachments).toEqual([attachment]),
+    );
+
+    act(() => {
+      useChatStore.getState().removeComposerAttachment(attachment);
+    });
+
+    await waitFor(() => expect(screen.queryByText("@README.md")).toBeNull());
+    expect(useChatStore.getState().pendingComposerAttachmentRemovals).toEqual([]);
   });
 });
 

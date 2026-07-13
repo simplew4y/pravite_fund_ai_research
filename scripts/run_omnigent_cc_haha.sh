@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OMNIGENT_DIR="$ROOT_DIR/omnigent"
-CC_HAHA_BIN="$ROOT_DIR/cc-haha/bin/claude-haha"
+CC_HAHA_BIN="$ROOT_DIR/scripts/qwen-bin/claude-haha"
 PRIVATE_FUND_SYSTEM_PROMPT_FILE="${PRIVATE_FUND_SYSTEM_PROMPT_FILE:-$OMNIGENT_DIR/CLAUDE.md}"
 FINSAGENT_CONFIG="${FINSAGENT_CONFIG:-$ROOT_DIR/FinSagent/config/production.yaml}"
 LITELLM_HOST="${LITELLM_HOST:-127.0.0.1}"
@@ -88,8 +88,8 @@ if ! curl -fsS "$proxy_url/health/liveliness" >/dev/null 2>&1 \
   exit 1
 fi
 
-export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-${ANTHROPIC_AUTH_TOKEN:-sk-local-cc-haha}}"
-unset ANTHROPIC_AUTH_TOKEN
+export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-${ANTHROPIC_API_KEY:-sk-local-cc-haha}}"
+unset ANTHROPIC_API_KEY
 export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-$proxy_url}"
 export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-$LITELLM_TARGET_MODEL_NAME}"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-$ANTHROPIC_MODEL}"

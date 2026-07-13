@@ -2,6 +2,7 @@
 @plugin "@tailwindcss/typography";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 
 /* Streamdown ships utility classes pre-compiled in its dist; this @source
@@ -18,8 +19,8 @@
      * (San Francisco on Apple, Segoe UI on Windows, Roboto on Android),
      * matching Tailwind's default sans so the app reads as native chrome. */
   --font-sans:
-    ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
-    "Noto Color Emoji";
+    "Geist Variable", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji";
   --font-mono: "Geist Mono Variable", "JetBrains Mono", ui-monospace, monospace;
   /* 13px/20px text step between text-xs (12px) and text-sm (14px) —
      * generates the `text-13` utility. Used for compact UI chrome like
@@ -144,33 +145,33 @@
      * from rendering as lavender patches on the white cards they sit on.
      * The auth pages (outside the gradient shell) use this as their
      * full-page canvas. */
-  --background: #fff;
-  --foreground: #11171c;
-  --card: #fff;
+  --background: #f7f8fa;
+  --foreground: #16181d;
+  --card: #ffffff;
   /* Light --card is already opaque; the solid form only diverges in dark. */
-  --card-solid: #fff;
-  --card-foreground: #11171c;
+  --card-solid: #ffffff;
+  --card-foreground: #16181d;
   /* Tray surface (composer footer tray): white, applied translucently
      * via opacity modifiers so the page gradient shows through. */
   --tray: #fff;
   /* Popover/dropdown/tooltip/dialog surfaces — light, matching --card.
      * (These all consume bg-popover / text-popover-foreground.) */
   --popover: #fff;
-  --popover-foreground: #11171c;
-  --primary: #11171c;
+  --popover-foreground: #16181d;
+  --primary: #2456d6;
   --primary-foreground: #fff;
   /* Light grey fill so secondary badges/headers read as surfaces (a
      * fully-transparent value left them as bare floating text). */
-  --secondary: #eceef1;
-  --secondary-foreground: #11171c;
-  --muted: #0000000f;
-  --muted-foreground: #6f6f6f;
+  --secondary: #eef1f5;
+  --secondary-foreground: #20242b;
+  --muted: #eef1f5;
+  --muted-foreground: #68707d;
   /* Dedicated chip background for inline code — a hair darker than the
      * white card so the chip reads as a tile. Kept separate from --muted
      * (now a translucent black wash reused for hover/quote surfaces). */
   --code-bg: #0000000f;
-  --accent: #d7edfe;
-  --accent-foreground: #04355d;
+  --accent: #e8eefc;
+  --accent-foreground: #183b99;
   --destructive: #c8324c;
   --destructive-foreground: #fff;
   /* success/warning/info repointed onto the named status hues below so
@@ -178,14 +179,14 @@
   --success: #2ea65c;
   --warning: #d4972a;
   --info: #3b8ff5;
-  --border: #e8ecf0;
+  --border: #dfe3e9;
   /* Stronger divider/outline + a dedicated neutral button border. */
-  --border-strong: #a3b1bf;
-  --button-border: #d6d6d6;
-  --button-icon-hover-color: #11171c;
-  --input: #e8ecf0;
+  --border-strong: #aeb6c2;
+  --button-border: #cfd5de;
+  --button-icon-hover-color: #16181d;
+  --input: #cfd5de;
   /* Focus ring matches --primary. */
-  --ring: #11171c;
+  --ring: #2456d6;
   /* Brand pink — reserved for brand moments, not status. */
   --brand-accent: #df3c85;
   /* Named status hues. success/warning/info above mirror green/yellow/blue. */
@@ -199,28 +200,48 @@
   --chart-3: #2ea65c;
   --chart-4: #d4972a;
   --chart-5: #8e99a4;
-  --radius: 0.5rem;
+  --radius: 0.625rem;
   /* Sidebar + workspace cards are white (--card); they float on the
      * near-white .app-shell gradient canvas. --sidebar matches that
      * gradient's lightest tone so bg-sidebar surfaces (the app-shell's
      * fallback fill under the gradient, translucent chrome like the
      * message copy button) blend into the canvas rather than painting
      * a lavender band. */
-  --sidebar: #fdfafa;
-  --sidebar-foreground: #11171c;
-  --sidebar-primary: #2272b4;
+  --sidebar: #f1f3f6;
+  --sidebar-foreground: #16181d;
+  --sidebar-primary: #2456d6;
   --sidebar-primary-foreground: #fff;
-  --sidebar-accent: #d7edfe;
-  --sidebar-accent-foreground: #04355d;
-  --sidebar-border: #e8ecf0;
-  --sidebar-ring: #2272b4;
+  --sidebar-accent: #e4e9f2;
+  --sidebar-accent-foreground: #183b99;
+  --sidebar-border: #dfe3e9;
+  --sidebar-ring: #2456d6;
+
+  --pf-canvas: #f5f7fa;
+  --pf-panel: #ffffff;
+  --pf-panel-subtle: #f0f3f7;
+  --pf-panel-raised: #ffffff;
+  --pf-ink: #171a20;
+  --pf-ink-secondary: #596170;
+  --pf-ink-muted: #7a8391;
+  --pf-line: #dfe4eb;
+  --pf-line-strong: #cbd2dc;
+  --pf-accent: #2456d6;
+  --pf-accent-hover: #1e48b5;
+  --pf-accent-soft: #e9effd;
+  --pf-accent-ink: #1b43aa;
+  --pf-success-soft: #e9f6ef;
+  --pf-success-ink: #26724d;
+  --pf-warning-soft: #fff5df;
+  --pf-warning-ink: #8a5a0a;
+  --pf-danger-soft: #fdecee;
+  --pf-danger-ink: #a63749;
+  --pf-shadow: 0 12px 34px rgb(30 44 68 / 0.08);
 }
 
 .dark {
-  /* Dark mode tokens — semi-transparent for glassmorphism backdrop-filter */
-  --background: #0d1218;
-  --foreground: oklch(0.965 0.003 240);
-  --card: rgba(40, 34, 58, 0.6);
+  --background: #0f1115;
+  --foreground: #f0f2f5;
+  --card: #171a20;
   /* Opaque stand-in for the glass --card. The composer card uses this
      * instead of --card: its trays tuck their square corners behind the
      * card (negative-margin overlap), and a translucent card lets the
@@ -228,26 +249,26 @@
      * (#28223a) — full-alpha that read lighter than the neighboring
      * glass surfaces; this approximates the glass card's perceived
      * color: 60% of #28223a composited over the dark canvas gradient. */
-  --card-solid: #201c30;
-  --card-foreground: oklch(0.965 0.003 240);
+  --card-solid: #171a20;
+  --card-foreground: #f0f2f5;
   /* Dark counterpart of the tray surface — semi-transparent for glass effect */
-  --tray: rgba(40, 34, 58, 0.6);
-  --popover: rgba(26, 33, 41, 0.8);
-  --popover-foreground: oklch(0.965 0.003 240);
-  --primary: #e8ecf0;
-  --primary-foreground: #11171c;
-  --secondary: #1f272d;
-  --secondary-foreground: #e8ecf0;
+  --tray: #171a20;
+  --popover: #1b1e25;
+  --popover-foreground: #f0f2f5;
+  --primary: #7ea2ff;
+  --primary-foreground: #0c1732;
+  --secondary: #23272f;
+  --secondary-foreground: #edf0f4;
   /* Active/selected states, hover backgrounds, subtle containers. */
   /* Opaque base (#28223a is var(--card)'s solid form — the dark-mode --card
        itself is translucent). bg-muted backs ~160 solid utility surfaces (code
        blocks, badges, hover rows) that must not let the canvas gradient bleed
        through; the frosted look is reserved for the .dark .bg-card rule. */
-  --muted: color-mix(in srgb, var(--muted-foreground) 15%, #28223a);
-  --muted-foreground: #92a4b3;
-  --code-bg: oklch(0.38 0.005 240);
-  --accent: #04355d;
-  --accent-foreground: #4299e0;
+  --muted: #23272f;
+  --muted-foreground: #9ba3af;
+  --code-bg: #272b33;
+  --accent: #26365d;
+  --accent-foreground: #b7caff;
   --destructive: #e65b77;
   --destructive-foreground: #fff;
   /* success/warning/info repointed onto the status hues below, mirroring
@@ -264,10 +285,12 @@
   --status-yellow: #d4972a;
   --status-red: #f04858;
   --status-gray: #8e99a4;
-  --border: oklch(0.28 0.005 240);
-  --input: oklch(0.28 0.005 240);
+  --border: #2c313a;
+  --border-strong: #48505d;
+  --button-border: #3a414c;
+  --input: #3a414c;
   /* Focus ring matches --primary. */
-  --ring: #e8ecf0;
+  --ring: #7ea2ff;
   --chart-1: oklch(0.64 0.22 254);
   --chart-2: oklch(0.65 0.14 200);
   --chart-3: oklch(0.68 0.15 145);
@@ -278,15 +301,36 @@
      * --sidebar sits in the green-dominant region and stays translucent
      * so it tracks the canvas underneath (a flat color can't match a
      * diagonal everywhere). Mirrors the light-mode treatment. */
-  --sidebar: rgba(17, 23, 28, 0.75);
-  --sidebar-foreground: oklch(0.965 0.003 240);
-  --sidebar-primary: oklch(0.64 0.22 254);
-  --sidebar-primary-foreground: oklch(0.12 0.004 240);
-  --sidebar-accent: oklch(0.245 0.005 240);
-  --sidebar-accent-foreground: oklch(0.965 0.003 240);
-  --sidebar-border: oklch(0.28 0.005 240);
-  --sidebar-ring: oklch(0.92 0.003 240 / 0.4);
-  --tooltip-bg: #2a2440;
+  --sidebar: #13161b;
+  --sidebar-foreground: #f0f2f5;
+  --sidebar-primary: #7ea2ff;
+  --sidebar-primary-foreground: #0c1732;
+  --sidebar-accent: #232832;
+  --sidebar-accent-foreground: #eef1f5;
+  --sidebar-border: #2c313a;
+  --sidebar-ring: #7ea2ff;
+  --tooltip-bg: #20242b;
+
+  --pf-canvas: #0f1115;
+  --pf-panel: #15181e;
+  --pf-panel-subtle: #1d2128;
+  --pf-panel-raised: #20242c;
+  --pf-ink: #f0f2f5;
+  --pf-ink-secondary: #b2b9c4;
+  --pf-ink-muted: #858e9b;
+  --pf-line: #2c313a;
+  --pf-line-strong: #424956;
+  --pf-accent: #7ea2ff;
+  --pf-accent-hover: #9ab7ff;
+  --pf-accent-soft: #22345f;
+  --pf-accent-ink: #bfd0ff;
+  --pf-success-soft: #17392b;
+  --pf-success-ink: #84d4ad;
+  --pf-warning-soft: #3a2c15;
+  --pf-warning-ink: #f0c36b;
+  --pf-danger-soft: #402027;
+  --pf-danger-ink: #f0a0ad;
+  --pf-shadow: 0 16px 40px rgb(0 0 0 / 0.28);
 }
 
 /* App-shell canvas gradient. Copied verbatim from the brand mock
@@ -299,29 +343,155 @@
  * gradient's near-white so bg-sidebar chrome stays invisible against this
  * canvas. */
 .app-shell {
-  background: linear-gradient(
-    45deg,
-    rgb(253, 250, 250),
-    rgb(253, 249, 251) 8%,
-    rgb(253, 249, 251) 17%,
-    rgb(253, 249, 252) 25%,
-    rgb(254, 248, 253) 33%,
-    rgb(254, 248, 252) 42%,
-    rgb(254, 251, 252) 50%,
-    rgb(254, 251, 251) 58%,
-    rgb(254, 251, 251) 67%,
-    rgb(254, 251, 251) 75%,
-    rgb(254, 251, 251) 83%,
-    rgb(254, 251, 251) 92%,
-    rgb(254, 253, 253)
-  );
+  background: var(--background);
 }
 .dark .app-shell {
-  background:
-    radial-gradient(ellipse at 20% 50%, rgba(100, 40, 180, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(80, 30, 140, 0.1) 0%, transparent 45%),
-    radial-gradient(ellipse at 60% 80%, rgba(140, 30, 100, 0.08) 0%, transparent 40%),
-    linear-gradient(145deg, #1e1035 0%, #11171c 50%, #161020 100%);
+  background: var(--background);
+}
+
+/* Private-fund chats follow the selected research-workspace direction: one
+ * quiet, edge-to-edge canvas with column dividers instead of floating cards. */
+.app-shell.private-fund-app-shell {
+  background: var(--pf-canvas);
+  color: var(--pf-ink);
+}
+
+/* The selected private-fund direction is a research canvas with a contextual
+ * conversation rail, not a full-width chat. Keep the real Conversation and
+ * Composer behavior, but tune their density and surfaces for the 390px rail. */
+.private-fund-ai-panel .chat-scroll-fade {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.private-fund-ai-panel .chat-conversation-content {
+  max-width: none;
+  gap: 0.9rem;
+  padding: 1rem 1rem 1.25rem;
+}
+
+.private-fund-ai-panel [data-role="assistant"] {
+  max-width: 100%;
+  border: 1px solid var(--pf-line);
+  border-radius: 1.125rem;
+  background: var(--pf-panel-raised);
+  padding: 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.private-fund-ai-panel [data-role="assistant"] :is(h2, h3) {
+  line-height: 1.25rem;
+}
+
+.private-fund-ai-panel [data-role="assistant"] h2 {
+  margin-bottom: 0.375rem;
+  font-size: 0.9375rem;
+}
+
+.private-fund-ai-panel [data-role="assistant"] h3 {
+  margin-top: 0.875rem;
+  margin-bottom: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.private-fund-ai-panel [data-role="assistant"] :is(p, ul) {
+  margin-bottom: 0.625rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.private-fund-ai-panel [data-role="assistant"] li {
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.private-fund-ai-panel .is-user {
+  max-width: 94%;
+}
+
+.private-fund-ai-panel .is-user > div {
+  border: 0;
+  border-radius: 1rem;
+  background: var(--pf-accent-soft);
+  padding: 0.7rem 0.8rem;
+  box-shadow: none;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.private-fund-ai-panel .chat-composer-form {
+  border-top: 1px solid var(--pf-line);
+  background: var(--pf-panel);
+  padding: 0.75rem 0.875rem 0.875rem;
+}
+
+.private-fund-ai-panel [data-private-fund-composer="true"] > div {
+  max-width: none;
+}
+
+.private-fund-ai-panel [data-private-fund-composer="true"] > div:nth-last-child(2) {
+  border-color: var(--pf-line-strong);
+  border-radius: 1rem;
+  background: var(--pf-panel-raised);
+  box-shadow: none;
+}
+
+.private-fund-ai-panel [data-testid="composer-status-line"] {
+  max-width: none;
+  background: var(--pf-panel-subtle);
+}
+
+.private-fund-ai-panel [data-testid="working-indicator"] {
+  max-width: 100%;
+}
+
+.private-fund-project-sidebar {
+  border-color: var(--pf-line) !important;
+}
+
+.private-fund-project-sidebar nav {
+  scrollbar-width: thin;
+  scrollbar-color: var(--pf-line-strong) transparent;
+}
+
+@media (max-width: 63.999rem) {
+  .private-fund-ai-panel .chat-composer-form {
+    padding-bottom: 4.25rem;
+  }
+}
+
+@media (max-height: 50rem) {
+  .private-fund-research-workbench .react-flow__minimap {
+    display: none;
+  }
+}
+
+/* At tablet widths the two side rails would leave the conversation too
+ * narrow. Keep the project/asset rail visible, then place output resources
+ * below a full-width conversation column inside the same scrollable workspace. */
+@media (min-width: 48rem) and (max-width: 74rem) {
+  .private-fund-workspace-group {
+    align-content: flex-start;
+    flex-wrap: wrap;
+    overflow-y: auto;
+  }
+
+  .private-fund-workspace-group > main {
+    flex: 0 0 100%;
+    height: 100%;
+    min-height: 38rem;
+  }
+
+  .private-fund-output-panel {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    height: 30rem;
+    min-height: 30rem !important;
+    margin-top: 0 !important;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
 }
 
 /* Chat scroll fade: the ChatHeader overlay paints no background (a flat
@@ -363,18 +533,11 @@
   ):not([data-collapsed]) {
   /* -webkit- must come BEFORE the unprefixed property: LightningCSS (vite
    * build) collapses the pair and keeps only the last declaration. */
-  -webkit-backdrop-filter: blur(32px) saturate(180%) !important;
-  backdrop-filter: blur(32px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-top-color: rgba(255, 255, 255, 0.14);
-  background-image: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0) 60%
-  );
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.22),
-    0 1px 3px rgba(0, 0, 0, 0.16);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  border-color: var(--border);
+  background-image: none;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.18);
 }
 
 /* Side panels (FileViewer, TerminalsPanel, FilesPanelDrawer) manage their own
@@ -392,9 +555,9 @@
 .dark [role="menu"],
 .dark [data-radix-popper-content-wrapper] > * {
   /* -webkit- before unprefixed — see comment on the bg-card rule above. */
-  -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
-  backdrop-filter: blur(24px) saturate(150%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  border: 1px solid var(--border);
 }
 
 /* Electron desktop shell on macOS (AppShell sets data-electron-mac when the

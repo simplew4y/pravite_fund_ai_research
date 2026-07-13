@@ -128,7 +128,7 @@ export function PrivateFundMemoContent({
       <div className="shrink-0 border-border border-b px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">Memo</p>
+            <p className="truncate text-sm font-semibold">输出资源</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">{datasetName}</p>
           </div>
           {projectQuery.isLoading ? (
@@ -297,10 +297,10 @@ export function PrivateFundWorkspacePanel({
     <aside
       aria-label="Workspace"
       inert={inert}
-      // Mirrors WorkspacePanel's floating-card rail shell. Private-fund sessions
-      // keep the same frame and tab strip, but swap the generic workspace tabs
-      // for Memo and optional Sources.
-      className="@container/rail relative z-40 hidden md:flex md:shrink-0 md:flex-col md:overflow-hidden md:mt-14 md:mr-2 md:mb-2 md:rounded-xl md:border md:border-border md:bg-card md:shadow-lg md:min-h-0"
+      // Private-fund sessions use the selected flat research-workspace layout:
+      // a persistent output column divided from chat, while keeping the same
+      // resizable rail, tabs, memo actions, and optional source viewer.
+      className="private-fund-output-panel @container/rail relative z-40 hidden md:mt-14 md:flex md:min-h-0 md:shrink-0 md:flex-col md:overflow-hidden md:border-l md:border-border md:bg-background"
       style={{ width }}
     >
       <div

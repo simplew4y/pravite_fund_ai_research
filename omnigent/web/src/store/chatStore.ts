@@ -370,6 +370,12 @@ export interface ChatState {
    */
   pendingComposerAttachments: ComposerAttachment[];
   /**
+   * Workspace files/folders queued to remove from the active composer's
+   * "@"-mention chips from outside the composer — e.g. unchecking an already
+   * attached private-fund corpus file in the sidebar.
+   */
+  pendingComposerAttachmentRemovals: ComposerAttachment[];
+  /**
    * The active composer's current "@"-mention chips. This mirrors the local
    * composer hook state so distant UI (for example the private-fund corpus
    * list) can reflect add/remove state without keeping its own stale copy.
@@ -415,6 +421,8 @@ export interface ChatState {
    * renders "—" rather than a misleading ``$0.00``.
    */
   sessionCostUsd: number | null;
+  /** Authoritative flat cumulative token usage for the active subtree. */
+  sessionTokenUsage: ModelUsage | null;
   /**
    * Per-model usage breakdown over the active session's subtree (itself +
    * sub-agents), keyed by raw harness model id. Seeded from the session
@@ -557,8 +565,12 @@ export interface ChatState {
   flashUserMessage: (itemId: string) => void;
   /** Queue an "@"-mention chip into the active composer from outside it. */
   addComposerAttachment: (attachment: ComposerAttachment) => void;
+  /** Queue removal of an "@"-mention chip from the active composer. */
+  removeComposerAttachment: (attachment: ComposerAttachment) => void;
   /** Drain the queued composer attachments (called by the composer). */
   clearPendingComposerAttachments: () => void;
+  /** Drain the queued composer attachment removals (called by the composer). */
+  clearPendingComposerAttachmentRemovals: () => void;
   /** Mirror the active composer's current "@" chips for sibling panels. */
   setActiveComposerAttachments: (attachments: ComposerAttachment[]) => void;
   /**
@@ -763,6 +775,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   oldestItemId: null,
   flashItemId: null,
   pendingComposerAttachments: [],
+  pendingComposerAttachmentRemovals: [],
   activeComposerAttachments: [],
   llmModel: null,
   sessionHarness: null,
@@ -770,6 +783,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   contextWindow: null,
   tokensUsed: null,
   sessionCostUsd: null,
+  sessionTokenUsage: null,
   sessionUsageByModel: null,
   gitBranch: null,
   todos: [],
@@ -1250,6 +1264,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         contextWindow: null,
         tokensUsed: null,
         sessionCostUsd: null,
+        sessionTokenUsage: null,
         sessionUsageByModel: null,
         gitBranch: null,
         todos: [],
@@ -1262,6 +1277,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // session's composer (which drains the store on mount). Same reset
         // discipline as ``viewers`` above.
         pendingComposerAttachments: [],
+        pendingComposerAttachmentRemovals: [],
         activeComposerAttachments: [],
         sandboxStatus: null,
         abortController: null,
@@ -1335,12 +1351,51 @@ export const useChatStore = create<ChatState>((set, get) => ({
   addComposerAttachment: (attachment) => {
     set((s) => {
       const k = composerAttachmentKey(attachment);
-      if (s.pendingComposerAttachments.some((a) => composerAttachmentKey(a) === k)) return s;
-      return { pendingComposerAttachments: [...s.pendingComposerAttachments, attachment] };
+      const pendingComposerAttachmentRemovals = s.pendingComposerAttachmentRemovals.filter(
+        (a) => composerAttachmentKey(a) !== k,
+      );
+      const removalChanged =
+        pendingComposerAttachmentRemovals.length !== s.pendingComposerAttachmentRemovals.length;
+      const alreadyPending = s.pendingComposerAttachments.some(
+        (a) => composerAttachmentKey(a) === k,
+      );
+      const alreadyActive = s.activeComposerAttachments.some((a) => composerAttachmentKey(a) === k);
+      if (alreadyPending || alreadyActive) {
+        return removalChanged ? { pendingComposerAttachmentRemovals } : s;
+      }
+      return {
+        pendingComposerAttachmentRemovals,
+        pendingComposerAttachments: [...s.pendingComposerAttachments, attachment],
+      };
+    });
+  },
+
+  removeComposerAttachment: (attachment) => {
+    set((s) => {
+      const k = composerAttachmentKey(attachment);
+      const pendingComposerAttachments = s.pendingComposerAttachments.filter(
+        (a) => composerAttachmentKey(a) !== k,
+      );
+      const pendingAddChanged =
+        pendingComposerAttachments.length !== s.pendingComposerAttachments.length;
+      const isActive = s.activeComposerAttachments.some((a) => composerAttachmentKey(a) === k);
+      const alreadyPendingRemoval = s.pendingComposerAttachmentRemovals.some(
+        (a) => composerAttachmentKey(a) === k,
+      );
+      const shouldQueueRemoval = isActive && !alreadyPendingRemoval;
+      if (!pendingAddChanged && !shouldQueueRemoval) return s;
+      return {
+        pendingComposerAttachments,
+        pendingComposerAttachmentRemovals: shouldQueueRemoval
+          ? [...s.pendingComposerAttachmentRemovals, attachment]
+          : s.pendingComposerAttachmentRemovals,
+      };
     });
   },
 
   clearPendingComposerAttachments: () => set({ pendingComposerAttachments: [] }),
+
+  clearPendingComposerAttachmentRemovals: () => set({ pendingComposerAttachmentRemovals: [] }),
 
   setActiveComposerAttachments: (attachments) => set({ activeComposerAttachments: attachments }),
 
@@ -2052,6 +2107,7 @@ async function bindStream(
         sessionModelOverride: effectiveSessionOverride,
         tokensUsed: session.lastTotalTokens ?? null,
         sessionCostUsd: session.totalCostUsd ?? null,
+        sessionTokenUsage: session.tokenUsage ?? null,
         sessionUsageByModel: session.usageByModel ?? null,
         todos: (session.todos ?? []) as Array<{
           content: string;
@@ -2177,6 +2233,7 @@ function reconnectStatusPatch(session: Session, s: ChatState): Partial<ChatState
   if (session.contextWindow != null) patch.contextWindow = session.contextWindow;
   if (session.lastTotalTokens != null) patch.tokensUsed = session.lastTotalTokens;
   if (session.totalCostUsd != null) patch.sessionCostUsd = session.totalCostUsd;
+  if (session.tokenUsage != null) patch.sessionTokenUsage = session.tokenUsage;
   if (session.usageByModel != null) patch.sessionUsageByModel = session.usageByModel;
   if (
     (session.status === "idle" || session.status === "failed") &&
@@ -3446,6 +3503,7 @@ export function handleSessionEvent(event: StreamEvent): void {
         tokensUsed?: number;
         contextWindow?: number;
         sessionCostUsd?: number;
+        sessionTokenUsage?: ModelUsage;
         sessionUsageByModel?: Record<string, ModelUsage>;
       } = {};
       if (event.contextTokens !== undefined) {
@@ -3456,6 +3514,9 @@ export function handleSessionEvent(event: StreamEvent): void {
       }
       if (event.totalCostUsd !== undefined) {
         patch.sessionCostUsd = event.totalCostUsd;
+      }
+      if (event.tokenUsage !== undefined) {
+        patch.sessionTokenUsage = event.tokenUsage;
       }
       if (event.usageByModel !== undefined) {
         patch.sessionUsageByModel = event.usageByModel;
@@ -4160,6 +4221,13 @@ const RUNNER_UNAVAILABLE_CODE = "runner_unavailable";
  */
 function describeSendFailure(err: unknown): { message: string; code: string } {
   if (err instanceof ApiError && err.code === RUNNER_UNAVAILABLE_CODE) {
+    if (/no runner bound for session/i.test(err.message)) {
+      return {
+        message:
+          "This session isn't connected to a runner. Reconnect it or start a new project conversation.",
+        code: "",
+      };
+    }
     return {
       message: "The runner didn't come online in time. Please try again.",
       code: "",

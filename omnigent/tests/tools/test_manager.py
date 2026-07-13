@@ -1165,3 +1165,39 @@ def test_web_search_does_not_emit_web_search_preview_for_databricks_model() -> N
         f"databricks-gpt-5-4 — Databricks does not support this tool type "
         f"and rejects the request with HTTP 400. Got schema: {schema!r}"
     )
+
+
+def test_private_fund_builtins_register_only_when_declared() -> None:
+    """Generic SDK agents can opt into the structured project tool surface."""
+    names = [
+        "private_fund_dataset_status",
+        "private_fund_dataset_search",
+        "private_fund_source_detail",
+        "private_fund_dataset_memo",
+        "private_fund_equity_report_generate",
+        "private_fund_equity_report_status",
+        "private_fund_equity_report_get",
+    ]
+    spec = AgentSpec(
+        spec_version=1,
+        tools=ToolsConfig(builtins=[BuiltinToolConfig(name=name) for name in names]),
+    )
+    registered = {
+        schema["function"]["name"]: schema for schema in ToolManager(spec).get_tool_schemas()
+    }
+    assert set(names) <= registered.keys()
+    for name in names:
+        function = registered[name]["function"]
+        assert registered[name]["type"] == "function"
+        assert function["parameters"]["type"] == "object"
+    assert registered["private_fund_dataset_search"]["function"]["parameters"]["required"] == [
+        "query"
+    ]
+    assert registered["private_fund_source_detail"]["function"]["parameters"]["required"] == [
+        "evidence_id"
+    ]
+    bare = {
+        schema["function"]["name"]
+        for schema in ToolManager(AgentSpec(spec_version=1)).get_tool_schemas()
+    }
+    assert set(names).isdisjoint(bare)

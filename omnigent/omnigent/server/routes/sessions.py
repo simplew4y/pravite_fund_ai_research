@@ -2149,8 +2149,9 @@ def _publish_subtree_cost_to_ancestors(
     for ancestor_id in _ancestor_session_ids(conv_store, session_id):
         ancestor_usage = load_session_usage(ancestor_id, conv_store)
         subtree_cost = _priced_cost_for_display(ancestor_usage)
+        token_usage = _token_usage_for_display(ancestor_usage)
         usage_by_model = _usage_by_model_for_display(ancestor_usage)
-        if subtree_cost is None and usage_by_model is None:
+        if subtree_cost is None and token_usage is None and usage_by_model is None:
             # Ancestor's subtree has no priced cost or token usage yet —
             # leave its badge showing "—"/its snapshot value rather than
             # emit $0.00.
@@ -2161,6 +2162,8 @@ def _publish_subtree_cost_to_ancestors(
         }
         if subtree_cost is not None:
             payload["total_cost_usd"] = subtree_cost
+        if token_usage is not None:
+            payload["token_usage"] = token_usage
         if usage_by_model is not None:
             payload["usage_by_model"] = usage_by_model
         event = SessionUsageEvent(**payload)
@@ -2379,6 +2382,10 @@ def _build_session_response(
         # back to this conversation's own usage otherwise. A priced
         # cumulative total, or None (rendered "—") when never priced.
         total_cost_usd=_priced_cost_for_display(display_usage),
+        # Authoritative flat cumulative token buckets for the same subtree.
+        # Totals use this rather than summing model attribution buckets,
+        # which can overlap for native sessions after a model switch.
+        token_usage=_token_usage_for_display(display_usage),
         # Per-model breakdown over the same subtree usage. None (omitted)
         # when no per-model usage was recorded.
         usage_by_model=_usage_by_model_for_display(display_usage),
@@ -2872,6 +2879,28 @@ def _usage_by_model_for_display(usage: dict[str, Any]) -> dict[str, ModelUsage] 
     return result or None
 
 
+def _token_usage_for_display(usage: dict[str, Any]) -> ModelUsage | None:
+    """Project flat cumulative subtree usage into the public token schema.
+
+    The flat counters are the authoritative session aggregate. Unlike the
+    per-model map, they remain exact when a native runtime changes models
+    mid-session and reports a new cumulative total under the current model.
+    """
+    fields: dict[str, Any] = {}
+    for key in _MODEL_TOKEN_KEYS:
+        value = usage.get(key)
+        if value is None:
+            continue
+        try:
+            fields[key] = max(0, int(value))
+        except (TypeError, ValueError):
+            continue
+    cost = _priced_cost_for_display(usage)
+    if cost is not None:
+        fields["total_cost_usd"] = cost
+    return ModelUsage(**fields) if fields else None
+
+
 def _accumulate_session_usage(
     resp_obj: dict[str, Any],
     session_id: str,
@@ -3293,6 +3322,7 @@ async def _persist_external_session_usage(
     # itself, so this equals own cost — one indexed tree query per flush.
     subtree_usage = await asyncio.to_thread(load_session_usage, session_id, conversation_store)
     subtree_cost = _priced_cost_for_display(subtree_usage)
+    token_usage = _token_usage_for_display(subtree_usage)
     usage_by_model = _usage_by_model_for_display(subtree_usage)
     # Only include fields that were sent; the client treats absent
     # fields as "no change" so a window-only update doesn't zero tokens.
@@ -3309,6 +3339,8 @@ async def _persist_external_session_usage(
         event_payload["context_window"] = raw_window
     if subtree_cost is not None:
         event_payload["total_cost_usd"] = subtree_cost
+    if token_usage is not None:
+        event_payload["token_usage"] = token_usage
     if usage_by_model is not None:
         event_payload["usage_by_model"] = usage_by_model
     event = SessionUsageEvent(**event_payload)
@@ -9570,14 +9602,21 @@ async def _relay_runner_stream(
                             conversation_store,
                         )
                         _subtree_cost = _priced_cost_for_display(_subtree_usage)
+                        _token_usage = _token_usage_for_display(_subtree_usage)
                         _usage_by_model = _usage_by_model_for_display(_subtree_usage)
-                        if _subtree_cost is not None or _usage_by_model is not None:
+                        if (
+                            _subtree_cost is not None
+                            or _token_usage is not None
+                            or _usage_by_model is not None
+                        ):
                             _usage_payload: dict[str, Any] = {
                                 "type": "session.usage",
                                 "conversation_id": session_id,
                             }
                             if _subtree_cost is not None:
                                 _usage_payload["total_cost_usd"] = _subtree_cost
+                            if _token_usage is not None:
+                                _usage_payload["token_usage"] = _token_usage
                             if _usage_by_model is not None:
                                 _usage_payload["usage_by_model"] = _usage_by_model
                             session_stream.publish(

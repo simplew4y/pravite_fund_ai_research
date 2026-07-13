@@ -126,6 +126,8 @@ export function CreateAgentDialog({
   const [instructions, setInstructions] = useState("");
   const [harness, setHarness] = useState(HARNESS_OPTIONS[0].value);
   const [model, setModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [mcpEntries, setMcpEntries] = useState<MCPFormEntry[]>([]);
   const [nextKey, setNextKey] = useState(0);
 
@@ -135,6 +137,8 @@ export function CreateAgentDialog({
     setInstructions("");
     setHarness(HARNESS_OPTIONS[0].value);
     setModel("");
+    setBaseUrl("");
+    setApiKey("");
     setMcpEntries([]);
     setNextKey(0);
   }
@@ -160,6 +164,7 @@ export function CreateAgentDialog({
   function handleSubmit() {
     const trimmedName = name.trim();
     if (!trimmedName) return;
+    const trimmedBaseUrl = baseUrl.trim();
 
     onCreate({
       name: trimmedName,
@@ -167,6 +172,13 @@ export function CreateAgentDialog({
       instructions: instructions.trim() || undefined,
       harness,
       model: model.trim(),
+      baseUrl: trimmedBaseUrl || undefined,
+      apiKey: apiKey.trim() || undefined,
+      // DashScope's modern tool messages are compatible with its Responses
+      // endpoint. The executor handles the provider's missing streamed terminal
+      // event by finishing the post-tool response without streaming.
+      useResponses: trimmedBaseUrl.includes("dashscope.aliyuncs.com") ? true : undefined,
+      privateFundTools: true,
       mcpServers: toMCPInputs(mcpEntries),
     });
     reset();
@@ -255,6 +267,46 @@ export function CreateAgentDialog({
               onChange={(e) => setModel(e.target.value)}
               placeholder="claude-sonnet-4-20250514"
             />
+          </div>
+
+          {/* Direct OpenAI-compatible API connection. This lets agents use
+              providers such as DashScope without a separate CLI login. */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="create-agent-base-url"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              API base URL
+            </label>
+            <Input
+              id="create-agent-base-url"
+              data-testid="create-agent-base-url"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://api.example.com/v1"
+              autoComplete="url"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="create-agent-api-key"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              API key
+            </label>
+            <Input
+              id="create-agent-api-key"
+              data-testid="create-agent-api-key"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Paste a provider API key"
+              autoComplete="new-password"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Stored only with this local agent. It is never shown in the conversation.
+            </p>
           </div>
 
           {/* Instructions / System Prompt */}

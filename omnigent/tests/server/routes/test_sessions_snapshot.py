@@ -1397,6 +1397,10 @@ async def test_session_snapshot_sums_by_model_over_subtree() -> None:
     assert snapshot.usage_by_model["model-a"].input_tokens == 500
     assert snapshot.usage_by_model["model-a"].output_tokens == 100
     assert snapshot.usage_by_model["model-a"].total_cost_usd == 3.5
+    assert snapshot.token_usage is not None
+    assert snapshot.token_usage.input_tokens == 500
+    assert snapshot.token_usage.output_tokens == 100
+    assert snapshot.token_usage.total_cost_usd == 3.5
 
 
 @pytest.mark.asyncio

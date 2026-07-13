@@ -505,263 +505,265 @@ function renderMessage(
 }
 
 describe("BlockRenderer PDF source citations", () => {
-  it("opens a dataset PDF source when a filename and page range are cited", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("核心逻辑来自（阳光电源-20260615.pdf p.1-2）。", {
-      openFile: vi.fn(),
-      openPdfSource,
-      isChangedPath: () => false,
-      conversationId: "conv_1",
-    });
+  const sourceFetch = vi.fn();
 
-    const citation = await screen.findByRole("link", {
-      name: "阳光电源-20260615.pdf p.1-2",
+  beforeEach(() => {
+    sourceFetch.mockReset();
+    sourceFetch.mockImplementation(async (input: string | URL | Request) => {
+      const url = String(input);
+      const body = url.includes("/excel/")
+        ? {
+            kind: "excel",
+            mode: "range",
+            file_name: "300274 v44.xlsx",
+            stored_path: "/raw/300274 v44.xlsx",
+            range_ref: "A1:K33",
+            sheet: { sheet_name: "Table", used_range: "A1:K33", summary: null },
+            cells: [
+              {
+                cell_ref: "A1",
+                row_index: 1,
+                col_index: 1,
+                display_value: "营业收入",
+                raw_value: "营业收入",
+                formula: null,
+              },
+            ],
+          }
+        : {
+            page_no: 3,
+            file_name: "阳光电源300274近况交流会260701_原文.pdf",
+            image_url: "/v1/private-fund/pdf/source/page-image?page_no=3",
+            highlights: [],
+            matched: false,
+          };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pageNo: 1,
-        pageEnd: 2,
-        label: "p.1-2",
-        pdfName: "阳光电源-20260615.pdf",
-        quote: expect.stringContaining("核心逻辑"),
-      }),
-    );
+    vi.stubGlobal("fetch", sourceFetch);
   });
 
-  it("opens a dataset PDF source when the filename-page citation is bare bracketed text", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("AIDC逻辑来自[阳光电源-20260615.pdf p.1] [阳光电源-20260615.pdf p.2]。", {
-      openFile: vi.fn(),
-      openPdfSource,
-      isChangedPath: () => false,
-      conversationId: "conv_1",
-    });
+  afterEach(() => vi.unstubAllGlobals());
 
-    const citation = await screen.findByRole("link", {
-      name: "阳光电源-20260615.pdf p.1",
-    });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "pdf",
-        pageNo: 1,
-        label: "p.1",
-        pdfName: "阳光电源-20260615.pdf",
-        quote: expect.stringContaining("AIDC逻辑"),
-      }),
-    );
-  });
-
-  it("opens a dataset PDF source when a filename-page citation is wrapped in inline code", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("核心逻辑来自（`阳光电源-20260615.pdf p.1-2`）。", {
-      openFile: vi.fn(),
-      openPdfSource,
-      isChangedPath: () => false,
-      conversationId: "conv_1",
-    });
-
-    const citation = await screen.findByRole("link", {
-      name: "阳光电源-20260615.pdf p.1-2",
-    });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pageNo: 1,
-        pageEnd: 2,
-        label: "p.1-2",
-        pdfName: "阳光电源-20260615.pdf",
-      }),
-    );
-  });
-
-  it("opens an Excel source range when a workbook sheet range is cited", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("分业务收入拆解来自（300274 v44.xlsx Table!A1:K33）。", {
-      openFile: vi.fn(),
-      openPdfSource,
-      isChangedPath: () => false,
-      conversationId: "conv_1",
-    });
-
-    const citation = await screen.findByRole("link", {
-      name: "300274 v44.xlsx Table!A1:K33",
-    });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "excel",
-        workbookName: "300274 v44.xlsx",
-        sheetName: "Table",
-        rangeRef: "A1:K33",
-        label: "300274 v44.xlsx Table!A1:K33",
-      }),
-    );
-  });
-
-  it("opens an Excel source range when a bracketed workbook citation has a space before bang", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("估值模型参数来自[300274 v44.xlsx Control panel !A1:X39]。", {
-      openFile: vi.fn(),
-      openPdfSource,
-      isChangedPath: () => false,
-      conversationId: "conv_1",
-    });
-
-    const citation = await screen.findByRole("link", {
-      name: "300274 v44.xlsx Control panel!A1:X39",
-    });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "excel",
-        workbookName: "300274 v44.xlsx",
-        sheetName: "Control panel",
-        rangeRef: "A1:X39",
-        label: "300274 v44.xlsx Control panel!A1:X39",
-      }),
-    );
-  });
-
-  it("opens a workbook overview when only an Excel file is cited", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("Excel模型 300274 v44.xlsx 仅覆盖至2023E。", {
-      openFile: vi.fn(),
-      openPdfSource,
-      isChangedPath: () => false,
-      conversationId: "conv_1",
-    });
-
-    const citation = await screen.findByRole("link", { name: "300274 v44.xlsx" });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "excel",
-        workbookName: "300274 v44.xlsx",
-        label: "300274 v44.xlsx",
-      }),
-    );
-  });
-
-  it("opens the first PDF page when only a PDF file is cited", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("PDF研报（阳光电源-20260615.pdf）未做进一步拆分。", {
-      openFile: vi.fn(),
-      openPdfSource,
-      isChangedPath: () => false,
-      conversationId: "conv_1",
-    });
-
-    const citation = await screen.findByRole("link", { name: "阳光电源-20260615.pdf" });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "pdf",
-        pageNo: 1,
-        label: "阳光电源-20260615.pdf",
-        pdfName: "阳光电源-20260615.pdf",
-      }),
-    );
-  });
-
-  it("carries the nearest PDF filename into later page-only citations", async () => {
-    const openPdfSource = vi.fn();
+  it("opens an anchored original-document popover for an attached Chinese PDF citation", async () => {
     renderMessage(
-      "会议纪要全文（阳光电源300274近况交流会260701_原文.pdf）：\n\n开场声明（[p.1] 00:00:00）",
+      '反对过度强调网络安全问题，造成"喧宾夺主"的情况阳光电源300274近况交流会260701_原文.pdf p.3。',
       {
         openFile: vi.fn(),
-        openPdfSource,
         isChangedPath: () => false,
         conversationId: "conv_1",
       },
     );
 
-    const citation = await screen.findByRole("link", { name: "[p.1]" });
+    const citation = await screen.findByRole("link", { name: "来源 p.3" });
+    expect(citation).toHaveAttribute("title", "点击查看原始文档");
     fireEvent.click(citation);
 
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "pdf",
-        pageNo: 1,
-        label: "p.1",
-        pdfName: "阳光电源300274近况交流会260701_原文.pdf",
-      }),
+    expect(await screen.findByText("原始文档")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(sourceFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/v1/private-fund/pdf/source/page?page_no=3"),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      ),
     );
+    expect(screen.queryByText("Sources")).toBeNull();
   });
 
-  it("opens source links even when the href has been expanded to an absolute page URL", async () => {
-    const openPdfSource = vi.fn();
+  it("keeps an in-flight source request alive while switching to the loading state", async () => {
+    let finishRequest!: (response: Response) => void;
+    const delayedResponse = new Promise<Response>((resolve) => {
+      finishRequest = resolve;
+    });
+    sourceFetch.mockReturnValueOnce(delayedResponse);
+
+    renderMessage("结论来自（阳光电源-20260615.pdf p.3）。", {
+      openFile: vi.fn(),
+      isChangedPath: () => false,
+      conversationId: "conv_1",
+    });
+
+    fireEvent.click(await screen.findByRole("link", { name: "阳光电源-20260615.pdf p.3" }));
+    expect(await screen.findByText("正在读取原始文档…")).toBeInTheDocument();
+    const signal = sourceFetch.mock.calls[0]?.[1]?.signal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+
+    finishRequest(
+      new Response(
+        JSON.stringify({
+          page_no: 3,
+          file_name: "阳光电源-20260615.pdf",
+          image_url: "/v1/private-fund/pdf/source/page-image?page_no=3",
+          highlights: [],
+          matched: false,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    expect(
+      await screen.findByRole("img", { name: "阳光电源-20260615.pdf 第 3 页" }),
+    ).toBeInTheDocument();
+  });
+
+  it("closes when the workflow canvas captures and stops an outside pointer event", async () => {
+    renderMessage("结论来自（阳光电源-20260615.pdf p.3）。", {
+      openFile: vi.fn(),
+      isChangedPath: () => false,
+      conversationId: "conv_1",
+    });
+    const canvas = document.createElement("div");
+    canvas.dataset.testid = "workflow-canvas";
+    canvas.addEventListener("pointerdown", (event) => event.stopPropagation());
+    document.body.appendChild(canvas);
+
+    fireEvent.click(await screen.findByRole("link", { name: "阳光电源-20260615.pdf p.3" }));
+    expect(await screen.findByText("原始文档")).toBeInTheDocument();
+    fireEvent.pointerDown(canvas);
+
+    await waitFor(() => expect(screen.queryByText("原始文档")).toBeNull());
+    canvas.remove();
+  });
+
+  it("preserves PDF page ranges and filename in the popover request", async () => {
+    renderMessage("核心逻辑来自（阳光电源-20260615.pdf p.1-2）。", {
+      openFile: vi.fn(),
+      isChangedPath: () => false,
+      conversationId: "conv_1",
+    });
+
+    fireEvent.click(await screen.findByRole("link", { name: "阳光电源-20260615.pdf p.1-2" }));
+    await waitFor(() => {
+      const url = String(sourceFetch.mock.calls[0]?.[0] ?? "");
+      expect(url).toContain("page_no=1");
+      expect(url).toContain("pdf_name=%E9%98%B3%E5%85%89%E7%94%B5%E6%BA%90-20260615.pdf");
+    });
+    expect(screen.getByText(/第 1–2 页/)).toBeInTheDocument();
+  });
+
+  it("shows Excel source cells inside the same anchored popover", async () => {
+    renderMessage("分业务收入拆解来自（300274 v44.xlsx Table!A1:K33）。", {
+      openFile: vi.fn(),
+      isChangedPath: () => false,
+      conversationId: "conv_1",
+    });
+
+    fireEvent.click(await screen.findByRole("link", { name: "300274 v44.xlsx Table!A1:K33" }));
+    expect(await screen.findByText("营业收入")).toBeInTheDocument();
+    const url = String(sourceFetch.mock.calls[0]?.[0] ?? "");
+    expect(url).toContain("/v1/private-fund/excel/source/range?");
+    expect(url).toContain("sheet_name=Table");
+    expect(url).toContain("range_ref=A1%3AK33");
+  });
+
+  it("linkifies every Horizon Robotics range from the reported answer", async () => {
+    const workbook = "1783838864110_Horizon+Robotics_9660.HK_2025_Aug_06.xlsx";
+    renderMessage(
+      [
+        `${workbook} Operation!A88:L141`,
+        `${workbook} Supply relation!J92:Q130`,
+        `${workbook} Supply relation!C72:G84`,
+        `${workbook} BS!A1:N146`,
+      ].join("\n"),
+      {
+        openFile: vi.fn(),
+        isChangedPath: () => false,
+        conversationId: "conv_1",
+      },
+    );
+
+    expect(
+      screen.getByRole("link", { name: `${workbook} Operation!A88:L141` }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: `${workbook} Supply relation!J92:Q130` }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: `${workbook} Supply relation!C72:G84` }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: `${workbook} BS!A1:N146` }));
+    await waitFor(() => {
+      const url = String(sourceFetch.mock.calls[0]?.[0] ?? "");
+      expect(url).toContain(`workbook_name=${encodeURIComponent(workbook)}`);
+      expect(url).toContain("sheet_name=BS");
+      expect(url).toContain("range_ref=A1%3AN146");
+    });
+  });
+
+  it("renders workbook-level Excel citations as a sheet summary", async () => {
+    sourceFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          kind: "excel",
+          mode: "workbook",
+          file_name: "large-model.xlsx",
+          stored_path: "/raw/large-model.xlsx",
+          sheets: [
+            {
+              sheet_name: "Operation",
+              used_range: "A1:X169",
+              non_empty_cell_count: 1386,
+              summary: "Operating model",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    renderMessage("工作簿概览：large-model.xlsx", {
+      openFile: vi.fn(),
+      isChangedPath: () => false,
+      conversationId: "conv_1",
+    });
+
+    fireEvent.click(await screen.findByRole("link", { name: "large-model.xlsx" }));
+    expect(await screen.findByText("Operation")).toBeInTheDocument();
+    expect(screen.getByText("A1:X169")).toBeInTheDocument();
+    expect(screen.queryByText("引用范围内没有非空单元格。")).toBeNull();
+  });
+
+  it("handles absolute source hrefs without navigating away", async () => {
     renderMessage(
       "[p.9](http://127.0.0.1:6767/c/conv_1?view=changed#private-fund-pdf-source?page=9&label=p.9&pdf_name=%E9%98%B3%E5%85%89%E7%94%B5%E6%BA%90300274%E8%BF%91%E5%86%B5%E4%BA%A4%E6%B5%81%E4%BC%9A260701_%E5%8E%9F%E6%96%87.pdf)",
       {
         openFile: vi.fn(),
-        openPdfSource,
         isChangedPath: () => false,
         conversationId: "conv_1",
       },
     );
 
-    const citation = await screen.findByRole("link", { name: "p.9" });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "pdf",
-        pageNo: 9,
-        label: "p.9",
-        pdfName: "阳光电源300274近况交流会260701_原文.pdf",
-      }),
+    fireEvent.click(await screen.findByRole("link", { name: "p.9" }));
+    await waitFor(() =>
+      expect(String(sourceFetch.mock.calls[0]?.[0] ?? "")).toContain("page_no=9"),
     );
+    expect(screen.getByText(/第 9 页/)).toBeInTheDocument();
   });
+});
 
-  it("opens the PDF source panel when a page citation is clicked", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("汽车销售仍是收入核心 [p.113]。", {
+describe("BlockRenderer footnote presentation", () => {
+  it("keeps footnote content but removes generated back-reference arrows", async () => {
+    renderMessage("第一条结论[^1]，第二条结论也使用同一来源[^1]。\n\n[^1]: 来源原文说明", {
       openFile: vi.fn(),
-      openPdfSource,
       isChangedPath: () => false,
       conversationId: "conv_1",
     });
 
-    const citation = await screen.findByRole("link", { name: "[p.113]" });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pageNo: 113,
-        label: "p.113",
-        quote: expect.stringContaining("汽车销售"),
-      }),
-    );
+    expect(await screen.findByText("来源原文说明")).toBeInTheDocument();
+    expect(document.querySelector("[data-footnote-backref]")).toBeNull();
+    expect(screen.queryByText(/^↩/)).toBeNull();
   });
 
-  it("opens the PDF source panel for 10-K page paragraph source text", async () => {
-    const openPdfSource = vi.fn();
-    renderMessage("来源：10-K p.113, para.1", {
+  it("removes superscript footnote numbers while keeping the source entry", async () => {
+    renderMessage("管理层观点[^7]\n\n[^7]: 第七条来源说明", {
       openFile: vi.fn(),
-      openPdfSource,
       isChangedPath: () => false,
       conversationId: "conv_1",
     });
 
-    const citation = await screen.findByRole("link", { name: "10-K p.113, para.1" });
-    fireEvent.click(citation);
-
-    expect(openPdfSource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        pageNo: 113,
-        label: "p.113",
-        quote: expect.stringContaining("来源"),
-      }),
-    );
+    expect(await screen.findByText("第七条来源说明")).toBeInTheDocument();
+    expect(document.querySelector("[data-footnote-ref]")).toBeNull();
+    expect(screen.queryByText("7")).toBeNull();
   });
 });
 

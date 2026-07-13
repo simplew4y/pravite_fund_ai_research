@@ -196,6 +196,27 @@ const MODEL_USAGE_FIELDS: ReadonlyArray<{ wire: string; camel: keyof ModelUsage 
   { wire: "total_cost_usd", camel: "totalCostUsd" },
 ];
 
+function parseModelUsage(raw: unknown): ModelUsage | undefined | null {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) return null;
+  const src = raw as Record<string, unknown>;
+  const usage: ModelUsage = {
+    inputTokens: null,
+    outputTokens: null,
+    totalTokens: null,
+    cacheReadInputTokens: null,
+    cacheCreationInputTokens: null,
+    totalCostUsd: null,
+  };
+  for (const { wire, camel } of MODEL_USAGE_FIELDS) {
+    const value = src[wire];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+    usage[camel] = value;
+  }
+  return usage;
+}
+
 /**
  * Parse the `usage_by_model` field of a `session.usage` event.
  *
@@ -214,22 +235,8 @@ function parseUsageByModel(raw: unknown): Record<string, ModelUsage> | undefined
   if (typeof raw !== "object" || Array.isArray(raw)) return null;
   const out: Record<string, ModelUsage> = {};
   for (const [model, entry] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return null;
-    const src = entry as Record<string, unknown>;
-    const usage: ModelUsage = {
-      inputTokens: null,
-      outputTokens: null,
-      totalTokens: null,
-      cacheReadInputTokens: null,
-      cacheCreationInputTokens: null,
-      totalCostUsd: null,
-    };
-    for (const { wire, camel } of MODEL_USAGE_FIELDS) {
-      const value = src[wire];
-      if (value === undefined || value === null) continue;
-      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
-      usage[camel] = value;
-    }
+    const usage = parseModelUsage(entry);
+    if (usage == null) return null;
     out[model] = usage;
   }
   return out;
@@ -461,6 +468,10 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
       }
       totalCostUsd = rawCost;
     }
+    const tokenUsage = parseModelUsage(raw.token_usage);
+    if (tokenUsage === null) {
+      return null;
+    }
     // Per-model breakdown (cumulative subtree map). The server sends the full
     // merged map when it changes, so a present value replaces the cached map
     // wholesale. Absent → undefined (keep cached); a malformed entry/bucket
@@ -473,6 +484,7 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
       contextTokens === undefined &&
       contextWindow === undefined &&
       totalCostUsd === undefined &&
+      tokenUsage === undefined &&
       usageByModel === undefined
     ) {
       return null;
@@ -483,6 +495,7 @@ export function parseEvent(rawType: string, data: Record<string, unknown>): Stre
       ...(contextTokens !== undefined ? { contextTokens } : {}),
       ...(contextWindow !== undefined ? { contextWindow } : {}),
       ...(totalCostUsd !== undefined ? { totalCostUsd } : {}),
+      ...(tokenUsage !== undefined ? { tokenUsage } : {}),
       ...(usageByModel !== undefined ? { usageByModel } : {}),
     } satisfies SessionUsageEvent;
   }

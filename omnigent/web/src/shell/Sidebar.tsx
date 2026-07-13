@@ -18,6 +18,7 @@ import {
   CheckIcon,
   CheckIcon as CheckMarkIcon,
   ChevronRightIcon,
+  CircleIcon,
   CircleStopIcon,
   FileTextIcon,
   FolderIcon,
@@ -43,6 +44,7 @@ import {
   SquareCheckIcon,
   SquarePenIcon,
   Trash2Icon,
+  UploadIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -61,6 +63,7 @@ import {
 } from "@dnd-kit/core";
 import { Link, useLocation, useNavigate, useParams } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import {
   Dialog,
   DialogContent,
@@ -123,16 +126,27 @@ import { useResizableSidebar } from "@/hooks/useResizableSidebar";
 import { useSessionSwitchHotkey } from "@/hooks/useSessionSwitchHotkey";
 import { usePinnedSessionHotkeys } from "@/hooks/usePinnedSessionHotkeys";
 import { absoluteTime, relativeTime } from "@/lib/relativeTime";
-import { usePrivateFundProject, usePrivateFundProjects } from "@/hooks/usePrivateFundProjects";
+import {
+  useDeletePrivateFundFiles,
+  useDeletePrivateFundProject,
+  usePrivateFundProject,
+  usePrivateFundProjects,
+} from "@/hooks/usePrivateFundProjects";
 import {
   ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT,
   PRIVATE_FUND_DATASET_ID_LABEL_KEY,
   type PrivateFundFile,
   type PrivateFundProject,
   readActivePrivateFundProjectId,
+  writeActivePrivateFundProjectId,
 } from "@/lib/privateFundApi";
-import { composerAttachmentKey, useChatStore } from "@/store/chatStore";
+import { composerAttachmentKey, type ComposerAttachment, useChatStore } from "@/store/chatStore";
 import { SettingsSidebarBody, useSettingsRoute } from "./settingsNav";
+import { TokenUsageBar } from "@/components/private-fund/TokenUsageBar";
+import { PrivateFundCreateProjectDialog } from "@/components/private-fund/PrivateFundCreateProjectDialog";
+import { PrivateFundUploadDialog } from "@/components/private-fund/PrivateFundUploadDialog";
+import { usePrivateFundDocumentUpload } from "@/components/private-fund/usePrivateFundDocumentUpload";
+import { formatTokenCount } from "@/lib/tokenUsage";
 import {
   type ActiveChatOverride,
   COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY,
@@ -155,6 +169,7 @@ import {
 const TIME_MARKER_SLOT_CLASS =
   "-translate-y-1/2 pointer-events-none absolute top-1/2 right-[4.5rem] flex h-5 items-center transition-opacity md:right-2 md:group-hover:opacity-0 md:group-has-[:focus-visible]:opacity-0 md:group-has-[[aria-expanded=true]]:opacity-0";
 const CORPUS_COLLAPSED_STORAGE_KEY = "omnigent.sidebar.privateFundCorpusCollapsed";
+const EMPTY_PRIVATE_FUND_FILES: PrivateFundFile[] = [];
 
 // Highlight applied to a drop target while a draggable session hovers it: a
 // subtle background tint 鈥?no border, no shadow. Keyed on --primary like the
@@ -166,6 +181,10 @@ const DROP_TARGET_HIGHLIGHT = "bg-primary/5";
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
+  /** Use the flat three-column research-workspace treatment on private-fund chats. */
+  privateFundWorkspace?: boolean;
+  /** Dataset resolved from the active session snapshot, including direct links. */
+  activePrivateFundDatasetId?: string | null;
   /**
    * Live open fraction (0 = closed, 1 = open) while the iOS shell's left-edge
    * swipe is dragging the sidebar; `null` when not dragging. When set, the
@@ -190,17 +209,15 @@ interface SidebarProps {
 function useActiveNavItem(): {
   isNewChatPage: boolean;
   isInboxPage: boolean;
-  isResearchProjectsPage: boolean;
 } {
   const { conversationId: activeConversationId } = useParams<{ conversationId: string }>();
   const segments = useLocation().pathname.split("/").filter(Boolean);
   const leaf = segments.at(-1);
   const isInboxPage = leaf === "inbox";
-  const isResearchProjectsPage = segments.includes("research-projects");
   // Exclude inbox: it also has no `:conversationId`, so it would otherwise
   // light up the "New session" button.
-  const isNewChatPage = activeConversationId == null && !isInboxPage && !isResearchProjectsPage;
-  return { isNewChatPage, isInboxPage, isResearchProjectsPage };
+  const isNewChatPage = activeConversationId == null && !isInboxPage;
+  return { isNewChatPage, isInboxPage };
 }
 
 /**
@@ -273,50 +290,144 @@ function normalizePrivateFundFilePath(
   return path.startsWith("/") ? file.name : path;
 }
 
-function PrivateFundCorpusSection({ activeDatasetId }: { activeDatasetId: string | null }) {
-  const projectsQuery = usePrivateFundProjects();
-  const projects = projectsQuery.data ?? [];
-  const [storedActiveDatasetId, setStoredActiveDatasetId] = useState(readActivePrivateFundProjectId);
-  const datasetId =
-    activeDatasetId ||
-    storedActiveDatasetId ||
-    projects.find((project) => project.datasetId === "阳光电源")?.datasetId ||
-    projects[0]?.datasetId ||
-    "阳光电源";
-  const projectQuery = usePrivateFundProject(datasetId);
-  const project = projectQuery.data?.project;
-  const files = projectQuery.data?.files ?? [];
-  const [collapsed, setCollapsed] = useState(readCorpusCollapsed);
-  const pendingComposerAttachments = useChatStore((s) => s.pendingComposerAttachments);
-  const activeComposerAttachments = useChatStore((s) => s.activeComposerAttachments);
-  const attachedPathKeys = useMemo(
-    () =>
-      new Set([
-        ...activeComposerAttachments.map(composerAttachmentKey),
-        ...pendingComposerAttachments.map(composerAttachmentKey),
-      ]),
-    [activeComposerAttachments, pendingComposerAttachments],
-  );
-
+function PrivateFundAttachmentCheckbox({
+  checked,
+  mixed = false,
+  disabled = false,
+  "aria-label": ariaLabel,
+  onChange,
+}: {
+  checked: boolean;
+  mixed?: boolean;
+  disabled?: boolean;
+  "aria-label": string;
+  onChange: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const syncFromStorage = () => setStoredActiveDatasetId(readActivePrivateFundProjectId());
-    const handleActiveProjectChanged = (event: Event) => {
-      const datasetId =
-        event instanceof CustomEvent && typeof event.detail?.datasetId === "string"
-          ? event.detail.datasetId
-          : readActivePrivateFundProjectId();
-      setStoredActiveDatasetId(datasetId);
+    if (inputRef.current) inputRef.current.indeterminate = mixed;
+  }, [mixed]);
+
+  return (
+    <input
+      ref={inputRef}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      aria-checked={mixed ? "mixed" : checked}
+      onChange={onChange}
+      className="size-3.5 shrink-0 cursor-pointer rounded border-border accent-primary disabled:cursor-default disabled:opacity-40"
+    />
+  );
+}
+
+function privateFundProjectStatus(project: PrivateFundProject): {
+  label: string;
+  className: string;
+} {
+  const status = (project.latestJob?.status ?? project.status).toLowerCase();
+  if (status === "running" || status === "queued") {
+    return {
+      label: status === "running" ? "更新中" : "排队中",
+      className: "text-primary",
     };
-    window.addEventListener("storage", syncFromStorage);
-    window.addEventListener(ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT, handleActiveProjectChanged);
-    return () => {
-      window.removeEventListener("storage", syncFromStorage);
-      window.removeEventListener(
-        ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT,
-        handleActiveProjectChanged,
-      );
-    };
-  }, []);
+  }
+  if (status === "failed") {
+    return { label: "需处理", className: "text-destructive" };
+  }
+  if (project.indexReady || status === "completed" || status === "ready") {
+    return { label: "可研究", className: "text-success" };
+  }
+  return { label: "待索引", className: "text-warning" };
+}
+
+function privateFundProjectUpdatedAt(project: PrivateFundProject): string {
+  if (!project.updatedAt) return "尚未更新";
+  const timestamp = Date.parse(project.updatedAt);
+  return Number.isNaN(timestamp) ? project.updatedAt : relativeTime(timestamp);
+}
+
+function PrivateFundCorpusSection({
+  projects,
+  projectsLoading,
+  conversations,
+  selectedDatasetId,
+  onNavigate,
+  workbench = false,
+}: {
+  projects: PrivateFundProject[];
+  projectsLoading: boolean;
+  conversations: Conversation[];
+  selectedDatasetId: string | null;
+  onNavigate: (event: MouseEvent<HTMLAnchorElement>) => void;
+  workbench?: boolean;
+}) {
+  const projectQuery = usePrivateFundProject(selectedDatasetId);
+  const project = projectQuery.data?.project;
+  const files = projectQuery.data?.files ?? EMPTY_PRIVATE_FUND_FILES;
+  const documentUpload = usePrivateFundDocumentUpload(selectedDatasetId);
+  const navigate = useNavigate();
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(readCorpusCollapsed);
+  const [projectToDelete, setProjectToDelete] = useState<PrivateFundProject | null>(null);
+  const [sourceDeleteOpen, setSourceDeleteOpen] = useState(false);
+  const deleteProject = useDeletePrivateFundProject();
+  const deleteFiles = useDeletePrivateFundFiles(selectedDatasetId);
+  const pendingComposerAttachments = useChatStore((s) => s.pendingComposerAttachments);
+  const pendingComposerAttachmentRemovals = useChatStore(
+    (s) => s.pendingComposerAttachmentRemovals,
+  );
+  const activeComposerAttachments = useChatStore((s) => s.activeComposerAttachments);
+  const attachedPathKeys = useMemo(() => {
+    const keys = new Set([
+      ...activeComposerAttachments.map(composerAttachmentKey),
+      ...pendingComposerAttachments.map(composerAttachmentKey),
+    ]);
+    for (const attachment of pendingComposerAttachmentRemovals) {
+      keys.delete(composerAttachmentKey(attachment));
+    }
+    return keys;
+  }, [activeComposerAttachments, pendingComposerAttachments, pendingComposerAttachmentRemovals]);
+  const fileAttachmentRows = useMemo(
+    () =>
+      files.map((file) => {
+        const path = normalizePrivateFundFilePath(file, project);
+        const attachment: ComposerAttachment = { path, isDir: false };
+        return {
+          file,
+          attachment,
+          key: composerAttachmentKey(attachment),
+        };
+      }),
+    [files, project],
+  );
+  const projectAttachmentKeys = useMemo(
+    () => Array.from(new Set(fileAttachmentRows.map((row) => row.key))),
+    [fileAttachmentRows],
+  );
+  const attachedProjectFileCount = useMemo(
+    () => projectAttachmentKeys.filter((key) => attachedPathKeys.has(key)).length,
+    [attachedPathKeys, projectAttachmentKeys],
+  );
+  const selectedSourceNames = useMemo(
+    () =>
+      fileAttachmentRows.filter((row) => attachedPathKeys.has(row.key)).map((row) => row.file.name),
+    [attachedPathKeys, fileAttachmentRows],
+  );
+  const allProjectFilesAttached =
+    projectAttachmentKeys.length > 0 && attachedProjectFileCount === projectAttachmentKeys.length;
+  const someProjectFilesAttached =
+    attachedProjectFileCount > 0 && attachedProjectFileCount < projectAttachmentKeys.length;
+  const latestConversationByDatasetId = useMemo(() => {
+    const latest = new Map<string, Conversation>();
+    for (const conversation of sortByUpdatedAtDesc(conversations, null)) {
+      if (conversation.archived === true) continue;
+      const datasetId = conversation.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY];
+      if (datasetId && !latest.has(datasetId)) latest.set(datasetId, conversation);
+    }
+    return latest;
+  }, [conversations]);
 
   function toggleCollapsed() {
     setCollapsed((current) => {
@@ -326,53 +437,412 @@ function PrivateFundCorpusSection({ activeDatasetId }: { activeDatasetId: string
     });
   }
 
-  function attachFile(file: PrivateFundFile) {
-    const path = normalizePrivateFundFilePath(file, project);
-    const attachment = { path, isDir: false };
+  function attachFile(attachment: ComposerAttachment) {
     useChatStore.getState().addComposerAttachment(attachment);
   }
 
+  function removeFile(attachment: ComposerAttachment) {
+    useChatStore.getState().removeComposerAttachment(attachment);
+  }
+
+  function toggleProjectAttachments() {
+    const store = useChatStore.getState();
+    if (allProjectFilesAttached) {
+      for (const row of fileAttachmentRows) store.removeComposerAttachment(row.attachment);
+    } else {
+      for (const row of fileAttachmentRows) store.addComposerAttachment(row.attachment);
+    }
+  }
+
+  async function confirmDeleteSources() {
+    if (selectedSourceNames.length === 0) return;
+    const deleted = new Set(selectedSourceNames);
+    try {
+      await deleteFiles.mutateAsync(selectedSourceNames);
+    } catch {
+      return;
+    }
+    const store = useChatStore.getState();
+    for (const row of fileAttachmentRows) {
+      if (deleted.has(row.file.name)) store.removeComposerAttachment(row.attachment);
+    }
+    setSourceDeleteOpen(false);
+    showToast(`已删除 ${deleted.size} 份资料来源`);
+  }
+
+  async function confirmDeleteProject() {
+    if (!projectToDelete) return;
+    const deletedDatasetId = projectToDelete.datasetId;
+    try {
+      await deleteProject.mutateAsync(deletedDatasetId);
+    } catch {
+      return;
+    }
+    if (selectedDatasetId === deletedDatasetId) {
+      writeActivePrivateFundProjectId("");
+      navigate("/");
+    }
+    setProjectToDelete(null);
+    showToast(`已删除研究项目「${projectToDelete.name}」`);
+  }
+
   return (
-    <section className="mb-3">
-      <SectionHeader
-        title={project?.name ?? datasetId}
-        icon={<FolderIcon className="size-4 shrink-0" />}
-        collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
+    <section className={cn("mb-4", workbench && "private-fund-corpus-section")}>
+      <PrivateFundCreateProjectDialog
+        onCreated={(createdProject) => {
+          writeActivePrivateFundProjectId(createdProject.datasetId);
+          navigate(`/?private_fund_project=${encodeURIComponent(createdProject.datasetId)}`);
+        }}
+        onOpenChange={setCreateProjectOpen}
+        open={createProjectOpen}
       />
+      <PrivateFundUploadDialog {...documentUpload.dialogProps} />
+      <Dialog
+        open={Boolean(projectToDelete)}
+        onOpenChange={(open) => !open && !deleteProject.isPending && setProjectToDelete(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除研究项目？</DialogTitle>
+            <DialogDescription>
+              将永久删除「{projectToDelete?.name}
+              」的资料、索引、分析节点、资产和报告产物。关联对话会保留，但不能再访问此项目数据。
+            </DialogDescription>
+          </DialogHeader>
+          {deleteProject.isError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {deleteProject.error instanceof Error ? deleteProject.error.message : "删除项目失败"}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              disabled={deleteProject.isPending}
+              onClick={() => setProjectToDelete(null)}
+              type="button"
+              variant="ghost"
+            >
+              取消
+            </Button>
+            <Button
+              disabled={deleteProject.isPending}
+              onClick={() => void confirmDeleteProject()}
+              type="button"
+              variant="destructive"
+            >
+              {deleteProject.isPending ? "正在删除…" : "确认删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={sourceDeleteOpen}
+        onOpenChange={(open) => !deleteFiles.isPending && setSourceDeleteOpen(open)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除 {selectedSourceNames.length} 份资料来源？</DialogTitle>
+            <DialogDescription>
+              将从当前项目移除所选资料并使项目回到待索引状态。已入库的历史版本证据会保留，重新运行索引后当前检索范围才会更新。
+            </DialogDescription>
+          </DialogHeader>
+          {deleteFiles.isError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {deleteFiles.error instanceof Error ? deleteFiles.error.message : "删除资料来源失败"}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              disabled={deleteFiles.isPending}
+              onClick={() => setSourceDeleteOpen(false)}
+              type="button"
+              variant="ghost"
+            >
+              取消
+            </Button>
+            <Button
+              disabled={deleteFiles.isPending}
+              onClick={() => void confirmDeleteSources()}
+              type="button"
+              variant="destructive"
+            >
+              {deleteFiles.isPending ? "正在删除…" : "确认删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <div className="mb-2 flex items-center justify-between gap-2 px-1">
+        <h2 className="text-xs font-semibold tracking-wide text-foreground">研究项目</h2>
+        <div className="flex items-center gap-2">
+          {!workbench ? (
+            <span className="text-[11px] text-muted-foreground">{projects.length} 个项目</span>
+          ) : null}
+          <Button
+            aria-label="新建研究项目"
+            className="h-7 gap-1 px-2 text-[11px]"
+            onClick={() => setCreateProjectOpen(true)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <PlusIcon className="size-3" />
+            新建
+          </Button>
+        </div>
+      </div>
+
+      {projectsLoading ? (
+        <p className="px-2 py-2 text-xs text-muted-foreground">正在加载项目...</p>
+      ) : projects.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border px-2 py-3 text-xs text-muted-foreground">
+          暂无投研项目
+        </p>
+      ) : (
+        <ul
+          className={cn("flex flex-col", workbench ? "gap-3" : "gap-0.5")}
+          data-testid="private-fund-project-list"
+        >
+          {projects.map((item) => {
+            const isActive = item.datasetId === selectedDatasetId;
+            const status = privateFundProjectStatus(item);
+            const tokenUsage = item.tokenUsage ?? null;
+            const tokenCoverage =
+              tokenUsage &&
+              tokenUsage.sessionCount > 0 &&
+              tokenUsage.sessionsWithTotalTokens < tokenUsage.sessionCount
+                ? ` · 覆盖 ${tokenUsage.sessionsWithTotalTokens}/${tokenUsage.sessionCount}`
+                : "";
+            const tokenLabel =
+              tokenUsage?.totalTokens != null
+                ? `${formatTokenCount(tokenUsage.totalTokens)} tokens${tokenCoverage}`
+                : tokenUsage == null
+                  ? "用量暂不可用"
+                  : tokenUsage.sessionCount > 0
+                    ? "用量待记录"
+                    : "尚未产生用量";
+            const latestConversation = latestConversationByDatasetId.get(item.datasetId);
+            const projectParam = `private_fund_project=${encodeURIComponent(item.datasetId)}`;
+            const projectHref = latestConversation
+              ? `/c/${latestConversation.id}?${projectParam}`
+              : `/?${projectParam}`;
+            return (
+              <li className="relative" key={item.datasetId}>
+                <Link
+                  to={projectHref}
+                  onClick={(event) => {
+                    if (
+                      !event.defaultPrevented &&
+                      event.button === 0 &&
+                      !event.metaKey &&
+                      !event.ctrlKey &&
+                      !event.shiftKey &&
+                      !event.altKey
+                    ) {
+                      writeActivePrivateFundProjectId(item.datasetId);
+                    }
+                    onNavigate(event);
+                  }}
+                  aria-current={isActive ? "page" : undefined}
+                  data-testid={`private-fund-project-${item.datasetId}`}
+                  className={cn(
+                    workbench
+                      ? "group flex min-h-[74px] items-center gap-3 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] text-left transition-colors hover:border-[var(--pf-line-strong)] hover:bg-[var(--pf-panel-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)]"
+                      : "group flex min-h-11 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    isActive &&
+                      (workbench
+                        ? "border-[var(--pf-accent)] bg-[var(--pf-accent-soft)] shadow-[var(--pf-shadow)]"
+                        : "bg-muted"),
+                    "pr-10",
+                  )}
+                >
+                  {workbench && (
+                    <span className="ml-3 flex size-9 shrink-0 items-center justify-center rounded-lg bg-[var(--pf-accent-soft)] text-[var(--pf-accent-ink)]">
+                      <FolderIcon className="size-4" aria-hidden="true" />
+                    </span>
+                  )}
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1",
+                      workbench && "flex items-center gap-2 py-3 pr-3",
+                    )}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-foreground">
+                        {item.name}
+                      </span>
+                      <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <span className="min-w-0 truncate">
+                          {item.uploadCount || item.fileCount} 份资料 ·{" "}
+                          {privateFundProjectUpdatedAt(item)}
+                        </span>
+                        {workbench ? (
+                          <span
+                            className="shrink-0 font-medium tabular-nums text-[var(--pf-ink-secondary)]"
+                            data-testid={`private-fund-project-token-usage-${item.datasetId}`}
+                          >
+                            {tokenLabel}
+                          </span>
+                        ) : null}
+                      </span>
+                      {workbench && tokenUsage?.totalTokens != null ? (
+                        <TokenUsageBar
+                          usage={tokenUsage}
+                          className="mt-1.5 w-full"
+                          testId={`private-fund-project-token-bar-${item.datasetId}`}
+                        />
+                      ) : null}
+                    </span>
+                    <span
+                      className={cn(
+                        "flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground",
+                        status.className,
+                        workbench && "mr-6",
+                      )}
+                    >
+                      <CircleIcon className="size-2 fill-current" aria-hidden="true" />
+                      {status.label}
+                    </span>
+                  </span>
+                </Link>
+                <Button
+                  aria-label={`删除研究项目 ${item.name}`}
+                  className={cn(
+                    "absolute right-1.5 top-1.5 z-10 text-muted-foreground hover:text-destructive",
+                    workbench && "right-2 top-2 bg-[var(--pf-panel-raised)]",
+                  )}
+                  onClick={() => {
+                    deleteProject.reset();
+                    setProjectToDelete(item);
+                  }}
+                  size="icon-sm"
+                  title="删除项目"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Trash2Icon className="size-3.5" />
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="mt-3 border-border border-t pt-3">
+        <div className="flex items-start justify-between gap-3 px-1">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">资料来源</h3>
+            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+              {project?.name ?? selectedDatasetId ?? "未选择项目"} · 已选 {attachedProjectFileCount}
+              /{projectAttachmentKeys.length}，勾选后加入上下文
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              aria-label="从资料来源上传文档"
+              className="h-7 gap-1 px-2 text-[11px]"
+              disabled={!selectedDatasetId || documentUpload.isPending}
+              onClick={documentUpload.openDialog}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {documentUpload.isPending ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : (
+                <UploadIcon className="size-3" />
+              )}
+              上传
+            </Button>
+            <button
+              type="button"
+              aria-label={collapsed ? "展开资料来源" : "收起资料来源"}
+              aria-expanded={!collapsed}
+              onClick={toggleCollapsed}
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronRightIcon
+                className={cn("size-3.5 transition-transform", !collapsed && "rotate-90")}
+              />
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 flex min-h-8 items-center justify-between gap-2 rounded-lg border border-border bg-muted/35 px-2">
+          <label className="flex min-w-0 cursor-pointer items-center gap-2 text-[11px] font-medium text-foreground">
+            <PrivateFundAttachmentCheckbox
+              aria-label={`全选${project?.name ?? selectedDatasetId ?? "项目"}的资料来源`}
+              checked={allProjectFilesAttached}
+              disabled={files.length === 0 || deleteFiles.isPending}
+              mixed={someProjectFilesAttached}
+              onChange={toggleProjectAttachments}
+            />
+            <span className="truncate">{allProjectFilesAttached ? "取消全选" : "全选资料"}</span>
+          </label>
+          <Button
+            aria-label={`删除已选资料来源 ${selectedSourceNames.length} 项`}
+            className="h-7 shrink-0 gap-1 px-2 text-[11px]"
+            disabled={selectedSourceNames.length === 0 || deleteFiles.isPending}
+            onClick={() => {
+              deleteFiles.reset();
+              setSourceDeleteOpen(true);
+            }}
+            size="sm"
+            type="button"
+            variant="destructive"
+          >
+            <Trash2Icon className="size-3" />
+            删除{selectedSourceNames.length > 0 ? ` ${selectedSourceNames.length}` : ""}
+          </Button>
+        </div>
+      </div>
       {!collapsed && (
-        <div className="mt-0.5 flex flex-col gap-1">
+        <div className="mt-2 flex flex-col gap-1">
           {projectQuery.isLoading ? (
             <p className="px-2 py-1 text-xs text-muted-foreground">正在加载项目资料...</p>
           ) : files.length === 0 ? (
             <p className="px-2 py-1 text-xs text-muted-foreground">暂无项目资料</p>
           ) : (
             <ul className="flex flex-col gap-0.5">
-              {files.map((file) => {
-                const attachmentPath = normalizePrivateFundFilePath(file, project);
-                const isAttached = attachedPathKeys.has(
-                  composerAttachmentKey({ path: attachmentPath, isDir: false }),
-                );
+              {fileAttachmentRows.map(({ file, attachment, key }) => {
+                const isAttached = attachedPathKeys.has(key);
                 return (
                   <li key={`${file.name}-${file.docId ?? file.sourcePath ?? ""}`}>
-                    <button
-                      type="button"
-                      className="group flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={() => attachFile(file)}
+                    <div
+                      className={cn(
+                        "group flex min-h-8 w-full items-center gap-2 px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted focus-within:bg-muted",
+                        workbench
+                          ? "rounded-lg border border-transparent bg-[var(--pf-panel-raised)] py-2"
+                          : "rounded-md",
+                        isAttached &&
+                          (workbench
+                            ? "border-[var(--pf-accent)] bg-[var(--pf-accent-soft)]"
+                            : "bg-muted/40"),
+                      )}
                     >
-                      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-medium">{file.name}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground">
-                          {file.fileType.toUpperCase()}
+                      <PrivateFundAttachmentCheckbox
+                        checked={isAttached}
+                        aria-label={`选择资料来源 ${file.name}`}
+                        onChange={() =>
+                          isAttached ? removeFile(attachment) : attachFile(attachment)
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => attachFile(attachment)}
+                      >
+                        <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-medium">{file.name}</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">
+                            {file.fileType.toUpperCase()}
+                          </span>
                         </span>
-                      </span>
+                      </button>
                       {isAttached && (
                         <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                           已加入
                         </span>
                       )}
-                    </button>
+                    </div>
                   </li>
                 );
               })}
@@ -384,7 +854,13 @@ function PrivateFundCorpusSection({ activeDatasetId }: { activeDatasetId: string
   );
 }
 
-export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
+export function Sidebar({
+  open,
+  onClose,
+  privateFundWorkspace = false,
+  activePrivateFundDatasetId = null,
+  dragProgress = null,
+}: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [pinnedConversationIds, setPinnedConversationIds] = useState(readPinnedConversationIds);
@@ -445,6 +921,36 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
   const conversationsQuery = useConversations(debouncedSearchQuery, true, {
     reconcileWhileConnected: true,
   });
+  const privateFundProjectsQuery = usePrivateFundProjects();
+  const privateFundProjects = privateFundProjectsQuery.data ?? [];
+  const [storedActiveDatasetId, setStoredActiveDatasetId] = useState(
+    readActivePrivateFundProjectId,
+  );
+  const location = useLocation();
+  const privateFundProjectParam = useMemo(
+    () => new URLSearchParams(location.search).get("private_fund_project") || null,
+    [location.search],
+  );
+
+  useEffect(() => {
+    const syncFromStorage = () => setStoredActiveDatasetId(readActivePrivateFundProjectId());
+    const handleActiveProjectChanged = (event: Event) => {
+      const datasetId =
+        event instanceof CustomEvent && typeof event.detail?.datasetId === "string"
+          ? event.detail.datasetId
+          : readActivePrivateFundProjectId();
+      setStoredActiveDatasetId(datasetId);
+    };
+    window.addEventListener("storage", syncFromStorage);
+    window.addEventListener(ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT, handleActiveProjectChanged);
+    return () => {
+      window.removeEventListener("storage", syncFromStorage);
+      window.removeEventListener(
+        ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT,
+        handleActiveProjectChanged,
+      );
+    };
+  }, []);
 
   // The scrollable list container 鈥?used as the IntersectionObserver root for
   // infinite scroll (auto-loading the next page as the sentinel nears view).
@@ -460,9 +966,42 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
   const { conversationId: activeConversationId } = useParams<{ conversationId: string }>();
   const activeCorpusDatasetId = useMemo(() => {
     if (!activeConversationId) return null;
-    const activeConversation = loadedRows.find((conversation) => conversation.id === activeConversationId);
+    const activeConversation = loadedRows.find(
+      (conversation) => conversation.id === activeConversationId,
+    );
     return activeConversation?.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY] ?? null;
   }, [activeConversationId, loadedRows]);
+  const selectedPrivateFundDatasetId =
+    privateFundProjectParam ||
+    activePrivateFundDatasetId ||
+    activeCorpusDatasetId ||
+    storedActiveDatasetId ||
+    privateFundProjects.find((project) => project.datasetId === "阳光电源")?.datasetId ||
+    privateFundProjects[0]?.datasetId ||
+    null;
+  const hasPrivateFundContext = Boolean(
+    privateFundProjectParam ||
+    activePrivateFundDatasetId ||
+    activeCorpusDatasetId ||
+    storedActiveDatasetId ||
+    privateFundProjects.length > 0,
+  );
+  const privateFundConversationDatasetId = hasPrivateFundContext
+    ? selectedPrivateFundDatasetId
+    : null;
+  const selectableConversations = useMemo(
+    () =>
+      privateFundConversationDatasetId
+        ? loadedRows.filter((conversation) =>
+            conversationMatchesPrivateFundDataset(conversation, privateFundConversationDatasetId),
+          )
+        : loadedRows,
+    [loadedRows, privateFundConversationDatasetId],
+  );
+  useEffect(() => {
+    setSelectedIds((current) => (current.size > 0 ? new Set() : current));
+    lastSelectedIdRef.current = null;
+  }, [privateFundConversationDatasetId]);
   const pendingApprovals = useMemo(() => sumPendingApprovals(loadedRows), [loadedRows]);
   // Plus unseen file comments 鈥?the badge counts everything the Inbox
   // page lists. Comment queries are shared with the page/FileViewer
@@ -483,7 +1022,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
   }
 
   // Which top-level nav button to highlight for the current route.
-  const { isNewChatPage, isInboxPage, isResearchProjectsPage } = useActiveNavItem();
+  const { isNewChatPage, isInboxPage } = useActiveNavItem();
 
   // On /settings the card keeps its chrome but swaps the conversation list
   // for the settings section nav (see settingsNav.tsx) 鈥?entering settings
@@ -513,6 +1052,46 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
   // visually open so it isn't `inert`/`aria-hidden` mid-gesture.
   const dragging = dragProgress != null;
   const effectiveOpen = open || dragging;
+  const sessionSearchControls = selectionMode ? (
+    <BulkActionBar
+      selectedIds={selectedIds}
+      allConversations={selectableConversations}
+      onSelectAll={() => selectAll(selectableConversations)}
+      onDeselectAll={deselectAll}
+      onClear={deselectAll}
+      onExit={exitSelectionMode}
+    />
+  ) : (
+    <div className="relative mt-3 flex items-center gap-1.5">
+      <div className="relative flex-1">
+        <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2.5 size-3.5 text-muted-foreground" />
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search sessions"
+          placeholder="Search sessions"
+          className="min-h-8 w-full rounded-full border border-input pr-3 pl-8 text-sm transition placeholder:text-muted-foreground focus-visible:outline-1 md:select-text"
+        />
+      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Select sessions"
+            data-testid="toggle-selection-mode"
+            className="shrink-0 rounded-full"
+            onClick={() => setSelectionMode(true)}
+          >
+            <ListChecksIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Select sessions</TooltipContent>
+      </Tooltip>
+    </div>
+  );
 
   return (
     <aside
@@ -524,6 +1103,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
         // shell, where it pushes the card below the traffic lights
         // (see the [data-electron-mac] rules in index.css).
         "conversations-sidebar flex flex-col bg-card md:select-none",
+        privateFundWorkspace && "private-fund-project-sidebar !bg-[var(--pf-panel)]",
         // Mobile (default): fixed full-screen overlay, slide via
         // translate-x. Stays edge-to-edge 鈥?the floating-card
         // treatment below is desktop-only.
@@ -547,12 +1127,14 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
         // nothing lingers.
         "md:relative md:inset-auto md:translate-x-0 md:overflow-hidden",
         open
-          ? "md:m-2 md:w-[var(--sidebar-width)] md:rounded-xl md:border md:border-border md:shadow-lg"
+          ? privateFundWorkspace
+            ? "md:m-0 md:w-[var(--sidebar-width)] md:border-r md:border-border md:shadow-none"
+            : "md:m-2 md:w-[var(--sidebar-width)] md:rounded-xl md:border md:border-border md:shadow-lg"
           : "md:m-0 md:w-0 md:border-0",
       )}
       style={
         {
-          "--sidebar-width": `${sidebarWidth}px`,
+          "--sidebar-width": `${privateFundWorkspace ? Math.min(sidebarWidth, 240) : sidebarWidth}px`,
           // Track the finger: map the 0鈫? open fraction to translateX
           // -100%鈫?% and kill the transition so it follows the drag exactly.
           ...(dragging
@@ -564,6 +1146,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
       // don't see the empty-state contents while focus is elsewhere.
       aria-hidden={!effectiveOpen}
       data-collapsed={!effectiveOpen || undefined}
+      data-private-fund-workspace={privateFundWorkspace || undefined}
       // Match the keyboard-focus story: when closed, the sidebar's
       // children shouldn't receive tabs.
       inert={!effectiveOpen}
@@ -572,10 +1155,12 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
           left-edge handle. Hidden on mobile, where the sidebar is a
           full-screen overlay with no resize affordance; the parent's ``inert``
           when closed also keeps it from being draggable while collapsed. */}
-      <div
-        {...resizeHandleProps}
-        className="absolute inset-y-0 right-0 z-10 hidden w-1 cursor-col-resize transition-colors hover:bg-primary/30 active:bg-primary/50 md:block"
-      />
+      {!privateFundWorkspace && (
+        <div
+          {...resizeHandleProps}
+          className="absolute inset-y-0 right-0 z-10 hidden w-1 cursor-col-resize transition-colors hover:bg-primary/30 active:bg-primary/50 md:block"
+        />
+      )}
       {inSettings ? (
         <SettingsSidebarBody onNavClick={onNavClick} onClose={onClose} />
       ) : (
@@ -588,45 +1173,55 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
             the sidebar on mobile (where it's a full-screen overlay) but
             modifier/middle clicks still open `/` in a new tab. */}
             <Link
-              to="/"
+              to={
+                privateFundWorkspace && selectedPrivateFundDatasetId
+                  ? `/?private_fund_project=${encodeURIComponent(selectedPrivateFundDatasetId)}`
+                  : "/"
+              }
               onClick={onNavClick}
-              className="rounded-sm text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/70"
+              className={cn(
+                "rounded-sm text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/70",
+                privateFundWorkspace && "text-[16px] tracking-[-0.02em]",
+              )}
             >
-              finsagent
+              {privateFundWorkspace ? "投研工作台" : "finsagent"}
             </Link>
             <div className="flex items-center gap-1">
+              <ThemeToggle />
               {/* Inbox lives at the top next to the collapse toggle. Rendered
               as a Link so cmd/middle-click opens it in a new tab; onNavClick
               still closes the sidebar on a plain mobile tap. */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Inbox"
-                    className={cn("relative rounded-full", isInboxPage && "bg-muted")}
-                    data-testid="inbox-button"
-                  >
-                    <Link to="/inbox" onClick={onNavClick}>
-                      <InboxIcon className="size-4" />
-                      {inboxCount > 0 && (
-                        <span
-                          aria-label={
-                            inboxCount === 1
-                              ? "1 inbox item waiting"
-                              : `${inboxCount} inbox items waiting`
-                          }
-                          className="-top-0.5 -right-0.5 absolute inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning/15 px-1 text-[10px] font-medium text-warning tabular-nums"
-                        >
-                          {inboxCount}
-                        </span>
-                      )}
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Inbox</TooltipContent>
-              </Tooltip>
+              {!privateFundWorkspace && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Inbox"
+                      className={cn("relative rounded-full", isInboxPage && "bg-muted")}
+                      data-testid="inbox-button"
+                    >
+                      <Link to="/inbox" onClick={onNavClick}>
+                        <InboxIcon className="size-4" />
+                        {inboxCount > 0 && (
+                          <span
+                            aria-label={
+                              inboxCount === 1
+                                ? "1 inbox item waiting"
+                                : `${inboxCount} inbox items waiting`
+                            }
+                            className="-top-0.5 -right-0.5 absolute inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning/15 px-1 text-[10px] font-medium text-warning tabular-nums"
+                          >
+                            {inboxCount}
+                          </span>
+                        )}
+                      </Link>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Inbox</TooltipContent>
+                </Tooltip>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -664,69 +1259,19 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
               variant="ghost"
               data-testid="new-chat-button"
             >
-              <Link to="/" onClick={onNavClick}>
-                <SquarePenIcon className="size-4 text-foreground" />
-                New session
-              </Link>
-            </Button>
-            <Button
-              asChild
-              className={cn(
-                "mt-1 w-full justify-start gap-2 text-sm",
-                isResearchProjectsPage && "bg-muted font-semibold",
-              )}
-              variant="ghost"
-              data-testid="research-projects-button"
-            >
-              <Link to="/research-projects" onClick={onNavClick}>
-                <FolderInputIcon className="size-4 text-foreground" />
-                Research projects
-              </Link>
-            </Button>
-            {selectionMode ? (
-              <BulkActionBar
-                selectedIds={selectedIds}
-                allConversations={(conversationsQuery.data?.pages ?? []).flatMap(
-                  (page) => page.data,
-                )}
-                onSelectAll={() =>
-                  selectAll((conversationsQuery.data?.pages ?? []).flatMap((page) => page.data))
+              <Link
+                to={
+                  privateFundWorkspace && selectedPrivateFundDatasetId
+                    ? `/?private_fund_project=${encodeURIComponent(selectedPrivateFundDatasetId)}`
+                    : "/"
                 }
-                onDeselectAll={deselectAll}
-                onClear={deselectAll}
-                onExit={exitSelectionMode}
-              />
-            ) : (
-              <div className="relative mt-3 flex items-center gap-1.5">
-                <div className="relative flex-1">
-                  <SearchIcon className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2.5 size-3.5 text-muted-foreground" />
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    aria-label="Search sessions"
-                    placeholder="Search sessions"
-                    className="min-h-8 w-full rounded-full border border-input pr-3 pl-8 text-sm transition placeholder:text-muted-foreground focus-visible:outline-1 md:select-text"
-                  />
-                </div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Select sessions"
-                      data-testid="toggle-selection-mode"
-                      className="shrink-0 rounded-full"
-                      onClick={() => setSelectionMode(true)}
-                    >
-                      <ListChecksIcon className="size-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Select sessions</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
+                onClick={onNavClick}
+              >
+                <SquarePenIcon className="size-4 text-foreground" />
+                {privateFundWorkspace ? "开始新研究" : "New session"}
+              </Link>
+            </Button>
+            {!privateFundWorkspace && sessionSearchControls}
           </div>
 
           {/* Mobile: extra bottom padding so the last session scrolls clear of
@@ -736,7 +1281,17 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
             ref={scrollContainerRef}
             className="relative flex-1 overflow-y-auto px-3 pb-3 max-md:pb-16 [scrollbar-gutter:stable]"
           >
-            <PrivateFundCorpusSection activeDatasetId={activeCorpusDatasetId} />
+            <PrivateFundCorpusSection
+              projects={privateFundProjects}
+              projectsLoading={privateFundProjectsQuery.isLoading}
+              conversations={loadedRows}
+              selectedDatasetId={selectedPrivateFundDatasetId}
+              onNavigate={onNavClick}
+              workbench={privateFundWorkspace}
+            />
+            {privateFundWorkspace && (
+              <div className="mb-3 border-border border-t pt-1">{sessionSearchControls}</div>
+            )}
             <ConversationList
               conversationsQuery={conversationsQuery}
               scrollContainerRef={scrollContainerRef}
@@ -749,6 +1304,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
               selectedIds={selectedIds}
               onToggleSelected={toggleSelected}
               visibleIdsRef={visibleIdsRef}
+              privateFundDatasetId={privateFundConversationDatasetId}
             />
           </nav>
 
@@ -786,7 +1342,7 @@ export function Sidebar({ open, onClose, dragProgress = null }: SidebarProps) {
               <Link to="/settings" aria-label="Settings">
                 <SettingsIcon className="size-4 text-muted-foreground" />
                 {/* Label is desktop-only; the icon stands alone on mobile. */}
-                <span className="max-md:hidden">Settings</span>
+                <span className="max-md:hidden">{privateFundWorkspace ? "设置" : "Settings"}</span>
               </Link>
             </Button>
           </div>
@@ -847,7 +1403,8 @@ function InfiniteScrollSentinel({
       {isFetching ? (
         <>
           <Loader2Icon className="size-3 animate-spin" />
-          Loading鈥?        </>
+          Loading鈥?{" "}
+        </>
       ) : (
         "Load more"
       )}
@@ -867,6 +1424,7 @@ function ProjectFolder({
   name,
   expanded,
   marker,
+  privateFundDatasetId,
   onToggleCollapsed,
   pinnedConversationIds,
   activeOverride,
@@ -882,6 +1440,7 @@ function ProjectFolder({
   name: string;
   expanded: boolean;
   marker: SessionState | null;
+  privateFundDatasetId: string | null;
   onToggleCollapsed: () => void;
   pinnedConversationIds: string[];
   activeOverride: ActiveChatOverride | null;
@@ -900,10 +1459,14 @@ function ProjectFolder({
     const loaded = query.data?.pages.flatMap((page) => page.data) ?? [];
     // Pinned sessions live in the global Pinned section, not their folder.
     return sortByUpdatedAtDesc(
-      loaded.filter((c) => !pinnedSet.has(c.id)),
+      loaded.filter(
+        (c) =>
+          !pinnedSet.has(c.id) &&
+          (!privateFundDatasetId || conversationMatchesPrivateFundDataset(c, privateFundDatasetId)),
+      ),
       activeOverride,
     );
-  }, [query.data, pinnedSet, activeOverride]);
+  }, [query.data, pinnedSet, privateFundDatasetId, activeOverride]);
 
   useEffect(() => {
     if (!projectRenderedIdsRef) return;
@@ -992,11 +1555,19 @@ interface ConversationListProps {
   selectedIds: Set<string>;
   onToggleSelected: (conversationId: string, shiftKey?: boolean) => void;
   visibleIdsRef: RefObject<string[]>;
+  privateFundDatasetId: string | null;
 }
 
 // permission_level null (no ACL row / legacy) or >= 4 both mean owner.
 function isOwnedByViewer(conversation: Conversation): boolean {
   return isOwnerLevel(conversation.permission_level);
+}
+
+function conversationMatchesPrivateFundDataset(
+  conversation: Conversation,
+  datasetId: string,
+): boolean {
+  return conversation.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY] === datasetId;
 }
 
 function ConversationList({
@@ -1011,12 +1582,23 @@ function ConversationList({
   selectedIds,
   onToggleSelected,
   visibleIdsRef,
+  privateFundDatasetId,
 }: ConversationListProps) {
-  // All loaded conversations from the single paginated list (for pinned
-  // backfill, normalization, and the flat session list).
-  const allConversations = useMemo(
+  // Keep the unfiltered list for pin normalization, then scope only the rows
+  // rendered in this project workspace. Pins belonging to another project
+  // must remain persisted even while they are hidden here.
+  const loadedConversations = useMemo(
     () => conversationsQuery.data?.pages.flatMap((page) => page.data) ?? [],
     [conversationsQuery.data],
+  );
+  const allConversations = useMemo(
+    () =>
+      privateFundDatasetId
+        ? loadedConversations.filter((conversation) =>
+            conversationMatchesPrivateFundDataset(conversation, privateFundDatasetId),
+          )
+        : loadedConversations,
+    [loadedConversations, privateFundDatasetId],
   );
 
   // Project names for grouping sessions by their reserved project label.
@@ -1027,8 +1609,22 @@ function ConversationList({
   const projectRenderedIdsRef = useRef<Map<string, string[]>>(new Map());
 
   // Backfill pinned sessions that aren't in the loaded set.
-  const loadedIds = useMemo(() => new Set(allConversations.map((c) => c.id)), [allConversations]);
+  const loadedIds = useMemo(
+    () => new Set(loadedConversations.map((c) => c.id)),
+    [loadedConversations],
+  );
   const pinnedBackfill = usePinnedConversationBackfill(pinnedConversationIds, loadedIds);
+  const visiblePinnedBackfill = useMemo(
+    () =>
+      searchQuery
+        ? []
+        : privateFundDatasetId
+          ? pinnedBackfill.filter((conversation) =>
+              conversationMatchesPrivateFundDataset(conversation, privateFundDatasetId),
+            )
+          : pinnedBackfill,
+    [pinnedBackfill, privateFundDatasetId, searchQuery],
+  );
 
   // Freeze the active chat's sort key while you're inside it so an
   // updated_at bump from sending a message doesn't reorder the row
@@ -1046,7 +1642,7 @@ function ConversationList({
   // me"); a pinned-then-archived session shows under Archived, not Pinned.
   const pinnedSet = useMemo(() => new Set(pinnedConversationIds), [pinnedConversationIds]);
   const sections = useMemo(() => {
-    const allWithBackfill = [...allConversations, ...pinnedBackfill];
+    const allWithBackfill = [...allConversations, ...visiblePinnedBackfill];
     const notArchived = allWithBackfill.filter((c) => c.archived !== true);
 
     // Pinned takes precedence over Project: pinning a session moves it OUT of
@@ -1063,15 +1659,15 @@ function ConversationList({
     // pinned member is excluded here (it lives under Pinned instead), so
     // pinning a project's last session leaves the folder showing "No chats".
     const filedIds = new Set<string>();
-    const projectGroups: { name: string; conversations: Conversation[] }[] = projectNames.map(
-      (name) => {
+    const projectGroups: { name: string; conversations: Conversation[] }[] = projectNames
+      .map((name) => {
         const inProject = notArchived.filter(
           (c) => c.labels?.[PROJECT_LABEL_KEY] === name && !pinnedIdSet.has(c.id),
         );
         inProject.forEach((c) => filedIds.add(c.id));
         return { name, conversations: sortByUpdatedAtDesc(inProject, activeOverride) };
-      },
-    );
+      })
+      .filter((group) => !privateFundDatasetId || group.conversations.length > 0);
     // NOTE: empty projects are intentionally NOT filtered out. A project comes
     // from the server project list (useProjects), so it can have zero *loaded*
     // conversations 鈥?either genuinely empty or because its chats live on an
@@ -1095,11 +1691,12 @@ function ConversationList({
     return { pinned, sessions, shared, archived, projectGroups };
   }, [
     allConversations,
-    pinnedBackfill,
+    visiblePinnedBackfill,
     pinnedSet,
     pinnedConversationIds,
     activeOverride,
     projectNames,
+    privateFundDatasetId,
   ]);
 
   // Collapsed section titles 鈥?persisted like pins so the preference
@@ -1361,7 +1958,7 @@ function ConversationList({
   const { fetchNextPage, isFetchingNextPage } = conversationsQuery;
   useEffect(() => {
     if (!conversationsQuery.data || hasMorePages || searchQuery) return;
-    const allLoaded = [...allConversations, ...pinnedBackfill];
+    const allLoaded = [...loadedConversations, ...pinnedBackfill];
     const normalized = normalizePinnedConversationIds(pinnedConversationIds, allLoaded);
     if (!sameStringArray(normalized, pinnedConversationIds)) {
       onPinnedConversationIdsChange(normalized);
@@ -1370,7 +1967,7 @@ function ConversationList({
     conversationsQuery.data,
     hasMorePages,
     searchQuery,
-    allConversations,
+    loadedConversations,
     pinnedBackfill,
     pinnedConversationIds,
     onPinnedConversationIdsChange,
@@ -1387,7 +1984,13 @@ function ConversationList({
       </p>
     );
   }
-  const emptyMessage = searchQuery ? "No matching conversations" : "No active sessions";
+  const emptyMessage = privateFundDatasetId
+    ? searchQuery
+      ? "当前项目没有匹配的会话"
+      : "当前项目暂无会话"
+    : searchQuery
+      ? "No matching conversations"
+      : "No active sessions";
 
   // Archived sessions are surfaced on the Settings page, not here, so they
   // don't count toward the sidebar's empty-state threshold. Each project
@@ -1423,7 +2026,15 @@ function ConversationList({
             isn't rendered and there'd otherwise be nowhere to drop. */}
         {activeDrag?.project != null && sections.sessions.length === 0 && <UngroupDropZone />}
         {totalVisible === 0 ? (
-          <p className="px-2 py-1 text-muted-foreground text-xs">{emptyMessage}</p>
+          <div>
+            <p className="px-2 py-1 text-muted-foreground text-xs">{emptyMessage}</p>
+            <InfiniteScrollSentinel
+              hasMore={hasMorePages}
+              isFetching={isFetchingNextPage}
+              fetchMore={fetchNextPage}
+              scrollRoot={scrollContainerRef}
+            />
+          </div>
         ) : (
           <>
             {sections.pinned.length > 0 && (
@@ -1515,6 +2126,7 @@ function ConversationList({
                     key={group.name}
                     name={group.name}
                     expanded={expandedProjects.includes(group.name)}
+                    privateFundDatasetId={privateFundDatasetId}
                     // Best-effort marker from the globally-loaded window: a
                     // collapsed folder hasn't fetched its own sessions yet.
                     marker={projectMarkerState(group.conversations)}
@@ -1542,7 +2154,7 @@ function ConversationList({
                 active={activeDrag != null && (activeDrag.project != null || activeDrag.isPinned)}
               >
                 <ConversationSection
-                  title="Chats"
+                  title={privateFundDatasetId ? "项目会话" : "Chats"}
                   conversations={sections.sessions}
                   pinnedConversationIds={pinnedConversationIds}
                   collapsed={effectiveCollapsedSections.includes("Chats")}
@@ -1576,7 +2188,7 @@ function ConversationList({
             {/* Infinite-scroll sentinel for the global list. Pagination extends
               the Chats list, so it hides with a collapsed Chats group 鈥?a loader
               under a collapsed group reads orphaned. */}
-            {!effectiveCollapsedSections.includes("Chats") && (
+            {(!effectiveCollapsedSections.includes("Chats") || privateFundDatasetId) && (
               <InfiniteScrollSentinel
                 hasMore={hasMorePages}
                 isFetching={isFetchingNextPage}
@@ -2302,6 +2914,10 @@ function ConversationRow({
   const rowRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     if (!isActive) return;
+    // In the private-fund workspace the project list and current assets are
+    // the primary navigation. Keep that section at the top when the drawer
+    // opens instead of centering the active chat and scrolling projects away.
+    if (rowRef.current?.closest('[data-private-fund-workspace="true"]')) return;
     rowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [isActive]);
   const rename = useRenameConversation();
@@ -2929,7 +3545,7 @@ function DeletingRow({
       <span className="min-w-0 flex-1 truncate" title={label}>
         {label}
       </span>
-      <span className="shrink-0 text-xs">Deleting...</span>
+      <span className="shrink-0 text-xs">Deleting…</span>
     </div>
   );
 }
@@ -2952,7 +3568,7 @@ function ArchivingRow({ label }: { label: string }) {
       <span className="min-w-0 flex-1 truncate" title={label}>
         {label}
       </span>
-      <span className="shrink-0 text-xs">Archiving...</span>
+      <span className="shrink-0 text-xs">Archiving…</span>
     </div>
   );
 }

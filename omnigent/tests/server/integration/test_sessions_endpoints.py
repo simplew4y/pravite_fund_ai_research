@@ -4608,6 +4608,10 @@ async def test_external_session_usage_event_carries_token_breakdown(
     assert resp.status_code == 202, resp.text
     assert [event["type"] for _, event in published] == ["session.usage"]
     event = published[0][1]
+    # Flat subtree usage is the authoritative aggregate for the UI.
+    assert event["token_usage"]["input_tokens"] == 1000
+    assert event["token_usage"]["output_tokens"] == 500
+    assert event["token_usage"]["total_tokens"] == 1500
     # The per-model breakdown rides the broadcast, keyed by the event's model.
     assert event["usage_by_model"]["test-model"]["input_tokens"] == 1000
     assert event["usage_by_model"]["test-model"]["output_tokens"] == 500

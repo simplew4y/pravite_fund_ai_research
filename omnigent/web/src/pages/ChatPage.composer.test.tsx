@@ -15,8 +15,9 @@ vi.mock("@/hooks/useWorkspaceChangedFiles", async (importOriginal) => {
   };
 });
 import type { ElicitationBlock } from "@/lib/blocks";
+import { wrapPrivateFundPromptContext } from "@/lib/privateFundApi";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Composer } from "./ChatPage";
+import { Composer, extractUserText, stripPrivateFundPromptContext } from "./ChatPage";
 import { SlashCommandMenu } from "@/components/SlashCommandMenu";
 
 // These tests pin the slash-command suggestions menu UX in the composer:
@@ -293,6 +294,97 @@ describe("Composer slash-command submit routing", () => {
     fireEvent.keyDown(ta, { key: "Enter" });
 
     expect(onSend).toHaveBeenCalledWith("/deslop", undefined);
+  });
+
+  it("keeps a private-fund native skill as the first token while injecting task rules", () => {
+    localStorage.clear();
+    const onSend = vi.fn();
+    renderWithTooltips(
+      <Composer
+        {...composerProps({
+          onSend,
+          isNativeWrapper: true,
+          privateFundProjectLabel: "阳光电源",
+          privateFundDatasetId: "sungrow",
+        })}
+      />,
+    );
+    const ta = textarea();
+    fireEvent.change(ta, { target: { value: "/deslop verify the memo" } });
+    fireEvent.keyDown(ta, { key: "Enter" });
+
+    const sent = onSend.mock.calls[0]?.[0] as string;
+    expect(sent).toMatch(/^\/deslop verify the memo\n\n/);
+    expect(sent).toContain("dataset_id: sungrow");
+    expect(sent).toContain("研究级别：常规研究");
+    expect(sent).toContain("关键事实、时间、金额和事件必须逐条溯源");
+  });
+
+  it("sends private-fund rules to the agent but renders only the user's words", () => {
+    const onSend = vi.fn();
+    renderWithTooltips(
+      <Composer
+        {...composerProps({
+          onSend,
+          privateFundProjectLabel: "阳光电源",
+          privateFundDatasetId: "sungrow",
+        })}
+      />,
+    );
+    fireEvent.change(textarea(), { target: { value: "发言人二的主要观点" } });
+    fireEvent.keyDown(textarea(), { key: "Enter" });
+
+    const sent = onSend.mock.calls[0]?.[0] as string;
+    expect(sent).toContain("omnigent-private-fund-context:start");
+    expect(sent).toContain("dataset_id: sungrow");
+    expect(extractUserText([{ type: "input_text", text: sent }])).toBe("发言人二的主要观点");
+  });
+
+  it("hides generated memo constraints and asset context from the visible skill echo", () => {
+    const command =
+      "/private-fund-memo 聚焦海外盈利质量和主要风险。\n" +
+      wrapPrivateFundPromptContext(
+        [
+          "dataset_id: 阳光电源",
+          "必须调用 private_fund_dataset_memo。",
+          "用户勾选的资产上下文:",
+          "[node:valuation] 完整估值节点正文",
+        ].join("\n"),
+      );
+
+    expect(extractUserText([{ type: "input_text", text: command }])).toBe(
+      "/private-fund-memo 聚焦海外盈利质量和主要风险。",
+    );
+  });
+
+  it("hides the legacy unmarked Memo generation context already stored in history", () => {
+    const legacy = [
+      "/private-fund-memo 聚焦海外盈利质量和主要风险。",
+      "dataset_id: 阳光电源",
+      "必须调用 private_fund_dataset_memo，返回 Markdown、HTML 和 PDF。",
+      "所有重大事实和数字必须通过数据集工具核验；无法绑定 evidence_id 的内容标记为“资料未覆盖/待复核”。",
+      "",
+      "用户勾选的资产上下文:",
+      "[node:valuation] 完整估值节点正文",
+    ].join("\n");
+
+    expect(stripPrivateFundPromptContext(legacy).trim()).toBe(
+      "/private-fund-memo 聚焦海外盈利质量和主要风险。",
+    );
+  });
+
+  it("hides legacy unmarked private-fund instructions in conversation history", () => {
+    const legacy = [
+      "当前会话必须基于私募投研资料项目「阳光电源」回答。",
+      "dataset_id: 阳光电源",
+      "研究级别：常规研究。先检索本地结构化数据。",
+      "所有资料状态、检索、source detail 和 memo 工具调用都必须显式使用上述 dataset_id。",
+      "回答和 memo 生成都要优先使用该项目的本地资料。",
+      "关键事实、时间、金额和事件必须逐条溯源；资料没有直接证据时，明确标注“资料未覆盖/需复核”，不得裸写或无证据扩写。",
+      "发言人二的主要观点",
+    ].join("\n");
+
+    expect(stripPrivateFundPromptContext(legacy).trim()).toBe("发言人二的主要观点");
   });
 
   it("routes /model to setModel on in-process sessions (matches REPL /model)", () => {

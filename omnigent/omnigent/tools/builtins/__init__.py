@@ -166,6 +166,58 @@ def _create_export_agent(config: dict[str, str]) -> Tool:
     return ExportAgentTool()
 
 
+def _create_private_fund_tool(name: str) -> Tool:
+    """Select one structured project tool from the shared builder."""
+    from omnigent.tools.builtins.private_fund_dataset import (
+        build_private_fund_dataset_tools,
+    )
+
+    for tool in build_private_fund_dataset_tools(None):
+        if tool.name() == name:
+            return tool
+    raise KeyError(f"private-fund builtin {name!r} is missing from the shared builder")
+
+
+def _create_private_fund_dataset_status(config: dict[str, str]) -> Tool:
+    """Build the private-fund dataset status tool for runner-local dispatch."""
+    return _create_private_fund_tool("private_fund_dataset_status")
+
+
+def _create_private_fund_dataset_search(config: dict[str, str]) -> Tool:
+    """Build the private-fund evidence search tool for runner-local dispatch."""
+    return _create_private_fund_tool("private_fund_dataset_search")
+
+
+def _create_private_fund_source_detail(config: dict[str, str]) -> Tool:
+    """Build the private-fund source detail tool for runner-local dispatch."""
+    return _create_private_fund_tool("private_fund_source_detail")
+
+
+def _create_private_fund_dataset_memo(config: dict[str, str]) -> Tool:
+    """Build the private-fund memo tool for runner-local dispatch."""
+    return _create_private_fund_tool("private_fund_dataset_memo")
+
+
+def _create_private_fund_equity_report_generate(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_equity_report_generate")
+
+
+def _create_private_fund_equity_report_status(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_equity_report_status")
+
+
+def _create_private_fund_equity_report_get(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_equity_report_get")
+
+
+def _create_private_fund_research_context(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_research_context")
+
+
+def _create_private_fund_research_node_save(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_research_node_save")
+
+
 # Unified registry for every reserved builtin name. The value
 # is either a factory callable (for user-enablable tools) or
 # ``None`` for framework-owned names that occupy the name-space
@@ -188,6 +240,15 @@ _BUILTIN_REGISTRY: dict[str, _BuiltinFactory | None] = {
     "download_file": _create_download_file,
     "search_conversations": _create_search_conversations,
     "export_agent": _create_export_agent,
+    "private_fund_dataset_status": _create_private_fund_dataset_status,
+    "private_fund_dataset_search": _create_private_fund_dataset_search,
+    "private_fund_source_detail": _create_private_fund_source_detail,
+    "private_fund_dataset_memo": _create_private_fund_dataset_memo,
+    "private_fund_equity_report_generate": _create_private_fund_equity_report_generate,
+    "private_fund_equity_report_status": _create_private_fund_equity_report_status,
+    "private_fund_equity_report_get": _create_private_fund_equity_report_get,
+    "private_fund_research_context": _create_private_fund_research_context,
+    "private_fund_research_node_save": _create_private_fund_research_node_save,
     # Framework-owned: need runtime context. ``web_fetch`` is
     # constructed by ToolManager before reaching this registry.
     # ``list_comments`` and ``update_comment`` are auto-registered by

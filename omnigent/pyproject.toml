@@ -94,6 +94,13 @@ dependencies = [
     # transitive dep; pinned here now that we import it directly.
     "packaging>=23,<26",
     "pymupdf>=1.24,<2",
+    # FinRobot-aligned equity reports reuse its professional chart renderer.
+    "numpy>=1.26,<3",
+    "pandas>=2.2,<3",
+    "matplotlib>=3.8,<4",
+    # Private-fund directory ingestion parses XLSX/XLSM files via
+    # FinSagent/data_pipeline/private_fund_directory_ingest.py.
+    "openpyxl>=3.1,<4",
 ]
 
 [project.optional-dependencies]
@@ -266,6 +273,7 @@ include = ["omnigent*"]
 "omnigent.db.migrations" = ["script.py.mako"]
 "omnigent.resources.examples" = ["*.yaml", "*.sh", "debby/**/*", "polly/**/*"]
 "omnigent.resources.pi_native" = ["*.js"]
+"omnigent.resources.private_fund_skills" = ["*/SKILL.md", "*/agents/*.yaml"]
 # include UI assets in build
 "omnigent.server" = ["static/web-ui/**/*"]
 

@@ -176,7 +176,9 @@ class _FakeResult:
 
 class _FakeRunner:
     last_calls = []
+    last_run_calls = []
     next_result = None
+    next_run_result = None
     # When non-empty, each ``run_streamed`` call pops the next result from
     # the front (left). Used by the empty-turn retry tests to return a
     # different result per attempt. Falls back to ``next_result`` when
@@ -197,6 +199,19 @@ class _FakeRunner:
         if cls.next_results:
             return cls.next_results.pop(0)
         return cls.next_result
+
+    @classmethod
+    async def run(cls, agent, input, session, max_turns, run_config):
+        cls.last_run_calls.append(
+            {
+                "agent": agent,
+                "input": input,
+                "session": session,
+                "max_turns": max_turns,
+                "run_config": run_config,
+            }
+        )
+        return cls.next_run_result
 
 
 class _FakeFunctionTool:
@@ -265,6 +280,10 @@ class _FakeItemHelpers:
 
 class _FakeMaxTurnsExceeded(Exception):
     pass
+
+
+class ModelBehaviorError(Exception):
+    """Test stand-in for ``agents.exceptions.ModelBehaviorError``."""
 
 
 def _fake_agents_sdk():
@@ -1019,6 +1038,142 @@ class TestOpenAIAgentsSDKExecutor(unittest.TestCase):
             self.assertEqual(resume_state._max_turns, 1)
             self.assertEqual(resume_state._current_turn_persisted_item_count, 0)
             self.assertEqual(second_events[-1].response, "done")
+
+        _run(_t())
+
+    def test_stepwise_internal_turns_resume_after_missing_final_response(self):
+        async def _t():
+            _FakeRunner.last_calls = []
+            resume_state = types.SimpleNamespace(
+                _current_turn=4,
+                _max_turns=50,
+                _current_turn_persisted_item_count=2,
+            )
+            first_result = _FakeResult(
+                events=[
+                    _FakeRunItemEvent(
+                        _FakeToolCallItem(_FakeToolCallRawItem("add", '{"a": 2, "b": 3}'))
+                    ),
+                    _FakeRunItemEvent(
+                        _FakeToolOutputItem(_FakeToolOutputRawItem(), {"result": 5})
+                    ),
+                ],
+                exception=ModelBehaviorError("Model did not produce a final response!"),
+                state=resume_state,
+            )
+            _FakeRunner.next_result = first_result
+            executor = OpenAIAgentsSDKExecutor(client=object())
+            with patch(
+                "omnigent.inner.openai_agents_sdk_executor._ensure_agents_sdk",
+                return_value=_fake_agents_sdk(),
+            ):
+                first_events = [
+                    event
+                    async for event in executor.run_turn(
+                        [{"role": "user", "content": "count", "session_id": "s1"}],
+                        [{"name": "add", "description": "Add", "parameters": {"type": "object"}}],
+                        "Be helpful.",
+                        ExecutorConfig(extra={"stepwise_internal_turns": True}),
+                    )
+                ]
+
+                _FakeRunner.next_result = _FakeResult(events=[], final_output="done")
+                second_events = [
+                    event
+                    async for event in executor.run_turn(
+                        [{"role": "user", "content": "count", "session_id": "s1"}],
+                        [{"name": "add", "description": "Add", "parameters": {"type": "object"}}],
+                        "Be helpful.",
+                        ExecutorConfig(extra={"stepwise_internal_turns": True}),
+                    )
+                ]
+
+            self.assertTrue(first_events[-1].continue_turn)
+            self.assertEqual(first_result.cancel_calls, [])
+            self.assertIs(_FakeRunner.last_calls[1]["input"], resume_state)
+            self.assertEqual(resume_state._current_turn, 0)
+            self.assertEqual(resume_state._max_turns, 1)
+            self.assertEqual(resume_state._current_turn_persisted_item_count, 0)
+            self.assertEqual(second_events[-1].response, "done")
+
+        _run(_t())
+
+    def test_missing_final_response_after_tool_activity_resumes_in_same_turn(self):
+        async def _t():
+            _FakeRunner.last_calls = []
+            _FakeRunner.last_run_calls = []
+            resume_state = types.SimpleNamespace()
+            first_result = _FakeResult(
+                events=[
+                    _FakeRunItemEvent(
+                        _FakeToolCallItem(_FakeToolCallRawItem("add", '{"a": 2, "b": 3}'))
+                    ),
+                    _FakeRunItemEvent(
+                        _FakeToolOutputItem(_FakeToolOutputRawItem(), {"result": 5})
+                    ),
+                ],
+                exception=ModelBehaviorError("Model did not produce a final response!"),
+                state=resume_state,
+                raw_responses=[
+                    _FakeRawResponse(
+                        usage=_FakeUsage(input_tokens=10, output_tokens=2, total_tokens=12)
+                    )
+                ],
+            )
+            _FakeRunner.next_result = first_result
+            _FakeRunner.next_run_result = _FakeResult(
+                events=[],
+                final_output="结果是 5",
+                raw_responses=[
+                    _FakeRawResponse(
+                        usage=_FakeUsage(input_tokens=20, output_tokens=3, total_tokens=23)
+                    )
+                ],
+            )
+            executor = OpenAIAgentsSDKExecutor(client=object())
+            with patch(
+                "omnigent.inner.openai_agents_sdk_executor._ensure_agents_sdk",
+                return_value=_fake_agents_sdk(),
+            ):
+                events = [
+                    event
+                    async for event in executor.run_turn(
+                        [{"role": "user", "content": "count", "session_id": "s1"}],
+                        [{"name": "add", "description": "Add", "parameters": {"type": "object"}}],
+                        "Be helpful.",
+                    )
+                ]
+
+            self.assertEqual(len(_FakeRunner.last_calls), 1)
+            self.assertEqual(len(_FakeRunner.last_run_calls), 1)
+            fallback_call = _FakeRunner.last_run_calls[0]
+            self.assertIn("Original user request:\ncount", fallback_call["input"])
+            self.assertIn('"result": 5', fallback_call["input"])
+            self.assertIsNone(fallback_call["session"])
+            self.assertEqual(fallback_call["max_turns"], 1)
+            self.assertEqual(fallback_call["agent"].tools, [])
+            self.assertEqual(first_result.cancel_calls, [])
+            self.assertEqual(events[-1].response, "结果是 5")
+            self.assertEqual(
+                events[-1].usage,
+                {
+                    "input_tokens": 30,
+                    "output_tokens": 5,
+                    "total_tokens": 35,
+                    "context_tokens": 23,
+                    "model": "gpt-5.3-codex",
+                },
+            )
+            sdk_items = await executor._session_states["s1"].sdk_session.get_items()
+            self.assertEqual(
+                sdk_items[-1],
+                {
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "结果是 5"}],
+                    "status": "completed",
+                },
+            )
+            self.assertFalse(any(isinstance(event, ExecutorError) for event in events))
 
         _run(_t())
 

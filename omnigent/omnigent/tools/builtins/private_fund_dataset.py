@@ -12,9 +12,9 @@ from html import escape
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from omnigent.tools.base import Tool, ToolContext
-
 
 _DEFAULT_TOP_K = 8
 _MAX_TOP_K = 30
@@ -57,6 +57,60 @@ _STATUS_SCHEMA: dict[str, Any] = {
             "type": "string",
             "description": "Optional dataset id. Defaults to the active dataset.",
         }
+    },
+}
+
+_EQUITY_REPORT_GENERATE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dataset_id": {"type": "string"},
+        "title": {"type": "string"},
+        "sector": {"type": "string"},
+        "rating": {"type": "string"},
+        "report_date": {"type": "string"},
+        "market_snapshot": {"type": "object"},
+        "financial_metrics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "metric": {"type": "string"},
+                    "values": {"type": "object"},
+                },
+                "required": ["metric", "values"],
+            },
+        },
+        "sections": {
+            "type": "object",
+            "description": (
+                "FinRobot report narratives keyed by tagline, company_overview, "
+                "investment_overview, valuation_overview, risks, competitor_analysis, "
+                "major_takeaways, and news_summary."
+            ),
+        },
+        "section_evidence": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "section": {"type": "string"},
+                    "evidence_ids": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["section", "evidence_ids"],
+            },
+        },
+    },
+    "required": ["title", "sections", "section_evidence"],
+}
+
+_EQUITY_REPORT_LOOKUP_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dataset_id": {"type": "string"},
+        "run_id": {
+            "type": "string",
+            "description": "Report run id. Omit to retrieve the latest run.",
+        },
     },
 }
 
@@ -126,6 +180,158 @@ _MEMO_SCHEMA: dict[str, Any] = {
     },
 }
 
+_RESEARCH_CONTEXT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dataset_id": {"type": "string", "description": "Private-fund dataset id."},
+    },
+}
+
+_RICH_CONTENT_BLOCK_SCHEMA: dict[str, Any] = {
+    "oneOf": [
+        {
+            "type": "object",
+            "properties": {
+                "type": {"const": "markdown"},
+                "title": {"type": "string"},
+                "markdown": {"type": "string"},
+            },
+            "required": ["type", "markdown"],
+        },
+        {
+            "type": "object",
+            "properties": {
+                "type": {"const": "metrics"},
+                "title": {"type": "string"},
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string"},
+                            "value": {"type": ["string", "number"]},
+                            "unit": {"type": "string"},
+                            "delta": {"type": "string"},
+                            "sentiment": {
+                                "type": "string",
+                                "enum": ["positive", "negative", "neutral"],
+                            },
+                        },
+                        "required": ["label", "value"],
+                    },
+                },
+            },
+            "required": ["type", "items"],
+        },
+        {
+            "type": "object",
+            "properties": {
+                "type": {"const": "table"},
+                "title": {"type": "string"},
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string"},
+                            "label": {"type": "string"},
+                            "align": {"type": "string", "enum": ["left", "right"]},
+                        },
+                        "required": ["key", "label"],
+                    },
+                },
+                "rows": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["type", "columns", "rows"],
+        },
+        {
+            "type": "object",
+            "properties": {
+                "type": {"const": "chart"},
+                "title": {"type": "string"},
+                "chart_type": {"type": "string", "enum": ["line", "bar"]},
+                "x_key": {"type": "string"},
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string"},
+                            "label": {"type": "string"},
+                        },
+                        "required": ["key", "label"],
+                    },
+                },
+                "data": {"type": "array", "items": {"type": "object"}},
+                "y_unit": {"type": "string"},
+                "source_note": {"type": "string"},
+            },
+            "required": ["type", "chart_type", "x_key", "series", "data"],
+        },
+        {
+            "type": "object",
+            "properties": {
+                "type": {"const": "html"},
+                "title": {"type": "string"},
+                "html": {"type": "string"},
+                "height": {"type": "integer", "minimum": 160, "maximum": 720},
+            },
+            "required": ["type", "html"],
+        },
+    ]
+}
+for _block_variant in _RICH_CONTENT_BLOCK_SCHEMA["oneOf"]:
+    _block_variant["properties"]["evidence_ids"] = {
+        "type": "array",
+        "items": {"type": "string", "pattern": "^(chunk|fact|cell):"},
+        "description": "Evidence IDs that directly support this presentation block.",
+    }
+
+_RESEARCH_NODE_SAVE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dataset_id": {"type": "string", "description": "Private-fund dataset id."},
+        "title": {"type": "string", "description": "Short, specific research node title."},
+        "summary": {"type": "string", "description": "One-sentence node summary."},
+        "content_markdown": {
+            "type": "string",
+            "description": (
+                "Structured node body with conclusion, supporting information, uncertainty, "
+                "and next questions. Preserve source citations."
+            ),
+        },
+        "node_type": {
+            "type": "string",
+            "enum": [
+                "insight",
+                "hypothesis",
+                "question",
+                "risk",
+                "catalyst",
+                "comparison",
+                "decision",
+            ],
+        },
+        "parent_node_ids": {"type": "array", "items": {"type": "string"}},
+        "evidence_ids": {"type": "array", "items": {"type": "string"}},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+        "source_response_ids": {"type": "array", "items": {"type": "string"}},
+        "content_blocks": {
+            "type": "array",
+            "description": (
+                "Optional ordered presentation blocks. Choose only formats that improve the "
+                "analysis: markdown, metrics, table, line/bar chart, or sandboxed static HTML."
+                " A requested chart must be a chart block with structured numeric data, never "
+                "ASCII art, a text axis, or executable JavaScript."
+            ),
+            "items": _RICH_CONTENT_BLOCK_SCHEMA,
+            "maxItems": 12,
+        },
+    },
+    "required": ["title", "summary", "content_markdown"],
+}
+
 
 _TERM_SYNONYMS: dict[str, list[str]] = {
     "收入": ["revenue", "sales"],
@@ -180,7 +386,9 @@ def _pdf_source_url(
     page_end: int | None = None,
     evidence_id: str | None = None,
 ) -> str:
-    label = f"p.{page_start}-{page_end}" if page_end and page_end != page_start else f"p.{page_start}"
+    label = (
+        f"p.{page_start}-{page_end}" if page_end and page_end != page_start else f"p.{page_start}"
+    )
     params = {"page": str(page_start), "label": label, "pdf_name": filename}
     if page_end and page_end != page_start:
         params["page_end"] = str(page_end)
@@ -214,7 +422,12 @@ def _memo_artifact_url(path: Path) -> str:
 
 def _plain_source_label(item: dict[str, Any]) -> str:
     source = item.get("source") or {}
-    return str(item.get("citation") or source.get("citation") or source.get("display_text") or "local dataset")
+    return str(
+        item.get("citation")
+        or source.get("citation")
+        or source.get("display_text")
+        or "local dataset"
+    )
 
 
 def _compact_memo_context(*values: str, max_chars: int = 1800) -> str:
@@ -257,6 +470,105 @@ def _normalize(value: Any) -> str:
     text = "" if value is None else str(value)
     text = unicodedata.normalize("NFKC", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Return SQLite column names without assuming the latest ingest schema."""
+
+    return {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _active_document_predicate(conn: sqlite3.Connection, alias: str = "d") -> str:
+    """Build the active-version predicate for both old and migrated datasets."""
+
+    columns = _table_columns(conn, "documents")
+    predicates: list[str] = []
+    if "deleted_at" in columns:
+        predicates.append(f"{alias}.deleted_at IS NULL")
+    if "is_current" in columns:
+        predicates.append(f"COALESCE({alias}.is_current, 1) = 1")
+    if "lifecycle_state" in columns:
+        predicates.append(f"COALESCE({alias}.lifecycle_state, 'active') = 'active'")
+    return " AND ".join(predicates) or "1 = 1"
+
+
+def _compatible_projection(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    alias: str,
+    columns: tuple[str, ...],
+) -> str:
+    """Project nullable compatibility columns that older collection DBs lack."""
+
+    available = _table_columns(conn, table)
+    return ", ".join(
+        f"{alias}.{column} AS {column}" if column in available else f"NULL AS {column}"
+        for column in columns
+    )
+
+
+def _row_value(row: sqlite3.Row, key: str, fallback: Any = None) -> Any:
+    """Read an optional SQLite row field without relying on ``Row.get``."""
+
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return fallback
+
+
+def _document_reference_name(row: sqlite3.Row) -> str:
+    """Prefer the source-relative path so recursive imports remain unambiguous."""
+
+    return str(_row_value(row, "source_relpath") or row["original_filename"])
+
+
+def _document_payload(row: sqlite3.Row) -> dict[str, Any]:
+    """Return source identity plus optional version/audit fields."""
+
+    is_current = _row_value(row, "is_current")
+    deleted_at = _row_value(row, "deleted_at")
+    return {
+        "doc_id": row["doc_id"],
+        "filename": _document_reference_name(row),
+        "source_relpath": _row_value(row, "source_relpath"),
+        "file_type": row["file_type"],
+        "doc_type": row["doc_type"],
+        "raw_path": row["stored_path"],
+        "logical_doc_id": _row_value(row, "logical_doc_id"),
+        "version_no": _row_value(row, "version_no"),
+        "supersedes_doc_id": _row_value(row, "supersedes_doc_id"),
+        "is_current": bool(is_current) if is_current is not None else None,
+        "status": _row_value(row, "document_status"),
+        "lifecycle_state": _row_value(row, "lifecycle_state"),
+        "deleted_at": deleted_at,
+        "is_historical": bool(deleted_at) or is_current == 0,
+    }
+
+
+_DOCUMENT_AUDIT_COLUMNS = (
+    "source_relpath",
+    "logical_doc_id",
+    "version_no",
+    "supersedes_doc_id",
+    "is_current",
+    "lifecycle_state",
+    "deleted_at",
+)
+
+
+def _document_audit_projection(conn: sqlite3.Connection, alias: str = "d") -> str:
+    projection = _compatible_projection(
+        conn,
+        table="documents",
+        alias=alias,
+        columns=_DOCUMENT_AUDIT_COLUMNS,
+    )
+    columns = _table_columns(conn, "documents")
+    status = (
+        f"{alias}.status AS document_status" if "status" in columns else "NULL AS document_status"
+    )
+    return f"{projection}, {status}"
 
 
 def _parse_arguments(arguments: str) -> dict[str, Any]:
@@ -383,10 +695,9 @@ def _resolve_project_root(workspace: Path | None) -> Path:
             resolved = candidate.expanduser().resolve()
         except OSError:
             continue
-        if (
-            (resolved / "output" / "private_fund_datasets").exists()
-            or (resolved / "FinSagent" / "data_pipeline" / "private_fund_directory_ingest.py").exists()
-        ):
+        if (resolved / "output" / "private_fund_datasets").exists() or (
+            resolved / "FinSagent" / "data_pipeline" / "private_fund_directory_ingest.py"
+        ).exists():
             return resolved
     return candidates[0].expanduser().resolve() if candidates else Path.cwd().resolve()
 
@@ -455,31 +766,64 @@ class _DatasetStore:
         info = self.dataset_info(dataset_id)
         collection_db = Path(info["collection_db_path"])
         with self._connect(collection_db) as conn:
-            counts = {
-                name: int(
-                    conn.execute(f"SELECT COUNT(*) AS n FROM {name}").fetchone()["n"]
-                )
-                for name in (
-                    "documents",
-                    "chunks",
-                    "chunk_locations",
-                    "pdf_pages",
-                    "excel_sheets",
-                    "excel_regions",
-                    "excel_cells",
-                    "metric_facts",
-                    "index_registry",
-                )
-            }
+            active_documents = _active_document_predicate(conn)
+            counts: dict[str, int] = {}
+            for name in (
+                "documents",
+                "chunks",
+                "chunk_locations",
+                "pdf_pages",
+                "excel_workbooks",
+                "excel_sheets",
+                "excel_regions",
+                "excel_cells",
+                "metric_facts",
+                "index_registry",
+            ):
+                if name == "documents":
+                    count_row = conn.execute(
+                        f"SELECT COUNT(*) AS n FROM documents d "
+                        f"WHERE d.dataset_id = ? AND {active_documents}",
+                        (info["dataset_id"],),
+                    ).fetchone()
+                elif name == "index_registry":
+                    count_row = conn.execute(
+                        "SELECT COUNT(*) AS n FROM index_registry WHERE dataset_id = ?",
+                        (info["dataset_id"],),
+                    ).fetchone()
+                else:
+                    count_row = conn.execute(
+                        f"SELECT COUNT(*) AS n FROM {name} payload "
+                        "JOIN documents d ON d.doc_id = payload.doc_id "
+                        f"WHERE d.dataset_id = ? AND {active_documents}",
+                        (info["dataset_id"],),
+                    ).fetchone()
+                counts[name] = int(count_row["n"])
+            version_projection = _compatible_projection(
+                conn,
+                table="documents",
+                alias="d",
+                columns=(
+                    "source_relpath",
+                    "logical_doc_id",
+                    "version_no",
+                    "supersedes_doc_id",
+                    "is_current",
+                    "lifecycle_state",
+                ),
+            )
             documents = [
                 dict(row)
                 for row in conn.execute(
-                    """
-                    SELECT original_filename, file_type, doc_type, status, chunk_count,
-                           error_message, stored_path
-                    FROM documents
+                    f"""
+                    SELECT d.doc_id, d.original_filename, d.file_type, d.doc_type,
+                           d.status, d.chunk_count, d.error_message, d.stored_path,
+                           {version_projection}
+                    FROM documents d
+                    WHERE d.dataset_id = ? AND {active_documents}
                     ORDER BY file_type, original_filename
-                    """
+                    """,
+                    (info["dataset_id"],),
                 ).fetchall()
             ]
             indexes = [
@@ -536,7 +880,7 @@ class _DatasetStore:
             if not evidence:
                 evidence = self._fallback_summary_chunks(conn, info)
         evidence.sort(key=lambda item: item.get("score", 0.0), reverse=True)
-        limited = evidence[:_coerce_top_k(top_k)]
+        limited = evidence[: _coerce_top_k(top_k)]
         return {
             "dataset": {
                 key: info[key]
@@ -566,13 +910,21 @@ class _DatasetStore:
         terms: list[str],
     ) -> list[dict[str, Any]]:
         del query
+        active_documents = _active_document_predicate(conn)
+        location_projection = _compatible_projection(
+            conn,
+            table="chunk_locations",
+            alias="l",
+            columns=("slide_start", "slide_end", "heading_path"),
+        )
+        document_projection = _document_audit_projection(conn)
         rows = conn.execute(
-            """
+            f"""
             SELECT c.chunk_id, c.content, c.content_type, c.title_path, c.summary,
                    c.source_ref, c.metadata_json, d.doc_id, d.original_filename,
                    d.file_type, d.doc_type, d.stored_path, l.page_start, l.page_end,
                    l.page_numbers_json, l.sheet_name, l.cell_range, l.bbox_json,
-                   l.display_text
+                   l.display_text, {location_projection}, {document_projection}
             FROM chunks c
             JOIN documents d ON d.doc_id = c.doc_id
             LEFT JOIN chunk_locations l
@@ -580,7 +932,7 @@ class _DatasetStore:
              AND l.location_index = (
                  SELECT MIN(location_index) FROM chunk_locations WHERE chunk_id = c.chunk_id
              )
-            WHERE c.dataset_id = ? AND d.deleted_at IS NULL
+            WHERE c.dataset_id = ? AND {active_documents}
             """,
             (info["dataset_id"],),
         ).fetchall()
@@ -615,47 +967,72 @@ class _DatasetStore:
             "citation": source["citation"],
             "markdown_citation": source["markdown_citation"],
             "source": source,
-            "document": {
-                "doc_id": row["doc_id"],
-                "filename": row["original_filename"],
-                "file_type": row["file_type"],
-                "doc_type": row["doc_type"],
-                "raw_path": row["stored_path"],
-            },
+            "document": _document_payload(row),
             "excerpt": _best_excerpt(row["content"], terms),
             "summary": row["summary"],
             "metadata": _decode_json(row["metadata_json"], {}) or {},
         }
 
-    def _source_payload(self, row: sqlite3.Row, *, evidence_id: str | None = None) -> dict[str, Any]:
-        filename = row["original_filename"]
+    def _source_payload(
+        self,
+        row: sqlite3.Row,
+        *,
+        evidence_id: str | None = None,
+    ) -> dict[str, Any]:
+        original_filename = str(row["original_filename"])
+        filename = _document_reference_name(row)
         page_start = row["page_start"]
         page_end = row["page_end"]
         sheet_name = row["sheet_name"]
         cell_range = row["cell_range"]
+        slide_start = _row_value(row, "slide_start")
+        slide_end = _row_value(row, "slide_end")
+        heading_path = _row_value(row, "heading_path") or _row_value(row, "title_path")
         display = row["display_text"] or row["source_ref"] or filename
-        if page_start:
+        suffix = Path(original_filename).suffix.lower()
+        file_type = _normalize(_row_value(row, "file_type")).lower().lstrip(".")
+        is_pdf = suffix == ".pdf" or file_type in {"pdf", "application/pdf"}
+        is_excel = suffix in {".xls", ".xlsx", ".xlsm"} or file_type in {
+            "xls",
+            "xlsx",
+            "xlsm",
+            "excel",
+        }
+        if is_pdf and page_start:
             if page_end and page_end != page_start:
                 citation = f"{filename} p.{page_start}-{page_end}"
             else:
                 citation = f"{filename} p.{page_start}"
-        elif sheet_name and cell_range:
+        elif is_excel and sheet_name and cell_range:
             citation = f"{filename} {sheet_name}!{cell_range}"
-        elif sheet_name:
+        elif is_excel and sheet_name:
             citation = f"{filename} {sheet_name}"
-        else:
+        elif slide_start:
+            if slide_end and slide_end != slide_start:
+                citation = f"{filename} slides {slide_start}-{slide_end}"
+            else:
+                citation = f"{filename} slide {slide_start}"
+        elif display and _normalize(display) != _normalize(filename):
             citation = str(display)
+            if filename != original_filename and original_filename in citation:
+                citation = citation.replace(original_filename, filename, 1)
+            elif _normalize(filename).lower() not in _normalize(display).lower():
+                citation = f"{filename} — {citation}"
+        elif heading_path and _normalize(heading_path) != _normalize(filename):
+            citation = f"{filename} — {heading_path}"
+        else:
+            citation = str(filename)
         source_url = None
-        if page_start:
+        if is_pdf and page_start:
             source_url = _pdf_source_url(
-                filename=filename,
+                filename=original_filename,
                 page_start=int(page_start),
                 page_end=int(page_end) if page_end else None,
                 evidence_id=evidence_id,
             )
-        elif sheet_name:
+        elif is_excel and sheet_name:
             source_url = _excel_source_url(
-                workbook_name=filename,
+                workbook_name=original_filename,
                 sheet_name=sheet_name,
                 range_ref=cell_range,
             )
@@ -667,8 +1044,11 @@ class _DatasetStore:
             "page_start": page_start,
             "page_end": page_end,
             "page_numbers": _decode_json(row["page_numbers_json"], None),
+            "slide_start": slide_start,
+            "slide_end": slide_end,
             "sheet_name": sheet_name,
             "cell_range": cell_range,
+            "heading_path": heading_path,
             "bbox": _decode_json(row["bbox_json"], None),
             "raw_path": row["stored_path"],
         }
@@ -681,12 +1061,15 @@ class _DatasetStore:
         terms: list[str],
     ) -> list[dict[str, Any]]:
         del query
+        active_documents = _active_document_predicate(conn)
+        document_projection = _document_audit_projection(conn)
         rows = conn.execute(
-            """
-            SELECT f.*, d.original_filename, d.file_type, d.doc_type, d.stored_path
+            f"""
+            SELECT f.*, d.original_filename, d.file_type, d.doc_type, d.stored_path,
+                   {document_projection}
             FROM metric_facts f
             JOIN documents d ON d.doc_id = f.doc_id
-            WHERE f.dataset_id = ? AND d.deleted_at IS NULL
+            WHERE f.dataset_id = ? AND {active_documents}
             """,
             (info["dataset_id"],),
         ).fetchall()
@@ -736,13 +1119,7 @@ class _DatasetStore:
                         "cell_range": row["cell_ref"],
                         "raw_path": row["stored_path"],
                     },
-                    "document": {
-                        "doc_id": row["doc_id"],
-                        "filename": row["original_filename"],
-                        "file_type": row["file_type"],
-                        "doc_type": row["doc_type"],
-                        "raw_path": row["stored_path"],
-                    },
+                    "document": _document_payload(row),
                     "metric": {
                         "name": row["metric_name"],
                         "period": row["period"],
@@ -766,12 +1143,15 @@ class _DatasetStore:
         terms: list[str],
     ) -> list[dict[str, Any]]:
         del query
+        active_documents = _active_document_predicate(conn)
+        document_projection = _document_audit_projection(conn)
         rows = conn.execute(
-            """
-            SELECT c.*, d.original_filename, d.file_type, d.doc_type, d.stored_path
+            f"""
+            SELECT c.*, d.original_filename, d.file_type, d.doc_type, d.stored_path,
+                   {document_projection}
             FROM excel_cells c
             JOIN documents d ON d.doc_id = c.doc_id
-            WHERE c.dataset_id = ? AND d.deleted_at IS NULL
+            WHERE c.dataset_id = ? AND {active_documents}
             """,
             (info["dataset_id"],),
         ).fetchall()
@@ -816,13 +1196,7 @@ class _DatasetStore:
                         "cell_range": row["cell_ref"],
                         "raw_path": row["stored_path"],
                     },
-                    "document": {
-                        "doc_id": row["doc_id"],
-                        "filename": row["original_filename"],
-                        "file_type": row["file_type"],
-                        "doc_type": row["doc_type"],
-                        "raw_path": row["stored_path"],
-                    },
+                    "document": _document_payload(row),
                     "excerpt": (
                         f"{row['row_label'] or ''} | {row['col_label'] or ''} | "
                         f"{row['display_value'] or row['raw_value'] or ''}"
@@ -837,13 +1211,21 @@ class _DatasetStore:
         conn: sqlite3.Connection,
         info: dict[str, Any],
     ) -> list[dict[str, Any]]:
+        active_documents = _active_document_predicate(conn)
+        location_projection = _compatible_projection(
+            conn,
+            table="chunk_locations",
+            alias="l",
+            columns=("slide_start", "slide_end", "heading_path"),
+        )
+        document_projection = _document_audit_projection(conn)
         rows = conn.execute(
-            """
+            f"""
             SELECT c.chunk_id, c.content, c.content_type, c.title_path, c.summary,
                    c.source_ref, c.metadata_json, d.doc_id, d.original_filename,
                    d.file_type, d.doc_type, d.stored_path, l.page_start, l.page_end,
                    l.page_numbers_json, l.sheet_name, l.cell_range, l.bbox_json,
-                   l.display_text
+                   l.display_text, {location_projection}, {document_projection}
             FROM chunks c
             JOIN documents d ON d.doc_id = c.doc_id
             LEFT JOIN chunk_locations l
@@ -852,10 +1234,10 @@ class _DatasetStore:
                  SELECT MIN(location_index) FROM chunk_locations WHERE chunk_id = c.chunk_id
              )
             WHERE c.dataset_id = ?
-              AND c.content_type IN (
-                  'pdf_document_summary',
-                  'excel_workbook_summary',
-                  'excel_sheet_summary'
+              AND {active_documents}
+              AND (
+                  c.content_type LIKE '%_document_summary'
+                  OR c.content_type IN ('excel_workbook_summary', 'excel_sheet_summary')
               )
             ORDER BY d.original_filename, c.chunk_index
             LIMIT 10
@@ -892,11 +1274,19 @@ class _DatasetStore:
         chunk_id: str,
         context_radius: int,
     ) -> dict[str, Any]:
+        location_projection = _compatible_projection(
+            conn,
+            table="chunk_locations",
+            alias="l",
+            columns=("slide_start", "slide_end", "heading_path"),
+        )
+        document_projection = _document_audit_projection(conn)
         row = conn.execute(
-            """
+            f"""
             SELECT c.*, d.original_filename, d.file_type, d.doc_type, d.stored_path,
                    l.page_start, l.page_end, l.page_numbers_json, l.sheet_name,
-                   l.cell_range, l.bbox_json, l.display_text
+                   l.cell_range, l.bbox_json, l.display_text,
+                   {location_projection}, {document_projection}
             FROM chunks c
             JOIN documents d ON d.doc_id = c.doc_id
             LEFT JOIN chunk_locations l
@@ -917,13 +1307,7 @@ class _DatasetStore:
             "citation": source["citation"],
             "markdown_citation": source["markdown_citation"],
             "source": source,
-            "document": {
-                "doc_id": row["doc_id"],
-                "filename": row["original_filename"],
-                "file_type": row["file_type"],
-                "doc_type": row["doc_type"],
-                "raw_path": row["stored_path"],
-            },
+            "document": _document_payload(row),
             "content_type": row["content_type"],
             "title_path": row["title_path"],
             "content": row["content"],
@@ -953,9 +1337,11 @@ class _DatasetStore:
         fact_id: str,
         context_radius: int,
     ) -> dict[str, Any]:
+        document_projection = _document_audit_projection(conn)
         row = conn.execute(
-            """
-            SELECT f.*, d.original_filename, d.file_type, d.doc_type, d.stored_path
+            f"""
+            SELECT f.*, d.original_filename, d.file_type, d.doc_type, d.stored_path,
+                   {document_projection}
             FROM metric_facts f
             JOIN documents d ON d.doc_id = f.doc_id
             WHERE f.fact_id = ?
@@ -1003,13 +1389,7 @@ class _DatasetStore:
                 "cell_range": row["cell_ref"],
                 "raw_path": row["stored_path"],
             },
-            "document": {
-                "doc_id": row["doc_id"],
-                "filename": row["original_filename"],
-                "file_type": row["file_type"],
-                "doc_type": row["doc_type"],
-                "raw_path": row["stored_path"],
-            },
+            "document": _document_payload(row),
             "metric": {
                 "name": row["metric_name"],
                 "period": row["period"],
@@ -1030,9 +1410,11 @@ class _DatasetStore:
         cell_id: str,
         context_radius: int,
     ) -> dict[str, Any]:
+        document_projection = _document_audit_projection(conn)
         row = conn.execute(
-            """
-            SELECT c.*, d.original_filename, d.file_type, d.doc_type, d.stored_path
+            f"""
+            SELECT c.*, d.original_filename, d.file_type, d.doc_type, d.stored_path,
+                   {document_projection}
             FROM excel_cells c
             JOIN documents d ON d.doc_id = c.doc_id
             WHERE c.cell_id = ?
@@ -1071,13 +1453,7 @@ class _DatasetStore:
                 "cell_range": row["cell_ref"],
                 "raw_path": row["stored_path"],
             },
-            "document": {
-                "doc_id": row["doc_id"],
-                "filename": row["original_filename"],
-                "file_type": row["file_type"],
-                "doc_type": row["doc_type"],
-                "raw_path": row["stored_path"],
-            },
+            "document": _document_payload(row),
             "cell": self._cell_payload(row),
             "excel_cells": cells,
             "metadata": _decode_json(row["metadata_json"], {}) or {},
@@ -1176,6 +1552,114 @@ class _DatasetStore:
             "is_formula": bool(row["is_formula"]),
         }
 
+    def generate_equity_report(
+        self,
+        *,
+        dataset_id: str | None,
+        title: str,
+        report_payload: dict[str, Any],
+        section_evidence: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Render and persist one evidence-backed FinRobot-aligned report."""
+
+        from omnigent.server import private_fund_workflow
+        from omnigent.tools.builtins.private_fund_finrobot_report import (
+            render_finrobot_aligned_report,
+        )
+
+        info = self.dataset_info(dataset_id)
+        collection_db = Path(info["collection_db_path"])
+        run_id = f"eqr_{uuid4().hex}"
+        reservation = private_fund_workflow.reserve_equity_report_run(
+            collection_db,
+            str(info["dataset_id"]),
+            run_id=run_id,
+            title=title.strip() or f"{info['name']} Equity Research Report",
+            request={"report_payload": report_payload, "section_evidence": section_evidence},
+        )
+        try:
+            section_payloads: list[dict[str, Any]] = []
+            for section in section_evidence:
+                if not isinstance(section, dict):
+                    continue
+                evidence: list[dict[str, Any]] = []
+                for raw_id in section.get("evidence_ids") or []:
+                    evidence_id = str(raw_id).strip()
+                    if not re.fullmatch(r"(?:chunk|fact|cell):.+", evidence_id):
+                        raise ValueError(f"invalid evidence id: {evidence_id}")
+                    detail = self.source_detail(
+                        evidence_id=evidence_id,
+                        dataset_id=str(info["dataset_id"]),
+                        context_radius=1,
+                    )
+                    detail["excerpt"] = str(
+                        detail.get("content")
+                        or detail.get("cell", {}).get("display_value")
+                        or detail.get("citation")
+                        or ""
+                    )[:900]
+                    evidence.append(detail)
+                section_payloads.append(
+                    {"section": str(section.get("section") or ""), "evidence": evidence}
+                )
+            if not any(item.get("evidence") for item in section_payloads):
+                raise ValueError("at least one resolvable evidence_id is required")
+            output_dir = Path(info["dataset_root"]) / "reports"
+            artifacts, package = render_finrobot_aligned_report(
+                project_root=self.project_root,
+                info=info,
+                report_payload=report_payload,
+                section_payloads=section_payloads,
+                output_dir=output_dir,
+                run_id=run_id,
+                version_no=int(reservation["version_no"]),
+            )
+            manifest = {
+                "markdown_path": str(artifacts.markdown_path),
+                "html_path": str(artifacts.html_path),
+                "pdf_path": str(artifacts.pdf_path),
+                "package_path": str(artifacts.package_path),
+                "chart_paths": [str(path) for path in artifacts.chart_paths],
+            }
+            completed = private_fund_workflow.complete_equity_report_run(
+                collection_db,
+                run_id=run_id,
+                markdown=artifacts.markdown_path.read_text(encoding="utf-8"),
+                report_package=package,
+                artifact_manifest=manifest,
+                render_engine=artifacts.render_engine,
+            )
+            return self._equity_report_run_payload(completed)
+        except Exception as exc:
+            private_fund_workflow.fail_equity_report_run(
+                collection_db, run_id=run_id, error=f"{type(exc).__name__}: {exc}"
+            )
+            raise
+
+    def equity_report_run(
+        self, *, dataset_id: str | None, run_id: str | None = None
+    ) -> dict[str, Any]:
+        from omnigent.server import private_fund_workflow
+
+        info = self.dataset_info(dataset_id)
+        run = private_fund_workflow.get_equity_report_run(
+            Path(info["collection_db_path"]), str(info["dataset_id"]), run_id
+        )
+        return self._equity_report_run_payload(run)
+
+    @staticmethod
+    def _equity_report_run_payload(run: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(run)
+        for key in ("request_json", "report_package_json", "artifact_manifest_json"):
+            if key in payload:
+                payload[key.removesuffix("_json")] = _decode_json(payload.pop(key), {})
+        manifest = payload.get("artifact_manifest") or {}
+        if manifest.get("html_path"):
+            payload["html_url"] = _memo_artifact_url(Path(manifest["html_path"]))
+        if manifest.get("pdf_path"):
+            payload["pdf_url"] = _memo_artifact_url(Path(manifest["pdf_path"]))
+        return payload
+
     def memo(
         self,
         *,
@@ -1199,7 +1683,9 @@ class _DatasetStore:
             "待跟踪问题",
         ]
         per_section = _coerce_top_k(top_k_per_section, default=5)
-        clean_key_questions = [_normalize(item) for item in (key_questions or []) if _normalize(item)]
+        clean_key_questions = [
+            _normalize(item) for item in (key_questions or []) if _normalize(item)
+        ]
         query_context = _compact_memo_context(
             topic,
             instructions,
@@ -1456,9 +1942,23 @@ class _DatasetStore:
             html_parts.append(f"<tr><th>{escape(key)}</th><td>{escape(str(value))}</td></tr>")
         html_parts.extend(["</table>", "</section>"])
         if instructions:
-            html_parts.extend(['<section class="context">', "<h2>用户要求</h2>", paragraph_block(instructions), "</section>"])
+            html_parts.extend(
+                [
+                    '<section class="context">',
+                    "<h2>用户要求</h2>",
+                    paragraph_block(instructions),
+                    "</section>",
+                ]
+            )
         if conversation_context:
-            html_parts.extend(['<section class="context">', "<h2>对话上下文摘要</h2>", paragraph_block(conversation_context), "</section>"])
+            html_parts.extend(
+                [
+                    '<section class="context">',
+                    "<h2>对话上下文摘要</h2>",
+                    paragraph_block(conversation_context),
+                    "</section>",
+                ]
+            )
         if key_questions:
             html_parts.extend(['<section class="context">', "<h2>关键问题</h2>", "<ul>"])
             html_parts.extend(f"<li>{escape(item)}</li>" for item in key_questions)
@@ -1530,9 +2030,7 @@ class _DatasetStore:
             '<table class="meta">',
         ]
         for key, value in meta_rows:
-            html_parts.append(
-                f"<tr><th>{escape(key)}</th><td>{escape(str(value))}</td></tr>"
-            )
+            html_parts.append(f"<tr><th>{escape(key)}</th><td>{escape(str(value))}</td></tr>")
         html_parts.extend(["</table>", "</section>"])
         if instructions:
             html_parts.extend(
@@ -1570,8 +2068,8 @@ class _DatasetStore:
                 html_parts.extend(
                     [
                         "<li>",
-                        f"<div class=\"claim\">{escape(excerpt)}</div>",
-                        f"<div class=\"source\">来源：{escape(citation)}</div>",
+                        f'<div class="claim">{escape(excerpt)}</div>',
+                        f'<div class="source">来源：{escape(citation)}</div>',
                         "</li>",
                     ]
                 )
@@ -1917,6 +2415,214 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
         )
 
 
+class PrivateFundEquityReportGenerateTool(_PrivateFundDatasetBaseTool):
+    """Generate the durable FinRobot-aligned equity research package."""
+
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_equity_report_generate"
+
+    @classmethod
+    def description(cls) -> str:
+        return (
+            "Generate versioned Markdown, professional HTML, PDF, charts, and a JSON package "
+            "using FinRobot's report renderer and Omnigent evidence provenance."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _EQUITY_REPORT_GENERATE_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        title = str(payload.get("title") or "").strip()
+        sections = payload.get("sections")
+        section_evidence = payload.get("section_evidence")
+        if not title:
+            raise ValueError("title is required")
+        if not isinstance(sections, dict):
+            raise ValueError("sections must be an object")
+        if not isinstance(section_evidence, list):
+            raise ValueError("section_evidence must be an array")
+        dataset_id = payload.get("dataset_id")
+        report_payload = {
+            key: payload.get(key)
+            for key in (
+                "sector",
+                "rating",
+                "report_date",
+                "market_snapshot",
+                "financial_metrics",
+                "sections",
+            )
+        }
+        return self._store(ctx).generate_equity_report(
+            dataset_id=dataset_id if isinstance(dataset_id, str) else None,
+            title=title,
+            report_payload=report_payload,
+            section_evidence=[item for item in section_evidence if isinstance(item, dict)],
+        )
+
+
+class PrivateFundEquityReportStatusTool(_PrivateFundDatasetBaseTool):
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_equity_report_status"
+
+    @classmethod
+    def description(cls) -> str:
+        return "Get status and artifact links for a FinRobot-aligned report run."
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _EQUITY_REPORT_LOOKUP_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        result = self._store(ctx).equity_report_run(
+            dataset_id=payload.get("dataset_id")
+            if isinstance(payload.get("dataset_id"), str)
+            else None,
+            run_id=payload.get("run_id") if isinstance(payload.get("run_id"), str) else None,
+        )
+        result.pop("request", None)
+        result.pop("report_package", None)
+        return result
+
+
+class PrivateFundEquityReportGetTool(PrivateFundEquityReportStatusTool):
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_equity_report_get"
+
+    @classmethod
+    def description(cls) -> str:
+        return "Retrieve a completed FinRobot-aligned report run and its full provenance package."
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        return self._store(ctx).equity_report_run(
+            dataset_id=payload.get("dataset_id")
+            if isinstance(payload.get("dataset_id"), str)
+            else None,
+            run_id=payload.get("run_id") if isinstance(payload.get("run_id"), str) else None,
+        )
+
+
+class PrivateFundResearchContextTool(_PrivateFundDatasetBaseTool):
+    """Return user-selected research nodes for the next analysis turn."""
+
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_research_context"
+
+    @classmethod
+    def description(cls) -> str:
+        return "Read the research nodes the user selected as context for the next analysis."
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _RESEARCH_CONTEXT_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        from omnigent.server import private_fund_workflow
+
+        dataset_id = payload.get("dataset_id")
+        info = self._store(ctx).dataset_info(dataset_id if isinstance(dataset_id, str) else None)
+        workflow = private_fund_workflow.get_or_create_workflow(
+            Path(info["collection_db_path"]), str(info["dataset_id"])
+        )
+        selected = set(workflow.get("context_node_ids") or [])
+        selected_nodes = [node for node in workflow["nodes"] if node["node_id"] in selected]
+        unverified_node_ids = [
+            str(node["node_id"])
+            for node in selected_nodes
+            if not node.get("evidence_sources")
+        ]
+        return {
+            "dataset_id": info["dataset_id"],
+            "workflow_id": workflow["workflow"]["workflow_id"],
+            "selected_nodes": selected_nodes,
+            "unverified_node_ids": unverified_node_ids,
+            "citation_contract": {
+                "context_is_not_evidence": (
+                    "Selected nodes are research context, not primary evidence. A node with no "
+                    "evidence_sources must be re-verified with private_fund_dataset_search and "
+                    "private_fund_source_detail before its factual claims are repeated."
+                ),
+                "required_output": (
+                    "Use each evidence source's complete markdown_citation inline. Never copy bare "
+                    "footnote markers such as [^1] from node text, and never claim that source links "
+                    "are unavailable when dataset search/source detail tools are available."
+                ),
+            },
+        }
+
+
+class PrivateFundResearchNodeSaveTool(_PrivateFundDatasetBaseTool):
+    """Persist one agent-structured research node."""
+
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_research_node_save"
+
+    @classmethod
+    def description(cls) -> str:
+        return (
+            "Save a user-requested research node after synthesizing selected chat information, "
+            "selected parent nodes, dataset evidence, and uncertainty into the required structure."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _RESEARCH_NODE_SAVE_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        from omnigent.server import private_fund_workflow
+
+        dataset_id = payload.get("dataset_id")
+        info = self._store(ctx).dataset_info(dataset_id if isinstance(dataset_id, str) else None)
+        return private_fund_workflow.save_agent_node(
+            Path(info["collection_db_path"]),
+            str(info["dataset_id"]),
+            title=str(payload.get("title") or ""),
+            summary=str(payload.get("summary") or ""),
+            content_markdown=str(payload.get("content_markdown") or ""),
+            node_type=str(payload.get("node_type") or "insight"),
+            parent_node_ids=[str(item) for item in payload.get("parent_node_ids") or []],
+            # Pass through so workflow normalization can safely handle either a
+            # real array or legacy JSON-string payload without splitting chars.
+            evidence_ids=payload.get("evidence_ids"),
+            tags=[str(item) for item in payload.get("tags") or []],
+            confidence=str(payload.get("confidence") or "medium"),
+            source_response_ids=[str(item) for item in payload.get("source_response_ids") or []],
+            content_blocks=[
+                item for item in payload.get("content_blocks") or [] if isinstance(item, dict)
+            ],
+        )
+
+
 def build_private_fund_dataset_tools(workspace: Path | None) -> list[Tool]:
     """Build local private-fund dataset tools for the Claude Native MCP bridge."""
     return [
@@ -1924,4 +2630,9 @@ def build_private_fund_dataset_tools(workspace: Path | None) -> list[Tool]:
         PrivateFundDatasetSearchTool(workspace),
         PrivateFundSourceDetailTool(workspace),
         PrivateFundDatasetMemoTool(workspace),
+        PrivateFundEquityReportGenerateTool(workspace),
+        PrivateFundEquityReportStatusTool(workspace),
+        PrivateFundEquityReportGetTool(workspace),
+        PrivateFundResearchContextTool(workspace),
+        PrivateFundResearchNodeSaveTool(workspace),
     ]

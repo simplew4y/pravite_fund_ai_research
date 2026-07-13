@@ -818,6 +818,46 @@ def test_load_session_usage_merges_by_model_across_subtree(
     assert "by_model" not in engine.usage
 
 
+def test_load_session_usage_can_include_archived_tree_history(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    """Archived roots and descendants are opt-in for historical totals.
+
+    The default remains the active-session view, so archived rows do not
+    contribute. Historical callers can pass ``include_archived=True`` to
+    recover the complete token total across the root and its descendants.
+    """
+    from omnigent.runtime.policies.builder import load_session_usage
+
+    root = conversation_store.create_conversation()
+    active_child = conversation_store.create_conversation(
+        kind="sub_agent", parent_conversation_id=root.id
+    )
+    archived_child = conversation_store.create_conversation(
+        kind="sub_agent", parent_conversation_id=root.id
+    )
+
+    conversation_store.set_session_usage(root.id, {"total_tokens": 100})
+    conversation_store.set_session_usage(active_child.id, {"total_tokens": 20})
+    conversation_store.set_session_usage(archived_child.id, {"total_tokens": 30})
+    conversation_store.update_conversation(root.id, archived=True)
+    conversation_store.update_conversation(archived_child.id, archived=True)
+
+    # Default behavior is unchanged: archived rows are omitted, while the
+    # active descendant remains reachable from the requested root id.
+    active_only = load_session_usage(root.id, conversation_store)
+    assert active_only["total_tokens"] == 20
+
+    # Historical aggregation includes both the archived root and archived
+    # descendant in addition to the still-active child.
+    full_history = load_session_usage(
+        root.id,
+        conversation_store,
+        include_archived=True,
+    )
+    assert full_history["total_tokens"] == 150
+
+
 # ── Subtree-scoped cost budgeting (per-subagent cost gates) ──
 
 

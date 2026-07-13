@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpIcon,
   BotIcon,
@@ -81,7 +82,13 @@ import { agentDisplayLabel } from "@/components/AgentInfo";
 import { BRAIN_HARNESS_LABELS } from "@/lib/agentLabels";
 import { useConversations } from "@/hooks/useConversations";
 import { usePermissions } from "@/hooks/usePermissions";
-import type { CodexModelOption, SandboxStatus, Session, SessionStatus } from "@/lib/types";
+import type {
+  CodexModelOption,
+  ModelUsage,
+  SandboxStatus,
+  Session,
+  SessionStatus,
+} from "@/lib/types";
 import { usePromptHistory } from "@/hooks/usePromptHistory";
 import { useAutoGrowTextarea } from "@/hooks/useAutoGrowTextarea";
 import { useIOSNativeKeyboardVisible } from "@/hooks/useIOSNativeKeyboardInset";
@@ -109,7 +116,10 @@ import {
   type PendingUserMessage,
   useChatStore,
 } from "@/store/chatStore";
-import { nativeCodingAgentForHarness } from "@/lib/nativeCodingAgents";
+import {
+  isNativeWrapper as isNativeWrapperLabel,
+  nativeCodingAgentForHarness,
+} from "@/lib/nativeCodingAgents";
 import {
   buildMentionPreamble,
   detectMentionAt,
@@ -183,22 +193,83 @@ import {
 import {
   PRIVATE_FUND_DATASET_ID_LABEL_KEY,
   PRIVATE_FUND_DATASET_NAME_LABEL_KEY,
+  PRIVATE_FUND_CONTEXT_END,
+  PRIVATE_FUND_CONTEXT_START,
+  type PrivateFundResearchMode,
+  privateFundProjectPreamble,
+  readPrivateFundResearchMode,
+  writePrivateFundResearchMode,
+  wrapPrivateFundPromptContext,
 } from "@/lib/privateFundApi";
+import { PrivateFundResearchModeToggle } from "@/components/PrivateFundResearchModeToggle";
+import { TokenUsageBar } from "@/components/private-fund/TokenUsageBar";
+import {
+  PrivateFundResearchWorkbench,
+  usePrivateFundWorkbenchActions,
+} from "@/components/private-fund/PrivateFundResearchWorkbench";
+import { usePrivateFundShell } from "@/shell/PrivateFundShellContext";
+import { privateFundProjectsQueryKey } from "@/hooks/usePrivateFundProjects";
+import { cachedTokenCount, formatTokenCount, summarizeModelTokenUsage } from "@/lib/tokenUsage";
 
 // Matches both wordings the native executors emit: "[Attached: <path>]"
 // (claude/pi/cursor) and "[Attached file: <path>]" (codex). Capturing group
 // is the path. Global so all markers in a message are found / stripped.
 const ATTACHED_RE = /\[Attached(?: file)?:\s*([^\]]*)\]\s*/g;
 
-function extractUserText(content: MessageContentBlock[]): string {
-  return content
+export function stripPrivateFundPromptContext(value: string): string {
+  let text = value;
+  let start = text.indexOf(PRIVATE_FUND_CONTEXT_START);
+  while (start >= 0) {
+    const end = text.indexOf(PRIVATE_FUND_CONTEXT_END, start);
+    if (end < 0) break;
+    text = text.slice(0, start) + text.slice(end + PRIVATE_FUND_CONTEXT_END.length);
+    start = text.indexOf(PRIVATE_FUND_CONTEXT_START);
+  }
+
+  // Compatibility for messages persisted before explicit hidden-context
+  // markers were introduced. Remove only the known project instruction block
+  // and leave every following user-authored line intact.
+  const lines = text.split("\n");
+  const legacyStart = lines.findIndex((line) =>
+    line.trimStart().startsWith("当前会话必须基于私募投研资料项目「"),
+  );
+  if (legacyStart >= 0) {
+    const legacyEvidenceEnd = lines.findIndex(
+      (line, index) => index >= legacyStart && line.includes("不得裸写或无证据扩写"),
+    );
+    const legacyNodeEnd = lines.findIndex(
+      (line, index) => index >= legacyStart && line.includes("声称系统无法获取引用链接"),
+    );
+    const legacyEnd = Math.max(legacyEvidenceEnd, legacyNodeEnd);
+    if (legacyEnd >= legacyStart) lines.splice(legacyStart, legacyEnd - legacyStart + 1);
+  }
+
+  // Compatibility for the brief period where workbench Memo/report actions
+  // appended their internal generation context without hidden markers. Match
+  // the full three-line contract before removing the block so an ordinary
+  // user message that happens to mention a dataset_id remains untouched.
+  const leakedGenerationStart = lines.findIndex((line, index) => {
+    if (!line.trimStart().startsWith("dataset_id:")) return false;
+    const toolRule = lines[index + 1]?.trim() ?? "";
+    const evidenceRule = lines[index + 2]?.trim() ?? "";
+    return (
+      /^必须调用 private_fund_(?:dataset_memo|equity_report_generate)/.test(toolRule) &&
+      evidenceRule.startsWith("所有重大事实和数字必须通过数据集工具核验")
+    );
+  });
+  if (leakedGenerationStart >= 0) lines.splice(leakedGenerationStart);
+  return lines.join("\n");
+}
+
+export function extractUserText(content: MessageContentBlock[]): string {
+  const text = content
     .filter(
       (c): c is Extract<MessageContentBlock, { type: "input_text" }> => c.type === "input_text",
     )
     .map((c) => c.text)
     .join("")
-    .replace(ATTACHED_RE, "")
-    .trim();
+    .replace(ATTACHED_RE, "");
+  return stripPrivateFundPromptContext(text).trim();
 }
 
 /**
@@ -533,6 +604,8 @@ const sessionDrafts = loadDraftsFromStorage();
 export function ChatPage() {
   const { conversationId: urlConvId } = useParams<{ conversationId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const privateFundShell = usePrivateFundShell();
   // Optional first message handed off by the landing composer through the
   // shared chatStore (keyed by conversation id), not router state — router state
   // doesn't survive the embed's host-provided routing. Consumed read-once
@@ -934,6 +1007,12 @@ export function ChatPage() {
     activeSession?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
     activeConv?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
     privateFundDatasetId;
+  const projectTokenUsage = useChatStore((state) => state.sessionTokenUsage);
+  useEffect(() => {
+    if (!privateFundDatasetId) return;
+    if (projectTokenUsage?.totalTokens == null) return;
+    void queryClient.invalidateQueries({ queryKey: privateFundProjectsQueryKey });
+  }, [privateFundDatasetId, projectTokenUsage, queryClient]);
   const [trustedMemoSources, setTrustedMemoSources] = useState<TrustedMemoSource[]>(() =>
     urlConvId ? readTrustedMemoSources(urlConvId) : [],
   );
@@ -1158,7 +1237,35 @@ export function ChatPage() {
 
   return (
     <SessionSharedContext.Provider value={isSessionShared}>
-      <SessionLayout mainAgent={mainAgent} />
+      {privateFundDatasetId ? (
+        <PrivateFundResearchWorkbench
+          conversationId={urlConvId}
+          datasetId={privateFundDatasetId}
+          datasetName={privateFundProjectLabel ?? privateFundDatasetId}
+          chat={mainAgent}
+          onGenerateNode={(prompt) => {
+            const skillMatch = prompt.match(
+              /^\/(private-fund-memo|private-fund-report)(?:\s+([\s\S]*))?$/,
+            );
+            if (!skillMatch) {
+              onSend(`${wrapPrivateFundPromptContext(prompt)}生成研究资产`);
+              return;
+            }
+            const skillName = skillMatch[1];
+            const skillArgs = skillMatch[2]?.trim() ?? "";
+            const wrapper = capabilitySource.labels?.["omnigent.wrapper"];
+            if (isNativeWrapperLabel(wrapper)) {
+              onSend(`/${skillName}${skillArgs ? ` ${skillArgs}` : ""}`);
+            } else {
+              onSendSlashCommand(skillName, skillArgs);
+            }
+          }}
+          sidebarOpen={privateFundShell?.sidebarOpen ?? true}
+          onOpenSidebar={privateFundShell?.openSidebar}
+        />
+      ) : (
+        <SessionLayout mainAgent={mainAgent} />
+      )}
       <ReconnectSessionDialog
         open={reconnectDialogOpen}
         onOpenChange={setReconnectDialogOpen}
@@ -1213,6 +1320,7 @@ function SelectionPopup({
   containerRef: React.RefObject<HTMLElement | null>;
   onReply: (text: string) => void;
 }) {
+  const workbenchActions = usePrivateFundWorkbenchActions();
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
   const selectedTextRef = useRef<string>("");
 
@@ -1268,6 +1376,7 @@ function SelectionPopup({
 
   return (
     <div
+      className="flex items-center gap-1"
       style={{
         position: "fixed",
         // Translate left by 50% to center the button over the midpoint of the
@@ -1278,6 +1387,27 @@ function SelectionPopup({
         zIndex: 50,
       }}
     >
+      {workbenchActions ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="gap-1 shadow-md"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            const text = selectedTextRef.current;
+            if (text) {
+              workbenchActions.markUsefulInformation(`selection-${Date.now()}`, text);
+              window.getSelection()?.removeAllRanges();
+              setPopupPos(null);
+              selectedTextRef.current = "";
+            }
+          }}
+        >
+          <CheckIcon className="size-3.5" />
+          保存为资产
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="secondary"
@@ -1687,13 +1817,20 @@ function MainAgentSurface({
               ) : (
                 <ConversationEmptyState>
                   <div className="space-y-1.5">
-                    <h3 className="text-2xl font-medium tracking-[-0.02em]">
-                      What should we work on?
+                    <h3
+                      className={cn(
+                        "font-medium tracking-[-0.02em]",
+                        privateFundDatasetId ? "text-lg" : "text-2xl",
+                      )}
+                    >
+                      {privateFundDatasetId ? "从当前节点开始提问" : "What should we work on?"}
                     </h3>
                     <p className="text-muted-foreground text-base">
                       {agentsError
                         ? `Failed to load agents: ${agentsError instanceof Error ? agentsError.message : String(agentsError)}`
-                        : "Send a message to get started."}
+                        : privateFundDatasetId
+                          ? "让 AI 验证假设、比较情景，或生成新的研究成果。"
+                          : "Send a message to get started."}
                     </p>
                   </div>
                 </ConversationEmptyState>
@@ -1823,6 +1960,7 @@ function MainAgentSurface({
         costRoutingEligible={costRoutingEligible}
         subAgentLabel={subAgentLabel}
         privateFundProjectLabel={privateFundProjectLabel}
+        privateFundDatasetId={privateFundDatasetId}
       />
 
       {/* Chat/Terminal toggle for terminal-first sessions, reconnect-or-
@@ -3057,6 +3195,10 @@ function AssistantBubble({
   const copyTimeoutRef = useRef<number>(0);
   // null outside AppShell's provider (isolated tests) → hide the action.
   const forkDialog = useForkDialog();
+  // Present only inside the private-fund graph workbench. Context keeps the
+  // real conversation tree mounted while allowing completed AI answers to
+  // become research nodes or assumptions on the selected graph node.
+  const workbenchActions = usePrivateFundWorkbenchActions();
 
   if (bubble.items.length === 0) return null;
 
@@ -3108,15 +3250,22 @@ function AssistantBubble({
           </p>
         )}
         {markdownText && (
-          <MessageActions className="mt-1 opacity-40 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-            <MessageAction tooltip="Copy" onClick={handleCopy}>
-              {isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-            </MessageAction>
+          <MessageActions
+            className={cn(
+              "mt-1 opacity-40 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
+              workbenchActions && "flex-wrap opacity-100",
+            )}
+          >
+            {!workbenchActions && (
+              <MessageAction tooltip="Copy" onClick={handleCopy}>
+                {isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+              </MessageAction>
+            )}
             {/* Fork from this response: clone the session with history
                 truncated after this turn. Hidden while the response is
                 still streaming (its items aren't committed yet) and when
                 the session can't be forked (sub-agent / isolated mount). */}
-            {forkDialog?.canFork && bubble.lifecycle !== "streaming" && (
+            {!workbenchActions && forkDialog?.canFork && bubble.lifecycle !== "streaming" && (
               <MessageAction
                 tooltip="Fork from here"
                 data-testid="fork-from-response"
@@ -3127,18 +3276,22 @@ function AssistantBubble({
             )}
             {canAddTrustedMemoSource && (
               <MessageAction
-                tooltip={isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}
-                label={isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}
+                tooltip={isTrustedMemoSource ? "已保存为资产" : "保存为资产"}
+                label={isTrustedMemoSource ? "已保存为资产" : "保存为资产"}
                 size="sm"
                 variant={isTrustedMemoSource ? "secondary" : "ghost"}
                 className="h-7 gap-1 px-2 text-xs"
                 disabled={isTrustedMemoSource}
-                onClick={() =>
-                  onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText)
-                }
+                onClick={() => {
+                  onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText);
+                  workbenchActions?.markUsefulInformation(
+                    bubble.responseId,
+                    trustedMemoMarkdownText,
+                  );
+                }}
               >
                 {isTrustedMemoSource ? <CheckIcon size={14} /> : <FileTextIcon size={14} />}
-                <span>{isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}</span>
+                <span>{isTrustedMemoSource ? "已保存为资产" : "保存为资产"}</span>
               </MessageAction>
             )}
           </MessageActions>
@@ -3251,6 +3404,8 @@ interface ComposerProps {
   subAgentLabel?: string | null;
   /** Private-fund research project bound to this session, when present. */
   privateFundProjectLabel?: string | null;
+  /** Private-fund dataset bound to this session; gates research instructions and mode UI. */
+  privateFundDatasetId?: string | null;
 }
 
 /**
@@ -3317,13 +3472,39 @@ export function buildSlashCommandWithArgsSet(
 /** Circumference of the progress ring (r=5.5). */
 const RING_CIRCUMFERENCE = 2 * Math.PI * 5.5;
 
-/** Circular progress ring showing how much context window is used, with the used percentage beside it. */
-function ContextRing({ contextWindow, tokensUsed }: { contextWindow: number; tokensUsed: number }) {
-  const pct = Math.min(tokensUsed / contextWindow, 1);
+function formatCompactTokenCount(tokens: number): string {
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(tokens);
+}
+
+const TOKEN_USAGE_ROWS: ReadonlyArray<{ key: keyof ModelUsage; label: string }> = [
+  { key: "inputTokens", label: "Input" },
+  { key: "outputTokens", label: "Output" },
+  { key: "cacheReadInputTokens", label: "Cache read" },
+  { key: "cacheCreationInputTokens", label: "Cache write" },
+  { key: "totalTokens", label: "Total" },
+];
+
+/** Visual context usage plus a per-model token breakdown on hover/focus. */
+function TokenUsageIndicator({
+  contextWindow,
+  tokensUsed,
+  usageByModel,
+}: {
+  contextWindow: number;
+  tokensUsed: number;
+  usageByModel: Record<string, ModelUsage> | null;
+}) {
+  const pct = Math.min(Math.max(tokensUsed / contextWindow, 0), 1);
   // Arc, %, label, and tooltip all encode context USED: a fresh session
   // shows an empty ring at 0% and the ring fills as context is consumed.
   const usedArc = pct * RING_CIRCUMFERENCE;
   const usedPct = Math.round(pct * 100);
+  const models = Object.entries(usageByModel ?? {}).sort(
+    ([, a], [, b]) => (b.totalTokens ?? 0) - (a.totalTokens ?? 0),
+  );
 
   const color =
     pct > 0.8 ? "text-destructive" : pct > 0.6 ? "text-warning" : "text-muted-foreground";
@@ -3332,7 +3513,17 @@ function ContextRing({ contextWindow, tokensUsed }: { contextWindow: number; tok
     <Tooltip>
       <TooltipTrigger asChild>
         <span
-          className={cn("flex items-center gap-1.5", color)}
+          data-testid="composer-token-usage"
+          role="progressbar"
+          tabIndex={0}
+          aria-valuemin={0}
+          aria-valuemax={contextWindow}
+          aria-valuenow={Math.min(Math.max(tokensUsed, 0), contextWindow)}
+          aria-valuetext={`${tokensUsed.toLocaleString()} of ${contextWindow.toLocaleString()} tokens, ${usedPct}% of context used`}
+          className={cn(
+            "flex items-center gap-1.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+            color,
+          )}
           aria-label={`${usedPct}% of context used`}
         >
           <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
@@ -3352,13 +3543,132 @@ function ContextRing({ contextWindow, tokensUsed }: { contextWindow: number; tok
               />
             )}
           </svg>
-          <span className="text-xs tabular-nums" aria-hidden="true">
+          <span
+            data-testid="composer-token-usage-summary"
+            className="hidden text-xs tabular-nums sm:inline"
+            aria-hidden="true"
+          >
+            {formatCompactTokenCount(tokensUsed)} / {formatCompactTokenCount(contextWindow)} ·{" "}
             {usedPct}%
           </span>
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-44 text-center text-xs">
-        <p className="tabular-nums">{usedPct}% of context used.</p>
+      <TooltipContent side="top" className="max-w-72 text-xs">
+        <p className="tabular-nums">
+          Context {tokensUsed.toLocaleString()} / {contextWindow.toLocaleString()} · {usedPct}%
+        </p>
+        {models.length > 0 && (
+          <div className="mt-2 flex flex-col gap-2 border-t border-border/40 pt-2">
+            {models.map(([model, usage]) => {
+              const rows = TOKEN_USAGE_ROWS.flatMap(({ key, label }) => {
+                const value = usage[key];
+                return value != null ? [`${label} ${formatCompactTokenCount(value)}`] : [];
+              });
+              return (
+                <div key={model} data-testid="composer-token-usage-model">
+                  <p className="max-w-64 truncate font-mono" title={model}>
+                    {model}
+                  </p>
+                  {rows.length > 0 && (
+                    <p className="mt-0.5 text-muted-foreground">{rows.join(" · ")}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Cumulative token consumption for the active private-fund conversation. */
+function PrivateFundConversationTokenUsageIndicator({
+  contextWindow,
+  contextTokens,
+  tokenUsage,
+  usageByModel,
+}: {
+  contextWindow: number | null;
+  contextTokens: number | null;
+  tokenUsage: ModelUsage | null;
+  usageByModel: Record<string, ModelUsage> | null;
+}) {
+  // The server's flat subtree counters are authoritative. Fall back to the
+  // model map only for compatibility with an older server response.
+  const totals = tokenUsage ?? summarizeModelTokenUsage(usageByModel);
+  const cached = cachedTokenCount(totals);
+  const models = Object.entries(usageByModel ?? {}).sort(
+    ([, a], [, b]) => (b.totalTokens ?? 0) - (a.totalTokens ?? 0),
+  );
+  const contextPct =
+    contextWindow != null && contextWindow > 0 && contextTokens != null
+      ? Math.round(Math.min(Math.max(contextTokens / contextWindow, 0), 1) * 100)
+      : null;
+  const visibleLabel =
+    totals.totalTokens != null
+      ? `${formatTokenCount(totals.totalTokens)} tokens`
+      : contextPct != null
+        ? `上下文 ${contextPct}%`
+        : "等待用量";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          data-testid="private-fund-conversation-token-usage"
+          role="status"
+          tabIndex={0}
+          aria-label={
+            totals.totalTokens != null
+              ? `This conversation has used ${totals.totalTokens.toLocaleString()} tokens`
+              : "No token usage recorded for this conversation yet"
+          }
+          className="flex items-center gap-1.5 rounded-md text-[11px] font-medium text-[#577063] tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <TokenUsageBar usage={totals} className="w-8" />
+          <span>{visibleLabel}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-80 text-xs">
+        <p className="font-semibold text-foreground">本会话 Token 消耗</p>
+        <p className="mt-1 tabular-nums text-muted-foreground">
+          {totals.totalTokens != null
+            ? `累计 ${totals.totalTokens.toLocaleString()} tokens`
+            : "完成首次模型调用后显示真实用量"}
+        </p>
+        {totals.totalTokens != null ? (
+          <p className="mt-1 tabular-nums text-muted-foreground">
+            输入 {formatTokenCount(totals.inputTokens)} · 缓存 {formatTokenCount(cached)} · 输出{" "}
+            {formatTokenCount(totals.outputTokens)}
+          </p>
+        ) : null}
+        {contextPct != null && contextWindow != null && contextTokens != null ? (
+          <p className="mt-1 tabular-nums text-muted-foreground">
+            当前上下文 {contextTokens.toLocaleString()} / {contextWindow.toLocaleString()} ·{" "}
+            {contextPct}%
+          </p>
+        ) : null}
+        {models.length > 0 ? (
+          <div className="mt-2 flex flex-col gap-2 border-t border-border/40 pt-2">
+            {models.map(([model, usage]) => {
+              const rows = TOKEN_USAGE_ROWS.flatMap(({ key, label }) => {
+                const value = usage[key];
+                return value != null ? [`${label} ${formatCompactTokenCount(value)}`] : [];
+              });
+              return (
+                <div key={model} data-testid="private-fund-conversation-token-model">
+                  <p className="max-w-72 truncate font-mono" title={model}>
+                    {model}
+                  </p>
+                  {rows.length > 0 ? (
+                    <p className="mt-0.5 text-muted-foreground">{rows.join(" · ")}</p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
       </TooltipContent>
     </Tooltip>
   );
@@ -3458,31 +3768,43 @@ function ComposerStatusLine({
   harnessLabel,
   codexGoal,
   privateFundProjectLabel,
+  privateFundResearchMode,
+  onPrivateFundResearchModeChange,
 }: {
   harnessLabel: string | null;
   codexGoal: CodexGoal | null;
   privateFundProjectLabel: string | null;
+  privateFundResearchMode: PrivateFundResearchMode | null;
+  onPrivateFundResearchModeChange: (mode: PrivateFundResearchMode) => void;
 }) {
   const conversationId = useChatStore((s) => s.conversationId);
   const contextWindow = useChatStore((s) => s.contextWindow);
   const tokensUsed = useChatStore((s) => s.tokensUsed);
+  const tokenUsage = useChatStore((s) => s.sessionTokenUsage);
+  const usageByModel = useChatStore((s) => s.sessionUsageByModel);
   const codexPlanMode = useChatStore((s) => s.codexPlanMode);
   // Seeded from the session snapshot on bind (chatStore.sessionBindingPatch),
   // alongside contextWindow — so the branch reads from the same store as
   // the other status-line values rather than a separate fetch.
   const gitBranch = useChatStore((s) => s.gitBranch);
 
-  const showBranch = !!conversationId && !!gitBranch;
+  const privateFundPresentation = privateFundProjectLabel !== null;
+  const showBranch = !privateFundPresentation && !!conversationId && !!gitBranch;
   // The harness/agent identity (e.g. "Claude", "Polly (Pi)") lives here now;
   // the picker trigger above owns the model/effort label since it's the
   // control that changes them.
-  const showHarness = !!conversationId && harnessLabel !== null;
+  const showHarness = !privateFundPresentation && !!conversationId && harnessLabel !== null;
   const showPrivateFundProject = !!conversationId && privateFundProjectLabel !== null;
-  const showPlanMode = !!conversationId && codexPlanMode;
-  const showGoal = !!conversationId && codexGoal != null;
+  const showPrivateFundTokenUsage = showPrivateFundProject;
+  const showPlanMode = !privateFundPresentation && !!conversationId && codexPlanMode;
+  const showGoal = !privateFundPresentation && !!conversationId && codexGoal != null;
   // contextWindow > 0: the SSE path validates it but the snapshot path doesn't, and 0/0 → "NaN%".
   const showRing =
-    !!conversationId && contextWindow != null && contextWindow > 0 && tokensUsed != null;
+    !privateFundPresentation &&
+    !!conversationId &&
+    contextWindow != null &&
+    contextWindow > 0 &&
+    tokensUsed != null;
   if (
     !showBranch &&
     !showPlanMode &&
@@ -3524,7 +3846,7 @@ function ComposerStatusLine({
         )}
       </span>
       {/* Right: model/effort and context ring, never shrinks. */}
-      <div className="flex min-w-0 shrink-0 items-center gap-3">
+      <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
         {showPlanMode && (
           <span
             data-testid="composer-plan-mode"
@@ -3538,7 +3860,7 @@ function ComposerStatusLine({
         {showHarness && harnessLabel && (
           <span
             data-testid="composer-harness"
-            className="max-w-36 truncate text-xs text-muted-foreground sm:max-w-52"
+            className="hidden max-w-36 truncate text-xs text-muted-foreground sm:inline sm:max-w-52"
             title={harnessLabel}
           >
             {harnessLabel}
@@ -3547,14 +3869,35 @@ function ComposerStatusLine({
         {showPrivateFundProject && privateFundProjectLabel && (
           <span
             data-testid="composer-private-fund-project"
-            className="inline-flex max-w-44 items-center gap-1 truncate text-xs text-muted-foreground sm:max-w-64"
+            className="hidden max-w-44 items-center gap-1 truncate text-xs text-muted-foreground sm:inline-flex sm:max-w-64"
             title={privateFundProjectLabel}
           >
             <FolderIcon className="size-3.5 shrink-0" />
             <span className="min-w-0 truncate">{privateFundProjectLabel}</span>
           </span>
         )}
-        {showRing && <ContextRing contextWindow={contextWindow} tokensUsed={tokensUsed} />}
+        {showPrivateFundProject && privateFundResearchMode && (
+          <PrivateFundResearchModeToggle
+            value={privateFundResearchMode}
+            onChange={onPrivateFundResearchModeChange}
+            testId="composer-private-fund-research-mode"
+          />
+        )}
+        {showPrivateFundTokenUsage && (
+          <PrivateFundConversationTokenUsageIndicator
+            contextWindow={contextWindow}
+            contextTokens={tokensUsed}
+            tokenUsage={tokenUsage}
+            usageByModel={usageByModel}
+          />
+        )}
+        {showRing && (
+          <TokenUsageIndicator
+            contextWindow={contextWindow}
+            tokensUsed={tokensUsed}
+            usageByModel={usageByModel}
+          />
+        )}
       </div>
     </div>
   );
@@ -3667,12 +4010,21 @@ export function Composer({
   costRoutingEligible = false,
   subAgentLabel = null,
   privateFundProjectLabel = null,
+  privateFundDatasetId = null,
 }: ComposerProps) {
+  const workbenchActions = usePrivateFundWorkbenchActions();
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [planModeBusy, setPlanModeBusy] = useState(false);
+  const [privateFundResearchMode, setPrivateFundResearchMode] = useState<PrivateFundResearchMode>(
+    readPrivateFundResearchMode,
+  );
+  const handlePrivateFundResearchModeChange = useCallback((mode: PrivateFundResearchMode) => {
+    setPrivateFundResearchMode(mode);
+    writePrivateFundResearchMode(mode);
+  }, []);
   // Index of the highlighted item in the slash-command suggestions menu.
   // -1 means no item highlighted (menu closed or no matches). When the menu
   // opens with matches the reset logic below pre-selects the first item (0)
@@ -3691,6 +4043,9 @@ export function Composer({
   // "Attach to agent" button). Drained into ``mentionedItems`` below, then
   // cleared from the store so they aren't re-applied.
   const pendingComposerAttachments = useChatStore((s) => s.pendingComposerAttachments);
+  const pendingComposerAttachmentRemovals = useChatStore(
+    (s) => s.pendingComposerAttachmentRemovals,
+  );
   // Nonce bumped when bare "/model" is submitted; opens the AgentPicker
   // dropdown instead of sending (see submit()).
   const [pickerOpenNonce, setPickerOpenNonce] = useState(0);
@@ -3964,16 +4319,22 @@ export function Composer({
     return () => useChatStore.getState().setActiveComposerAttachments([]);
   }, [mentionedItems]);
 
-  // Drain externally-queued attachments (file viewer "Attach to agent") into
-  // the local mention chips, deduping against what's already tagged, then
-  // clear the store queue so they aren't re-applied. Placed after
-  // ``useMentionBrowser`` since it owns ``setMentionedItems``.
+  // Drain externally-queued attachment adds/removals into the local mention
+  // chips, deduping against what's already tagged, then clear the store queues
+  // so they aren't re-applied. Placed after ``useMentionBrowser`` since it
+  // owns ``setMentionedItems``.
   useEffect(() => {
-    if (pendingComposerAttachments.length === 0) return;
+    if (pendingComposerAttachments.length === 0 && pendingComposerAttachmentRemovals.length === 0)
+      return;
     setMentionedItems((prev) => {
+      const removalKeys = new Set(pendingComposerAttachmentRemovals.map(composerAttachmentKey));
+      const base =
+        removalKeys.size > 0
+          ? prev.filter((item) => !removalKeys.has(composerAttachmentKey(item)))
+          : prev;
       // Dedup against already-tagged chips AND within this batch (accumulate
       // into ``seen`` as we go) so a duplicated queue can't double-apply.
-      const seen = new Set(prev.map(composerAttachmentKey));
+      const seen = new Set(base.map(composerAttachmentKey));
       const fresh: MentionItem[] = [];
       for (const a of pendingComposerAttachments) {
         const k = composerAttachmentKey(a);
@@ -3981,18 +4342,23 @@ export function Composer({
         seen.add(k);
         fresh.push(a);
       }
-      return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      if (fresh.length === 0 && base.length === prev.length) return prev;
+      return fresh.length > 0 ? [...base, ...fresh] : base;
     });
     useChatStore.getState().clearPendingComposerAttachments();
-    textareaRef.current?.focus();
+    useChatStore.getState().clearPendingComposerAttachmentRemovals();
+    if (pendingComposerAttachments.length > 0) textareaRef.current?.focus();
     // Defense-in-depth against the cross-session leak: if the composer unmounts
     // while an entry is still queued (route change, panel close, the
     // loading-conversation gate during a session switch), clear the queue so
     // the next-mounted composer doesn't drain a stale chip. ``switchTo`` also
     // resets the queue, but this closes the non-switch unmount paths too.
-    return () => useChatStore.getState().clearPendingComposerAttachments();
+    return () => {
+      useChatStore.getState().clearPendingComposerAttachments();
+      useChatStore.getState().clearPendingComposerAttachmentRemovals();
+    };
     // setMentionedItems is a stable useState setter (from useMentionBrowser).
-  }, [pendingComposerAttachments, setMentionedItems]);
+  }, [pendingComposerAttachments, pendingComposerAttachmentRemovals, setMentionedItems]);
 
   /**
    * Execute a slash command by name + optional argument string.
@@ -4195,6 +4561,32 @@ export function Composer({
     )
       return;
 
+    const privateFundContext = privateFundDatasetId
+      ? privateFundProjectPreamble(
+          {
+            datasetId: privateFundDatasetId,
+            name: privateFundProjectLabel ?? privateFundDatasetId,
+          },
+          privateFundResearchMode,
+        ) +
+        (workbenchActions && workbenchActions.contextAssets.length > 0
+          ? [
+              "用户勾选的研究资产上下文:",
+              ...workbenchActions.contextAssets.map(
+                (asset) =>
+                  `- [${asset.assetId}] ${asset.title}（${asset.assetType}）\n` +
+                  `证据状态: ${asset.evidenceCitations.length > 0 ? `已绑定 ${asset.evidenceCitations.length} 条可核验证据` : "未绑定可核验证据；复述事实前必须通过数据集工具重新检索核验"}\n` +
+                  (asset.evidenceCitations.length > 0
+                    ? `可用引用:\n${asset.evidenceCitations.map((citation) => `  - ${citation}`).join("\n")}\n`
+                    : "") +
+                  asset.content,
+              ),
+              "",
+            ].join("\n")
+          : "")
+      : "";
+    const hiddenPrivateFundContext = wrapPrivateFundPromptContext(privateFundContext);
+
     // Slash command path: the first token must read as "/name" (the shared
     // isSlashCommandText guard — file paths like "/Users/foo/bar.txt" don't
     // match, while args after the name may carry paths or URLs, e.g.
@@ -4244,7 +4636,7 @@ export function Composer({
       if (onSendSlashCommand && parts[0] in slashCommands) {
         const skillArgs = trimmed.slice(parts[0].length).trim();
         appendEntry(trimmed);
-        onSendSlashCommand(parts[0].slice(1), skillArgs);
+        onSendSlashCommand(parts[0].slice(1), `${hiddenPrivateFundContext}${skillArgs}`.trim());
         dirtyRef.current = true;
         setValue("");
         setCommandError(null);
@@ -4272,8 +4664,22 @@ export function Composer({
     // (codex says "Attached file:"). Folders carry a trailing "/" so the
     // agent knows to open the directory. The native vendor reads the on-disk
     // workspace file/folder from this marker; no upload happens.
-    const messageText =
-      buildMentionPreamble(mentionedItems, sessionHarness) + quotePreamble + trimmed;
+    // Native vendor CLIs only recognize a slash command when `/name` is the
+    // first token. Keep it there for private-fund sessions and append the
+    // task-level project/research instructions as command context. In-process
+    // skills took the structured path above, where their name stays separate.
+    const preserveNativeSlashPrefix =
+      isNativeWrapper &&
+      hiddenPrivateFundContext.length > 0 &&
+      isSlashCommandText(trimmed) &&
+      files.length === 0 &&
+      mentionedItems.length === 0;
+    const messageText = preserveNativeSlashPrefix
+      ? `${trimmed}\n\n${hiddenPrivateFundContext}${quotePreamble}`.trim()
+      : buildMentionPreamble(mentionedItems, sessionHarness) +
+        hiddenPrivateFundContext +
+        quotePreamble +
+        trimmed;
     // Sending while a prior response is streaming is fine — the
     // server queues the message and delivers it to the running task
     // (or starts a fresh one once the current drains). Escape still
@@ -4416,6 +4822,7 @@ export function Composer({
   return (
     <form
       onSubmit={handleSubmit}
+      data-private-fund-composer={privateFundDatasetId ? "true" : undefined}
       className={cn(
         "chat-composer-form px-4 md:px-6",
         isTerminalFirst ? "terminal-first-composer-form pb-1.5" : "pb-3",
@@ -4598,7 +5005,9 @@ export function Composer({
                             ? "Current session's host is offline. Next message will resume the sandbox host which can take minutes"
                             : reconnectHint
                               ? "Send a message to reconnect this session"
-                              : "Ask the agent anything…"
+                              : privateFundDatasetId
+                                ? "继续讨论这个节点，例如验证假设或对比情景…"
+                                : "Ask the agent anything…"
             }
             rows={1}
             disabled={disabled || isReadOnly || unreachable || hasPendingElicitation}
@@ -4699,21 +5108,23 @@ export function Composer({
               <PaperclipIcon className="size-4" />
               <span className="sr-only">Attach files</span>
             </Button>
-            <ComposerMicButton
-              disabled={disabled || isReadOnly || hasPendingElicitation}
-              onTranscript={(text) => {
-                setValue((prev) => (prev ? `${prev} ${text}` : text));
-                dirtyRef.current = true;
-                // Dictation is a user-driven edit — exit prompt-recall mode
-                // so ArrowUp/ArrowDown don't clobber the dictated text.
-                resetCursor();
-                if (commandError !== null) setCommandError(null);
-              }}
-            />
+            {!privateFundDatasetId && (
+              <ComposerMicButton
+                disabled={disabled || isReadOnly || hasPendingElicitation}
+                onTranscript={(text) => {
+                  setValue((prev) => (prev ? `${prev} ${text}` : text));
+                  dirtyRef.current = true;
+                  // Dictation is a user-driven edit — exit prompt-recall mode
+                  // so ArrowUp/ArrowDown don't clobber the dictated text.
+                  resetCursor();
+                  if (commandError !== null) setCommandError(null);
+                }}
+              />
+            )}
           </div>
           {/* Cost toggle + agent picker + Send — right side */}
           <div className="flex min-w-0 items-center gap-0.5">
-            {costRoutingEligible && (
+            {!privateFundDatasetId && costRoutingEligible && (
               <IntelligentModelControl
                 value={costControlModeOverride}
                 onChange={(mode) =>
@@ -4726,7 +5137,7 @@ export function Composer({
                 verdict={costRoutingVerdict}
               />
             )}
-            {showCodexPlanMode && (
+            {!privateFundDatasetId && showCodexPlanMode && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -4757,7 +5168,7 @@ export function Composer({
                 </TooltipContent>
               </Tooltip>
             )}
-            {showCodexGoal && (
+            {!privateFundDatasetId && showCodexGoal && (
               <CodexGoalControl
                 conversationId={conversationId}
                 readOnly={isReadOnly}
@@ -4765,18 +5176,20 @@ export function Composer({
                 onGoalChange={setCodexGoal}
               />
             )}
-            <AgentPicker
-              agents={agents}
-              isLoading={agentsLoading}
-              selectedId={selectedAgentId}
-              onSelect={onSelectAgent}
-              effortLevels={effortLevels}
-              showEffort={showEffort}
-              modelPickerKind={modelPickerKind}
-              codexModelOptions={codexModelOptions}
-              disabled={isReadOnly}
-              openNonce={pickerOpenNonce}
-            />
+            {!privateFundDatasetId && (
+              <AgentPicker
+                agents={agents}
+                isLoading={agentsLoading}
+                selectedId={selectedAgentId}
+                onSelect={onSelectAgent}
+                effortLevels={effortLevels}
+                showEffort={showEffort}
+                modelPickerKind={modelPickerKind}
+                codexModelOptions={codexModelOptions}
+                disabled={isReadOnly}
+                openNonce={pickerOpenNonce}
+              />
+            )}
             <Button
               type="submit"
               size="icon"
@@ -4812,6 +5225,8 @@ export function Composer({
         harnessLabel={harnessLabel}
         codexGoal={codexGoal}
         privateFundProjectLabel={privateFundProjectLabel}
+        privateFundResearchMode={privateFundDatasetId ? privateFundResearchMode : null}
+        onPrivateFundResearchModeChange={handlePrivateFundResearchModeChange}
       />
     </form>
   );

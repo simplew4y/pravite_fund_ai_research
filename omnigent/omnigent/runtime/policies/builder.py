@@ -719,6 +719,8 @@ def _merge_by_model(
 def load_session_usage(
     conversation_id: str,
     conversation_store: ConversationStore,
+    *,
+    include_archived: bool = False,
 ) -> dict[str, Any]:
     """
     Load cumulative session usage for a conversation **plus all of its
@@ -742,6 +744,9 @@ def load_session_usage(
     :param conversation_id: Conversation to load,
         e.g. ``"conv_abc123"``.
     :param conversation_store: Store to read from.
+    :param include_archived: When ``True``, include archived conversations
+        in the subtree aggregate. Defaults to ``False`` to preserve the
+        active-session usage view.
     :returns: Summed usage dict with keys ``input_tokens``,
         ``output_tokens``, ``total_tokens``, ``total_cost_usd`` (the
         DISPLAY cost sum — statusLine ``S`` for claude-native), and
@@ -758,7 +763,11 @@ def load_session_usage(
     conv = conversation_store.get_conversation(conversation_id)
     if conv is None:
         return {}
-    tree = _load_tree_conversations(conv.root_conversation_id, conversation_store)
+    tree = _load_tree_conversations(
+        conv.root_conversation_id,
+        conversation_store,
+        include_archived=include_archived,
+    )
     subtree_ids = _subtree_conversation_ids(tree, conversation_id)
     totals: dict[str, Any] = {}
     # Per-model breakdown summed across the subtree, parallel to the flat sums.
@@ -844,6 +853,8 @@ def _policy_usage_seed(
 def _load_tree_conversations(
     root_conversation_id: str,
     conversation_store: ConversationStore,
+    *,
+    include_archived: bool = False,
 ) -> list[Conversation]:
     """
     Page through every conversation in one spawn tree.
@@ -856,10 +867,13 @@ def _load_tree_conversations(
     :param root_conversation_id: The tree's root conversation id (every
         conversation in a spawn tree shares it), e.g. ``"conv_abc123"``.
     :param conversation_store: Store to read from.
+    :param include_archived: When ``True``, include archived conversations
+        in the tree. Defaults to ``False``.
     :returns: All conversations in the tree, in store order.
     """
     convs: list[Conversation] = []
     after: str | None = None
+    archive_filter = {"include_archived": True} if include_archived else {}
     while True:
         page = conversation_store.list_conversations(
             limit=_SUBTREE_USAGE_PAGE_SIZE,
@@ -868,6 +882,7 @@ def _load_tree_conversations(
             # (not just "default") are included in the tree.
             kind=None,
             root_conversation_id=root_conversation_id,
+            **archive_filter,
         )
         convs.extend(page.data)
         if not page.has_more or page.last_id is None:

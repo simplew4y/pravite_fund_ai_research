@@ -1713,6 +1713,7 @@ class SessionResponse(BaseModel):
     context_window: int | None = None
     last_total_tokens: int | None = None
     total_cost_usd: float | None = None
+    token_usage: ModelUsage | None = None
     usage_by_model: dict[str, ModelUsage] | None = None
     last_task_error: dict[str, str] | None = None
     external_session_id: str | None = None
@@ -2308,6 +2309,10 @@ class SessionUsageEvent(_SSEEventBase):
         so the client keeps its prior value (the snapshot seeds the
         initial "—" for an unpriced session). Once a session is priced
         the total only grows, so it never reverts to unpriced.
+    :param token_usage: Flat cumulative token buckets for the same session
+        subtree. This is the authoritative aggregate; clients should use it
+        for totals and keep ``usage_by_model`` as attribution detail.
+        ``None`` (stripped by ``exclude_none``) when no usage was recorded.
     :param usage_by_model: Per-model breakdown of the same subtree usage
         after this update, keyed by raw harness model id, e.g.
         ``{"claude-sonnet-4-6": ModelUsage(input_tokens=12000, ...)}``.
@@ -2325,6 +2330,7 @@ class SessionUsageEvent(_SSEEventBase):
     context_tokens: int | None = None
     context_window: int | None = None
     total_cost_usd: float | None = None
+    token_usage: ModelUsage | None = None
     usage_by_model: dict[str, ModelUsage] | None = None
 
 

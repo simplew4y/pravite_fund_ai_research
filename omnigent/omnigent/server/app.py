@@ -5,6 +5,7 @@ import logging
 import mimetypes
 import os
 import re
+import shutil
 import tarfile
 import uuid
 from collections.abc import AsyncIterator, Awaitable
@@ -12,6 +13,7 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any, Protocol
 
+import yaml
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -570,11 +572,36 @@ def _build_claude_native_bundle() -> bytes:
     import tempfile
 
     from omnigent.claude_native import _materialize_claude_agent_spec
-    from omnigent.spec import materialize_bundle
-
     with tempfile.TemporaryDirectory() as tmpdir:
         spec_path = _materialize_claude_agent_spec(Path(tmpdir))
-        bundle_dir = materialize_bundle(spec_path, Path(tmpdir) / "bundle")
+        raw = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+        native_executor = raw["executor"]
+        raw["spec_version"] = 1
+        raw["executor"] = {
+            "type": "omnigent",
+            "context_window": native_executor["context_window"],
+            "config": {"harness": native_executor["harness"]},
+        }
+        raw["tools"] = {
+            "builtins": [
+                "private_fund_dataset_status",
+                "private_fund_dataset_search",
+                "private_fund_source_detail",
+                "private_fund_dataset_memo",
+                "private_fund_equity_report_generate",
+                "private_fund_equity_report_status",
+                "private_fund_equity_report_get",
+                "private_fund_research_context",
+                "private_fund_research_node_save",
+            ]
+        }
+        bundle_dir = Path(tmpdir) / "bundle"
+        bundle_dir.mkdir()
+        (bundle_dir / "config.yaml").write_text(
+            yaml.safe_dump(raw, sort_keys=False), encoding="utf-8"
+        )
+        skill_source = Path(__file__).parents[1] / "resources" / "private_fund_skills"
+        shutil.copytree(skill_source, bundle_dir / "skills", dirs_exist_ok=True)
         return _tar_gz_dir(bundle_dir)
 
 
@@ -1957,7 +1984,10 @@ def create_app(
         tags=["policy_registry"],
     )
     app.include_router(
-        create_private_fund_pdf_router(),
+        create_private_fund_pdf_router(
+            conversation_store=conversation_store,
+            auth_provider=auth_provider,
+        ),
         prefix="/v1",
         tags=["private_fund_pdf"],
     )

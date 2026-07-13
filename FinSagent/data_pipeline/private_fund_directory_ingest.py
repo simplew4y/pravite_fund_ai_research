@@ -11,10 +11,11 @@ dedicated fact tables:
         raw/
         meta/collection.sqlite3
 
-PDF files are parsed by text extraction first. OCR/MinerU is intentionally not
-used here because the private-fund workflow needs a fast direct-text path and
-can fall back to the legacy PDF pipeline only for scanned or complex-layout
-files.
+PDF files are parsed deterministically with PyMuPDF. Documents that fail the
+text-quality gate are recorded as ``needs_ocr`` with no searchable chunks, so
+scanned files cannot silently look indexed. Office/text formats are dispatched
+through format-specific adapters, while document versions and tombstones keep
+incremental runs auditable.
 """
 
 from __future__ import annotations
@@ -31,12 +32,27 @@ import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
+try:
+    from .private_fund_format_adapters import (  # type: ignore
+        SUPPORTED_EXTENSIONS as ADAPTER_EXTENSIONS,
+        adapt_document,
+    )
+except ImportError:
+    from private_fund_format_adapters import (  # type: ignore
+        SUPPORTED_EXTENSIONS as ADAPTER_EXTENSIONS,
+        adapt_document,
+    )
 
-SUPPORTED_EXTENSIONS = {".pdf", ".xlsx", ".xlsm"}
+CORE_EXTENSIONS = {".pdf", ".xlsx", ".xlsm"}
+SUPPORTED_EXTENSIONS = CORE_EXTENSIONS | set(ADAPTER_EXTENSIONS)
 DEFAULT_MAX_PDF_CHARS = 2200
 DEFAULT_MAX_REGION_LABELS = 30
+MIN_PDF_MEANINGFUL_CHARS = 40
+MIN_PDF_MEANINGFUL_CHARS_PER_PAGE = 15
+MIN_PDF_TEXT_PAGE_CHARS = 20
+MIN_PDF_TEXT_PAGE_COVERAGE = 0.60
 
 
 def now_iso() -> str:
@@ -56,15 +72,28 @@ def sha256_file(path: Path) -> str:
 
 
 def json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, bytes):
+        return value.hex()
     if isinstance(value, dict):
         return {str(k): json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
         return [json_safe(v) for v in value]
-    return value
+    # openpyxl's ArrayFormula/DataTableFormula (and a few other library
+    # objects) use the default object repr, which embeds a process-specific
+    # memory address.  Persist a deterministic structural description instead.
+    attributes = getattr(value, "__dict__", None)
+    if isinstance(attributes, dict):
+        return {
+            "type": type(value).__name__,
+            "attributes": {str(k): json_safe(v) for k, v in sorted(attributes.items())},
+        }
+    return {"type": type(value).__name__}
 
 
 def dumps_json(value: Any) -> str:
@@ -72,7 +101,14 @@ def dumps_json(value: Any) -> str:
 
 
 def normalize_text(value: Any) -> str:
-    text = "" if value is None else str(value)
+    if value is None:
+        text = ""
+    elif isinstance(value, str):
+        text = value
+    elif isinstance(value, (int, float, bool, datetime, date, Path)):
+        text = str(json_safe(value))
+    else:
+        text = dumps_json(value)
     text = unicodedata.normalize("NFKC", text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -130,6 +166,14 @@ class DocumentIngestResult:
     excel_cell_count: int = 0
     metric_fact_count: int = 0
     error_message: Optional[str] = None
+    logical_doc_id: str = ""
+    version_no: int = 0
+    supersedes_doc_id: Optional[str] = None
+    reused: bool = False
+    parser_name: str = ""
+    parser_version: str = ""
+    parser_metadata: dict[str, Any] = field(default_factory=dict)
+    lifecycle_state: str = "active"
 
 
 @dataclass
@@ -144,6 +188,11 @@ class IngestResult:
     global_db_path: str
     status: str
     file_count: int
+    discovered_file_count: int = 0
+    supported_file_count: int = 0
+    unsupported_file_count: int = 0
+    removed_file_count: int = 0
+    warning_count: int = 0
     documents: list[DocumentIngestResult] = field(default_factory=list)
     started_at: str = ""
     finished_at: str = ""
@@ -196,8 +245,15 @@ def ensure_collection_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS documents (
             doc_id TEXT PRIMARY KEY,
             dataset_id TEXT NOT NULL,
+            logical_doc_id TEXT,
+            version_no INTEGER NOT NULL DEFAULT 1,
+            supersedes_doc_id TEXT,
+            is_current INTEGER NOT NULL DEFAULT 1,
+            lifecycle_state TEXT NOT NULL DEFAULT 'active',
             title TEXT NOT NULL,
             original_filename TEXT NOT NULL,
+            source_root TEXT,
+            source_relpath TEXT,
             stored_path TEXT NOT NULL,
             file_type TEXT NOT NULL,
             doc_type TEXT,
@@ -212,6 +268,9 @@ def ensure_collection_schema(conn: sqlite3.Connection) -> None:
             chunk_count INTEGER NOT NULL DEFAULT 0,
             error_message TEXT,
             metadata_json TEXT,
+            parser_name TEXT,
+            parser_version TEXT,
+            parser_metadata_json TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             deleted_at TEXT
@@ -367,6 +426,8 @@ def ensure_collection_schema(conn: sqlite3.Connection) -> None:
             period TEXT,
             unit TEXT,
             is_formula INTEGER NOT NULL DEFAULT 0,
+            formula_type TEXT,
+            formula_cache_status TEXT NOT NULL DEFAULT 'not_applicable',
             metadata_json TEXT
         );
 
@@ -385,6 +446,9 @@ def ensure_collection_schema(conn: sqlite3.Connection) -> None:
             source_range TEXT,
             formula TEXT,
             confidence REAL NOT NULL DEFAULT 0.5,
+            fact_status TEXT NOT NULL DEFAULT 'candidate',
+            quality_status TEXT NOT NULL DEFAULT 'review_required',
+            quality_issues_json TEXT,
             metadata_json TEXT
         );
 
@@ -395,12 +459,209 @@ def ensure_collection_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_excel_sheets_doc ON excel_sheets(doc_id, sheet_name);
         CREATE INDEX IF NOT EXISTS idx_excel_regions_doc ON excel_regions(doc_id, sheet_name, cell_range);
         CREATE INDEX IF NOT EXISTS idx_excel_cells_doc_sheet ON excel_cells(doc_id, sheet_name, cell_ref);
+        CREATE INDEX IF NOT EXISTS idx_excel_cells_doc_sheet_position
+            ON excel_cells(doc_id, sheet_name, row_index, col_index);
         CREATE INDEX IF NOT EXISTS idx_metric_facts_metric ON metric_facts(doc_id, metric_name, period);
         CREATE INDEX IF NOT EXISTS idx_metric_facts_source ON metric_facts(doc_id, sheet_name, cell_ref);
         CREATE INDEX IF NOT EXISTS idx_index_registry_dataset_type ON index_registry(dataset_id, index_type);
         """
     )
+    _ensure_collection_schema_migrations(conn)
     conn.commit()
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _ensure_columns(conn: sqlite3.Connection, table: str, definitions: dict[str, str]) -> None:
+    existing = _table_columns(conn, table)
+    for column, definition in definitions.items():
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _normalized_source_relpath(value: str) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).replace("\\", "/")
+    text = re.sub(r"/+", "/", text).strip("/ ")
+    return text or "document"
+
+
+def _logical_doc_id(dataset_id: str, source_relpath: str) -> str:
+    normalized = _normalized_source_relpath(source_relpath)
+    return sha256_text(f"{dataset_id}\0{normalized}")[:40]
+
+
+def _migrate_document_versions(conn: sqlite3.Connection) -> None:
+    rows = list(
+        conn.execute(
+            """
+            SELECT doc_id, dataset_id, logical_doc_id, version_no, original_filename,
+                   stored_path, source_root, source_relpath, status, lifecycle_state,
+                   file_type, chunk_count, error_message, metadata_json,
+                   created_at, updated_at, deleted_at
+            FROM documents
+            ORDER BY dataset_id, COALESCE(created_at, ''), doc_id
+            """
+        )
+    )
+    legacy_identity_counts: dict[tuple[str, str], int] = {}
+    for row in rows:
+        if row["logical_doc_id"]:
+            continue
+        fallback = _normalized_source_relpath(
+            row["source_relpath"] or row["original_filename"]
+        )
+        key = (str(row["dataset_id"]), fallback)
+        legacy_identity_counts[key] = legacy_identity_counts.get(key, 0) + 1
+
+    groups: dict[tuple[str, str], list[sqlite3.Row]] = {}
+    for row in rows:
+        fallback = _normalized_source_relpath(
+            row["source_relpath"] or row["original_filename"]
+        )
+        legacy_key = (str(row["dataset_id"]), fallback)
+        is_ambiguous_legacy_identity = (
+            not row["logical_doc_id"] and legacy_identity_counts.get(legacy_key, 0) > 1
+        )
+        if is_ambiguous_legacy_identity:
+            # The legacy schema discarded the original relative source path.
+            # Two active rows sharing a basename may be independent files from
+            # different subdirectories, not versions of one document.  Use a
+            # stable synthetic path rather than destructively merging them.
+            relpath = _normalized_source_relpath(
+                f"__legacy_ambiguous__/{str(row['doc_id'])[:12]}/{Path(str(row['original_filename'])).name}"
+            )
+        else:
+            relpath = fallback
+        logical_id = str(row["logical_doc_id"] or _logical_doc_id(row["dataset_id"], relpath))
+        try:
+            metadata = json.loads(row["metadata_json"] or "{}")
+            if not isinstance(metadata, dict):
+                metadata = {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            metadata = {}
+        if is_ambiguous_legacy_identity:
+            metadata.update(
+                {
+                    "legacy_identity_disambiguated": True,
+                    "legacy_original_relpath": fallback,
+                    "legacy_stored_path": str(row["stored_path"] or ""),
+                }
+            )
+        conn.execute(
+            """
+            UPDATE documents
+            SET logical_doc_id = ?, source_relpath = ?, metadata_json = ?,
+                parser_name = COALESCE(NULLIF(parser_name, ''), 'legacy_unknown'),
+                parser_version = COALESCE(NULLIF(parser_version, ''), 'unknown')
+            WHERE doc_id = ?
+            """,
+            (logical_id, relpath, dumps_json(metadata), row["doc_id"]),
+        )
+        groups.setdefault((str(row["dataset_id"]), logical_id), []).append(row)
+
+    migration_time = now_iso()
+    for (_, _), versions in groups.items():
+        ordered = sorted(
+            versions,
+            key=lambda row: (
+                int(row["version_no"] or 0),
+                str(row["created_at"] or ""),
+                str(row["doc_id"]),
+            ),
+        )
+        active = [row for row in ordered if not row["deleted_at"]]
+        current_doc_id = str(active[-1]["doc_id"]) if active else ""
+        previous_doc_id: Optional[str] = None
+        for version_no, row in enumerate(ordered, start=1):
+            doc_id = str(row["doc_id"])
+            is_current = 1 if doc_id == current_doc_id else 0
+            status = str(row["status"] or "")
+            lifecycle_state = str(row["lifecycle_state"] or "active")
+            deleted_at = row["deleted_at"]
+            if status in {"removed", "superseded"}:
+                lifecycle_state = status
+                if int(row["chunk_count"] or 0) > 0:
+                    status = "indexed"
+                elif str(row["file_type"] or "") == "pdf" and conn.execute(
+                    "SELECT COUNT(*) FROM pdf_pages WHERE doc_id = ?", (doc_id,)
+                ).fetchone()[0]:
+                    status = "needs_ocr"
+                else:
+                    status = "failed"
+            if active and not is_current and not deleted_at:
+                deleted_at = row["updated_at"] or migration_time
+                lifecycle_state = "superseded"
+            elif is_current and not deleted_at:
+                lifecycle_state = "active"
+            elif not is_current and lifecycle_state == "active":
+                lifecycle_state = "superseded"
+            conn.execute(
+                """
+                UPDATE documents
+                SET version_no = ?, supersedes_doc_id = ?, is_current = ?,
+                    status = ?, lifecycle_state = ?, deleted_at = ?
+                WHERE doc_id = ?
+                """,
+                (
+                    version_no,
+                    previous_doc_id,
+                    is_current,
+                    status,
+                    lifecycle_state,
+                    deleted_at,
+                    doc_id,
+                ),
+            )
+            previous_doc_id = doc_id
+
+
+def _ensure_collection_schema_migrations(conn: sqlite3.Connection) -> None:
+    _ensure_columns(
+        conn,
+        "documents",
+        {
+            "logical_doc_id": "TEXT",
+            "version_no": "INTEGER NOT NULL DEFAULT 1",
+            "supersedes_doc_id": "TEXT",
+            "is_current": "INTEGER NOT NULL DEFAULT 1",
+            "lifecycle_state": "TEXT NOT NULL DEFAULT 'active'",
+            "source_root": "TEXT",
+            "source_relpath": "TEXT",
+            "parser_name": "TEXT",
+            "parser_version": "TEXT",
+            "parser_metadata_json": "TEXT",
+        },
+    )
+    _ensure_columns(
+        conn,
+        "excel_cells",
+        {
+            "formula_type": "TEXT",
+            "formula_cache_status": "TEXT NOT NULL DEFAULT 'not_applicable'",
+        },
+    )
+    _ensure_columns(
+        conn,
+        "metric_facts",
+        {
+            "fact_status": "TEXT NOT NULL DEFAULT 'candidate'",
+            "quality_status": "TEXT NOT NULL DEFAULT 'review_required'",
+            "quality_issues_json": "TEXT",
+        },
+    )
+    _migrate_document_versions(conn)
+    conn.executescript(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_logical_version
+            ON documents(dataset_id, logical_doc_id, version_no);
+        CREATE INDEX IF NOT EXISTS idx_documents_current
+            ON documents(dataset_id, is_current, deleted_at, status);
+        CREATE INDEX IF NOT EXISTS idx_documents_source_path
+            ON documents(dataset_id, source_root, source_relpath);
+        """
+    )
 
 
 def _location_id(chunk_id: str, loc_index: int, display: str) -> str:
@@ -426,20 +687,81 @@ def _copy_to_raw(source: Path, raw_dir: Path) -> Path:
         if src_hash == dst_hash:
             return target
         target = raw_dir / f"{source.stem}_{src_hash[:8]}{source.suffix}"
+        if target.exists() and sha256_file(target) == src_hash:
+            return target
     shutil.copy2(source, target)
     return target
 
 
-def _iter_supported_files(source_dir: Path, recursive: bool) -> list[Path]:
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _validate_source_output_layout(
+    source_dir: Path, workspace_root: Path, dataset_root: Path
+) -> None:
+    source = source_dir.resolve()
+    workspace = workspace_root.resolve()
+    dataset = dataset_root.resolve()
+    if source == workspace:
+        raise ValueError(
+            "directory_path must not equal workspace_root; choose a separate source directory "
+            "to prevent generated state from being ingested or tombstoned"
+        )
+    if source == dataset:
+        raise ValueError(
+            "directory_path must not equal dataset_root; use a dedicated source subdirectory "
+            "such as dataset_root/_uploads"
+        )
+
+
+def _is_ignored_input_file(path: Path) -> bool:
+    name = path.name.casefold()
+    if name.startswith("~$"):
+        return True
+    return name.endswith(
+        (
+            ".sqlite",
+            ".sqlite3",
+            ".sqlite-wal",
+            ".sqlite-shm",
+            ".sqlite3-wal",
+            ".sqlite3-shm",
+            ".db-wal",
+            ".db-shm",
+        )
+    )
+
+
+def _iter_input_files(
+    source_dir: Path,
+    recursive: bool,
+    *,
+    excluded_roots: Optional[list[Path]] = None,
+) -> tuple[list[Path], list[Path]]:
     iterator = source_dir.rglob("*") if recursive else source_dir.glob("*")
-    files = [
+    exclusions = [root.resolve() for root in (excluded_roots or [])]
+    all_files = [
         path
         for path in iterator
         if path.is_file()
-        and path.suffix.lower() in SUPPORTED_EXTENSIONS
         and not any(part.startswith(".") for part in path.relative_to(source_dir).parts)
+        and not _is_ignored_input_file(path)
+        and not any(_path_is_within(path, root) for root in exclusions)
     ]
-    return sorted(files, key=lambda p: str(p).lower())
+    all_files.sort(key=lambda path: str(path.relative_to(source_dir)).casefold())
+    supported = [path for path in all_files if path.suffix.lower() in SUPPORTED_EXTENSIONS]
+    unsupported = [path for path in all_files if path.suffix.lower() not in SUPPORTED_EXTENSIONS]
+    return supported, unsupported
+
+
+def _iter_supported_files(source_dir: Path, recursive: bool) -> list[Path]:
+    supported, _ = _iter_input_files(source_dir, recursive)
+    return supported
 
 
 def _delete_document_payload(conn: sqlite3.Connection, doc_id: str) -> None:
@@ -466,25 +788,37 @@ def _register_document(
     company_name: str,
     company_ticker: str,
     doc_type: str,
+    source_root: str,
+    source_relpath: str,
+    logical_doc_id: str,
+    version_no: int,
+    supersedes_doc_id: Optional[str],
 ) -> str:
-    doc_id = sha256_text(f"{dataset_id}\0{original_filename}\0{checksum}")[:40]
+    doc_id = sha256_text(
+        f"{dataset_id}\0{logical_doc_id}\0{version_no}\0{checksum}"
+    )[:40]
     now = now_iso()
-    _delete_document_payload(conn, doc_id)
-    conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
     conn.execute(
         """
         INSERT INTO documents (
-            doc_id, dataset_id, title, original_filename, stored_path, file_type,
-            doc_type, source_type, source_name, company_name, company_ticker,
+            doc_id, dataset_id, logical_doc_id, version_no, supersedes_doc_id,
+            is_current, lifecycle_state, title, original_filename, source_root, source_relpath,
+            stored_path, file_type, doc_type, source_type, source_name, company_name, company_ticker,
             document_date, checksum, file_size, status, chunk_count, error_message,
-            metadata_json, created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            metadata_json, parser_name, parser_version, parser_metadata_json,
+            created_at, updated_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)
         """,
         (
             doc_id,
             dataset_id,
+            logical_doc_id,
+            version_no,
+            supersedes_doc_id,
             Path(original_filename).stem,
             original_filename,
+            source_root,
+            _normalized_source_relpath(source_relpath),
             str(stored_path),
             stored_path.suffix.lower().lstrip("."),
             doc_type,
@@ -498,12 +832,124 @@ def _register_document(
             "parsing",
             0,
             None,
-            dumps_json({"source": "private_fund_directory_ingest"}),
+            dumps_json(
+                {
+                    "source": "private_fund_directory_ingest",
+                    "source_root": source_root,
+                    "source_relpath": _normalized_source_relpath(source_relpath),
+                }
+            ),
             now,
             now,
         ),
     )
     return doc_id
+
+
+def _next_document_version(conn: sqlite3.Connection, dataset_id: str, logical_doc_id: str) -> int:
+    row = conn.execute(
+        """
+        SELECT COALESCE(MAX(version_no), 0) + 1
+        FROM documents
+        WHERE dataset_id = ? AND logical_doc_id = ?
+        """,
+        (dataset_id, logical_doc_id),
+    ).fetchone()
+    return int(row[0] or 1)
+
+
+def _current_document(
+    conn: sqlite3.Connection, dataset_id: str, logical_doc_id: str
+) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT * FROM documents
+        WHERE dataset_id = ? AND logical_doc_id = ?
+          AND is_current = 1 AND lifecycle_state = 'active'
+          AND deleted_at IS NULL
+        ORDER BY version_no DESC, created_at DESC
+        LIMIT 1
+        """,
+        (dataset_id, logical_doc_id),
+    ).fetchone()
+
+
+def _latest_document_version(
+    conn: sqlite3.Connection, dataset_id: str, logical_doc_id: str
+) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT * FROM documents
+        WHERE dataset_id = ? AND logical_doc_id = ?
+        ORDER BY version_no DESC, created_at DESC
+        LIMIT 1
+        """,
+        (dataset_id, logical_doc_id),
+    ).fetchone()
+
+
+def _activate_document_version(
+    conn: sqlite3.Connection,
+    *,
+    dataset_id: str,
+    logical_doc_id: str,
+    doc_id: str,
+) -> None:
+    changed_at = now_iso()
+    conn.execute(
+        """
+        UPDATE documents
+        SET lifecycle_state = 'superseded', is_current = 0,
+            deleted_at = ?, updated_at = ?
+        WHERE dataset_id = ? AND logical_doc_id = ? AND doc_id <> ?
+          AND is_current = 1 AND deleted_at IS NULL
+        """,
+        (changed_at, changed_at, dataset_id, logical_doc_id, doc_id),
+    )
+    conn.execute(
+        """
+        UPDATE documents
+        SET lifecycle_state = 'active', is_current = 1,
+            deleted_at = NULL, updated_at = ?
+        WHERE doc_id = ?
+        """,
+        (changed_at, doc_id),
+    )
+
+
+def _document_result_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> DocumentIngestResult:
+    doc_id = str(row["doc_id"])
+
+    def count(table: str) -> int:
+        return int(conn.execute(f"SELECT COUNT(*) FROM {table} WHERE doc_id = ?", (doc_id,)).fetchone()[0] or 0)
+
+    parser_metadata: dict[str, Any] = {}
+    try:
+        parser_metadata = json.loads(row["parser_metadata_json"] or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        parser_metadata = {}
+    return DocumentIngestResult(
+        doc_id=doc_id,
+        filename=str(row["original_filename"]),
+        file_type=str(row["file_type"]),
+        status=str(row["status"]),
+        chunk_count=int(row["chunk_count"] or 0),
+        location_count=count("chunk_locations"),
+        pdf_page_count=count("pdf_pages"),
+        excel_sheet_count=count("excel_sheets"),
+        excel_region_count=count("excel_regions"),
+        excel_cell_count=count("excel_cells"),
+        metric_fact_count=count("metric_facts"),
+        error_message=row["error_message"],
+        logical_doc_id=str(row["logical_doc_id"] or ""),
+        version_no=int(row["version_no"] or 0),
+        supersedes_doc_id=row["supersedes_doc_id"],
+        reused=True,
+        parser_name=str(row["parser_name"] or ""),
+        parser_version=str(row["parser_version"] or ""),
+        parser_metadata=parser_metadata,
+        lifecycle_state=str(row["lifecycle_state"] or "active"),
+    )
 
 
 def _date_from_filename(name: str) -> str:
@@ -631,74 +1077,20 @@ def _write_chunks(
     return len(chunk_rows), len(loc_rows)
 
 
-def _extract_pdf_pages(path: Path) -> tuple[list[dict[str, Any]], str]:
-    layout_pages = _extract_pdf_layout_pages(path)
-    try:
-        import pdfplumber  # type: ignore
+def _extract_pdf_pages(path: Path) -> tuple[list[dict[str, Any]], str, str]:
+    """Extract PDF text deterministically with the declared PyMuPDF parser.
 
-        pages = []
-        with pdfplumber.open(str(path)) as pdf:
-            for idx, page in enumerate(pdf.pages, start=1):
-                text = page.extract_text() or ""
-                words = page.extract_words() or []
-                layout = layout_pages.get(idx, {})
-                pages.append(
-                    {
-                        "page_number": idx,
-                        "text": text.strip(),
-                        "word_count": len(words),
-                        "bbox": layout.get("bbox") or [0, 0, float(page.width), float(page.height)],
-                        "lines": layout.get("lines") or [],
-                    }
-                )
-        return pages, "pdfplumber"
-    except Exception:
-        if layout_pages:
-            pages = []
-            for idx in sorted(layout_pages):
-                layout = layout_pages[idx]
-                lines = layout.get("lines") or []
-                text = "\n".join(str(line.get("text") or "").strip() for line in lines if str(line.get("text") or "").strip())
-                pages.append(
-                    {
-                        "page_number": idx,
-                        "text": text.strip(),
-                        "word_count": len(lines),
-                        "bbox": layout.get("bbox"),
-                        "lines": lines,
-                    }
-                )
-            return pages, "pymupdf"
-        try:
-            from pypdf import PdfReader  # type: ignore
-
-            reader = PdfReader(str(path))
-            pages = []
-            for idx, page in enumerate(reader.pages, start=1):
-                text = page.extract_text() or ""
-                layout = layout_pages.get(idx, {})
-                pages.append(
-                    {
-                        "page_number": idx,
-                        "text": text.strip(),
-                        "word_count": len(text.split()),
-                        "bbox": layout.get("bbox"),
-                        "lines": layout.get("lines") or [],
-                    }
-                )
-            return pages, "pypdf"
-        except Exception as exc:
-            raise RuntimeError(f"Unable to extract PDF text from {path}: {exc}") from exc
-
-
-def _extract_pdf_layout_pages(path: Path) -> dict[int, dict[str, Any]]:
+    Do not switch parsers based on whichever optional package happens to be
+    installed on a machine: that changes reading order, chunks and hashes.
+    """
     try:
         import fitz  # type: ignore
-    except Exception:
-        return {}
+    except Exception as exc:
+        raise RuntimeError("PyMuPDF is required for deterministic PDF ingestion") from exc
 
+    parser_version = str(getattr(fitz, "VersionBind", "") or getattr(fitz, "__version__", "unknown"))
     try:
-        pages: dict[int, dict[str, Any]] = {}
+        pages: list[dict[str, Any]] = []
         with fitz.open(str(path)) as document:
             for page_index in range(document.page_count):
                 page = document.load_page(page_index)
@@ -714,14 +1106,64 @@ def _extract_pdf_layout_pages(path: Path) -> dict[int, dict[str, Any]]:
                     for item in page.get_text("words", sort=True)
                     if len(item) >= 5 and str(item[4]).strip()
                 ]
-                pages[page_index + 1] = {
-                    "bbox": [0, 0, float(rect.width), float(rect.height)],
-                    "lines": _group_pdf_words_into_lines(words),
-                }
-        return pages
-    except Exception:
-        return {}
+                text = str(page.get_text("text", sort=True) or "").strip()
+                pages.append(
+                    {
+                        "page_number": page_index + 1,
+                        "text": text,
+                        "word_count": len(words),
+                        "bbox": [0, 0, float(rect.width), float(rect.height)],
+                        "lines": _group_pdf_words_into_lines(words),
+                    }
+                )
+        return pages, "pymupdf", parser_version
+    except Exception as exc:
+        raise RuntimeError(f"Unable to extract PDF text with PyMuPDF from {path}: {exc}") from exc
 
+
+def _pdf_text_quality(pages: list[dict[str, Any]]) -> dict[str, Any]:
+    meaningful_by_page = [
+        len(re.findall(r"[A-Za-z0-9\u3400-\u9fff]", str(page.get("text") or "")))
+        for page in pages
+    ]
+    page_count = len(pages)
+    meaningful_chars = sum(meaningful_by_page)
+    text_page_count = sum(1 for count in meaningful_by_page if count >= MIN_PDF_TEXT_PAGE_CHARS)
+    text_page_coverage = text_page_count / max(1, page_count)
+    low_text_pages = [
+        index
+        for index, count in enumerate(meaningful_by_page, start=1)
+        if count < MIN_PDF_TEXT_PAGE_CHARS
+    ]
+    minimum_total = max(
+        MIN_PDF_MEANINGFUL_CHARS,
+        min(page_count * MIN_PDF_MEANINGFUL_CHARS_PER_PAGE, 300),
+    )
+    reasons: list[str] = []
+    if page_count == 0:
+        reasons.append("PDF has no pages")
+    if meaningful_chars == 0:
+        reasons.append("No extractable text was found")
+    elif meaningful_chars < minimum_total:
+        reasons.append(
+            f"Only {meaningful_chars} meaningful characters were extracted; minimum is {minimum_total}"
+        )
+    if page_count >= 2 and text_page_coverage < MIN_PDF_TEXT_PAGE_COVERAGE:
+        reasons.append(
+            f"Only {text_page_count}/{page_count} pages contain enough text "
+            f"({text_page_coverage:.0%} coverage)"
+        )
+    return {
+        "status": "needs_ocr" if reasons else "passed",
+        "needs_ocr": bool(reasons),
+        "reasons": reasons,
+        "page_count": page_count,
+        "meaningful_chars": meaningful_chars,
+        "minimum_meaningful_chars": minimum_total,
+        "text_page_count": text_page_count,
+        "text_page_coverage": text_page_coverage,
+        "low_text_pages": low_text_pages,
+    }
 
 def _group_pdf_words_into_lines(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
     sorted_words = sorted(words, key=lambda word: ((word["y_min"] + word["y_max"]) / 2, word["x_min"]))
@@ -866,7 +1308,8 @@ def _speaker_segments(page_text: str, page_lines: list[dict[str, Any]] | None = 
 
 
 def ingest_pdf(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path: Path) -> DocumentIngestResult:
-    pages, method = _extract_pdf_pages(path)
+    pages, method, parser_version = _extract_pdf_pages(path)
+    text_quality = _pdf_text_quality(pages)
     page_rows = []
     chunks: list[dict[str, Any]] = []
     total_chars = 0
@@ -885,7 +1328,14 @@ def ingest_pdf(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path: 
                 "word_count": int(page.get("word_count") or len(text.split())),
                 "extraction_method": method,
                 "bbox_json": dumps_json(page.get("bbox")) if page.get("bbox") else None,
-                "metadata_json": dumps_json({"source": "private_fund_directory_ingest"}),
+                "metadata_json": dumps_json(
+                    {
+                        "source": "private_fund_directory_ingest",
+                        "parser_name": method,
+                        "parser_version": parser_version,
+                        "text_quality": text_quality,
+                    }
+                ),
             }
         )
         if text:
@@ -936,12 +1386,47 @@ def ingest_pdf(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path: 
                     }
                 )
 
+    if page_rows:
+        conn.executemany(
+            """
+            INSERT INTO pdf_pages (
+                page_id, dataset_id, doc_id, page_number, text, char_count,
+                word_count, extraction_method, bbox_json, metadata_json
+            ) VALUES (
+                :page_id, :dataset_id, :doc_id, :page_number, :text, :char_count,
+                :word_count, :extraction_method, :bbox_json, :metadata_json
+            )
+            """,
+            page_rows,
+        )
+
+    parser_metadata = {
+        "parser_name": method,
+        "parser_version": parser_version,
+        "text_quality": text_quality,
+    }
+    if text_quality["needs_ocr"]:
+        reason = "; ".join(text_quality["reasons"])
+        return DocumentIngestResult(
+            doc_id=doc_id,
+            filename=path.name,
+            file_type="pdf",
+            status="needs_ocr",
+            chunk_count=0,
+            location_count=0,
+            pdf_page_count=len(pages),
+            error_message=f"OCR required: {reason}",
+            parser_name=method,
+            parser_version=parser_version,
+            parser_metadata=parser_metadata,
+        )
+
     summary = (
         f"PDF document: {path.name}\n"
         f"Pages: {len(pages)}\n"
         f"Extraction method: {method}\n"
         f"Total text characters: {total_chars}\n"
-        "OCR required: no, direct text extraction succeeded.\n"
+        "OCR required: no, deterministic text-quality gate passed.\n"
     )
     chunks.insert(
         0,
@@ -956,19 +1441,6 @@ def ingest_pdf(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path: 
         },
     )
 
-    if page_rows:
-        conn.executemany(
-            """
-            INSERT INTO pdf_pages (
-                page_id, dataset_id, doc_id, page_number, text, char_count,
-                word_count, extraction_method, bbox_json, metadata_json
-            ) VALUES (
-                :page_id, :dataset_id, :doc_id, :page_number, :text, :char_count,
-                :word_count, :extraction_method, :bbox_json, :metadata_json
-            )
-            """,
-            page_rows,
-        )
     chunk_count, location_count = _write_chunks(conn, dataset_id=dataset_id, doc_id=doc_id, chunks=chunks)
     return DocumentIngestResult(
         doc_id=doc_id,
@@ -978,6 +1450,9 @@ def ingest_pdf(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path: 
         chunk_count=chunk_count,
         location_count=location_count,
         pdf_page_count=len(pages),
+        parser_name=method,
+        parser_version=parser_version,
+        parser_metadata=parser_metadata,
     )
 
 
@@ -998,7 +1473,38 @@ def _range_ref(min_row: int, min_col: int, max_row: int, max_col: int) -> str:
 
 
 def _is_formula(value: Any) -> bool:
-    return isinstance(value, str) and value.startswith("=")
+    if isinstance(value, str):
+        return value.startswith("=")
+    return type(value).__name__ in {"ArrayFormula", "DataTableFormula"}
+
+
+def _formula_details(value: Any) -> tuple[bool, Optional[str], Optional[str], dict[str, Any]]:
+    if isinstance(value, str) and value.startswith("="):
+        return True, "standard", value, {}
+    formula_type = type(value).__name__
+    if formula_type not in {"ArrayFormula", "DataTableFormula"}:
+        return False, None, None, {}
+    attributes = json_safe(getattr(value, "__dict__", {}))
+    metadata = attributes if isinstance(attributes, dict) else {"attributes": attributes}
+    expression = getattr(value, "text", None)
+    if isinstance(expression, str) and expression:
+        formula_text = expression
+    else:
+        formula_text = dumps_json({"formula_type": formula_type, **metadata})
+    stable_type = "array" if formula_type == "ArrayFormula" else "data_table"
+    return True, stable_type, formula_text, metadata
+
+
+def _formula_cache_status(is_formula: bool, cached: Any) -> str:
+    if not is_formula:
+        return "not_applicable"
+    if cached is None or cached == "":
+        return "missing"
+    if _is_formula(cached) or not isinstance(cached, (str, int, float, bool, datetime, date)):
+        return "unavailable"
+    if isinstance(cached, str) and cached.startswith("#"):
+        return "error"
+    return "present"
 
 
 def _numeric_value(value: Any) -> Optional[float]:
@@ -1006,6 +1512,8 @@ def _numeric_value(value: Any) -> Optional[float]:
         return None
     if isinstance(value, (int, float)):
         return float(value)
+    if not isinstance(value, str):
+        return None
     text = normalize_text(value).replace(",", "")
     if not text:
         return None
@@ -1192,9 +1700,13 @@ def _sample_labels(cells: dict[tuple[int, int], Any], max_items: int = DEFAULT_M
 
 def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path: Path) -> DocumentIngestResult:
     try:
+        import openpyxl  # type: ignore
         from openpyxl import load_workbook  # type: ignore
     except Exception as exc:
         raise RuntimeError("openpyxl is required for Excel ingestion") from exc
+
+    parser_name = "openpyxl"
+    parser_version = str(getattr(openpyxl, "__version__", "unknown"))
 
     wb_formula = load_workbook(path, data_only=False, read_only=False, keep_links=False)
     wb_values = load_workbook(path, data_only=True, read_only=False, keep_links=False)
@@ -1284,15 +1796,17 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
         row_text_cols: dict[int, list[tuple[int, str]]] = {}
         col_text_rows: dict[int, list[tuple[int, str]]] = {}
         for (row, col), value in cells.items():
-            formula = _is_formula(value)
-            cached_for_label = values_ws.cell(row, col).value if formula and values_ws is not None else None
-            text = cell_display(cached_for_label if formula else value, 120)
+            is_formula, _, _, _ = _formula_details(value)
+            cached_for_label = values_ws.cell(row, col).value if is_formula and values_ws is not None else None
+            cache_status = _formula_cache_status(is_formula, cached_for_label)
+            label_value = cached_for_label if cache_status in {"present", "error"} else None
+            text = cell_display(label_value if is_formula else value, 120)
             raw_text = cell_display(value, 120)
-            if text and not formula and _numeric_value(value) is None:
+            if text and not is_formula and _numeric_value(value) is None:
                 row_text_cols.setdefault(row, []).append((col, text))
             if text and (_numeric_value(text) is None or _looks_like_period_label(text) or row <= max(5, min_row + 4)):
                 col_text_rows.setdefault(col, []).append((row, text))
-            elif raw_text and not formula and _numeric_value(raw_text) is None:
+            elif raw_text and not is_formula and _numeric_value(raw_text) is None:
                 col_text_rows.setdefault(col, []).append((row, raw_text))
         for items in row_text_cols.values():
             items.sort(key=lambda x: x[0])
@@ -1301,8 +1815,10 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
 
         for (row, col), value in sorted(cells.items(), key=lambda item: item[0]):
             cached = values_ws.cell(row, col).value if values_ws is not None else None
-            formula = str(value) if _is_formula(value) else None
-            display = cell_display(cached if formula else value, 200)
+            is_formula, formula_type, formula, formula_metadata = _formula_details(value)
+            cache_status = _formula_cache_status(is_formula, cached)
+            display_source = cached if is_formula and cache_status in {"present", "error"} else value
+            display = cell_display(display_source, 200)
             row_label = _nearest_left_label(row_text_cols, row, col)
             col_label = _nearest_top_label(col_text_rows, row, col)
             period = _period_from_label(col_label) or _period_from_label(display)
@@ -1314,9 +1830,9 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
                 or _unit_from_number_format(number_format)
                 or sheet_unit
             )
-            numeric = _numeric_value(cached if formula else value)
+            numeric = _numeric_value(cached if is_formula else value)
             cell_ref = _cell_ref(row, col)
-            value_type = "formula" if formula else type(value).__name__
+            value_type = f"formula_{formula_type}" if is_formula else type(value).__name__
             cell_id = sha256_text(f"{doc_id}\0{ws.title}\0{cell_ref}")[:40]
             cell_rows.append(
                 {
@@ -1332,19 +1848,40 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
                     "raw_value": cell_display(value, 500),
                     "numeric_value": numeric,
                     "formula": formula,
-                    "cached_value": cell_display(cached, 500) if formula else None,
+                    "cached_value": cell_display(cached, 500) if is_formula and cached is not None else None,
                     "number_format": number_format,
                     "row_label": row_label,
                     "col_label": col_label,
                     "period": period,
                     "unit": unit,
-                    "is_formula": 1 if formula else 0,
-                    "metadata_json": dumps_json({"sheet_role": role}),
+                    "is_formula": 1 if is_formula else 0,
+                    "formula_type": formula_type,
+                    "formula_cache_status": cache_status,
+                    "metadata_json": dumps_json(
+                        {
+                            "sheet_role": role,
+                            "formula_type": formula_type,
+                            "formula_cache_status": cache_status,
+                            "formula_metadata": formula_metadata,
+                        }
+                    ),
                 }
             )
             if numeric is not None and row_label:
                 fact_id = sha256_text(f"{doc_id}\0{ws.title}\0{cell_ref}\0{row_label}\0{period}")[:40]
-                confidence = 0.85 if period else 0.65
+                quality_issues = ["metric_name_inferred_from_nearest_left_label"]
+                if not period:
+                    quality_issues.append("period_missing")
+                if not unit:
+                    quality_issues.append("unit_missing")
+                if is_formula and cache_status != "present":
+                    quality_issues.append(f"formula_cache_{cache_status}")
+                quality_status = (
+                    "candidate_complete"
+                    if period and unit and (not is_formula or cache_status == "present")
+                    else "review_required"
+                )
+                confidence = 0.75 if quality_status == "candidate_complete" else (0.65 if period else 0.55)
                 fact_rows.append(
                     {
                         "fact_id": fact_id,
@@ -1361,7 +1898,21 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
                         "source_range": f"{ws.title}!{cell_ref}",
                         "formula": formula,
                         "confidence": confidence,
-                        "metadata_json": dumps_json({"col_label": col_label, "sheet_role": role}),
+                        "fact_status": "candidate",
+                        "quality_status": quality_status,
+                        "quality_issues_json": dumps_json(quality_issues),
+                        "metadata_json": dumps_json(
+                            {
+                                "col_label": col_label,
+                                "sheet_role": role,
+                                "extraction_method": "nearest_left_metric_and_nearest_top_period",
+                                "fact_status": "candidate",
+                                "quality_status": quality_status,
+                                "quality_issues": quality_issues,
+                                "formula_type": formula_type,
+                                "formula_cache_status": cache_status,
+                            }
+                        ),
                     }
                 )
 
@@ -1426,11 +1977,28 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
     workbook_type = _workbook_type(sheet_rows)
     total_formulas = sum(int(row["formula_count"]) for row in sheet_rows)
     total_cells = sum(int(row["non_empty_cell_count"]) for row in sheet_rows)
+    if total_cells == 0:
+        wb_formula.close()
+        wb_values.close()
+        raise RuntimeError(
+            f"{path.name} contains no non-empty cells; empty workbooks are not indexed"
+        )
+    formula_cache_counts: dict[str, int] = {}
+    for row in cell_rows:
+        if row["is_formula"]:
+            status = str(row["formula_cache_status"])
+            formula_cache_counts[status] = formula_cache_counts.get(status, 0) + 1
+    fact_quality_counts: dict[str, int] = {}
+    for row in fact_rows:
+        status = str(row["quality_status"])
+        fact_quality_counts[status] = fact_quality_counts.get(status, 0) + 1
     workbook_summary = (
         f"Excel workbook: {path.name}\n"
         f"Workbook type: {workbook_type}\n"
         f"Sheets: {len(sheet_rows)}; non-empty cells: {total_cells}; formulas: {total_formulas}; "
         f"formula density: {total_formulas / max(1, total_cells):.2%}\n"
+        f"Formula cache status: {dumps_json(formula_cache_counts)}\n"
+        "Metric facts are heuristic candidates and require source-cell review.\n"
         "Sheet roles:\n"
         + "\n".join(f"- {row['sheet_name']}: {row['sheet_role']} ({row['used_range']})" for row in sheet_rows)
     )
@@ -1442,7 +2010,15 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
             "title_path": [path.stem, "workbook summary"],
             "summary": workbook_summary[:240],
             "source_ref": path.name,
-            "metadata": {"workbook_type": workbook_type, "sheet_count": len(sheet_rows)},
+            "metadata": {
+                "workbook_type": workbook_type,
+                "sheet_count": len(sheet_rows),
+                "parser_name": parser_name,
+                "parser_version": parser_version,
+                "formula_cache_status_counts": formula_cache_counts,
+                "metric_fact_status": "candidate",
+                "fact_quality_status_counts": fact_quality_counts,
+            },
             "locations": [{"display_text": path.name, "metadata": {"workbook_type": workbook_type}}],
         },
     )
@@ -1465,7 +2041,16 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
             total_formulas,
             total_cells,
             total_formulas / max(1, total_cells),
-            dumps_json({"source": "private_fund_directory_ingest"}),
+            dumps_json(
+                {
+                    "source": "private_fund_directory_ingest",
+                    "parser_name": parser_name,
+                    "parser_version": parser_version,
+                    "formula_cache_status_counts": formula_cache_counts,
+                    "fact_status": "candidate",
+                    "fact_quality_status_counts": fact_quality_counts,
+                }
+            ),
         ),
     )
     if sheet_rows:
@@ -1504,11 +2089,13 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
             INSERT INTO excel_cells (
                 cell_id, dataset_id, doc_id, sheet_name, cell_ref, row_index, col_index,
                 value_type, display_value, raw_value, numeric_value, formula, cached_value,
-                number_format, row_label, col_label, period, unit, is_formula, metadata_json
+                number_format, row_label, col_label, period, unit, is_formula,
+                formula_type, formula_cache_status, metadata_json
             ) VALUES (
                 :cell_id, :dataset_id, :doc_id, :sheet_name, :cell_ref, :row_index, :col_index,
                 :value_type, :display_value, :raw_value, :numeric_value, :formula, :cached_value,
-                :number_format, :row_label, :col_label, :period, :unit, :is_formula, :metadata_json
+                :number_format, :row_label, :col_label, :period, :unit, :is_formula,
+                :formula_type, :formula_cache_status, :metadata_json
             )
             """,
             cell_rows,
@@ -1519,17 +2106,21 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
             INSERT INTO metric_facts (
                 fact_id, dataset_id, doc_id, metric_name, metric_alias, period,
                 value_text, value_numeric, unit, sheet_name, cell_ref, source_range,
-                formula, confidence, metadata_json
+                formula, confidence, fact_status, quality_status, quality_issues_json,
+                metadata_json
             ) VALUES (
                 :fact_id, :dataset_id, :doc_id, :metric_name, :metric_alias, :period,
                 :value_text, :value_numeric, :unit, :sheet_name, :cell_ref, :source_range,
-                :formula, :confidence, :metadata_json
+                :formula, :confidence, :fact_status, :quality_status, :quality_issues_json,
+                :metadata_json
             )
             """,
             fact_rows,
         )
 
     chunk_count, location_count = _write_chunks(conn, dataset_id=dataset_id, doc_id=doc_id, chunks=chunks)
+    wb_formula.close()
+    wb_values.close()
     return DocumentIngestResult(
         doc_id=doc_id,
         filename=path.name,
@@ -1541,6 +2132,54 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
         excel_region_count=len(region_rows),
         excel_cell_count=len(cell_rows),
         metric_fact_count=len(fact_rows),
+        parser_name=parser_name,
+        parser_version=parser_version,
+        parser_metadata={
+            "formula_cache_status_counts": formula_cache_counts,
+            "fact_status": "candidate",
+            "fact_quality_status_counts": fact_quality_counts,
+        },
+    )
+
+
+def ingest_adapted_document(
+    conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path: Path
+) -> DocumentIngestResult:
+    chunks = adapt_document(path)
+    meaningful_chunks = [
+        chunk
+        for chunk in chunks
+        if not str(chunk.get("content_type") or "").endswith("_document_summary")
+        and normalize_text(chunk.get("content"))
+    ]
+    if not meaningful_chunks:
+        raise RuntimeError(
+            f"{path.name} contains no meaningful extractable content; summary-only documents are not indexed"
+        )
+    parser_name = "private_fund_format_adapters"
+    parser_version = "1"
+    parser_metadata = {
+        "adapter_suffix": path.suffix.lower(),
+        "meaningful_chunk_count": len(meaningful_chunks),
+        "total_chunk_count": len(chunks),
+    }
+    for chunk in chunks:
+        metadata = dict(chunk.get("metadata") or {})
+        metadata.update({"parser_name": parser_name, "parser_version": parser_version})
+        chunk["metadata"] = metadata
+    chunk_count, location_count = _write_chunks(
+        conn, dataset_id=dataset_id, doc_id=doc_id, chunks=chunks
+    )
+    return DocumentIngestResult(
+        doc_id=doc_id,
+        filename=path.name,
+        file_type=path.suffix.lower().lstrip("."),
+        status="indexed",
+        chunk_count=chunk_count,
+        location_count=location_count,
+        parser_name=parser_name,
+        parser_version=parser_version,
+        parser_metadata=parser_metadata,
     )
 
 
@@ -1548,22 +2187,106 @@ def _doc_type_for_path(path: Path) -> str:
     name = normalize_text(path.name).lower()
     if path.suffix.lower() in {".xlsx", ".xlsm"}:
         return "valuation_model"
+    if path.suffix.lower() == ".csv":
+        return "structured_table"
+    if path.suffix.lower() == ".pptx":
+        return "research_presentation"
+    if path.suffix.lower() == ".docx":
+        return "research_document"
     if "交流" in name or "transcript" in name or "电话会" in name:
         return "meeting_transcript"
     if "qa" in name or "q&a" in name or "问答" in name:
         return "research_qa_note"
-    return "research_note" if path.suffix.lower() == ".pdf" else "document"
+    return "research_note" if path.suffix.lower() in {".pdf", ".md", ".markdown", ".txt"} else "document"
 
 
-def _update_document_status(conn: sqlite3.Connection, doc_id: str, status: str, error: Optional[str] = None) -> None:
+def _update_document_status(
+    conn: sqlite3.Connection,
+    doc_id: str,
+    status: str,
+    error: Optional[str] = None,
+    *,
+    parser_name: str = "",
+    parser_version: str = "",
+    parser_metadata: Optional[dict[str, Any]] = None,
+) -> None:
     conn.execute(
-        "UPDATE documents SET status = ?, error_message = ?, updated_at = ? WHERE doc_id = ?",
-        (status, error, now_iso(), doc_id),
+        """
+        UPDATE documents
+        SET status = ?, error_message = ?, parser_name = NULLIF(?, ''),
+            parser_version = NULLIF(?, ''), parser_metadata_json = ?, updated_at = ?
+        WHERE doc_id = ?
+        """,
+        (
+            status,
+            error,
+            parser_name,
+            parser_version,
+            dumps_json(parser_metadata or {}),
+            now_iso(),
+            doc_id,
+        ),
     )
+
+
+def _mark_removed_documents(
+    conn: sqlite3.Connection,
+    *,
+    dataset_id: str,
+    source_root: str,
+    seen_logical_doc_ids: set[str],
+) -> list[str]:
+    removed: list[str] = []
+    rows = conn.execute(
+        """
+        SELECT doc_id, logical_doc_id, source_root
+        FROM documents
+        WHERE dataset_id = ? AND source_type = 'local_directory'
+          AND is_current = 1 AND lifecycle_state = 'active'
+          AND deleted_at IS NULL
+        """,
+        (dataset_id,),
+    ).fetchall()
+    changed_at = now_iso()
+    for row in rows:
+        logical_id = str(row["logical_doc_id"] or "")
+        row_source_root = str(row["source_root"] or "")
+        # Legacy rows did not retain their source root.  Treat them
+        # conservatively: absence from an arbitrary later directory scan is
+        # not enough evidence to tombstone historical active data.
+        if not row_source_root:
+            continue
+        if Path(row_source_root).resolve() != Path(source_root).resolve():
+            continue
+        if logical_id in seen_logical_doc_ids:
+            continue
+        conn.execute(
+            """
+            UPDATE documents
+            SET lifecycle_state = 'removed', is_current = 0,
+                deleted_at = ?, updated_at = ?
+            WHERE doc_id = ?
+            """,
+            (changed_at, changed_at, row["doc_id"]),
+        )
+        removed.append(str(row["doc_id"]))
+    return removed
+
+
+def _reset_ingest_artifacts(raw_dir: Path, collection_db_path: Path) -> None:
+    """Keep the legacy flag non-destructive.
+
+    A full directory scan plus version/tombstone reconciliation below provides
+    logical reset semantics.  Raw version files and the collection ledger must
+    remain intact so historical citations and ingest jobs stay reproducible.
+    """
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    collection_db_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _sync_index_registry(conn: sqlite3.Connection, dataset_id: str, source_doc_ids: list[str], chunk_count: int) -> None:
     now = now_iso()
+    index_status = "ready" if source_doc_ids and chunk_count > 0 else "empty"
     rows = [
         {
             "index_id": sha256_text(f"{dataset_id}\0sqlite_structured")[:40],
@@ -1573,10 +2296,22 @@ def _sync_index_registry(conn: sqlite3.Connection, dataset_id: str, source_doc_i
             "index_path": "meta/collection.sqlite3",
             "source_doc_ids_json": dumps_json(source_doc_ids),
             "source_chunk_count": chunk_count,
-            "status": "ready",
-            "built_at": now,
+            "status": index_status,
+            "built_at": now if index_status == "ready" else None,
             "error_message": None,
-            "metadata_json": dumps_json({"tables": ["documents", "chunks", "chunk_locations", "excel_cells", "metric_facts"]}),
+            "metadata_json": dumps_json(
+                {
+                    "tables": [
+                        "documents",
+                        "chunks",
+                        "chunk_locations",
+                        "excel_cells",
+                        "metric_facts",
+                    ],
+                    "active_source_doc_count": len(source_doc_ids),
+                    "active_chunk_count": chunk_count,
+                }
+            ),
         },
         {
             "index_id": sha256_text(f"{dataset_id}\0summary_chunks")[:40],
@@ -1586,10 +2321,20 @@ def _sync_index_registry(conn: sqlite3.Connection, dataset_id: str, source_doc_i
             "index_path": "meta/collection.sqlite3:chunks",
             "source_doc_ids_json": dumps_json(source_doc_ids),
             "source_chunk_count": chunk_count,
-            "status": "ready",
-            "built_at": now,
+            "status": index_status,
+            "built_at": now if index_status == "ready" else None,
             "error_message": None,
-            "metadata_json": dumps_json({"note": "Chunks are ready for a later Chroma/BM25 indexing step."}),
+            "metadata_json": dumps_json(
+                {
+                    "note": (
+                        "Chunks are ready for a later Chroma/BM25 indexing step."
+                        if index_status == "ready"
+                        else "No active searchable chunks are available."
+                    ),
+                    "active_source_doc_count": len(source_doc_ids),
+                    "active_chunk_count": chunk_count,
+                }
+            ),
         },
     ]
     conn.executemany(
@@ -1635,14 +2380,26 @@ def ingest_directory(
     started = now_iso()
     job_id = job_id or sha256_text(f"{dataset_id}\0{source_dir}\0{started}")[:16]
 
-    if reset and dataset_root.exists():
-        shutil.rmtree(dataset_root)
+    _validate_source_output_layout(source_dir, workspace, dataset_root)
+
+    if reset:
+        _reset_ingest_artifacts(raw_dir, collection_db_path)
 
     workspace.mkdir(parents=True, exist_ok=True)
     raw_dir.mkdir(parents=True, exist_ok=True)
     meta_dir.mkdir(parents=True, exist_ok=True)
 
-    files = _iter_supported_files(source_dir, recursive=recursive)
+    excluded_roots: list[Path] = []
+    if dataset_root != source_dir and _path_is_within(dataset_root, source_dir):
+        excluded_roots.append(dataset_root)
+    if workspace != source_dir and _path_is_within(workspace, source_dir):
+        excluded_roots.append(workspace)
+    files, unsupported_files = _iter_input_files(
+        source_dir,
+        recursive=recursive,
+        excluded_roots=excluded_roots,
+    )
+    discovered_file_count = len(files) + len(unsupported_files)
     result = IngestResult(
         job_id=job_id,
         dataset_id=dataset_id,
@@ -1654,8 +2411,28 @@ def ingest_directory(
         global_db_path=str(global_db_path),
         status="running",
         file_count=len(files),
+        discovered_file_count=discovered_file_count,
+        supported_file_count=len(files),
+        unsupported_file_count=len(unsupported_files),
         started_at=started,
     )
+    for source_path in unsupported_files:
+        relpath = _normalized_source_relpath(str(source_path.relative_to(source_dir)))
+        suffix = source_path.suffix.lower() or "(none)"
+        result.documents.append(
+            DocumentIngestResult(
+                doc_id=sha256_text(f"{dataset_id}\0unsupported\0{relpath}")[:40],
+                filename=relpath,
+                file_type=source_path.suffix.lower().lstrip(".") or "unknown",
+                status="unsupported",
+                error_message=(
+                    f"Unsupported file type {suffix}. Supported extensions: "
+                    f"{', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+                ),
+                logical_doc_id=_logical_doc_id(dataset_id, relpath),
+                lifecycle_state="unsupported",
+            )
+        )
 
     with connect_sqlite(global_db_path) as global_conn:
         ensure_global_schema(global_conn)
@@ -1678,7 +2455,14 @@ def ingest_directory(
                 dataset_id,
                 started,
                 started,
-                dumps_json({"pipeline": "private_fund_directory_ingest"}),
+                dumps_json(
+                    {
+                        "pipeline": "private_fund_directory_ingest",
+                        "discovered_file_count": discovered_file_count,
+                        "supported_file_count": len(files),
+                        "unsupported_file_count": len(unsupported_files),
+                    }
+                ),
             ),
         )
         global_conn.execute(
@@ -1688,6 +2472,7 @@ def ingest_directory(
         global_conn.commit()
 
     doc_ids: list[str] = []
+    seen_logical_doc_ids: set[str] = set()
     try:
         with connect_sqlite(collection_db_path) as conn:
             ensure_collection_schema(conn)
@@ -1709,58 +2494,261 @@ def ingest_directory(
                     "Directory ingestion started.",
                     started,
                     started,
-                    dumps_json({"source_dir": str(source_dir), "recursive": recursive}),
+                    dumps_json(
+                        {
+                            "source_dir": str(source_dir),
+                            "recursive": recursive,
+                            "reset_requested": reset,
+                            "reset_mode": "non_destructive_full_reconciliation",
+                            "discovered_file_count": discovered_file_count,
+                            "supported_file_count": len(files),
+                            "unsupported_file_count": len(unsupported_files),
+                        }
+                    ),
                 ),
             )
             conn.commit()
 
             for source_path in files:
-                stored_path = _copy_to_raw(source_path, raw_dir)
-                checksum = sha256_file(stored_path)
-                doc_type = _doc_type_for_path(stored_path)
-                doc_id = _register_document(
-                    conn,
-                    dataset_id=dataset_id,
-                    stored_path=stored_path,
-                    original_filename=source_path.name,
-                    checksum=checksum,
-                    company_name=company_name,
-                    company_ticker=company_ticker,
-                    doc_type=doc_type,
+                source_relpath = _normalized_source_relpath(
+                    str(source_path.relative_to(source_dir))
                 )
-                doc_ids.append(doc_id)
+                logical_id = _logical_doc_id(dataset_id, source_relpath)
+                seen_logical_doc_ids.add(logical_id)
+                current = _current_document(conn, dataset_id, logical_id)
+                latest = _latest_document_version(conn, dataset_id, logical_id)
                 try:
-                    if stored_path.suffix.lower() == ".pdf":
-                        doc_result = ingest_pdf(conn, dataset_id=dataset_id, doc_id=doc_id, path=stored_path)
-                    elif stored_path.suffix.lower() in {".xlsx", ".xlsm"}:
-                        doc_result = ingest_excel(conn, dataset_id=dataset_id, doc_id=doc_id, path=stored_path)
-                    else:
-                        raise ValueError(f"Unsupported file type: {stored_path.suffix}")
-                    _update_document_status(conn, doc_id, "indexed")
-                    result.documents.append(doc_result)
+                    checksum = sha256_file(source_path)
                 except Exception as exc:
-                    _update_document_status(conn, doc_id, "failed", str(exc))
                     result.documents.append(
                         DocumentIngestResult(
-                            doc_id=doc_id,
-                            filename=source_path.name,
-                            file_type=stored_path.suffix.lower().lstrip("."),
+                            doc_id=sha256_text(f"{dataset_id}\0{logical_id}\0read_failed")[:40],
+                            filename=source_relpath,
+                            file_type=source_path.suffix.lower().lstrip("."),
                             status="failed",
-                            error_message=str(exc),
+                            error_message=f"Unable to read source file: {exc}",
+                            logical_doc_id=logical_id,
+                            lifecycle_state="failed_attempt",
+                        )
+                    )
+                    continue
+
+                current_stored_file_is_valid = False
+                if current is not None:
+                    current_stored_path = Path(str(current["stored_path"]))
+                    try:
+                        current_stored_file_is_valid = (
+                            current_stored_path.is_file()
+                            and sha256_file(current_stored_path) == str(current["checksum"])
+                        )
+                    except OSError:
+                        current_stored_file_is_valid = False
+                if (
+                    not reset
+                    and current is not None
+                    and str(current["checksum"]) == checksum
+                    and str(current["status"]) in {"indexed", "needs_ocr"}
+                    and current_stored_file_is_valid
+                ):
+                    conn.execute(
+                        """
+                        UPDATE documents
+                        SET source_root = ?, source_relpath = ?, updated_at = ?
+                        WHERE doc_id = ?
+                        """,
+                        (str(source_dir), source_relpath, now_iso(), current["doc_id"]),
+                    )
+                    reused_result = _document_result_from_row(conn, current)
+                    reused_result.filename = source_path.name
+                    result.documents.append(reused_result)
+                    doc_ids.append(str(current["doc_id"]))
+                    conn.commit()
+                    continue
+
+                stored_path: Optional[Path] = None
+                version_no = _next_document_version(conn, dataset_id, logical_id)
+                supersedes_doc_id = str(latest["doc_id"]) if latest is not None else None
+                doc_id = ""
+                savepoint_open = False
+                try:
+                    stored_path = _copy_to_raw(source_path, raw_dir)
+                    checksum = sha256_file(stored_path)
+                    doc_type = _doc_type_for_path(source_path)
+                    conn.execute("SAVEPOINT ingest_document")
+                    savepoint_open = True
+                    doc_id = _register_document(
+                        conn,
+                        dataset_id=dataset_id,
+                        stored_path=stored_path,
+                        original_filename=source_path.name,
+                        checksum=checksum,
+                        company_name=company_name,
+                        company_ticker=company_ticker,
+                        doc_type=doc_type,
+                        source_root=str(source_dir),
+                        source_relpath=source_relpath,
+                        logical_doc_id=logical_id,
+                        version_no=version_no,
+                        supersedes_doc_id=supersedes_doc_id,
+                    )
+                    suffix = stored_path.suffix.lower()
+                    if suffix == ".pdf":
+                        doc_result = ingest_pdf(
+                            conn, dataset_id=dataset_id, doc_id=doc_id, path=stored_path
+                        )
+                    elif suffix in {".xlsx", ".xlsm"}:
+                        doc_result = ingest_excel(
+                            conn, dataset_id=dataset_id, doc_id=doc_id, path=stored_path
+                        )
+                    elif suffix in ADAPTER_EXTENSIONS:
+                        doc_result = ingest_adapted_document(
+                            conn, dataset_id=dataset_id, doc_id=doc_id, path=stored_path
+                        )
+                    else:
+                        raise ValueError(f"Unsupported file type: {stored_path.suffix}")
+                    doc_result.logical_doc_id = logical_id
+                    doc_result.version_no = version_no
+                    doc_result.supersedes_doc_id = supersedes_doc_id
+                    _update_document_status(
+                        conn,
+                        doc_id,
+                        doc_result.status,
+                        doc_result.error_message,
+                        parser_name=doc_result.parser_name,
+                        parser_version=doc_result.parser_version,
+                        parser_metadata=doc_result.parser_metadata,
+                    )
+                    _activate_document_version(
+                        conn,
+                        dataset_id=dataset_id,
+                        logical_doc_id=logical_id,
+                        doc_id=doc_id,
+                    )
+                    conn.execute("RELEASE SAVEPOINT ingest_document")
+                    savepoint_open = False
+                    result.documents.append(doc_result)
+                    doc_ids.append(doc_id)
+                except Exception as exc:
+                    if savepoint_open:
+                        conn.execute("ROLLBACK TO SAVEPOINT ingest_document")
+                        conn.execute("RELEASE SAVEPOINT ingest_document")
+                    error_message = str(exc)
+                    failed_doc_id = doc_id or sha256_text(
+                        f"{dataset_id}\0{logical_id}\0{version_no}\0{checksum}"
+                    )[:40]
+                    # Persist the failed attempt itself, but not any partially
+                    # written pages/cells/chunks from the rolled-back parser.
+                    if stored_path is not None:
+                        try:
+                            conn.execute("SAVEPOINT record_failed_document")
+                            failed_doc_id = _register_document(
+                                conn,
+                                dataset_id=dataset_id,
+                                stored_path=stored_path,
+                                original_filename=source_path.name,
+                                checksum=checksum,
+                                company_name=company_name,
+                                company_ticker=company_ticker,
+                                doc_type=_doc_type_for_path(source_path),
+                                source_root=str(source_dir),
+                                source_relpath=source_relpath,
+                                logical_doc_id=logical_id,
+                                version_no=version_no,
+                                supersedes_doc_id=supersedes_doc_id,
+                            )
+                            _update_document_status(
+                                conn, failed_doc_id, "failed", error_message
+                            )
+                            if current is None:
+                                _activate_document_version(
+                                    conn,
+                                    dataset_id=dataset_id,
+                                    logical_doc_id=logical_id,
+                                    doc_id=failed_doc_id,
+                                )
+                            else:
+                                failed_at = now_iso()
+                                conn.execute(
+                                    """
+                                    UPDATE documents
+                                    SET lifecycle_state = 'failed_attempt',
+                                        is_current = 0, deleted_at = ?, updated_at = ?
+                                    WHERE doc_id = ?
+                                    """,
+                                    (failed_at, failed_at, failed_doc_id),
+                                )
+                            conn.execute("RELEASE SAVEPOINT record_failed_document")
+                            doc_ids.append(failed_doc_id)
+                        except Exception:
+                            conn.execute("ROLLBACK TO SAVEPOINT record_failed_document")
+                            conn.execute("RELEASE SAVEPOINT record_failed_document")
+                    result.documents.append(
+                        DocumentIngestResult(
+                            doc_id=failed_doc_id,
+                            filename=source_path.name,
+                            file_type=source_path.suffix.lower().lstrip("."),
+                            status="failed",
+                            error_message=error_message,
+                            logical_doc_id=logical_id,
+                            version_no=version_no,
+                            supersedes_doc_id=supersedes_doc_id,
+                            lifecycle_state=(
+                                "failed_attempt" if current is not None else "active"
+                            ),
                         )
                     )
                 conn.commit()
 
-            total_chunks = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-            _sync_index_registry(conn, dataset_id, doc_ids, int(total_chunks or 0))
+            removed_doc_ids = _mark_removed_documents(
+                conn,
+                dataset_id=dataset_id,
+                source_root=str(source_dir),
+                seen_logical_doc_ids=seen_logical_doc_ids,
+            )
+            result.removed_file_count = len(removed_doc_ids)
+            active_doc_ids = [
+                str(row[0])
+                for row in conn.execute(
+                    """
+                    SELECT doc_id FROM documents
+                    WHERE dataset_id = ? AND is_current = 1
+                      AND lifecycle_state = 'active'
+                      AND deleted_at IS NULL AND status = 'indexed'
+                    ORDER BY source_relpath, version_no
+                    """,
+                    (dataset_id,),
+                )
+            ]
+            total_chunks = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM chunks c
+                JOIN documents d ON d.doc_id = c.doc_id
+                WHERE c.dataset_id = ? AND d.is_current = 1
+                  AND d.lifecycle_state = 'active'
+                  AND d.deleted_at IS NULL AND d.status = 'indexed'
+                """,
+                (dataset_id,),
+            ).fetchone()[0]
+            _sync_index_registry(conn, dataset_id, active_doc_ids, int(total_chunks or 0))
             failures = [doc for doc in result.documents if doc.status == "failed"]
-            result.status = "failed" if failures else "completed"
+            warnings = [
+                doc for doc in result.documents if doc.status in {"unsupported", "needs_ocr"}
+            ]
+            result.warning_count = len(warnings)
+            if not files or failures:
+                result.status = "failed"
+            elif warnings:
+                result.status = "completed_with_warnings"
+            else:
+                result.status = "completed"
             result.finished_at = now_iso()
             result.message = (
-                f"Ingested {len(result.documents)} documents with {len(failures)} failures."
-                if failures
-                else f"Ingested {len(result.documents)} documents successfully."
+                f"Processed {len(files)} supported files: {len(failures)} failed, "
+                f"{sum(doc.status == 'needs_ocr' for doc in warnings)} need OCR, "
+                f"{len(unsupported_files)} unsupported, {len(removed_doc_ids)} removed."
             )
+            returncode = 1 if result.status == "failed" else (2 if warnings else 0)
             conn.execute(
                 """
                 UPDATE ingest_jobs
@@ -1772,17 +2760,38 @@ def ingest_directory(
                     result.status,
                     dumps_json(doc_ids),
                     result.message,
-                    1 if failures else 0,
+                    returncode,
                     result.finished_at,
                     dumps_json(asdict(result)),
                     job_id,
                 ),
             )
             conn.commit()
-    except Exception:
+    except Exception as exc:
         result.status = "failed"
         result.finished_at = now_iso()
-        result.message = "Directory ingestion failed before completion."
+        result.message = f"Directory ingestion failed before completion: {exc}"
+        try:
+            with connect_sqlite(collection_db_path) as failed_conn:
+                failed_conn.execute(
+                    """
+                    UPDATE ingest_jobs
+                    SET status = 'failed', message = ?, returncode = 1,
+                        finished_at = ?, metadata_json = ?
+                    WHERE job_id = ?
+                    """,
+                    (
+                        result.message,
+                        result.finished_at,
+                        dumps_json(asdict(result)),
+                        job_id,
+                    ),
+                )
+                failed_conn.commit()
+        except Exception:
+            # Preserve the original ingestion exception; job finalization is
+            # best-effort when the collection database itself is unavailable.
+            pass
         raise
     finally:
         with connect_sqlite(global_db_path) as global_conn:
@@ -1809,7 +2818,11 @@ def main() -> None:
     parser.add_argument("--company-name", default="", help="Company name metadata.")
     parser.add_argument("--company-ticker", default="", help="Ticker metadata.")
     parser.add_argument("--no-recursive", action="store_true", help="Only scan direct children.")
-    parser.add_argument("--reset", action="store_true", help="Delete the target dataset directory before ingesting.")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Run a full non-destructive reconciliation; history and prior report artifacts are preserved.",
+    )
     args = parser.parse_args()
 
     result = ingest_directory(
@@ -1823,6 +2836,10 @@ def main() -> None:
         reset=args.reset,
     )
     print(dumps_json(result_to_dict(result)))
+    if result.status == "failed":
+        raise SystemExit(1)
+    if result.status == "completed_with_warnings" or result.warning_count:
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

@@ -28,9 +28,9 @@ import {
   useFileViewer,
   useFileViewerConversationId,
   useIsChangedPath,
-  usePdfSourceViewer,
   useWorkspacePaths,
 } from "@/shell/FileViewerContext";
+import { InlineSourcePopover } from "@/components/private-fund/InlineSourcePopover";
 import { toWorkspaceRelativePath, useWorkspaceFileExists } from "@/hooks/useWorkspaceChangedFiles";
 import { ElicitationCard } from "./ApprovalCard";
 import { ReasoningView } from "./ReasoningView";
@@ -149,16 +149,18 @@ const BRACKETED_PDF_FILE_PAGE_CITATION_RE =
   /\[([^\n\r\[\]{}()（）【】*，,；;。:：]{1,180}?\.pdf)\s+(?:p\.\s*(\d{1,4}))(?:\s*[-–—]\s*(?:p\.\s*)?(\d{1,4}))?\]/giu;
 const PDF_FILE_PAGE_CITATION_RE =
   /([\s(（\[【])([^\n\r\[\]{}()（）【】*，,；;。:：]{1,180}?\.pdf)\s+(?:\[?p\.\s*(\d{1,4})\]?)(?:\s*[-–—]\s*(?:p\.\s*)?(\d{1,4}))?/giu;
+const ATTACHED_PDF_PAGE_CITATION_RE =
+  /([^\s，,；;。:：()（）\[\]{}]{1,240}?\.pdf)\s+p\.\s*(\d{1,4})(?:\s*[-–—]\s*(?:p\.\s*)?(\d{1,4}))?/giu;
 const CODED_PDF_FILE_PAGE_CITATION_RE =
   /([\s(（\[【])`([^`\n\r\[\]{}()（）【】*，,；;。:：]{1,180}?\.pdf\s+(?:\[?p\.\s*(?:\d{1,4})\]?)(?:\s*[-–—]\s*(?:p\.\s*)?\d{1,4})?)`/giu;
 const BRACKETED_EXCEL_RANGE_CITATION_RE =
   /\[([^\n\r\[\]{}()（）【】*，,；;。:：`]{1,180}?\.(?:xlsx|xlsm|xls|csv))\s+(?:'([^'\n\r]{1,120})'|([^\n\r!，,；;。:：()（）\[\]{}]{1,120}?))\s*!\s*(\$?[A-Z]{1,3}\$?\d{1,7}(?::\$?[A-Z]{1,3}\$?\d{1,7})?)\]/giu;
 const EXCEL_RANGE_CITATION_RE =
-  /([\s(（\[【])([^\n\r\[\]{}()（）【】*，,；;。:：`]{1,180}?\.(?:xlsx|xlsm|xls|csv))\s+(?:'([^'\n\r]{1,120})'|([^\n\r!，,；;。:：()（）\[\]{}]{1,120}?))\s*!\s*(\$?[A-Z]{1,3}\$?\d{1,7}(?::\$?[A-Z]{1,3}\$?\d{1,7})?)/giu;
+  /(^|[\s(（\[【])([^\n\r\[\]{}()（）【】*，,；;。:：`]{1,180}?\.(?:xlsx|xlsm|xls|csv))\s+(?:'([^'\n\r]{1,120})'|([^\n\r!，,；;。:：()（）\[\]{}]{1,120}?))\s*!\s*(\$?[A-Z]{1,3}\$?\d{1,7}(?::\$?[A-Z]{1,3}\$?\d{1,7})?)/giu;
 const CODED_EXCEL_RANGE_CITATION_RE =
   /([\s(（\[【])`([^`\n\r\[\]{}()（）【】*，,；;。:：]{1,180}?\.(?:xlsx|xlsm|xls|csv)\s+(?:'[^'\n\r]{1,120}'|[^\n\r!，,；;。:：()（）\[\]{}]{1,120}?)\s*!\s*\$?[A-Z]{1,3}\$?\d{1,7}(?::\$?[A-Z]{1,3}\$?\d{1,7})?)`/giu;
 const DATASET_DOCUMENT_FILENAME_RE =
-  /([\s(（\[【])([^\n\r\[\]{}()（）【】*，,；;。:：`]{1,180}?\.(?:pdf|xlsx|xlsm|xls|csv))/giu;
+  /(^|[\s(（\[【:：])([^\n\r\[\]{}()（）【】*，,；;。:：`]{1,180}?\.(?:pdf|xlsx|xlsm|xls|csv))/giu;
 const CODED_DOCUMENT_FILENAME_RE =
   /([\s(（\[【])`([^`\n\r\[\]{}()（）【】*，,；;。:：]{1,180}?\.(?:pdf|xlsx|xlsm|xls|csv))`/giu;
 const PDF_FILENAME_CONTEXT_RE =
@@ -392,7 +394,43 @@ function linkifyPdfFilePageCitations(markdown: string): string {
   );
 }
 
-function normalizePdfFileMatchPrefix(prefix: string, pdfName: string): { prefix: string; pdfName: string } {
+function linkifyAttachedPdfPageCitations(markdown: string): string {
+  return markdown.replace(
+    ATTACHED_PDF_PAGE_CITATION_RE,
+    (
+      match: string,
+      pdfToken: string,
+      pageNoText: string | undefined,
+      pageEndText: string | undefined,
+      offset: number,
+    ) => {
+      if (isInsideMarkdownLink(markdown, offset)) return match;
+      const pageNo = Number.parseInt(pageNoText ?? "", 10);
+      const pageEnd = pageEndText ? Number.parseInt(pageEndText, 10) : undefined;
+      if (!Number.isFinite(pageNo) || pageNo < 1) return match;
+      const normalizedPageEnd =
+        pageEnd && Number.isFinite(pageEnd) && pageEnd >= pageNo ? pageEnd : undefined;
+      const label = normalizedPageEnd ? `p.${pageNo}-${normalizedPageEnd}` : `p.${pageNo}`;
+      const quote = citationQuote(markdown, offset, match.length);
+      // Keep the original token as visible text: when the model omitted a
+      // separator it may contain the tail of the preceding Chinese sentence.
+      // The server resolves that safely by matching the registered filename
+      // as a suffix, while the page label becomes the explicit source action.
+      return `${pdfToken} [来源 ${label}](${pdfSourceHref({
+        pageNo,
+        pageEnd: normalizedPageEnd,
+        label,
+        quote,
+        pdfName: pdfToken,
+      })})`;
+    },
+  );
+}
+
+function normalizePdfFileMatchPrefix(
+  prefix: string,
+  pdfName: string,
+): { prefix: string; pdfName: string } {
   const trimmed = pdfName.trim().replace(/^`+|`+$/g, "");
   const bracketIndex = Math.max(trimmed.lastIndexOf("（"), trimmed.lastIndexOf("【"));
   if (bracketIndex < 0) return { prefix, pdfName: trimmed };
@@ -454,7 +492,8 @@ export function linkifyPdfPageCitations(markdown: string): string {
   const withBracketedPdfLinks = linkifyBracketedPdfFilePageCitations(withBracketedExcelLinks);
   const withExcelLinks = linkifyExcelRangeCitations(withBracketedPdfLinks);
   const withPdfFileLinks = linkifyPdfFilePageCitations(withExcelLinks);
-  const withDocumentLinks = linkifyStandaloneDocumentMentions(withPdfFileLinks);
+  const withAttachedPdfLinks = linkifyAttachedPdfPageCitations(withPdfFileLinks);
+  const withDocumentLinks = linkifyStandaloneDocumentMentions(withAttachedPdfLinks);
   return withDocumentLinks.replace(
     PAGE_CITATION_RE,
     (
@@ -532,31 +571,6 @@ function parsePrivateFundSourceHref(href: string | undefined) {
   return parsePdfSourceHref(href) ?? parseExcelSourceHref(href);
 }
 
-function inferPdfSourceFromAnchor(
-  anchor: HTMLAnchorElement,
-  source: NonNullable<ReturnType<typeof parsePdfSourceHref>>,
-) {
-  const container = anchor.closest("li,p,td,th,blockquote,div");
-  const text = container?.textContent ?? "";
-  const anchorText = anchor.textContent ?? source.label;
-  const anchorIndex = anchorText ? text.indexOf(anchorText) : -1;
-  const before = anchorIndex >= 0 ? text.slice(0, anchorIndex) : text;
-  const matches = Array.from(before.matchAll(PDF_FILENAME_CONTEXT_RE));
-  const lastPdfName = matches.at(-1)?.[2]?.trim();
-  const after =
-    anchorIndex >= 0 && anchorText ? text.slice(anchorIndex + anchorText.length) : "";
-  const pageEndMatch = after.match(/^\s*[-–—]\s*(?:p\.\s*)?(\d{1,4})/i);
-  const pageEnd = pageEndMatch ? Number.parseInt(pageEndMatch[1]!, 10) : source.pageEnd;
-  const normalizedPageEnd =
-    pageEnd && Number.isFinite(pageEnd) && pageEnd >= source.pageNo ? pageEnd : undefined;
-  return {
-    ...source,
-    pdfName: source.pdfName ?? lastPdfName,
-    pageEnd: normalizedPageEnd,
-    label: normalizedPageEnd ? `p.${source.pageNo}-${normalizedPageEnd}` : source.label,
-  };
-}
-
 function PdfCitationLink({
   children,
   className,
@@ -564,7 +578,17 @@ function PdfCitationLink({
   onClick,
   ...props
 }: React.ComponentPropsWithoutRef<"a">) {
-  const openPdfSource = usePdfSourceViewer();
+  // remark/rehype append one back-reference link (↩, ↩2, …) for every
+  // footnote occurrence. In research answers those links create visual noise
+  // after each source entry and look like emoji. The source entry and its
+  // actual document link remain; only the generated jump-back controls go.
+  if ("data-footnote-backref" in props) return null;
+
+  // Research answers already render a consolidated source list. Repeating
+  // superscript footnote numbers in the prose adds noise without adding a
+  // useful action, so omit the generated references as well as backrefs.
+  if ("data-footnote-ref" in props) return null;
+
   const source = parsePrivateFundSourceHref(href);
 
   if (!source) {
@@ -575,27 +599,19 @@ function PdfCitationLink({
     );
   }
 
+  void onClick;
+  void props;
   return (
-    <a
-      {...props}
+    <InlineSourcePopover
       className={cn(
-        "cursor-pointer whitespace-nowrap decoration-dotted underline-offset-2",
+        "inline-flex cursor-pointer items-center whitespace-nowrap rounded-md bg-[#E7F1EC] px-1.5 py-0.5 font-medium text-[#2F6F57] no-underline ring-1 ring-inset ring-[#C7DED2] transition-colors hover:bg-[#DCECE4] hover:text-[#254F40]",
         className,
       )}
       href={href}
-      onClick={(event) => {
-        onClick?.(event);
-        if (event.defaultPrevented || !openPdfSource) return;
-        event.preventDefault();
-        openPdfSource(
-          source.kind === "pdf" ? inferPdfSourceFromAnchor(event.currentTarget, source) : source,
-        );
-      }}
-      rel={undefined}
-      target={undefined}
+      source={source}
     >
       {children}
-    </a>
+    </InlineSourcePopover>
   );
 }
 

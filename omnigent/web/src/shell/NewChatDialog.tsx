@@ -1,5 +1,5 @@
 import { type DragEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "@/lib/routing";
+import { useNavigate, useSearchParams } from "@/lib/routing";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
@@ -9,7 +9,6 @@ import {
   ArrowUpIcon,
   FileTextIcon,
   FolderIcon,
-  FolderInputIcon,
   ImageIcon,
   PaperclipIcon,
   PlusIcon,
@@ -86,27 +85,34 @@ import { OttoEyes } from "@/components/OttoEyes";
 import { SkillPills } from "@/components/SkillPills";
 import { ComposerMicButton } from "@/components/ComposerMicButton";
 import { IntelligentModelControl, type CostControlMode } from "@/components/CostRoutingControl";
+import { PrivateFundResearchModeToggle } from "@/components/PrivateFundResearchModeToggle";
+import { TokenUsageBar } from "@/components/private-fund/TokenUsageBar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentRowTooltip } from "@/components/AgentHoverCard";
 import { CreateAgentDialog } from "./CreateAgentDialog";
 import { buildAgentBundle, type AgentBundleInput } from "@/lib/agentBundle";
 import { createBundledSession, launchRunner } from "@/lib/sessionsApi";
+import { formatTokenCount } from "@/lib/tokenUsage";
 import { usePrivateFundProjects } from "@/hooks/usePrivateFundProjects";
 import {
   activatePrivateFundProject,
   PRIVATE_FUND_DATASET_ID_LABEL_KEY,
   PRIVATE_FUND_DATASET_NAME_LABEL_KEY,
   type PrivateFundProject,
+  type PrivateFundResearchMode,
   privateFundProjectPreamble,
   readActivePrivateFundProjectId,
+  readPrivateFundResearchMode,
   writeActivePrivateFundProjectId,
+  writePrivateFundResearchMode,
 } from "@/lib/privateFundApi";
 
 // Hidden from the new-session picker only. `nessie` is superseded by polly.
 // `kimi` / `kimi-code` are the headless SDK harness (kept for sub-agent / `run
 // --harness kimi` use) — the picker offers only the native TUI (`kimi-native-ui`).
 const NEW_SESSION_HIDDEN_AGENTS = new Set(["nessie", "kimi", "kimi-code"]);
-const PRIVATE_FUND_RESEARCH_AGENT_NAME = "claude-native-ui";
+const PRIVATE_FUND_NATIVE_AGENT_NAME = "claude-native-ui";
+const PRIVATE_FUND_API_FALLBACK_AGENT_NAME = "qwen-research";
 const EMPTY_HOSTS: Host[] = [];
 const EMPTY_PRIVATE_FUND_PROJECTS: PrivateFundProject[] = [];
 
@@ -114,6 +120,8 @@ function hostSupportsPrivateFundResearch(host: Host): boolean {
   const configured = host.configured_harnesses;
   if (!configured) return true;
   return (
+    configured["openai-agents"] === true ||
+    configured["openai-agents-sdk"] === true ||
     configured["claude-native"] === true ||
     configured["native-claude"] === true ||
     configured.claude === true
@@ -135,8 +143,14 @@ function pickPrivateFundResearchHost(hosts: Host[], thisMachineHostId: string | 
 
 function findPrivateFundResearchAgent(agents: AvailableAgent[]): AvailableAgent | null {
   return (
-    agents.find((agent) => agent.name === PRIVATE_FUND_RESEARCH_AGENT_NAME) ??
+    agents.find(
+      (agent) => agent.name === PRIVATE_FUND_NATIVE_AGENT_NAME && agent.harness === "claude-native",
+    ) ??
     agents.find((agent) => agent.harness === "claude-native") ??
+    agents.find(
+      (agent) =>
+        agent.name === PRIVATE_FUND_API_FALLBACK_AGENT_NAME && agent.harness === "openai-agents",
+    ) ??
     null
   );
 }
@@ -781,14 +795,6 @@ function ResearchProjectPicker({
           {filtered.length === 0 && (
             <p className="px-2 py-2 text-xs text-muted-foreground">No research projects found.</p>
           )}
-        </div>
-        <div className="border-t pt-1">
-          <Button asChild variant="ghost" size="sm" className="h-8 w-full justify-start text-xs">
-            <Link to="/research-projects">
-              <FolderInputIcon className="size-3.5" />
-              Manage projects
-            </Link>
-          </Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -1657,6 +1663,9 @@ export function NewChatLandingScreen() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
   const pendingComposerAttachments = useChatStore((s) => s.pendingComposerAttachments);
+  const pendingComposerAttachmentRemovals = useChatStore(
+    (s) => s.pendingComposerAttachmentRemovals,
+  );
   // maxRows 9 = 180px of 20px lines, matching the composer's 200px
   // border-box max (180px content + 16px top / 4px bottom padding).
   useAutoGrowTextarea(textareaRef, message, 9);
@@ -1730,17 +1739,30 @@ export function NewChatLandingScreen() {
   const [baseBranch] = useState<string>("");
   const privateFundProjectParam = searchParams.get("private_fund_project") ?? "";
   const privateFundModeParam = searchParams.get("private_fund_mode") ?? "";
+  const isPrivateFundProjectLanding = privateFundProjectParam.length > 0;
   const privateFundResearchEntry = true;
+  const [privateFundResearchMode, setPrivateFundResearchMode] = useState<PrivateFundResearchMode>(
+    readPrivateFundResearchMode,
+  );
+  const handlePrivateFundResearchModeChange = (mode: PrivateFundResearchMode) => {
+    setPrivateFundResearchMode(mode);
+    writePrivateFundResearchMode(mode);
+  };
   const [selectedPrivateFundProjectId, setSelectedPrivateFundProjectId] = useState<string>(
-    () => privateFundProjectParam || readActivePrivateFundProjectId() || "阳光电源",
+    () => privateFundProjectParam || readActivePrivateFundProjectId() || "",
   );
   useEffect(() => {
     if (privateFundProjectParam) setSelectedPrivateFundProjectId(privateFundProjectParam);
   }, [privateFundProjectParam]);
   useEffect(() => {
-    if (selectedPrivateFundProjectId || privateFundProjects.length === 0) return;
+    if (
+      privateFundProjects.length === 0 ||
+      privateFundProjects.some((project) => project.datasetId === selectedPrivateFundProjectId)
+    )
+      return;
     const preferred =
-      privateFundProjects.find((project) => project.datasetId === "阳光电源") ?? privateFundProjects[0];
+      privateFundProjects.find((project) => project.datasetId === "阳光电源") ??
+      privateFundProjects[0];
     setSelectedPrivateFundProjectId(preferred.datasetId);
     writeActivePrivateFundProjectId(preferred.datasetId);
   }, [privateFundProjects, selectedPrivateFundProjectId]);
@@ -1750,6 +1772,10 @@ export function NewChatLandingScreen() {
       null,
     [privateFundProjects, selectedPrivateFundProjectId],
   );
+  const selectedPrivateFundFileCount =
+    selectedPrivateFundProject?.uploadCount ?? selectedPrivateFundProject?.fileCount ?? 0;
+  const selectedPrivateFundIndexedCount = selectedPrivateFundProject?.indexedDocumentCount ?? 0;
+  const selectedPrivateFundTokenUsage = selectedPrivateFundProject?.tokenUsage ?? null;
   const privateFundAgentSeededRef = useRef(false);
   useEffect(() => {
     if (!privateFundResearchEntry) {
@@ -2172,9 +2198,15 @@ export function NewChatLandingScreen() {
   }, [mentionedItems]);
 
   useEffect(() => {
-    if (pendingComposerAttachments.length === 0) return;
+    if (pendingComposerAttachments.length === 0 && pendingComposerAttachmentRemovals.length === 0)
+      return;
     setMentionedItems((prev) => {
-      const seen = new Set(prev.map(composerAttachmentKey));
+      const removalKeys = new Set(pendingComposerAttachmentRemovals.map(composerAttachmentKey));
+      const base =
+        removalKeys.size > 0
+          ? prev.filter((item) => !removalKeys.has(composerAttachmentKey(item)))
+          : prev;
+      const seen = new Set(base.map(composerAttachmentKey));
       const fresh: MentionItem[] = [];
       for (const attachment of pendingComposerAttachments) {
         const key = composerAttachmentKey(attachment);
@@ -2182,12 +2214,17 @@ export function NewChatLandingScreen() {
         seen.add(key);
         fresh.push(attachment);
       }
-      return fresh.length > 0 ? [...prev, ...fresh] : prev;
+      if (fresh.length === 0 && base.length === prev.length) return prev;
+      return fresh.length > 0 ? [...base, ...fresh] : base;
     });
     useChatStore.getState().clearPendingComposerAttachments();
-    textareaRef.current?.focus();
-    return () => useChatStore.getState().clearPendingComposerAttachments();
-  }, [pendingComposerAttachments, setMentionedItems]);
+    useChatStore.getState().clearPendingComposerAttachmentRemovals();
+    if (pendingComposerAttachments.length > 0) textareaRef.current?.focus();
+    return () => {
+      useChatStore.getState().clearPendingComposerAttachments();
+      useChatStore.getState().clearPendingComposerAttachmentRemovals();
+    };
+  }, [pendingComposerAttachments, pendingComposerAttachmentRemovals, setMentionedItems]);
 
   const canSubmit =
     message.trim().length > 0 &&
@@ -2364,11 +2401,24 @@ export function NewChatLandingScreen() {
       // the same wording the native executors emit and that title-seeding
       // strips. The runner, rooted at this workspace, reads the on-disk file
       // from the marker; no upload happens. Folders carry a trailing "/".
-      const privateFundContext = privateFundProjectPreamble(selectedPrivateFundProject);
-      const initialPrompt =
-        buildMentionPreamble(mentionedItems, selectedAgent?.harness ?? null) +
-        privateFundContext +
-        sanitizeInitialPrompt(message);
+      const privateFundContext = privateFundProjectPreamble(
+        selectedPrivateFundProject,
+        privateFundResearchMode,
+      );
+      const userPrompt = sanitizeInitialPrompt(message);
+      // Native vendor CLIs require `/skill` to remain the first token. Put
+      // the project/research contract after such a command so the CLI still
+      // resolves it while the task receives the same private-fund rules.
+      const preserveNativeSlashPrefix =
+        isNativeTerminalAgent &&
+        files.length === 0 &&
+        mentionedItems.length === 0 &&
+        isSlashCommandText(userPrompt);
+      const initialPrompt = preserveNativeSlashPrefix
+        ? `${userPrompt}\n\n${privateFundContext}`.trim()
+        : buildMentionPreamble(mentionedItems, selectedAgent?.harness ?? null) +
+          privateFundContext +
+          userPrompt;
       // A first message matching one of the agent's bundled skills is
       // handed off as a structured invocation so ChatPage auto-sends it
       // as a `slash_command` event (server resolves the skill) instead
@@ -2399,21 +2449,100 @@ export function NewChatLandingScreen() {
     // the hero reads better optically.
     <div
       ref={setLandingSurface}
-      className="flex flex-1 items-center justify-center"
+      className={cn(
+        "flex flex-1 items-center justify-center",
+        isPrivateFundProjectLanding && "items-start overflow-y-auto bg-[#F8FAF7]",
+      )}
       data-testid="new-chat-landing"
+      data-private-fund-project-landing={isPrivateFundProjectLanding || undefined}
     >
       {/* Padding lives inside the 840px cap, so the composer renders at
           840 − 80 = 760px max on desktop. px-4 on phones (16px gutters)
           keeps the composer from feeling cramped against the viewport
           edges; widens to the full px-10 at the md breakpoint and up. */}
-      <div className="flex w-full max-w-[840px] flex-col items-center gap-8 px-4 pt-8 pb-16 md:select-none md:px-10">
-        <div className="flex flex-col items-center gap-3.5 sm:flex-row">
-          <OttoEyes className="h-18 w-auto shrink-0" />
-          <h1 className="text-center text-3xl font-medium tracking-[-0.03em] text-foreground sm:text-left">
-            What should we do?
-          </h1>
-        </div>
-        <div className="relative flex w-full flex-col gap-3">
+      <div
+        className={cn(
+          "flex w-full max-w-[840px] flex-col items-center gap-8 px-4 pt-8 pb-16 md:select-none md:px-10",
+          isPrivateFundProjectLanding &&
+            "max-w-[980px] items-stretch gap-6 px-5 pt-10 pb-12 md:px-10",
+        )}
+      >
+        {isPrivateFundProjectLanding ? (
+          <div className="flex w-full flex-col gap-5">
+            <div>
+              <span className="inline-flex rounded-full bg-[#E6EFE8] px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-[#527362]">
+                研究项目
+              </span>
+              <h1
+                className="mt-3 text-[30px] font-semibold tracking-[-0.035em] text-[#25352D]"
+                data-testid="private-fund-project-landing-title"
+              >
+                {selectedPrivateFundProject?.name || privateFundProjectParam}
+              </h1>
+              <p className="mt-2 max-w-[620px] text-sm leading-6 text-[#69766F]">
+                从项目资料开始一条新的研究路径。提出研究问题后，会自动创建会话并进入图谱工作台。
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-[14px] border border-[#DFE6E1] bg-white px-4 py-3">
+                <p className="text-[11px] text-[#7B8780]">资料来源</p>
+                <p className="mt-1 text-base font-semibold text-[#2D3D35]">
+                  {selectedPrivateFundFileCount} 份
+                </p>
+              </div>
+              <div className="rounded-[14px] border border-[#DFE6E1] bg-white px-4 py-3">
+                <p className="text-[11px] text-[#7B8780]">已完成索引</p>
+                <p className="mt-1 text-base font-semibold text-[#2D3D35]">
+                  {selectedPrivateFundIndexedCount} 份
+                </p>
+              </div>
+              <div
+                className="rounded-[14px] border border-[#DFE6E1] bg-white px-4 py-3"
+                data-testid="private-fund-project-token-summary"
+              >
+                <p className="text-[11px] text-[#7B8780]">Token 消耗</p>
+                <p className="mt-1 text-base font-semibold text-[#2D3D35] tabular-nums">
+                  {selectedPrivateFundTokenUsage?.totalTokens != null
+                    ? formatTokenCount(selectedPrivateFundTokenUsage.totalTokens)
+                    : selectedPrivateFundTokenUsage?.sessionCount
+                      ? "待记录"
+                      : "暂无"}
+                </p>
+                {selectedPrivateFundTokenUsage?.totalTokens != null ? (
+                  <TokenUsageBar usage={selectedPrivateFundTokenUsage} className="mt-2 w-full" />
+                ) : null}
+                {selectedPrivateFundTokenUsage &&
+                selectedPrivateFundTokenUsage.sessionCount > 0 &&
+                selectedPrivateFundTokenUsage.sessionsWithTotalTokens <
+                  selectedPrivateFundTokenUsage.sessionCount ? (
+                  <p className="mt-1 text-[10px] text-[#7B8780] tabular-nums">
+                    覆盖 {selectedPrivateFundTokenUsage.sessionsWithTotalTokens}/
+                    {selectedPrivateFundTokenUsage.sessionCount} 个会话
+                  </p>
+                ) : null}
+              </div>
+              <div className="rounded-[14px] border border-[#DFE6E1] bg-white px-4 py-3">
+                <p className="text-[11px] text-[#7B8780]">研究状态</p>
+                <p className="mt-1 text-base font-semibold text-[#2D3D35]">
+                  {selectedPrivateFundProject?.indexReady ? "可以开始" : "资料准备中"}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-3.5 sm:flex-row">
+            <OttoEyes className="h-18 w-auto shrink-0" />
+            <h1 className="text-center text-3xl font-medium tracking-[-0.03em] text-foreground sm:text-left">
+              What should we do?
+            </h1>
+          </div>
+        )}
+        <div
+          className={cn(
+            "relative flex w-full flex-col gap-3",
+            isPrivateFundProjectLanding && "mx-auto max-w-[760px]",
+          )}
+        >
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -2554,8 +2683,18 @@ export function NewChatLandingScreen() {
               }}
               // Suppress the native placeholder when the overlay supplies its
               // own prompt text; aria-label preserves the accessible name.
-              placeholder={pillSkills.length > 0 ? "" : "Describe a task to start a new session…"}
-              aria-label="Describe a task to start a new session"
+              placeholder={
+                pillSkills.length > 0
+                  ? ""
+                  : isPrivateFundProjectLanding
+                    ? "输入研究问题，例如：复核海外收入增速与估值敏感性…"
+                    : "Describe a task to start a new session…"
+              }
+              aria-label={
+                isPrivateFundProjectLanding
+                  ? "输入研究问题"
+                  : "Describe a task to start a new session"
+              }
               rows={1}
               autoFocus
               data-testid="new-chat-landing-input"
@@ -2682,34 +2821,36 @@ export function NewChatLandingScreen() {
                   submenu (model / effort / permission mode for Claude Code,
                   approval mode for Codex/OpenCode, exec mode for Cursor,
                   brain-harness override for bundle agents). */}
-                <AgentHarnessPicker
-                  agentEntries={agentEntries}
-                  harnessEntries={harnessEntries}
-                  effectiveAgentId={effectiveAgentId}
-                  agentLabel={agentLabel}
-                  hasAgents={agentList.length > 0}
-                  host={harnessWarningHost}
-                  onSelectAgent={handleSelectAgent}
-                  pendingAgent={pendingAgent}
-                  pendingAgentId={PENDING_AGENT_ID}
-                  onSelectPending={handleSelectPending}
-                  onCreateCustomAgent={() => setCreateAgentOpen(true)}
-                  permissionMode={permissionMode}
-                  approvalMode={approvalMode}
-                  cursorExecMode={cursorExecMode}
-                  bypassSandbox={bypassSandbox}
-                  pickedModel={pickedModel}
-                  pickedEffort={pickedEffort}
-                  pickedHarness={pickedHarness}
-                  setPermissionMode={setPermissionMode}
-                  setApprovalMode={setApprovalMode}
-                  setCursorExecMode={setCursorExecMode}
-                  setBypassSandbox={setBypassSandbox}
-                  setPickedModel={setPickedModel}
-                  setPickedEffort={setPickedEffort}
-                  setPickedHarness={setPickedHarness}
-                />
-                {smartRoutingEnabled && selectedAgent && (
+                {!isPrivateFundProjectLanding && (
+                  <AgentHarnessPicker
+                    agentEntries={agentEntries}
+                    harnessEntries={harnessEntries}
+                    effectiveAgentId={effectiveAgentId}
+                    agentLabel={agentLabel}
+                    hasAgents={agentList.length > 0}
+                    host={harnessWarningHost}
+                    onSelectAgent={handleSelectAgent}
+                    pendingAgent={pendingAgent}
+                    pendingAgentId={PENDING_AGENT_ID}
+                    onSelectPending={handleSelectPending}
+                    onCreateCustomAgent={() => setCreateAgentOpen(true)}
+                    permissionMode={permissionMode}
+                    approvalMode={approvalMode}
+                    cursorExecMode={cursorExecMode}
+                    bypassSandbox={bypassSandbox}
+                    pickedModel={pickedModel}
+                    pickedEffort={pickedEffort}
+                    pickedHarness={pickedHarness}
+                    setPermissionMode={setPermissionMode}
+                    setApprovalMode={setApprovalMode}
+                    setCursorExecMode={setCursorExecMode}
+                    setBypassSandbox={setBypassSandbox}
+                    setPickedModel={setPickedModel}
+                    setPickedEffort={setPickedEffort}
+                    setPickedHarness={setPickedHarness}
+                  />
+                )}
+                {!isPrivateFundProjectLanding && smartRoutingEnabled && selectedAgent && (
                   <IntelligentModelControl value={costControlMode} onChange={setCostControlMode} />
                 )}
                 <TooltipProvider>
@@ -2741,17 +2882,32 @@ export function NewChatLandingScreen() {
               so users cannot browse into arbitrary root directories here. */}
           <div className="relative z-0 -mt-9 flex w-full items-center rounded-b-2xl bg-tray/40 pt-8 pr-3 pb-2 pl-2">
             <div className="flex flex-wrap items-center gap-1">
-              <ResearchProjectPicker
-                projects={privateFundProjects}
-                value={selectedPrivateFundProjectId}
-                onChange={setSelectedPrivateFundProjectId}
-              />
-              <span
-                className="hidden max-w-[24rem] truncate rounded-full px-2.5 text-13 text-muted-foreground sm:inline-flex"
-                title={workspaceTrimmed || undefined}
-              >
-                {workspaceTrimmed ? `Workspace: ${workspaceLabel}` : "Workspace follows project"}
-              </span>
+              {isPrivateFundProjectLanding ? (
+                <span className="inline-flex h-7 max-w-[15rem] items-center truncate rounded-full border border-[#D8E2DB] bg-white px-3 text-[12px] font-medium text-[#3E5D4C]">
+                  {selectedPrivateFundProject?.name || privateFundProjectParam}
+                </span>
+              ) : (
+                <ResearchProjectPicker
+                  projects={privateFundProjects}
+                  value={selectedPrivateFundProjectId}
+                  onChange={setSelectedPrivateFundProjectId}
+                />
+              )}
+              {selectedPrivateFundProject && (
+                <PrivateFundResearchModeToggle
+                  value={privateFundResearchMode}
+                  onChange={handlePrivateFundResearchModeChange}
+                  testId="new-chat-landing-research-mode"
+                />
+              )}
+              {!isPrivateFundProjectLanding && (
+                <span
+                  className="hidden max-w-[24rem] truncate rounded-full px-2.5 text-13 text-muted-foreground sm:inline-flex"
+                  title={workspaceTrimmed || undefined}
+                >
+                  {workspaceTrimmed ? `Workspace: ${workspaceLabel}` : "Workspace follows project"}
+                </span>
+              )}
             </div>
           </div>
 

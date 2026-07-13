@@ -64,6 +64,12 @@ _DATABRICKS_OPENAI_AGENTS_DEFAULT_MODEL = "databricks-gpt-5-5"
 # transient is rare.
 _EMPTY_TURN_MAX_ATTEMPTS = 2
 
+# Tool results are normally replayed through the SDK's native history. The
+# compatibility finalizer below serializes them into a plain user message, so
+# bound that exceptional payload to avoid turning a large memo/tool result into
+# an unbounded provider request.
+_FINALIZER_TOOL_CONTEXT_MAX_CHARS = 120_000
+
 # SDK ``RunItem.type`` values that are bookkeeping, not user-visible
 # output. A turn whose only new items are these (and which produced no
 # text and no tool activity) is treated as empty and retried. Excluding
@@ -71,6 +77,12 @@ _EMPTY_TURN_MAX_ATTEMPTS = 2
 # direction: an unknown future item type counts as output and is NOT
 # retried.
 _NON_OUTPUT_ITEM_TYPES: frozenset[str] = frozenset({"reasoning_item", "compaction_item"})
+
+# Some OpenAI-compatible providers complete a one-turn, tool-only run without
+# the SDK raising ``MaxTurnsExceeded``.  Recent openai-agents releases surface
+# that equivalent state as this RuntimeError instead.  Keep the check exact so
+# unrelated provider/runtime failures are never mistaken for a resumable turn.
+_MISSING_FINAL_RESPONSE_ERROR = "Model did not produce a final response!"
 
 # Replay items persisted to the SDK Session — heterogeneous Responses-API
 # input items (function_call / function_call_output / message / etc.).
@@ -107,6 +119,12 @@ ToolResult: TypeAlias = Any  # type: ignore[explicit-any]
 # Parsed tool arguments / tool-call-output dict. JSON-shaped bag handed
 # to the Omnigent tool executor.
 ToolArgs: TypeAlias = dict[str, Any]  # type: ignore[explicit-any]
+
+
+def _is_missing_final_response_error(exc: Exception) -> bool:
+    """Return whether *exc* is the SDK's tool-only one-turn sentinel."""
+
+    return type(exc).__name__ == "ModelBehaviorError" and str(exc) == _MISSING_FINAL_RESPONSE_ERROR
 
 
 def _normalize_responses_items_for_chat(
@@ -216,6 +234,41 @@ def _copy_known_keys(block: dict[str, Any], keys: tuple[str, ...]) -> dict[str, 
     to the OpenAI Agents SDK while leaving persisted conversation state intact.
     """
     return {key: block[key] for key in keys if key in block}
+
+
+def _build_tool_finalization_prompt(
+    messages: list[Message], completed_tools: list[dict[str, Any]]
+) -> str:
+    """Build a plain-message fallback prompt from completed tool results.
+
+    A few OpenAI-compatible providers reject the SDK's resumed ``role=tool``
+    history even though they successfully executed the tool call.  A fresh,
+    tool-free finalizer receives the same result as JSON in a normal user
+    message, avoiding both the incompatible role and a duplicate tool call.
+    """
+
+    request_text = ""
+    for message in reversed(messages):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content", "")
+        request_text = (
+            content
+            if isinstance(content, str)
+            else json.dumps(content, ensure_ascii=False, default=str)
+        )
+        break
+    tool_json = json.dumps(completed_tools, ensure_ascii=False, default=str)
+    if len(tool_json) > _FINALIZER_TOOL_CONTEXT_MAX_CHARS:
+        tool_json = (
+            tool_json[:_FINALIZER_TOOL_CONTEXT_MAX_CHARS] + "\n...[tool result context truncated]"
+        )
+    return (
+        "The following tools already completed successfully. Answer the original user "
+        "request using these results. Do not call any tools again.\n\n"
+        f"Original user request:\n{request_text}\n\n"
+        f"Completed tool results (JSON):\n{tool_json}"
+    )
 
 
 class _SDKSession(Protocol):
@@ -1544,6 +1597,9 @@ class OpenAIAgentsSDKExecutor(Executor):
         response_text = ""
         saw_tool_activity = False
         final_text = ""
+        completed_tool_results: list[dict[str, Any]] = []
+        finalizer_used = False
+        usage_raw_responses: list[Any] | None = None  # type: ignore[explicit-any]
         for attempt in range(_EMPTY_TURN_MAX_ATTEMPTS):
             response_text = ""
             pending_tools: dict[str, tuple[str, float]] = {}
@@ -1629,6 +1685,14 @@ class OpenAIAgentsSDKExecutor(Executor):
                                 name, started = pending_tools.pop(call_id)
                             duration_ms = ((time.monotonic() - started) * 1000) if started else 0.0
                             classification = classify_tool_result(sdk_item.output)
+                            completed_tool_results.append(
+                                {
+                                    "name": name,
+                                    "status": classification.status,
+                                    "result": sdk_item.output,
+                                    "error": classification.error,
+                                }
+                            )
                             yield ToolCallComplete(
                                 name=name,
                                 status=classification.status,
@@ -1673,31 +1737,92 @@ class OpenAIAgentsSDKExecutor(Executor):
             except Exception as exc:  # re-raises context overflow, classifies the rest
                 if state.interrupt_requested:
                     return
-                if _is_context_length_exceeded(exc):
-                    # Re-raise so the ExecutorAdapter's error classifier
-                    # maps it to ``context_length_exceeded`` and the
-                    # runner surfaces the overflow to the user.
-                    raise
-                from .databricks_executor import DatabricksAuthError
-
-                if isinstance(exc, DatabricksAuthError) or (
-                    exc.__cause__ is not None and isinstance(exc.__cause__, DatabricksAuthError)
+                recovered_missing_final = False
+                if (
+                    saw_tool_activity
+                    and result is not None
+                    and _is_missing_final_response_error(exc)
                 ):
-                    # When exc IS the DatabricksAuthError, use str(exc) — it
-                    # carries the actionable "Run: databricks auth login -p X"
-                    # message. Its __cause__ is the raw SDK exception (e.g.
-                    # ValueError("token expired")), which is NOT actionable.
-                    # When exc.__cause__ IS the DatabricksAuthError (exc is a
-                    # wrapper), str(exc.__cause__) is correct.
-                    auth_msg = (
-                        str(exc) if isinstance(exc, DatabricksAuthError) else str(exc.__cause__)
+                    if stepwise_internal_turns:
+                        state.started = True
+                        state.resume_state = result.to_state()
+                        state.history_cursor = len(split_transient_tail(messages).persisted)
+                        yield TurnComplete(continue_turn=True)
+                        return
+                    logger.warning(
+                        "OpenAIAgentsSDKExecutor: provider omitted the final stream event "
+                        "after tool activity; finishing from the SDK run state without streaming"
                     )
-                    logger.error("OpenAIAgentsSDKExecutor: auth failed: %s", auth_msg)
-                    yield ExecutorError(message=auth_msg)
-                else:
-                    logger.error("OpenAIAgentsSDKExecutor: run failed: %s", exc)
-                    yield ExecutorError(message=f"OpenAI Agents SDK error: {exc}")
-                return
+                    # DashScope-compatible streams can omit the terminal event on a
+                    # tool-call response even though the call and its output were both
+                    # completed. Its legacy chat validator also rejects the SDK's resumed
+                    # ``role=tool`` history, so finish in a fresh, tool-free run containing
+                    # the completed result as plain JSON context.
+                    try:
+                        prior_raw_responses = list(getattr(result, "raw_responses", None) or [])
+                        finalizer_agent = agents_sdk.Agent(
+                            name="Omnigent finalizer",
+                            instructions=system_prompt or None,
+                            model=model,
+                            model_settings=agents_sdk.ModelSettings(
+                                parallel_tool_calls=False,
+                                max_tokens=max_tokens,
+                                **_build_reasoning_model_settings(reasoning_effort),
+                            ),
+                            tools=[],
+                        )
+                        finalizer_result = cast(
+                            _RunResult,
+                            await agents_sdk.Runner.run(
+                                finalizer_agent,
+                                input=_build_tool_finalization_prompt(
+                                    messages, completed_tool_results
+                                ),
+                                session=None,
+                                max_turns=1,
+                                run_config=run_config,
+                            ),
+                        )
+                    except Exception as fallback_exc:  # noqa: BLE001
+                        exc = fallback_exc
+                    else:
+                        result = finalizer_result
+                        usage_raw_responses = prior_raw_responses + list(
+                            getattr(finalizer_result, "raw_responses", None) or []
+                        )
+                        finalizer_used = True
+                        state.started = True
+                        state.resume_state = None
+                        recovered_missing_final = True
+                if not recovered_missing_final:
+                    if _is_context_length_exceeded(exc):
+                        # Re-raise so the ExecutorAdapter's error classifier
+                        # maps it to ``context_length_exceeded`` and the
+                        # runner surfaces the overflow to the user.
+                        raise
+                    from .databricks_executor import DatabricksAuthError
+
+                    if isinstance(exc, DatabricksAuthError) or (
+                        exc.__cause__ is not None
+                        and isinstance(exc.__cause__, DatabricksAuthError)
+                    ):
+                        # When exc IS the DatabricksAuthError, use str(exc) — it
+                        # carries the actionable "Run: databricks auth login -p X"
+                        # message. Its __cause__ is the raw SDK exception (e.g.
+                        # ValueError("token expired")), which is NOT actionable.
+                        # When exc.__cause__ IS the DatabricksAuthError (exc is a
+                        # wrapper), str(exc.__cause__) is correct.
+                        auth_msg = (
+                            str(exc)
+                            if isinstance(exc, DatabricksAuthError)
+                            else str(exc.__cause__)
+                        )
+                        logger.error("OpenAIAgentsSDKExecutor: auth failed: %s", auth_msg)
+                        yield ExecutorError(message=auth_msg)
+                    else:
+                        logger.error("OpenAIAgentsSDKExecutor: run failed: %s", exc)
+                        yield ExecutorError(message=f"OpenAI Agents SDK error: {exc}")
+                    return
             finally:
                 # If the outer generator was aclose'd before the
                 # drain completed (e.g. ExecutorAdapter returned
@@ -1770,6 +1895,21 @@ class OpenAIAgentsSDKExecutor(Executor):
                 )
                 return
 
+        if finalizer_used and final_text:
+            # The fallback deliberately ran without the main SDK Session so no
+            # incompatible ``role=tool`` history reached the provider. Mirror its
+            # assistant answer into that session now; history_cursor advances past
+            # the same answer below, so later turns retain conversational context.
+            await state.sdk_session.add_items(
+                [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": final_text}],
+                        "status": "completed",
+                    }
+                ]
+            )
+
         if not response_text and final_text:
             yield TextChunk(text=final_text)
         state.history_cursor = len(split_transient_tail(messages).persisted) + 1
@@ -1789,7 +1929,11 @@ class OpenAIAgentsSDKExecutor(Executor):
         # stable. Always set so the REPL and compaction don't fall
         # back to total_tokens (which sums across ALL sub-turns).
         turn_usage: dict[str, Any] | None = None
-        raw_responses = getattr(result, "raw_responses", None)
+        raw_responses = (
+            usage_raw_responses
+            if usage_raw_responses is not None
+            else getattr(result, "raw_responses", None)
+        )
         if raw_responses:
             in_tok = sum(getattr(r.usage, "input_tokens", 0) or 0 for r in raw_responses)
             out_tok = sum(getattr(r.usage, "output_tokens", 0) or 0 for r in raw_responses)
