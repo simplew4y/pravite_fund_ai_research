@@ -220,3 +220,7 @@ Skills 存放在 `omnigent/omnigent/resources/private_fund_skills/`，服务启�
 ## 报告与回溯
 
 报告版本汇总当前图谱节点，并记录使用的每个 `node_version_id` 和文档版本。重新生成报告会创建新版本，不会覆盖旧版本。
+
+### 📝 HTML 资产错位字段兼容（2026-07-14）
+
+图表资产的规范存储位置仍是 `structured_output_json.content_blocks[].html`。考虑到模型可能把完整 HTML/JS 文档误写入 `output_markdown`，保存节点时会识别直接 HTML 与 `html` fenced code block，并自动提升为 `type: html` 内容块；读取历史节点时也会执行同样的非破坏性兼容，不要求迁移已有数据库记录。前端保留第二层兜底：结构化内容块为空、且 Markdown 字段整体是 HTML 文档时，改用带 `allow-scripts` 的 sandbox iframe 渲染。iframe 的 CSP 禁止联网、表单、对象、父页面访问与导航，只允许内联样式、内联脚本和 data URL 图片。

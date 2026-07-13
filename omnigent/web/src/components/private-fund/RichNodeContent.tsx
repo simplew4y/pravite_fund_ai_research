@@ -245,6 +245,20 @@ function evidenceLocation(source: PrivateFundEvidenceSource): string {
   return source.headingPath || "文档内位置未细分";
 }
 
+function extractHtmlVisualization(value?: string | null): string | null {
+  let candidate = value?.trim() ?? "";
+  const fenced = /^```(?:html)?\s*\n([\s\S]*?)\n```$/i.exec(candidate);
+  if (fenced) candidate = fenced[1].trim();
+  if (
+    !/^(?:<!doctype\s+html[^>]*>\s*)?<(?:html|body|main|section|article|div|svg|canvas)\b/i.test(
+      candidate,
+    )
+  ) {
+    return null;
+  }
+  return candidate;
+}
+
 function EvidenceSources({ sources }: { sources: PrivateFundEvidenceSource[] }) {
   if (sources.length === 0) {
     return (
@@ -348,9 +362,20 @@ export function RichNodeContent({
   evidenceSources?: PrivateFundEvidenceSource[];
 }) {
   if (blocks.length === 0) {
+    const fallbackHtml = extractHtmlVisualization(fallbackMarkdown);
     return (
       <div className="space-y-3">
-        {fallbackMarkdown ? (
+        {fallbackHtml ? (
+          <HtmlBlock
+            block={{
+              type: "html",
+              title: "HTML 图文预览",
+              html: fallbackHtml,
+              height: 640,
+              evidenceIds: evidenceSources.map((source) => source.evidenceId),
+            }}
+          />
+        ) : fallbackMarkdown ? (
           <FilePathAwareMessageResponse className="text-xs leading-5 text-[var(--pf-ink-secondary)]">
             {fallbackMarkdown}
           </FilePathAwareMessageResponse>

@@ -212,6 +212,50 @@ def test_agent_chart_html_preserves_self_contained_inline_javascript(tmp_path: P
     assert block["evidence_ids"] == ["chunk:chunk-1"]
 
 
+def test_html_misplaced_in_markdown_is_promoted_to_a_renderable_block(tmp_path: Path) -> None:
+    collection_db = _collection_db(tmp_path)
+    html = (
+        '<section><h2>跨行业财务对比</h2><div id="chart"></div>'
+        "<script>document.querySelector('#chart').textContent='rendered'</script></section>"
+    )
+
+    saved = private_fund_workflow.save_agent_node(
+        collection_db,
+        "demo",
+        title="跨行业财务对比",
+        summary="模型误把 HTML 放进了 Markdown 字段",
+        content_markdown=html,
+        evidence_ids=["chunk:chunk-1"],
+        content_blocks=[],
+    )
+    current = private_fund_workflow.get_or_create_workflow(collection_db, "demo")
+    current_node = next(
+        item for item in current["nodes"] if item["node_id"] == saved["node_id"]
+    )
+    assert current_node["content_blocks"][0]["type"] == "html"
+    assert current_node["content_blocks"][0]["html"] == html
+
+    # Simulate a node persisted before the promotion guard existed.
+    with sqlite3.connect(collection_db) as conn:
+        conn.execute(
+            "UPDATE research_node_versions SET structured_output_json=? WHERE node_version_id=?",
+            (json.dumps({"content_blocks": []}), saved["node_version_id"]),
+        )
+        conn.commit()
+    workflow = private_fund_workflow.get_or_create_workflow(collection_db, "demo")
+    node = next(item for item in workflow["nodes"] if item["node_id"] == saved["node_id"])
+
+    assert node["content_blocks"] == [
+        {
+            "type": "html",
+            "title": "跨行业财务对比",
+            "html": html,
+            "height": 640,
+            "evidence_ids": ["chunk:chunk-1"],
+        }
+    ]
+
+
 def test_evidence_ids_never_split_a_json_string_into_characters(tmp_path: Path) -> None:
     collection_db = _collection_db(tmp_path)
     saved = private_fund_workflow.save_agent_node(

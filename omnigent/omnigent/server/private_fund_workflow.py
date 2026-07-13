@@ -278,6 +278,42 @@ def _normalize_content_blocks(value: Any) -> list[dict[str, Any]]:
     return normalized
 
 
+def _extract_html_visualization(value: Any) -> str | None:
+    """Recognize a model-authored HTML document misplaced in Markdown output."""
+    candidate = str(value or "").strip()
+    fenced = re.fullmatch(r"```(?:html)?\s*\n([\s\S]*?)\n```", candidate, flags=re.IGNORECASE)
+    if fenced:
+        candidate = fenced.group(1).strip()
+    if not re.match(
+        r"^(?:<!doctype\s+html[^>]*>\s*)?<(?:html|body|main|section|article|div|svg|canvas)\b",
+        candidate,
+        flags=re.IGNORECASE,
+    ):
+        return None
+    return candidate[:50_000]
+
+
+def _html_fallback_block(
+    value: Any,
+    *,
+    title: str,
+    evidence_ids: Any = None,
+) -> dict[str, Any] | None:
+    html = _extract_html_visualization(value)
+    if html is None:
+        return None
+    block: dict[str, Any] = {
+        "type": "html",
+        "title": str(title or "HTML 图文资产")[:160],
+        "html": html,
+        "height": 640,
+    }
+    normalized_evidence = _normalize_evidence_ids(evidence_ids)
+    if normalized_evidence:
+        block["evidence_ids"] = normalized_evidence
+    return block
+
+
 def _workflow_id(dataset_id: str) -> str:
     digest = hashlib.sha256(f"{dataset_id}:{WORKFLOW_TYPE}".encode()).hexdigest()[:16]
     return f"wf_{digest}"
@@ -892,10 +928,20 @@ def _workflow_payload(conn: sqlite3.Connection, workflow_id: str) -> dict[str, A
             structured = json.loads(payload.pop("latest_structured_output") or "{}")
         except (TypeError, ValueError):
             structured = {}
-        payload["content_blocks"] = _normalize_content_blocks(structured.get("content_blocks"))
-        payload["evidence_sources"] = _node_evidence_payloads(
+        blocks = _normalize_content_blocks(structured.get("content_blocks"))
+        evidence_sources = _node_evidence_payloads(
             conn, payload.pop("latest_node_version_id", None)
         )
+        if not blocks:
+            fallback_block = _html_fallback_block(
+                payload.get("latest_output"),
+                title=str(payload.get("title") or "HTML 图文资产"),
+                evidence_ids=[source.get("evidence_id") for source in evidence_sources],
+            )
+            if fallback_block is not None:
+                blocks = [fallback_block]
+        payload["content_blocks"] = blocks
+        payload["evidence_sources"] = evidence_sources
         node_payloads.append(payload)
     return {
         "workflow": dict(workflow),
@@ -1283,12 +1329,21 @@ def save_agent_node(
         }
         kind, tone = kind_map.get(node_type, kind_map["insight"])
         now = _now_iso()
+        normalized_blocks = _normalize_content_blocks(content_blocks)
+        if not normalized_blocks:
+            fallback_block = _html_fallback_block(
+                content_markdown,
+                title=title,
+                evidence_ids=evidence_ids,
+            )
+            if fallback_block is not None:
+                normalized_blocks = [fallback_block]
         structured = {
             "node_type": node_type,
             "tags": tags or [],
             "confidence": confidence,
             "source_response_ids": source_response_ids or [],
-            "content_blocks": _normalize_content_blocks(content_blocks),
+            "content_blocks": normalized_blocks,
         }
         conn.execute(
             """
