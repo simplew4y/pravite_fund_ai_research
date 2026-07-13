@@ -14,6 +14,7 @@ import {
   computeShowsWorking,
   containsMarkdownTable,
   dispatchInitialPrompt,
+  hasPrivateFundConversationContext,
   isUnboundCodingFork,
   mergePendingBubbles,
   readOnlyReasonForSessionLabels,
@@ -26,6 +27,31 @@ import {
   stripPendingElicitations,
   subAgentComposerLabel,
 } from "./ChatPage";
+
+describe("hasPrivateFundConversationContext", () => {
+  it("treats a sent raw-file attachment as usable generation context", () => {
+    const bubbles: Bubble[] = [
+      {
+        kind: "user",
+        itemId: "raw-files",
+        content: [
+          {
+            type: "input_text",
+            text: "[Attached: raw/1783838788554_HERMES+INTERNATIONAL_HRMS.PA_2025_Jun_30.xlsm]\n",
+          },
+        ],
+      },
+    ];
+
+    expect(hasPrivateFundConversationContext(bubbles)).toBe(true);
+  });
+
+  it("does not treat transport-only bubbles as research context", () => {
+    expect(
+      hasPrivateFundConversationContext([{ kind: "compaction_loading", itemId: "compact" }]),
+    ).toBe(false);
+  });
+});
 
 // The Composer's read-only and disabled states are derived from
 // permissionLevel. These tests pin the derivation logic so a

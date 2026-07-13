@@ -125,7 +125,10 @@ function ActionFixture() {
   );
 }
 
-function renderWorkbench(onGenerateNode = vi.fn()) {
+function renderWorkbench(
+  onGenerateNode = vi.fn(),
+  options: { hasConversationContext?: boolean } = {},
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
@@ -133,6 +136,7 @@ function renderWorkbench(onGenerateNode = vi.fn()) {
         conversationId="conv-test"
         datasetId="阳光电源"
         datasetName="阳光电源"
+        hasConversationContext={options.hasConversationContext}
         chat={
           <>
             <textarea aria-label="真实 AI 对话" defaultValue="保留的草稿" />
@@ -200,6 +204,59 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(prompt).toContain("content_blocks");
     expect(prompt).toContain("本次节点输出形式: 普通文本");
     expect(prompt).toContain("普通文本模式下不得保存 content_blocks");
+  });
+
+  it("generates a selected asset type from asset context without requiring AI information", () => {
+    const documentAsset = {
+      ...assetCatalog.assets[0],
+      assetId: "document:annual-report",
+      assetType: "document",
+      title: "2025 年报.pdf",
+      summary: "已索引的公司年报",
+      contentMarkdown: "海外收入同比增长 28%，但仍需核验证据。",
+      sourceKind: "document",
+      sourceId: "doc-annual-report",
+      format: "pdf",
+    };
+    vi.mocked(usePrivateFundAssets).mockReturnValue({
+      data: {
+        assets: [...assetCatalog.assets, documentAsset],
+        contextAssetIds: [documentAsset.assetId],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof usePrivateFundAssets>);
+
+    const onGenerateNode = renderWorkbench();
+    fireEvent.change(screen.getByRole("combobox", { name: "生成结果" }), {
+      target: { value: "table" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Agent 生成资产/ }));
+
+    expect(onGenerateNode).toHaveBeenCalledOnce();
+    const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
+    expect(prompt).toContain("本次节点输出形式: 对比表格");
+    expect(prompt).toContain("用户勾选的资产上下文");
+    expect(prompt).toContain("2025 年报.pdf（document）");
+    expect(prompt).toContain("海外收入同比增长 28%，但仍需核验证据");
+    expect(prompt).toContain("作为上下文的父节点: 无");
+    expect(prompt).not.toContain("用户勾选的 AI 重要信息");
+  });
+
+  it("generates from existing conversation context without requiring selected information", () => {
+    const onGenerateNode = renderWorkbench(vi.fn(), { hasConversationContext: true });
+    fireEvent.click(screen.getByRole("button", { name: /Agent 生成资产/ }));
+
+    expect(onGenerateNode).toHaveBeenCalledOnce();
+    expect(vi.mocked(onGenerateNode).mock.calls[0][0]).toContain("当前会话也是本次生成上下文");
+  });
+
+  it("asks for context only when the conversation and selections are both empty", () => {
+    const onGenerateNode = renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: /Agent 生成资产/ }));
+
+    expect(onGenerateNode).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("请先提供对话内容，或勾选任意资产上下文");
   });
 
   it("sends the selected node output mode and chart instructions to one node request", () => {

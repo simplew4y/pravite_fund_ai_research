@@ -368,6 +368,21 @@ export function containsMarkdownTable(items: RenderItem[]): boolean {
   });
 }
 
+export function hasPrivateFundConversationContext(bubbles: Bubble[]): boolean {
+  return bubbles.some((bubble) => {
+    if (bubble.kind === "user") {
+      return (
+        extractUserText(bubble.content).length > 0 ||
+        extractAttachedPaths(bubble.content).length > 0
+      );
+    }
+    if (bubble.kind === "assistant") {
+      return bubble.items.some((item) => item.kind === "text" && item.text.trim().length > 0);
+    }
+    return false;
+  });
+}
+
 /**
  * Build optimistic user bubbles from the pending-send queue.
  *
@@ -773,6 +788,10 @@ export function ChatPage() {
       buildPendingBubbles(pendingUserMessages, getCurrentAuthorId()),
     );
   }, [blocks, activeResponse, interruptedResponseIds, pendingUserMessages]);
+  const hasConversationContext = useMemo(
+    () => hasPrivateFundConversationContext(bubbles),
+    [bubbles],
+  );
 
   // Picker selection. ChatPage stays mounted across `/` to `/c/:id`,
   // so the pick survives sidebar clicks; resets on full page reload.
@@ -1243,6 +1262,7 @@ export function ChatPage() {
           datasetId={privateFundDatasetId}
           datasetName={privateFundProjectLabel ?? privateFundDatasetId}
           chat={mainAgent}
+          hasConversationContext={hasConversationContext}
           onGenerateNode={(prompt) => {
             const skillMatch = prompt.match(
               /^\/(private-fund-memo|private-fund-report)(?:\s+([\s\S]*))?$/,

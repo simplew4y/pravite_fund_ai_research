@@ -114,6 +114,7 @@ export type PrivateFundResearchWorkbenchProps = {
   datasetId: string;
   datasetName: string;
   chat: ReactNode;
+  hasConversationContext?: boolean;
   onGenerateNode: (prompt: string) => void;
   sidebarOpen?: boolean;
   onOpenSidebar?: () => void;
@@ -208,6 +209,7 @@ function buildGenerationPrompt(
   selectedInformation: SelectedInformation[],
   parentNodeIds: string[],
   contextAssets: PrivateFundAsset[],
+  hasConversationContext: boolean,
   presentationMode: GenerationMode,
   presentationInstruction: string,
 ): string {
@@ -237,6 +239,9 @@ function buildGenerationPrompt(
         ? "必须调用 private_fund_dataset_memo，返回 Markdown、HTML 和 PDF。"
         : "必须调用 private_fund_equity_report_generate，返回 Markdown、HTML、PDF、JSON 和证据索引。",
       "所有重大事实和数字必须通过数据集工具核验；无法绑定 evidence_id 的内容标记为“资料未覆盖/待复核”。",
+      hasConversationContext
+        ? "当前会话也是本次生成上下文：请结合对话中的用户问题、@raw/[Attached:] 附件和已有回答；其中的重大事实和数字仍须通过数据集工具重新核验。"
+        : "",
       information ? `\n用户勾选的重要信息:\n${information}` : "",
       context ? `\n用户勾选的资产上下文:\n${context}` : "",
     ]
@@ -284,7 +289,7 @@ function buildGenerationPrompt(
       : "",
   ].filter(Boolean);
   return [
-    "请把我勾选的重要信息生成一个新的研究节点。",
+    "请基于当前会话和我选择的上下文生成一个新的研究节点。",
     `dataset_id: ${datasetId}`,
     `作为上下文的父节点: ${parentNodeIds.length > 0 ? parentNodeIds.join(", ") : "无"}`,
     "你需要根据内容自行决定节点标题、node_type、摘要、标签和置信度，不要套用预设研究流程。",
@@ -300,7 +305,11 @@ function buildGenerationPrompt(
       : "",
     ...presentationLines,
     "",
-    information,
+    hasConversationContext
+      ? "当前会话也是本次生成上下文：请结合对话中的用户问题、@raw/[Attached:] 附件和已有回答；其中的重大事实和数字仍须通过数据集工具重新核验。"
+      : "",
+    information ? `用户勾选的 AI 重要信息:\n${information}` : "",
+    context ? `用户勾选的资产上下文:\n${context}` : "",
   ].join("\n");
 }
 
@@ -308,6 +317,7 @@ export function PrivateFundResearchWorkbench({
   datasetId,
   datasetName,
   chat,
+  hasConversationContext = false,
   onGenerateNode,
   sidebarOpen = true,
   onOpenSidebar,
@@ -457,14 +467,23 @@ export function PrivateFundResearchWorkbench({
   const generateNode = useCallback(() => {
     if (!workflow) return;
     const documentMode = isDocumentGenerationMode(presentationMode);
-    if (!documentMode && selectedInformation.length === 0) {
-      setNotice("请先在 AI 回答中勾选至少一条重要信息");
+    const contextAssets = contextAssetIds
+      .map((assetId) => assets.find((asset) => asset.assetId === assetId))
+      .filter((asset): asset is PrivateFundAsset => Boolean(asset));
+    if (
+      !documentMode &&
+      !hasConversationContext &&
+      selectedInformation.length === 0 &&
+      contextAssets.length === 0
+    ) {
+      setNotice("请先提供对话内容，或勾选任意资产上下文");
       return;
     }
     if (
       documentMode &&
       selectedInformation.length === 0 &&
       contextAssetIds.length === 0 &&
+      !hasConversationContext &&
       !presentationInstruction.trim()
     ) {
       setNotice("请填写 Memo/研报主题，或先勾选信息和资产上下文");
@@ -474,12 +493,12 @@ export function PrivateFundResearchWorkbench({
       buildGenerationPrompt(
         datasetId,
         selectedInformation,
-        contextAssetIds
-          .filter((assetId) => assetId.startsWith("node:"))
-          .map((assetId) => assetId.slice(5)),
-        contextAssetIds
-          .map((assetId) => assets.find((asset) => asset.assetId === assetId))
-          .filter((asset): asset is PrivateFundAsset => Boolean(asset)),
+        contextAssets
+          .filter((asset) => asset.sourceKind.startsWith("research_node"))
+          .map((asset) => asset.sourceId)
+          .filter((sourceId): sourceId is string => Boolean(sourceId)),
+        contextAssets,
+        hasConversationContext,
         presentationMode,
         presentationInstruction,
       ),
@@ -501,6 +520,7 @@ export function PrivateFundResearchWorkbench({
     presentationMode,
     presentationInstruction,
     selectedInformation,
+    hasConversationContext,
     contextAssetIds,
     assets,
     workflow,
