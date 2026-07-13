@@ -450,14 +450,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("AppShell header", () => {
-  it("keeps the private-fund shell active on a project landing URL", () => {
+  it("keeps the native shell on a private-fund project landing URL", () => {
     mockConversations([]);
     renderShell("/?private_fund_project=beta");
 
-    expect(screen.getByTestId("app-shell")).toHaveAttribute("data-private-fund-workspace", "true");
-    expect(screen.getByTestId("sidebar")).toHaveAttribute("data-private-fund-workspace", "true");
+    expect(screen.getByTestId("app-shell")).not.toHaveAttribute("data-private-fund-workspace");
+    expect(screen.getByTestId("sidebar")).toHaveAttribute("data-private-fund-workspace", "false");
     expect(screen.getByTestId("sidebar")).toHaveAttribute("data-private-fund-dataset-id", "beta");
-    expect(screen.queryByRole("button", { name: /sidebar/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /sidebar/i })).toBeInTheDocument();
   });
 
   it("renders the sidebar toggle on all pages", () => {

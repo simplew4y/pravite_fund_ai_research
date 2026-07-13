@@ -198,18 +198,17 @@ import {
   type PrivateFundResearchMode,
   privateFundProjectPreamble,
   readPrivateFundResearchMode,
+  savePrivateFundAsset,
+  setPrivateFundAssetContext,
   writePrivateFundResearchMode,
   wrapPrivateFundPromptContext,
 } from "@/lib/privateFundApi";
 import { PrivateFundResearchModeToggle } from "@/components/PrivateFundResearchModeToggle";
 import { TokenUsageBar } from "@/components/private-fund/TokenUsageBar";
-import {
-  PrivateFundResearchWorkbench,
-  usePrivateFundWorkbenchActions,
-} from "@/components/private-fund/PrivateFundResearchWorkbench";
-import { usePrivateFundShell } from "@/shell/PrivateFundShellContext";
-import { privateFundProjectsQueryKey } from "@/hooks/usePrivateFundProjects";
+import { usePrivateFundWorkbenchActions } from "@/components/private-fund/PrivateFundResearchWorkbench";
+import { privateFundProjectsQueryKey, usePrivateFundAssets } from "@/hooks/usePrivateFundProjects";
 import { cachedTokenCount, formatTokenCount, summarizeModelTokenUsage } from "@/lib/tokenUsage";
+import { usePrivateFundShell } from "@/shell/PrivateFundShellContext";
 
 // Matches both wordings the native executors emit: "[Attached: <path>]"
 // (claude/pi/cursor) and "[Attached file: <path>]" (codex). Capturing group
@@ -788,11 +787,6 @@ export function ChatPage() {
       buildPendingBubbles(pendingUserMessages, getCurrentAuthorId()),
     );
   }, [blocks, activeResponse, interruptedResponseIds, pendingUserMessages]);
-  const hasConversationContext = useMemo(
-    () => hasPrivateFundConversationContext(bubbles),
-    [bubbles],
-  );
-
   // Picker selection. ChatPage stays mounted across `/` to `/c/:id`,
   // so the pick survives sidebar clicks; resets on full page reload.
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -1026,6 +1020,7 @@ export function ChatPage() {
     activeSession?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
     activeConv?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
     privateFundDatasetId;
+  const privateFundAssetsQuery = usePrivateFundAssets(privateFundDatasetId);
   const projectTokenUsage = useChatStore((state) => state.sessionTokenUsage);
   useEffect(() => {
     if (!privateFundDatasetId) return;
@@ -1050,8 +1045,68 @@ export function ChatPage() {
       window.removeEventListener(TRUSTED_MEMO_SOURCES_UPDATED_EVENT, handleTrustedSourcesUpdated);
   }, [urlConvId]);
   const trustedMemoSourceIds = useMemo(
-    () => new Set(trustedMemoSources.map((source) => source.responseId)),
-    [trustedMemoSources],
+    () =>
+      new Set([
+        ...trustedMemoSources.map((source) => source.responseId),
+        ...(privateFundAssetsQuery.data?.assets ?? [])
+          .filter(
+            (asset) =>
+              asset.metadata.conversationId === urlConvId &&
+              asset.metadata.trustedMemoSource === true,
+          )
+          .map((asset) => String(asset.metadata.responseId ?? ""))
+          .filter(Boolean),
+      ]),
+    [privateFundAssetsQuery.data?.assets, trustedMemoSources, urlConvId],
+  );
+  const persistResponseAsset = useCallback(
+    async (responseId: string, content: string, trusted: boolean) => {
+      if (!urlConvId || !privateFundDatasetId) return;
+      const trimmed = content.trim();
+      if (!trimmed) return;
+      const existing = privateFundAssetsQuery.data?.assets.find(
+        (asset) =>
+          asset.metadata.conversationId === urlConvId &&
+          asset.metadata.responseId === responseId &&
+          Boolean(asset.metadata.trustedMemoSource) === trusted,
+      );
+      if (existing) return;
+      const firstLine =
+        trimmed
+          .split(/\n+/)
+          .map((line) => line.replace(/^#+\s*/, "").trim())
+          .find(Boolean) ?? (trusted ? "AI 研究结论" : "研究资产");
+      const catalog = await savePrivateFundAsset(privateFundDatasetId, {
+        assetType: trusted ? "information" : "analysis",
+        title: firstLine.slice(0, 56),
+        summary: trimmed.replace(/\s+/g, " ").slice(0, 180),
+        contentMarkdown: trimmed,
+        sourceResponseId: responseId,
+        tags: [trusted ? "可信来源" : "AI 回答"],
+        metadata: {
+          conversationId: urlConvId,
+          responseId,
+          trustedMemoSource: trusted,
+        },
+      });
+      queryClient.setQueryData(["private-fund-assets", privateFundDatasetId], catalog);
+      if (trusted) {
+        const saved = catalog.assets.find(
+          (asset) =>
+            asset.metadata.conversationId === urlConvId &&
+            asset.metadata.responseId === responseId &&
+            asset.metadata.trustedMemoSource === true,
+        );
+        if (saved && !catalog.contextAssetIds.includes(saved.assetId)) {
+          const next = await setPrivateFundAssetContext(privateFundDatasetId, [
+            ...catalog.contextAssetIds,
+            saved.assetId,
+          ]);
+          queryClient.setQueryData(["private-fund-assets", privateFundDatasetId], next);
+        }
+      }
+    },
+    [privateFundAssetsQuery.data?.assets, privateFundDatasetId, queryClient, urlConvId],
   );
   const handleAddTrustedMemoSource = useCallback(
     (responseId: string, content: string) => {
@@ -1079,9 +1134,52 @@ export function ChatPage() {
         notifyTrustedMemoSourcesUpdated(urlConvId);
         return next;
       });
+      void persistResponseAsset(responseId, trimmed, true);
     },
-    [privateFundDatasetId, urlConvId],
+    [persistResponseAsset, privateFundDatasetId, urlConvId],
   );
+  const handleSaveResearchAsset = useCallback(
+    (responseId: string, content: string) => {
+      void persistResponseAsset(responseId, content, false);
+    },
+    [persistResponseAsset],
+  );
+
+  useEffect(() => {
+    if (!privateFundShell || !urlConvId || !privateFundDatasetId || !agentId) return;
+    privateFundShell.registerGenerationHandler((request) => {
+      const store = useChatStore.getState();
+      if (request.kind === "message") {
+        void store.send(request.prompt, agentId);
+      } else {
+        const wrapper =
+          activeSession?.labels?.["omnigent.wrapper"] ?? activeConv?.labels?.["omnigent.wrapper"];
+        if (isNativeWrapperLabel(wrapper)) {
+          void store.send(`/${request.name}${request.args ? ` ${request.args}` : ""}`, agentId);
+        } else {
+          void store.sendSlashCommand(request.name, request.args, agentId);
+        }
+      }
+      window.setTimeout(() => {
+        void queryClient.invalidateQueries({
+          queryKey: ["private-fund-assets", privateFundDatasetId],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ["private-fund-workflow", privateFundDatasetId],
+        });
+        void queryClient.invalidateQueries({ queryKey: privateFundProjectsQueryKey });
+      }, 2500);
+    });
+    return () => privateFundShell.registerGenerationHandler(null);
+  }, [
+    agentId,
+    activeConv?.labels,
+    activeSession?.labels,
+    privateFundDatasetId,
+    privateFundShell,
+    queryClient,
+    urlConvId,
+  ]);
 
   // Loading + error gates for `/c/:id` hydration.
   if (urlConvId) {
@@ -1237,6 +1335,7 @@ export function ChatPage() {
       privateFundDatasetId={privateFundDatasetId}
       trustedMemoSourceIds={trustedMemoSourceIds}
       onAddTrustedMemoSource={handleAddTrustedMemoSource}
+      onSaveResearchAsset={handleSaveResearchAsset}
     />
   );
 
@@ -1256,36 +1355,7 @@ export function ChatPage() {
 
   return (
     <SessionSharedContext.Provider value={isSessionShared}>
-      {privateFundDatasetId ? (
-        <PrivateFundResearchWorkbench
-          conversationId={urlConvId}
-          datasetId={privateFundDatasetId}
-          datasetName={privateFundProjectLabel ?? privateFundDatasetId}
-          chat={mainAgent}
-          hasConversationContext={hasConversationContext}
-          onGenerateNode={(prompt) => {
-            const skillMatch = prompt.match(
-              /^\/(private-fund-memo|private-fund-report)(?:\s+([\s\S]*))?$/,
-            );
-            if (!skillMatch) {
-              onSend(`${wrapPrivateFundPromptContext(prompt)}生成研究资产`);
-              return;
-            }
-            const skillName = skillMatch[1];
-            const skillArgs = skillMatch[2]?.trim() ?? "";
-            const wrapper = capabilitySource.labels?.["omnigent.wrapper"];
-            if (isNativeWrapperLabel(wrapper)) {
-              onSend(`/${skillName}${skillArgs ? ` ${skillArgs}` : ""}`);
-            } else {
-              onSendSlashCommand(skillName, skillArgs);
-            }
-          }}
-          sidebarOpen={privateFundShell?.sidebarOpen ?? true}
-          onOpenSidebar={privateFundShell?.openSidebar}
-        />
-      ) : (
-        <SessionLayout mainAgent={mainAgent} />
-      )}
+      <SessionLayout mainAgent={mainAgent} />
       <ReconnectSessionDialog
         open={reconnectDialogOpen}
         onOpenChange={setReconnectDialogOpen}
@@ -1532,6 +1602,7 @@ interface MainAgentSurfaceProps {
   privateFundDatasetId: string | null;
   trustedMemoSourceIds: Set<string>;
   onAddTrustedMemoSource: (responseId: string, content: string) => void;
+  onSaveResearchAsset: (responseId: string, content: string) => void;
 }
 
 /**
@@ -1601,6 +1672,7 @@ function MainAgentSurface({
   privateFundDatasetId,
   trustedMemoSourceIds,
   onAddTrustedMemoSource,
+  onSaveResearchAsset,
 }: MainAgentSurfaceProps) {
   const terminalFirst = useTerminalFirst();
   // Mirrors ChatPage's `sandboxLaunching`: while the managed-sandbox
@@ -1865,6 +1937,7 @@ function MainAgentSurface({
                     conversationWorking={showsWorking}
                     trustedMemoSourceIds={trustedMemoSourceIds}
                     onAddTrustedMemoSource={onAddTrustedMemoSource}
+                    onSaveResearchAsset={onSaveResearchAsset}
                   />
                 ))}
                 {/* Pending elicitation cards, floated to the bottom of the
@@ -2984,6 +3057,7 @@ function CompactionLoadingIndicator() {
 
 const EMPTY_TRUSTED_MEMO_SOURCE_IDS = new Set<string>();
 const NOOP_ADD_TRUSTED_MEMO_SOURCE = () => {};
+const NOOP_SAVE_RESEARCH_ASSET = () => {};
 
 // Memoized so a streaming delta (which rebuilds the whole bubble array) only
 // re-renders the bubble that actually changed, not every prior message's
@@ -2996,12 +3070,14 @@ export const BubbleView = memo(
     conversationWorking = false,
     trustedMemoSourceIds = EMPTY_TRUSTED_MEMO_SOURCE_IDS,
     onAddTrustedMemoSource = NOOP_ADD_TRUSTED_MEMO_SOURCE,
+    onSaveResearchAsset = NOOP_SAVE_RESEARCH_ASSET,
   }: {
     bubble: Bubble;
     privateFundDatasetId?: string | null;
     conversationWorking?: boolean;
     trustedMemoSourceIds?: Set<string>;
     onAddTrustedMemoSource?: (responseId: string, content: string) => void;
+    onSaveResearchAsset?: (responseId: string, content: string) => void;
   }) {
     if (bubble.kind === "user") return <UserBubble bubble={bubble} />;
     if (bubble.kind === "compaction_loading") {
@@ -3025,6 +3101,7 @@ export const BubbleView = memo(
         conversationWorking={conversationWorking}
         isTrustedMemoSource={trustedMemoSourceIds.has(bubble.responseId)}
         onAddTrustedMemoSource={onAddTrustedMemoSource}
+        onSaveResearchAsset={onSaveResearchAsset}
       />
     );
   },
@@ -3032,7 +3109,8 @@ export const BubbleView = memo(
     bubblesEqual(prev.bubble, next.bubble) &&
     prev.privateFundDatasetId === next.privateFundDatasetId &&
     prev.conversationWorking === next.conversationWorking &&
-    prev.trustedMemoSourceIds === next.trustedMemoSourceIds,
+    prev.trustedMemoSourceIds === next.trustedMemoSourceIds &&
+    prev.onSaveResearchAsset === next.onSaveResearchAsset,
 );
 
 function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
@@ -3199,12 +3277,14 @@ function AssistantBubble({
   conversationWorking,
   isTrustedMemoSource,
   onAddTrustedMemoSource,
+  onSaveResearchAsset,
 }: {
   bubble: Extract<Bubble, { kind: "assistant" }>;
   privateFundDatasetId: string | null;
   conversationWorking: boolean;
   isTrustedMemoSource: boolean;
   onAddTrustedMemoSource: (responseId: string, content: string) => void;
+  onSaveResearchAsset: (responseId: string, content: string) => void;
 }) {
   // The walker only emits an assistant bubble when at least one
   // assistant-side block exists, so `items` is non-empty here in the
@@ -3212,14 +3292,10 @@ function AssistantBubble({
   // gap is rendered at the page level, not inside this component.
   const sessionStatus = useChatStore((s) => s.sessionStatus);
   const [isCopied, setIsCopied] = useState(false);
+  const [researchAssetSaved, setResearchAssetSaved] = useState(false);
   const copyTimeoutRef = useRef<number>(0);
   // null outside AppShell's provider (isolated tests) → hide the action.
   const forkDialog = useForkDialog();
-  // Present only inside the private-fund graph workbench. Context keeps the
-  // real conversation tree mounted while allowing completed AI answers to
-  // become research nodes or assumptions on the selected graph node.
-  const workbenchActions = usePrivateFundWorkbenchActions();
-
   if (bubble.items.length === 0) return null;
 
   const markdownText = collectBubbleMarkdown(bubble.items);
@@ -3270,22 +3346,15 @@ function AssistantBubble({
           </p>
         )}
         {markdownText && (
-          <MessageActions
-            className={cn(
-              "mt-1 opacity-40 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100",
-              workbenchActions && "flex-wrap opacity-100",
-            )}
-          >
-            {!workbenchActions && (
-              <MessageAction tooltip="Copy" onClick={handleCopy}>
-                {isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-              </MessageAction>
-            )}
+          <MessageActions className="mt-1 flex-wrap opacity-40 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <MessageAction tooltip="Copy" onClick={handleCopy}>
+              {isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+            </MessageAction>
             {/* Fork from this response: clone the session with history
                 truncated after this turn. Hidden while the response is
                 still streaming (its items aren't committed yet) and when
                 the session can't be forked (sub-agent / isolated mount). */}
-            {!workbenchActions && forkDialog?.canFork && bubble.lifecycle !== "streaming" && (
+            {forkDialog?.canFork && bubble.lifecycle !== "streaming" && (
               <MessageAction
                 tooltip="Fork from here"
                 data-testid="fork-from-response"
@@ -3296,22 +3365,33 @@ function AssistantBubble({
             )}
             {canAddTrustedMemoSource && (
               <MessageAction
-                tooltip={isTrustedMemoSource ? "已保存为资产" : "保存为资产"}
-                label={isTrustedMemoSource ? "已保存为资产" : "保存为资产"}
+                tooltip={isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}
+                label={isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}
                 size="sm"
                 variant={isTrustedMemoSource ? "secondary" : "ghost"}
                 className="h-7 gap-1 px-2 text-xs"
                 disabled={isTrustedMemoSource}
-                onClick={() => {
-                  onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText);
-                  workbenchActions?.markUsefulInformation(
-                    bubble.responseId,
-                    trustedMemoMarkdownText,
-                  );
-                }}
+                onClick={() => onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText)}
               >
                 {isTrustedMemoSource ? <CheckIcon size={14} /> : <FileTextIcon size={14} />}
-                <span>{isTrustedMemoSource ? "已保存为资产" : "保存为资产"}</span>
+                <span>{isTrustedMemoSource ? "已加入可信来源" : "加入可信来源"}</span>
+              </MessageAction>
+            )}
+            {canAddTrustedMemoSource && (
+              <MessageAction
+                tooltip={researchAssetSaved ? "已保存为研究资产" : "保存为研究资产"}
+                label={researchAssetSaved ? "已保存为研究资产" : "保存为研究资产"}
+                size="sm"
+                variant={researchAssetSaved ? "secondary" : "ghost"}
+                className="h-7 gap-1 px-2 text-xs"
+                disabled={researchAssetSaved}
+                onClick={() => {
+                  onSaveResearchAsset(bubble.responseId, trustedMemoMarkdownText);
+                  setResearchAssetSaved(true);
+                }}
+              >
+                {researchAssetSaved ? <CheckIcon size={14} /> : <BotIcon size={14} />}
+                <span>{researchAssetSaved ? "已保存为研究资产" : "保存为研究资产"}</span>
               </MessageAction>
             )}
           </MessageActions>

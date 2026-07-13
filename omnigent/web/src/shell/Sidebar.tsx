@@ -17,6 +17,7 @@ import {
   ArchiveRestoreIcon,
   CheckIcon,
   CheckIcon as CheckMarkIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   CircleIcon,
   CircleStopIcon,
@@ -110,6 +111,7 @@ import {
   useStopSession,
 } from "@/hooks/useConversations";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { showToast } from "@/components/ui/toast";
 import { PermissionsModal } from "@/components/PermissionsModal";
 import { SessionStateBadge } from "@/components/SessionStateBadge";
@@ -290,6 +292,291 @@ function normalizePrivateFundFilePath(
   return path.startsWith("/") ? file.name : path;
 }
 
+function ActivePrivateFundDocuments({
+  datasetId,
+  projects,
+  conversations,
+}: {
+  datasetId: string | null;
+  projects: PrivateFundProject[];
+  conversations: Conversation[];
+}) {
+  const projectQuery = usePrivateFundProject(datasetId);
+  const project = projectQuery.data?.project;
+  const files = projectQuery.data?.files ?? EMPTY_PRIVATE_FUND_FILES;
+  const documentUpload = usePrivateFundDocumentUpload(datasetId);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [collapsed, setCollapsed] = useState(readCorpusCollapsed);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const pendingAttachments = useChatStore((state) => state.pendingComposerAttachments);
+  const pendingRemovals = useChatStore((state) => state.pendingComposerAttachmentRemovals);
+  const activeAttachments = useChatStore((state) => state.activeComposerAttachments);
+  const attachedKeys = useMemo(() => {
+    const keys = new Set([
+      ...activeAttachments.map(composerAttachmentKey),
+      ...pendingAttachments.map(composerAttachmentKey),
+    ]);
+    for (const attachment of pendingRemovals) keys.delete(composerAttachmentKey(attachment));
+    return keys;
+  }, [activeAttachments, pendingAttachments, pendingRemovals]);
+  const orderedProjects = useMemo(() => {
+    const latestConversationAt = new Map<string, number>();
+    for (const conversation of conversations) {
+      if (conversation.archived === true) continue;
+      const conversationDatasetId = conversation.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY];
+      if (!conversationDatasetId) continue;
+      const updatedAt = conversation.updated_at;
+      latestConversationAt.set(
+        conversationDatasetId,
+        Math.max(
+          latestConversationAt.get(conversationDatasetId) ?? 0,
+          Number.isFinite(updatedAt) ? updatedAt : 0,
+        ),
+      );
+    }
+    return [...projects].sort((a, b) => {
+      if (a.datasetId === datasetId) return -1;
+      if (b.datasetId === datasetId) return 1;
+      return (
+        (latestConversationAt.get(b.datasetId) ?? 0) - (latestConversationAt.get(a.datasetId) ?? 0)
+      );
+    });
+  }, [conversations, datasetId, projects]);
+  const visibleProjects = useMemo(() => {
+    const query = projectSearch.trim().toLocaleLowerCase();
+    if (!query) return orderedProjects;
+    return orderedProjects.filter(
+      (candidate) =>
+        candidate.name.toLocaleLowerCase().includes(query) ||
+        candidate.datasetId.toLocaleLowerCase().includes(query),
+    );
+  }, [orderedProjects, projectSearch]);
+
+  if (!datasetId) return null;
+
+  function toggleCollapsed() {
+    setCollapsed((current) => {
+      const next = !current;
+      writeCorpusCollapsed(next);
+      return next;
+    });
+  }
+
+  function toggleFile(file: PrivateFundFile) {
+    const attachment = {
+      path: normalizePrivateFundFilePath(file, project),
+      isDir: false,
+    };
+    const store = useChatStore.getState();
+    if (attachedKeys.has(composerAttachmentKey(attachment))) {
+      store.removeComposerAttachment(attachment);
+    } else {
+      store.addComposerAttachment(attachment);
+    }
+  }
+
+  function switchProject(nextDatasetId: string) {
+    if (nextDatasetId === datasetId) {
+      setProjectPickerOpen(false);
+      setProjectSearch("");
+      return;
+    }
+
+    const store = useChatStore.getState();
+    for (const attachment of [...activeAttachments, ...pendingAttachments]) {
+      store.removeComposerAttachment(attachment);
+    }
+    writeActivePrivateFundProjectId(nextDatasetId);
+    setProjectPickerOpen(false);
+    setProjectSearch("");
+
+    if (location.pathname === "/") {
+      const params = new URLSearchParams(location.search);
+      params.set("private_fund_project", nextDatasetId);
+      navigate(`/?${params.toString()}`);
+      return;
+    }
+
+    const latestConversation = sortByUpdatedAtDesc(
+      conversations.filter(
+        (conversation) =>
+          conversation.archived !== true &&
+          conversation.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY] === nextDatasetId,
+      ),
+      null,
+    )[0];
+    navigate(
+      latestConversation
+        ? `/c/${latestConversation.id}`
+        : `/?private_fund_project=${encodeURIComponent(nextDatasetId)}`,
+    );
+  }
+
+  return (
+    <section className="mb-3">
+      <PrivateFundUploadDialog {...documentUpload.dialogProps} />
+      <PrivateFundCreateProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        onCreated={(createdProject) => switchProject(createdProject.datasetId)}
+      />
+      <h2 className="flex min-h-8 items-center gap-0.5">
+        <Popover open={projectPickerOpen} onOpenChange={setProjectPickerOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label={`切换研究项目：${project?.name ?? datasetId}`}
+              data-testid="private-fund-project-switcher"
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <FolderIcon className="size-4 shrink-0" />
+              <span className="min-w-0 truncate">{project?.name ?? datasetId}</span>
+              <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="w-72 gap-0 p-1"
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
+            <div className="flex items-center gap-2 border-b px-2 py-1.5">
+              <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              <input
+                type="search"
+                value={projectSearch}
+                onChange={(event) => setProjectSearch(event.target.value)}
+                placeholder="搜索研究项目"
+                aria-label="搜索研究项目"
+                className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto py-1">
+              {visibleProjects.map((candidate) => (
+                <button
+                  key={candidate.datasetId}
+                  type="button"
+                  data-testid={`private-fund-project-option-${candidate.datasetId}`}
+                  onClick={() => switchProject(candidate.datasetId)}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
+                  {candidate.datasetId === datasetId && (
+                    <CheckIcon className="size-3.5 shrink-0 text-primary" />
+                  )}
+                </button>
+              ))}
+              {visibleProjects.length === 0 && (
+                <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                  未找到研究项目
+                </p>
+              )}
+              <div className="mt-1 border-t pt-1">
+                <button
+                  type="button"
+                  data-testid="private-fund-create-project-option"
+                  onClick={() => {
+                    setProjectPickerOpen(false);
+                    setProjectSearch("");
+                    setCreateProjectOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <PlusIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span>新建研究项目</span>
+                </button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`上传资料到${project?.name ?? datasetId}`}
+              data-testid="private-fund-upload-button"
+              disabled={documentUpload.isPending}
+              onClick={documentUpload.openDialog}
+              className="size-7 shrink-0"
+            >
+              <UploadIcon className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">上传资料</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={collapsed ? "展开项目资料" : "收起项目资料"}
+              aria-expanded={!collapsed}
+              data-testid="private-fund-documents-toggle"
+              onClick={toggleCollapsed}
+              className="size-7 shrink-0 text-muted-foreground"
+            >
+              <ChevronDownIcon
+                className={cn("size-3.5 transition-transform", collapsed && "-rotate-90")}
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {collapsed ? "展开项目资料" : "收起项目资料"}
+          </TooltipContent>
+        </Tooltip>
+      </h2>
+      {!collapsed && (
+        <div className="mt-0.5">
+          {projectQuery.isLoading ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground">正在加载项目资料...</p>
+          ) : files.length === 0 ? (
+            <p className="px-2 py-1 text-xs text-muted-foreground">暂无项目资料</p>
+          ) : (
+            <ul className="flex flex-col gap-0.5">
+              {files.map((file) => {
+                const attachment = {
+                  path: normalizePrivateFundFilePath(file, project),
+                  isDir: false,
+                };
+                const attached = attachedKeys.has(composerAttachmentKey(attachment));
+                return (
+                  <li key={`${file.name}-${file.docId ?? file.sourcePath ?? ""}`}>
+                    <button
+                      type="button"
+                      className={cn(
+                        "group flex min-h-8 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        attached && "bg-muted",
+                      )}
+                      onClick={() => toggleFile(file)}
+                    >
+                      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-medium">{file.name}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {file.fileType.toUpperCase()}
+                        </span>
+                      </span>
+                      {attached && (
+                        <span className="shrink-0 text-[10px] text-muted-foreground">已加入</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PrivateFundAttachmentCheckbox({
   checked,
   mixed = false,
@@ -348,7 +635,7 @@ function privateFundProjectUpdatedAt(project: PrivateFundProject): string {
   return Number.isNaN(timestamp) ? project.updatedAt : relativeTime(timestamp);
 }
 
-function PrivateFundCorpusSection({
+export function PrivateFundCorpusSection({
   projects,
   projectsLoading,
   conversations,
@@ -1184,7 +1471,7 @@ export function Sidebar({
                 privateFundWorkspace && "text-[16px] tracking-[-0.02em]",
               )}
             >
-              {privateFundWorkspace ? "投研工作台" : "finsagent"}
+              私募投研系统
             </Link>
             <div className="flex items-center gap-1">
               <ThemeToggle />
@@ -1281,13 +1568,10 @@ export function Sidebar({
             ref={scrollContainerRef}
             className="relative flex-1 overflow-y-auto px-3 pb-3 max-md:pb-16 [scrollbar-gutter:stable]"
           >
-            <PrivateFundCorpusSection
+            <ActivePrivateFundDocuments
+              datasetId={selectedPrivateFundDatasetId}
               projects={privateFundProjects}
-              projectsLoading={privateFundProjectsQuery.isLoading}
               conversations={loadedRows}
-              selectedDatasetId={selectedPrivateFundDatasetId}
-              onNavigate={onNavClick}
-              workbench={privateFundWorkspace}
             />
             {privateFundWorkspace && (
               <div className="mb-3 border-border border-t pt-1">{sessionSearchControls}</div>

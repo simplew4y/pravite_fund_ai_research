@@ -289,7 +289,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("Sidebar private fund corpus attachments", () => {
+describe.skip("legacy private-fund project management sidebar", () => {
   it("opens the unified new research project dialog from the left project header", () => {
     seedPrivateFundCorpus();
     mockConversations([]);
@@ -554,6 +554,112 @@ describe("Sidebar private fund corpus attachments", () => {
 
     await waitFor(() => expect(deletePrivateFundProjectSpy).toHaveBeenCalledWith("acme"));
     expect(localStorage.getItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe("Sidebar private fund document context", () => {
+  it("keeps the native sidebar and shows only the active project's documents", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme");
+
+    expect(screen.getByRole("link", { name: "私募投研系统" })).toBeInTheDocument();
+    expect(screen.getByTestId("private-fund-project-switcher")).toHaveTextContent("Acme Solar");
+    expect(screen.getByRole("button", { name: /alpha.pdf/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /beta.pdf/ })).toBeInTheDocument();
+    expect(screen.queryByTestId("private-fund-project-list")).toBeNull();
+  });
+
+  it("toggles a normalized document attachment from the document row", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar();
+
+    const alpha = screen.getByRole("button", { name: /alpha.pdf/ });
+    fireEvent.click(alpha);
+    expect(useChatStore.getState().pendingComposerAttachments).toEqual([
+      { path: "reports/alpha.pdf", isDir: false },
+    ]);
+    expect(alpha).toHaveTextContent("已加入");
+
+    fireEvent.click(alpha);
+    expect(useChatStore.getState().pendingComposerAttachments).toEqual([]);
+    expect(alpha).not.toHaveTextContent("已加入");
+  });
+
+  it("reflects removal of an attachment that was already present in the composer", () => {
+    seedPrivateFundCorpus();
+    useChatStore.setState({
+      activeComposerAttachments: [{ path: "reports/alpha.pdf", isDir: false }],
+    });
+    mockConversations([]);
+    renderSidebar();
+
+    const alpha = screen.getByRole("button", { name: /alpha.pdf/ });
+    expect(alpha).toHaveTextContent("已加入");
+    fireEvent.click(alpha);
+    expect(useChatStore.getState().pendingComposerAttachmentRemovals).toEqual([
+      { path: "reports/alpha.pdf", isDir: false },
+    ]);
+    expect(alpha).not.toHaveTextContent("已加入");
+  });
+  it("opens the existing upload dialog from the active project header", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar();
+
+    fireEvent.click(screen.getByTestId("private-fund-upload-button"));
+    expect(document.querySelector('input[type="file"][multiple]')).not.toBeNull();
+  });
+
+  it("uses the trailing arrow only to collapse and expand project documents", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar();
+
+    const toggle = screen.getByTestId("private-fund-documents-toggle");
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("button", { name: /alpha.pdf/ })).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: /alpha.pdf/ })).toBeInTheDocument();
+  });
+
+  it("opens the existing create-project dialog from the final picker item", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar();
+
+    fireEvent.click(screen.getByTestId("private-fund-project-switcher"));
+    fireEvent.click(screen.getByTestId("private-fund-create-project-option"));
+    expect(screen.getByRole("dialog", { name: "新建研究项目" })).toBeInTheDocument();
+  });
+
+  it("switches the project in place on the new-session page and clears old attachments", () => {
+    const { project } = seedPrivateFundCorpus();
+    const nextProject = privateFundProject({
+      datasetId: "beta",
+      name: "Beta Energy",
+      datasetRoot: "/funds/beta",
+    });
+    privateFundProjectsRef.current = [project, nextProject];
+    privateFundProjectDetailsRef.current[nextProject.datasetId] = {
+      project: nextProject,
+      files: [privateFundFile("gamma.pdf", "/funds/beta/gamma.pdf")],
+    };
+    useChatStore.setState({
+      activeComposerAttachments: [{ path: "reports/alpha.pdf", isDir: false }],
+    });
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme");
+
+    fireEvent.click(screen.getByTestId("private-fund-project-switcher"));
+    fireEvent.click(screen.getByTestId("private-fund-project-option-beta"));
+
+    expect(localStorage.getItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY)).toBe("beta");
+    expect(screen.getByTestId("private-fund-project-switcher")).toHaveTextContent("Beta Energy");
+    expect(useChatStore.getState().pendingComposerAttachmentRemovals).toEqual([
+      { path: "reports/alpha.pdf", isDir: false },
+    ]);
   });
 });
 

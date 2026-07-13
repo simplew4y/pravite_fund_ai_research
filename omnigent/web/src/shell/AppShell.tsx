@@ -68,8 +68,14 @@ import { Toaster } from "@/components/ui/toast";
 import { ForkSessionDialog } from "./ForkSessionDialog";
 import { ForkDialogContextProvider, type ForkDialogContextValue } from "./ForkDialogContext";
 import { InlineTerminalsSection } from "./InlineTerminalsSection";
-import { PrivateFundMemoContent } from "./PrivateFundMemoPanel";
-import { PrivateFundShellContextProvider } from "./PrivateFundShellContext";
+import {
+  PrivateFundMobileWorkspaceContent,
+  PrivateFundWorkspacePanel,
+} from "./PrivateFundMemoPanel";
+import {
+  PrivateFundShellContextProvider,
+  type PrivateFundGenerationHandler,
+} from "./PrivateFundShellContext";
 import { WorkspacePanel } from "./WorkspacePanel";
 import type { RightRailTab } from "./railTabs";
 import {
@@ -315,13 +321,8 @@ export function AppShell() {
   const isPrivateFundSession = privateFundDatasetId !== null && privateFundDatasetId !== "";
   const privateFundProjectParam = searchParams.get("private_fund_project")?.trim() || null;
   const privateFundWorkspaceDatasetId = privateFundDatasetId ?? privateFundProjectParam;
-  const isPrivateFundWorkspace = isPrivateFundSession || privateFundProjectParam !== null;
   const { panelWidth: inlinePanelWidth, handleProps: inlinePanelHandleProps } =
-    useResizableInlinePanel(
-      conversationId ?? null,
-      inlinePanelMinWidth,
-      isPrivateFundSession ? 360 : undefined,
-    );
+    useResizableInlinePanel(conversationId ?? null, inlinePanelMinWidth);
   const terminalFirst = sessionLabels["omnigent.ui"] === "terminal";
   const isClaudeNative = sessionLabels["omnigent.wrapper"] === "claude-code-native-ui";
   // Native-CLI wrapper of either family. Keys harness behavior gates
@@ -459,6 +460,7 @@ export function AppShell() {
     if (!sessionLabelsResolved) {
       return {
         memo: false,
+        assets: false,
         files: false,
         sources: false,
         subagents: false,
@@ -468,6 +470,7 @@ export function AppShell() {
     }
     return {
       memo: isPrivateFundSession,
+      assets: isPrivateFundSession,
       files: !isPrivateFundSession && showFilesPanel,
       sources: selectedPdfSource !== null,
       // Agents tab is unconditional: the panel always lists at least
@@ -512,9 +515,9 @@ export function AppShell() {
   // convergent even when several tabs vanish at once.
   useEffect(() => {
     if (railTabsAvailable[rightRailTab]) return;
-    const next = (["memo", "files", "sources", "subagents", "terminals", "todos"] as const).find(
-      (t) => railTabsAvailable[t],
-    );
+    const next = (
+      ["memo", "assets", "files", "sources", "subagents", "terminals", "todos"] as const
+    ).find((t) => railTabsAvailable[t]);
     if (next) setRightRailTab(next);
   }, [railTabsAvailable, rightRailTab]);
 
@@ -900,8 +903,8 @@ export function AppShell() {
         return next;
       });
     },
-    [setSearchParams],
-  ); // eslint-disable-line react-hooks/exhaustive-deps
+    [clearFileViewerUrl, setSearchParams],
+  );
 
   // Switch the workspace rail's tab. The side effect (closing any open
   // file + its comments + URL) lives here, not in WorkspacePanel, so the
@@ -1125,12 +1128,30 @@ export function AppShell() {
     }),
     [canClone],
   );
+  const privateFundGenerationHandlerRef = useRef<PrivateFundGenerationHandler | null>(null);
+  const registerPrivateFundGenerationHandler = useCallback(
+    (handler: PrivateFundGenerationHandler | null) => {
+      privateFundGenerationHandlerRef.current = handler;
+    },
+    [],
+  );
+  const requestPrivateFundGeneration = useCallback(
+    (request: Parameters<PrivateFundGenerationHandler>[0]) => {
+      const handler = privateFundGenerationHandlerRef.current;
+      if (!handler) return false;
+      handler(request);
+      return true;
+    },
+    [],
+  );
   const privateFundShellContextValue = useMemo(
     () => ({
       sidebarOpen,
       openSidebar: () => setSidebarOpen(true),
+      registerGenerationHandler: registerPrivateFundGenerationHandler,
+      requestGeneration: requestPrivateFundGeneration,
     }),
-    [sidebarOpen],
+    [sidebarOpen, registerPrivateFundGenerationHandler, requestPrivateFundGeneration],
   );
 
   return (
@@ -1146,14 +1167,10 @@ export function AppShell() {
         "hiddenInset"), so the web layer drops the sidebar below the
         traffic lights and supplies a drag strip in the freed space. */}
           <div
-            className={cn(
-              "app-shell relative flex h-dvh bg-sidebar text-foreground",
-              isPrivateFundWorkspace && "private-fund-app-shell",
-            )}
+            className="app-shell relative flex h-dvh bg-sidebar text-foreground"
             data-testid="app-shell"
             data-electron-mac={isMacElectronShell() ? "true" : undefined}
             data-ios-native={isIOSShell() ? "true" : undefined}
-            data-private-fund-workspace={isPrivateFundWorkspace || undefined}
           >
             {/* Frameless-window titlebar stand-in (macOS Electron only): the
           sidebar's electron top margin (see index.css) frees this strip of
@@ -1169,7 +1186,6 @@ export function AppShell() {
             <Sidebar
               open={sidebarOpen}
               dragProgress={sidebarDragProgress}
-              privateFundWorkspace={isPrivateFundWorkspace}
               activePrivateFundDatasetId={privateFundWorkspaceDatasetId}
               onClose={() => setSidebarOpen(false)}
             />
@@ -1189,59 +1205,56 @@ export function AppShell() {
               <div
                 className={cn(
                   "relative flex min-h-0 min-w-0 flex-1",
-                  isPrivateFundWorkspace && "private-fund-workspace-group",
                   panelOpen && !terminalFirst && "md:hidden",
                 )}
               >
-                {!isPrivateFundWorkspace && (
-                  <ChatHeader
-                    sidebarOpen={sidebarOpen}
-                    onOpenSidebar={() => setSidebarOpen(true)}
-                    isChildSession={isChildSession}
-                    parentSessionId={activeSession?.parentSessionId}
-                    conversationId={conversationId}
-                    boundAgent={boundAgent}
-                    canShare={canShare}
-                    shareDisabled={shareDisabled}
-                    shareDisabledReason={shareDisabledReason}
-                    onShare={() => setShareOpen(true)}
-                    hasAgentInfo={hasAgentInfo}
-                    onAgentInfo={() => setAgentInfoOpen(true)}
-                    hasHeaderMenu={hasHeaderMenu}
-                    showFilesPanel={showFilesPanel}
-                    hasRailContent={hasRailContent}
-                    rightPanelOpen={rightPanelOpen}
-                    onToggleRightPanel={toggleRightPanel}
-                    mobileMenu={{
-                      fileViewerOpen,
-                      panelOpen,
-                      terminalFirst,
-                      executionLogsOpen,
-                      filesPanelOpen,
-                      subagentsPanelOpen,
-                      shellsPanelOpen,
-                      todosPanelOpen,
-                      memoPanelOpen,
-                      isPrivateFundSession,
-                      hideTerminalsTab,
-                      showShellsTab: railTabsAvailable.terminals,
-                      terminalsLength: railTerminals.length,
-                      isClaudeNative,
-                      todosCompleted,
-                      todosTotal: todos.length,
-                      debugMode,
-                      changedCount,
-                      subagentsWorking,
-                      agentCount,
-                      onOpenFiles: openFilesPanel,
-                      onOpenShells: openShellsPanel,
-                      onOpenSubagents: openSubagentsPanel,
-                      onOpenTodos: openTodosPanel,
-                      onOpenMemo: openMemoPanel,
-                      onOpenMainExecutionLog: openMainExecutionLog,
-                    }}
-                  />
-                )}
+                <ChatHeader
+                  sidebarOpen={sidebarOpen}
+                  onOpenSidebar={() => setSidebarOpen(true)}
+                  isChildSession={isChildSession}
+                  parentSessionId={activeSession?.parentSessionId}
+                  conversationId={conversationId}
+                  boundAgent={boundAgent}
+                  canShare={canShare}
+                  shareDisabled={shareDisabled}
+                  shareDisabledReason={shareDisabledReason}
+                  onShare={() => setShareOpen(true)}
+                  hasAgentInfo={hasAgentInfo}
+                  onAgentInfo={() => setAgentInfoOpen(true)}
+                  hasHeaderMenu={hasHeaderMenu}
+                  showFilesPanel={showFilesPanel}
+                  hasRailContent={hasRailContent}
+                  rightPanelOpen={rightPanelOpen}
+                  onToggleRightPanel={toggleRightPanel}
+                  mobileMenu={{
+                    fileViewerOpen,
+                    panelOpen,
+                    terminalFirst,
+                    executionLogsOpen,
+                    filesPanelOpen,
+                    subagentsPanelOpen,
+                    shellsPanelOpen,
+                    todosPanelOpen,
+                    memoPanelOpen,
+                    isPrivateFundSession,
+                    hideTerminalsTab,
+                    showShellsTab: railTabsAvailable.terminals,
+                    terminalsLength: railTerminals.length,
+                    isClaudeNative,
+                    todosCompleted,
+                    todosTotal: todos.length,
+                    debugMode,
+                    changedCount,
+                    subagentsWorking,
+                    agentCount,
+                    onOpenFiles: openFilesPanel,
+                    onOpenShells: openShellsPanel,
+                    onOpenSubagents: openSubagentsPanel,
+                    onOpenTodos: openTodosPanel,
+                    onOpenMemo: openMemoPanel,
+                    onOpenMainExecutionLog: openMainExecutionLog,
+                  }}
+                />
                 <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                   <PrivateFundShellContextProvider value={privateFundShellContextValue}>
                     <Outlet />
@@ -1259,12 +1272,25 @@ export function AppShell() {
               Sits inside the group so the header overlay spans it; the
               push panels below sit outside the group. */}
                 {conversationId &&
-                  !isPrivateFundSession &&
                   hasRailContent &&
                   rightPanelOpen &&
                   (terminalFirst || !panelOpen) &&
                   !executionLogsOpen &&
-                  !filesPanelOpen && (
+                  !filesPanelOpen &&
+                  (isPrivateFundSession && privateFundDatasetId ? (
+                    <PrivateFundWorkspacePanel
+                      conversationId={conversationId}
+                      datasetId={privateFundDatasetId}
+                      datasetName={privateFundDatasetName ?? privateFundDatasetId}
+                      width={inlinePanelWidth}
+                      inert={inlinePanelWidth === 0}
+                      handleProps={inlinePanelHandleProps}
+                      rightRailTab={rightRailTab}
+                      onRightRailTabChange={handleRightRailTabChange}
+                      pdfSourceSelection={selectedPdfSource}
+                      onGenerate={requestPrivateFundGeneration}
+                    />
+                  ) : (
                     <WorkspacePanel
                       conversationId={conversationId}
                       width={inlinePanelWidth}
@@ -1298,7 +1324,7 @@ export function AppShell() {
                       filesPanelShowHidden={filesPanelShowHidden}
                       onShowHiddenChange={setFilesPanelShowHidden}
                     />
-                  )}
+                  ))}
               </div>
 
               {/* Push panels — flex siblings to main, animate width. Only one is open at a time.
@@ -1379,14 +1405,15 @@ export function AppShell() {
               {conversationId && isPrivateFundSession && privateFundDatasetId && (
                 <MobilePanelDrawer
                   open={memoPanelOpen}
-                  title="Memo"
+                  title="投研工作区"
                   onClose={() => setMemoPanelOpen(false)}
                   testId="private-fund-memo-drawer"
                 >
-                  <PrivateFundMemoContent
+                  <PrivateFundMobileWorkspaceContent
                     conversationId={conversationId}
                     datasetId={privateFundDatasetId}
                     datasetName={privateFundDatasetName ?? privateFundDatasetId}
+                    onGenerate={requestPrivateFundGeneration}
                   />
                 </MobilePanelDrawer>
               )}

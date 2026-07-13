@@ -9,7 +9,14 @@
  */
 
 /** The selectable tabs in the right workspace rail, in display order. */
-export type RightRailTab = "memo" | "files" | "sources" | "subagents" | "terminals" | "todos";
+export type RightRailTab =
+  | "memo"
+  | "assets"
+  | "files"
+  | "sources"
+  | "subagents"
+  | "terminals"
+  | "todos";
 
 /**
  * Count/status badge geometry shared across the rail tabs and the mobile
