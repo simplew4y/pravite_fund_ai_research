@@ -56,38 +56,22 @@ const EMPTY_ASSETS: PrivateFundAsset[] = [];
 const EMPTY_ASSET_IDS: string[] = [];
 
 type SelectedInformation = { responseId: string; content: string };
-type PresentationMode =
-  | "plain_text"
-  | "agent"
-  | "metrics"
-  | "table"
-  | "line_chart"
-  | "bar_chart"
-  | "rich";
-type GenerationMode = PresentationMode | "memo" | "report";
+type PresentationMode = "plain_text" | "table" | "chart";
+type GenerationMode = PresentationMode | "memo";
 
 const PRESENTATION_OPTIONS: Array<{
   value: GenerationMode;
   label: string;
   description: string;
 }> = [
-  { value: "plain_text", label: "普通文本", description: "只保存长期可读的节点正文" },
-  { value: "agent", label: "Agent 自主判断", description: "根据内容选择最合适的呈现" },
-  { value: "metrics", label: "关键指标", description: "展示少量核心数字" },
-  { value: "table", label: "对比表格", description: "精确比较期间或对象" },
-  { value: "line_chart", label: "折线趋势", description: "展示时间序列变化" },
-  { value: "bar_chart", label: "柱状对比", description: "比较类别或情景" },
-  { value: "rich", label: "综合图文", description: "组合指标、表格、图表或静态布局" },
-  { value: "memo", label: "研究 Memo", description: "调用 private-fund-memo 生成聚焦报告" },
-  {
-    value: "report",
-    label: "专业研报",
-    description: "调用 private-fund-report 生成 FinRobot 对齐研报",
-  },
+  { value: "plain_text", label: "文本", description: "生成长期可读的研究文本" },
+  { value: "table", label: "表格", description: "生成精确的期间或对象对比表" },
+  { value: "chart", label: "图表", description: "由模型选择图形并生成 HTML 图文资产" },
+  { value: "memo", label: "Memo", description: "调用 private-fund-memo 生成聚焦报告" },
 ];
 
-function isDocumentGenerationMode(mode: GenerationMode): mode is "memo" | "report" {
-  return mode === "memo" || mode === "report";
+function isDocumentGenerationMode(mode: GenerationMode): mode is "memo" {
+  return mode === "memo";
 }
 
 type WorkbenchActionContextValue = {
@@ -228,16 +212,10 @@ function buildGenerationPrompt(
     )
     .join("\n\n");
   if (isDocumentGenerationMode(presentationMode)) {
-    const isMemo = presentationMode === "memo";
-    const skillName = isMemo ? "private-fund-memo" : "private-fund-report";
-    const defaultInstruction = isMemo
-      ? "基于当前勾选信息和资产上下文生成一份聚焦研究 Memo。"
-      : "基于当前勾选信息和资产上下文生成一份 FinRobot 对齐的专业研报。";
+    const defaultInstruction = "基于当前会话、勾选信息和资产上下文生成一份聚焦研究 Memo。";
     const hiddenContext = [
       `dataset_id: ${datasetId}`,
-      isMemo
-        ? "必须调用 private_fund_dataset_memo，返回 Markdown、HTML 和 PDF。"
-        : "必须调用 private_fund_equity_report_generate，返回 Markdown、HTML、PDF、JSON 和证据索引。",
+      "必须调用 private_fund_dataset_memo，返回 Markdown、HTML 和 PDF。",
       "所有重大事实和数字必须通过数据集工具核验；无法绑定 evidence_id 的内容标记为“资料未覆盖/待复核”。",
       hasConversationContext
         ? "当前会话也是本次生成上下文：请结合对话中的用户问题、@raw/[Attached:] 附件和已有回答；其中的重大事实和数字仍须通过数据集工具重新核验。"
@@ -247,7 +225,7 @@ function buildGenerationPrompt(
     ]
       .filter(Boolean)
       .join("\n");
-    return `/${skillName} ${presentationInstruction.trim() || defaultInstruction}\n${wrapPrivateFundPromptContext(hiddenContext)}`.trim();
+    return `/private-fund-memo ${presentationInstruction.trim() || defaultInstruction}\n${wrapPrivateFundPromptContext(hiddenContext)}`.trim();
   }
   const modeLabel = PRESENTATION_OPTIONS.find((option) => option.value === presentationMode)?.label;
   const modeInstructions: Record<PresentationMode, string[]> = {
@@ -255,23 +233,13 @@ function buildGenerationPrompt(
       "本次节点使用普通文本呈现。",
       "- 只保存 content_markdown，不要生成 content_blocks；正文保持清晰、可引用和长期可读。",
     ],
-    agent: [
-      "本次呈现方式由你根据内容自主判断，不需要为了丰富而强行生成图表。",
-      "- 只有结构化呈现确实提升理解时才生成 content_blocks。",
-    ],
-    metrics: ["- 必须加入 metrics block，突出 2-6 个有证据支持的核心指标及单位。"],
     table: ["- 必须加入 table block，列名、行名、单位和口径应明确，保留精确值。"],
-    line_chart: [
-      "- 必须加入 chart block，chart_type=line；仅使用同口径、有顺序的时间或连续数据。",
-      "- 不得在聊天回复或 content_markdown 中使用 ASCII 字符画、文本坐标轴、Markdown 伪图表或代码块代替。",
-    ],
-    bar_chart: [
-      "- 必须加入 chart block，chart_type=bar；用于有证据支持的类别、公司或情景对比。",
-      "- 不得在聊天回复或 content_markdown 中使用 ASCII 字符画、文本坐标轴、Markdown 伪图表或代码块代替。",
-    ],
-    rich: [
-      "- 生成综合图文节点，根据证据组合 metrics、table、chart、markdown 或静态 html blocks。",
-      "- 优先使用声明式 blocks；只有标准 blocks 无法表达布局时才使用安全静态 HTML。资料不支持的 block 可以省略。",
+    chart: [
+      "- 必须加入且只加入一个 html block，生成完整的图文可视化；不要用 chart block、ASCII 字符画、Markdown 伪图表或代码块代替。",
+      "- 你必须根据数据关系自主选择最合适的图形，可选折线图、柱状图、饼图/环形图、面积图、散点图、雷达图、瀑布图或热力图；不要让用户预先指定图表类型。",
+      "- html 字段必须是自包含的 HTML/CSS/JavaScript：把已核验数据写入内联 JavaScript，使用原生 SVG 或 Canvas 绘图，并同时包含标题、核心结论、图例、单位、数据口径和来源说明。",
+      "- 禁止任何外部依赖、CDN、fetch、XHR、WebSocket、远程图片、表单、导航、下载、localStorage 或访问 parent/top；不得使用定时轮询或无界循环。",
+      "- 图文应响应式适配容器，并为关键数值提供可读文字或数据表回退。html block 的 evidence_ids 必须覆盖图中使用的每个数值。",
     ],
   };
   const presentationLines = [
@@ -281,11 +249,11 @@ function buildGenerationPrompt(
     presentationMode !== "plain_text"
       ? "- 如果资料不足以可靠生成指定结构，必须说明缺少哪些期间、指标或口径，不得虚构数据。"
       : "",
-    presentationMode === "line_chart" || presentationMode === "bar_chart"
-      ? '- chart block 示例: {"type":"chart","title":"毛利率趋势","chart_type":"line","x_key":"year","series":[{"key":"gross_margin","label":"毛利率"}],"data":[{"year":"2016","gross_margin":30.2}],"y_unit":"%","source_note":"数据来源与口径"}'
+    presentationMode === "chart"
+      ? '- html block 示例结构: {"type":"html","title":"盈利趋势与结构","html":"<section>...<svg id=\\"chart\\"></svg><script>const data=[...];/* 原生 SVG/Canvas 绘图 */</script></section>","height":520,"evidence_ids":["真实 evidence_id"]}'
       : "",
     presentationMode !== "plain_text"
-      ? "- 图表由页面的 JavaScript 图表组件渲染。Agent 只提供结构化数据，不生成或执行 JavaScript。保存成功后，聊天中只需报告节点 ID 和证据缺口。"
+      ? "- 保存成功后，聊天中只需报告节点 ID、资产类型和证据缺口，不要重复粘贴完整表格或 HTML。"
       : "",
   ].filter(Boolean);
   return [
@@ -297,12 +265,11 @@ function buildGenerationPrompt(
     "必须调用 private_fund_research_node_save 保存节点；不要只在聊天中输出节点草稿。",
     "content_markdown 必须包含：结论、支持信息与引用、不确定性或反证、下一步问题，作为长期可读的文本回退。每个受支持的关键陈述后必须紧跟 evidence 返回的 markdown_citation。",
     "private_fund_research_node_save 的 evidence_ids 必须包含本节点实际核验并使用的全部证据；每个富内容 block 还要用 evidence_ids 绑定直接支持它的证据。无法绑定真实证据的内容必须标注“资料未覆盖/待复核”，不得作为已验证结论或图表数值。",
-    presentationMode !== "plain_text"
-      ? "可用 content_blocks 类型为 markdown、metrics、table、chart、html；不要为了视觉效果虚构数字。HTML 只能是静态内容，不得包含脚本、表单、远程资源或导航。"
-      : "普通文本模式下不得保存 content_blocks。",
-    presentationMode === "agent"
-      ? "当内容包含三个及以上同口径时间点并且结论关注趋势时，应生成 chart block。严禁用 ASCII 字符画、文本坐标轴或 Markdown 伪图表表示走势图。"
-      : "",
+    presentationMode === "table"
+      ? "本次 content_blocks 只保存 table block；不要为了视觉效果虚构数字。"
+      : presentationMode === "chart"
+        ? "本次 content_blocks 只保存一个可执行但完全自包含的 html block；它会在禁止联网和父页面访问的 sandbox iframe 中运行。"
+        : "文本模式下不得保存 content_blocks。",
     ...presentationLines,
     "",
     hasConversationContext
@@ -506,9 +473,7 @@ export function PrivateFundResearchWorkbench({
     setNotice(
       presentationMode === "memo"
         ? "已调用 private-fund-memo，Agent 将核验证据并生成 Memo"
-        : presentationMode === "report"
-          ? "已调用 private-fund-report，Agent 将生成 FinRobot 对齐研报"
-          : "已交给 Agent：它会核验信息并通过 MCP 保存新的分析资产",
+        : "已交给 Agent：它会核验信息并通过 MCP 保存新的分析资产",
     );
     setSelectedInformation([]);
     setPresentationMode("plain_text");
@@ -651,9 +616,9 @@ export function PrivateFundResearchWorkbench({
                     placeholder={
                       presentationMode === "memo"
                         ? "例如：生成一份聚焦海外盈利质量的 Memo，重点回答增长可持续性与风险。"
-                        : presentationMode === "report"
-                          ? "例如：生成完整专业研报，包含财务预测、估值、风险和证据索引。"
-                          : "例如：按季度绘制海外与国内毛利率两条线，单位为%。"
+                        : presentationMode === "chart"
+                          ? "例如：展示收入增长、业务结构和盈利变化，由模型自行选择合适图形。"
+                          : "例如：比较各业务收入、增速和毛利率，并注明期间与单位。"
                     }
                     className="min-h-20 resize-none text-xs leading-5"
                   />
@@ -663,9 +628,7 @@ export function PrivateFundResearchWorkbench({
                   <code className="font-mono text-[var(--pf-ink-secondary)]">
                     {presentationMode === "memo"
                       ? "/private-fund-memo"
-                      : presentationMode === "report"
-                        ? "/private-fund-report"
-                        : "private_fund_research_node_save"}
+                      : "private_fund_research_node_save"}
                   </code>
                 </p>
               </PopoverContent>
@@ -676,11 +639,7 @@ export function PrivateFundResearchWorkbench({
               className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg bg-[var(--pf-accent)] px-4 text-xs font-semibold text-[var(--primary-foreground)] transition-colors hover:bg-[var(--pf-accent-hover)] active:translate-y-px"
             >
               <Sparkles size={15} />
-              {presentationMode === "memo"
-                ? "生成 Memo"
-                : presentationMode === "report"
-                  ? "生成专业研报"
-                  : "Agent 生成资产"}
+              {presentationMode === "memo" ? "生成 Memo" : "Agent 生成资产"}
               {selectedInformation.length > 0 ? ` (${selectedInformation.length})` : ""}
             </button>
           </div>

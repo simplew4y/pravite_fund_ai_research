@@ -173,8 +173,9 @@ def _normalize_evidence_ids(value: Any) -> list[str]:
 def _normalize_content_blocks(value: Any) -> list[dict[str, Any]]:
     """Validate and bound agent-authored node presentation blocks.
 
-    Blocks remain JSON data. In particular, HTML is stored but never executed
-    by the server; the web client renders it in a scriptless sandbox.
+    Blocks remain JSON data. HTML is stored but never executed by the server;
+    the web client may run inline visualization code in an opaque-origin
+    sandbox that denies network, forms, navigation, and parent-page access.
     """
     if not isinstance(value, list):
         return []

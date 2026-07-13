@@ -177,6 +177,41 @@ def test_agent_saves_structured_nodes_and_user_selects_context(tmp_path: Path) -
         assert conn.execute("SELECT COUNT(*) FROM research_node_evidence").fetchone()[0] == 1
 
 
+def test_agent_chart_html_preserves_self_contained_inline_javascript(tmp_path: Path) -> None:
+    collection_db = _collection_db(tmp_path)
+    html = (
+        '<section><h2>收入结构</h2><svg id="chart"></svg>'
+        "<script>const data=[{name:'储能',value:42}];"
+        "document.querySelector('#chart').dataset.points=String(data.length)</script></section>"
+    )
+
+    saved = private_fund_workflow.save_agent_node(
+        collection_db,
+        "demo",
+        title="收入结构图",
+        summary="模型自主选择图形的图文资产",
+        content_markdown="## 结论\n储能收入占比需要持续跟踪。",
+        evidence_ids=["chunk:chunk-1"],
+        content_blocks=[
+            {
+                "type": "html",
+                "title": "收入结构",
+                "html": html,
+                "height": 520,
+                "evidence_ids": ["chunk:chunk-1"],
+            }
+        ],
+    )
+
+    workflow = private_fund_workflow.get_or_create_workflow(collection_db, "demo")
+    node = next(item for item in workflow["nodes"] if item["node_id"] == saved["node_id"])
+    block = node["content_blocks"][0]
+    assert block["type"] == "html"
+    assert block["html"] == html
+    assert block["height"] == 520
+    assert block["evidence_ids"] == ["chunk:chunk-1"]
+
+
 def test_evidence_ids_never_split_a_json_string_into_characters(tmp_path: Path) -> None:
     collection_db = _collection_db(tmp_path)
     saved = private_fund_workflow.save_agent_node(

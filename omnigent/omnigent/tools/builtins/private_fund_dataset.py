@@ -273,7 +273,13 @@ _RICH_CONTENT_BLOCK_SCHEMA: dict[str, Any] = {
             "properties": {
                 "type": {"const": "html"},
                 "title": {"type": "string"},
-                "html": {"type": "string"},
+                "html": {
+                    "type": "string",
+                    "description": (
+                        "Self-contained HTML. Inline CSS/JavaScript may render verified data "
+                        "with native SVG/Canvas inside a no-network opaque-origin sandbox."
+                    ),
+                },
                 "height": {"type": "integer", "minimum": 160, "maximum": 720},
             },
             "required": ["type", "html"],
@@ -321,9 +327,11 @@ _RESEARCH_NODE_SAVE_SCHEMA: dict[str, Any] = {
             "type": "array",
             "description": (
                 "Optional ordered presentation blocks. Choose only formats that improve the "
-                "analysis: markdown, metrics, table, line/bar chart, or sandboxed static HTML."
-                " A requested chart must be a chart block with structured numeric data, never "
-                "ASCII art, a text axis, or executable JavaScript."
+                "analysis: markdown, metrics, table, legacy line/bar chart, or sandboxed HTML. "
+                "For the unified chart output, save one self-contained HTML block with inline "
+                "CSS/JavaScript and verified data. It may render line, bar, pie/donut, area, "
+                "scatter, radar, waterfall, or heatmap visuals using native SVG/Canvas, but must "
+                "not use external resources, network APIs, forms, navigation, or parent access."
             ),
             "items": _RICH_CONTENT_BLOCK_SCHEMA,
             "maxItems": 12,

@@ -210,7 +210,7 @@ function ChartBlock({ block }: { block: Extract<PrivateFundRichContentBlock, { t
 function HtmlBlock({ block }: { block: Extract<PrivateFundRichContentBlock, { type: "html" }> }) {
   const { resolvedTheme } = useTheme();
   const dark = resolvedTheme === "dark";
-  const srcDoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0;background:${dark ? "#15181e" : "#ffffff"};color:${dark ? "#f0f2f5" : "#171a20"};font:13px/1.55 system-ui,-apple-system,sans-serif;color-scheme:${dark ? "dark" : "light"}}body{padding:16px;box-sizing:border-box}*{box-sizing:border-box}a{pointer-events:none;color:${dark ? "#bfd0ff" : "#1b43aa"}}table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid ${dark ? "#2c313a" : "#dfe4eb"};text-align:left}</style></head><body>${block.html}</body></html>`;
+  const srcDoc = `<!doctype html><html data-theme="${dark ? "dark" : "light"}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';"><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{--asset-bg:${dark ? "#15181e" : "#ffffff"};--asset-panel:${dark ? "#1d2128" : "#f7f8fa"};--asset-text:${dark ? "#f0f2f5" : "#171a20"};--asset-muted:${dark ? "#a8b0bd" : "#5f6978"};--asset-line:${dark ? "#2c313a" : "#dfe4eb"};--asset-accent:${dark ? "#8aa8ff" : "#2457d6"}}html,body{margin:0;padding:0;background:var(--asset-bg);color:var(--asset-text);font:13px/1.55 system-ui,-apple-system,sans-serif;color-scheme:${dark ? "dark" : "light"}}body{padding:16px;box-sizing:border-box}*{box-sizing:border-box}a{pointer-events:none;color:var(--asset-accent)}table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid var(--asset-line);text-align:left}canvas,svg{max-width:100%}</style></head><body>${block.html}</body></html>`;
   return (
     <BlockFrame title={block.title}>
       <iframe
@@ -218,9 +218,9 @@ function HtmlBlock({ block }: { block: Extract<PrivateFundRichContentBlock, { ty
         height={block.height ?? 320}
         loading="lazy"
         referrerPolicy="no-referrer"
-        sandbox=""
+        sandbox="allow-scripts"
         srcDoc={srcDoc}
-        title={block.title ?? "Agent 生成的静态可视化"}
+        title={block.title ?? "Agent 生成的图文可视化"}
       />
     </BlockFrame>
   );

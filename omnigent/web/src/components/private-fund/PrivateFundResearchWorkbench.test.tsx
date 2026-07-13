@@ -202,8 +202,8 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(prompt).toContain("private_fund_research_node_save");
     expect(prompt).toContain("不要套用预设研究流程");
     expect(prompt).toContain("content_blocks");
-    expect(prompt).toContain("本次节点输出形式: 普通文本");
-    expect(prompt).toContain("普通文本模式下不得保存 content_blocks");
+    expect(prompt).toContain("本次节点输出形式: 文本");
+    expect(prompt).toContain("文本模式下不得保存 content_blocks");
   });
 
   it("generates a selected asset type from asset context without requiring AI information", () => {
@@ -235,7 +235,7 @@ describe("PrivateFundResearchWorkbench", () => {
 
     expect(onGenerateNode).toHaveBeenCalledOnce();
     const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
-    expect(prompt).toContain("本次节点输出形式: 对比表格");
+    expect(prompt).toContain("本次节点输出形式: 表格");
     expect(prompt).toContain("用户勾选的资产上下文");
     expect(prompt).toContain("2025 年报.pdf（document）");
     expect(prompt).toContain("海外收入同比增长 28%，但仍需核验证据");
@@ -259,40 +259,41 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(screen.getByRole("status")).toHaveTextContent("请先提供对话内容，或勾选任意资产上下文");
   });
 
-  it("sends the selected node output mode and chart instructions to one node request", () => {
+  it("only exposes text, table, chart, and memo generation modes", () => {
+    renderWorkbench();
+    const select = screen.getByRole("combobox", { name: "生成结果" }) as HTMLSelectElement;
+    expect(Array.from(select.options).map((option) => option.textContent)).toEqual([
+      "文本",
+      "表格",
+      "图表",
+      "Memo",
+    ]);
+  });
+
+  it("lets the model choose a self-contained HTML/JS chart from the content", () => {
     const onGenerateNode = renderWorkbench();
     expect(screen.getByRole("combobox", { name: "生成结果" })).toHaveValue("plain_text");
     fireEvent.change(screen.getByRole("combobox", { name: "生成结果" }), {
-      target: { value: "line_chart" },
+      target: { value: "chart" },
     });
     fireEvent.click(screen.getByRole("button", { name: "设置资产补充要求" }));
     fireEvent.change(screen.getByLabelText("生成具体要求"), {
-      target: { value: "按季度绘制海外与国内毛利率两条线，单位为%。" },
+      target: { value: "展示海外与国内盈利质量差异，由模型选择最合适图形。" },
     });
     fireEvent.click(screen.getByRole("button", { name: "勾选回答" }));
     fireEvent.click(screen.getByRole("button", { name: /Agent 生成资产/ }));
 
     const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
-    expect(prompt).toContain("本次节点输出形式: 折线趋势");
-    expect(prompt).toContain("chart_type=line");
+    expect(prompt).toContain("本次节点输出形式: 图表");
+    expect(prompt).toContain("饼图/环形图");
+    expect(prompt).toContain("原生 SVG 或 Canvas");
+    expect(prompt).toContain("自包含的 HTML/CSS/JavaScript");
+    expect(prompt).toContain("只加入一个 html block");
+    expect(prompt).toContain("禁止任何外部依赖、CDN、fetch");
+    expect(prompt).toContain("可读文字或数据表回退");
     expect(prompt).toContain("ASCII 字符画");
-    expect(prompt).toContain('"x_key":"year"');
-    expect(prompt).toContain("Agent 只提供结构化数据，不生成或执行 JavaScript");
-    expect(prompt).toContain("按季度绘制海外与国内毛利率两条线，单位为%");
+    expect(prompt).toContain("展示海外与国内盈利质量差异，由模型选择最合适图形");
     expect(screen.getByRole("combobox", { name: "生成结果" })).toHaveValue("plain_text");
-  });
-
-  it("lets the agent choose a rich format when requested", () => {
-    const onGenerateNode = renderWorkbench();
-    fireEvent.change(screen.getByRole("combobox", { name: "生成结果" }), {
-      target: { value: "agent" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "勾选回答" }));
-    fireEvent.click(screen.getByRole("button", { name: /Agent 生成资产/ }));
-
-    const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
-    expect(prompt).toContain("本次节点输出形式: Agent 自主判断");
-    expect(prompt).toContain("呈现方式由你根据内容自主判断");
   });
 
   it("explicitly invokes the memo skill with dialog instructions", () => {
@@ -316,23 +317,6 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(visiblePrompt).not.toContain("用户勾选的资产上下文");
     expect(prompt).toContain("private_fund_dataset_memo");
     expect(prompt).toContain("dataset_id: 阳光电源");
-  });
-
-  it("explicitly invokes the FinRobot-aligned report skill", () => {
-    const onGenerateNode = renderWorkbench();
-    fireEvent.change(screen.getByRole("combobox", { name: "生成结果" }), {
-      target: { value: "report" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "设置资产补充要求" }));
-    fireEvent.change(screen.getByLabelText("生成具体要求"), {
-      target: { value: "形成完整专业研报，覆盖估值与风险。" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "生成专业研报" }));
-
-    const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
-    const visiblePrompt = prompt.slice(0, prompt.indexOf(PRIVATE_FUND_CONTEXT_START)).trim();
-    expect(visiblePrompt).toBe("/private-fund-report 形成完整专业研报，覆盖估值与风险。");
-    expect(prompt).toContain("private_fund_equity_report_generate");
   });
 
   it("renders agent-selected metrics, tables, and charts as rich node content", async () => {
@@ -380,8 +364,8 @@ describe("PrivateFundResearchWorkbench", () => {
               },
               {
                 type: "html",
-                title: "静态分析摘要",
-                html: "<strong>海外改善</strong><script>window.__unsafe = true</script>",
+                title: "交互分析摘要",
+                html: "<strong>海外改善</strong><script>document.body.dataset.rendered = 'true'</script>",
                 height: 180,
               },
             ],
@@ -400,9 +384,12 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(screen.getByText("31.4")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "毛利率" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "毛利率走势" })).toBeInTheDocument();
-    const htmlFrame = screen.getByTitle("静态分析摘要");
-    expect(htmlFrame).toHaveAttribute("sandbox", "");
+    const htmlFrame = screen.getByTitle("交互分析摘要");
+    expect(htmlFrame).toHaveAttribute("sandbox", "allow-scripts");
     expect(htmlFrame.getAttribute("srcdoc")).toContain("default-src 'none'");
+    expect(htmlFrame.getAttribute("srcdoc")).toContain("script-src 'unsafe-inline'");
+    expect(htmlFrame.getAttribute("srcdoc")).toContain("connect-src 'none'");
+    expect(htmlFrame.getAttribute("srcdoc")).toContain("document.body.dataset.rendered");
     expect(screen.getByText("溯源资料 · 1 条")).toBeInTheDocument();
     expect(screen.getByText("点击下方来源，查看真实文档位置和证据原文")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /经营数据.xlsx Chart!B2/ }));
