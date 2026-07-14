@@ -87,13 +87,18 @@ import { ComposerMicButton } from "@/components/ComposerMicButton";
 import { IntelligentModelControl, type CostControlMode } from "@/components/CostRoutingControl";
 import { PrivateFundResearchModeToggle } from "@/components/PrivateFundResearchModeToggle";
 import { TokenUsageBar } from "@/components/private-fund/TokenUsageBar";
+import { PrivateFundPromptSuggestionTray } from "@/components/private-fund/PrivateFundPromptSuggestionTray";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentRowTooltip } from "@/components/AgentHoverCard";
 import { CreateAgentDialog } from "./CreateAgentDialog";
 import { buildAgentBundle, type AgentBundleInput } from "@/lib/agentBundle";
 import { createBundledSession, launchRunner } from "@/lib/sessionsApi";
 import { formatTokenCount } from "@/lib/tokenUsage";
-import { usePrivateFundProjects } from "@/hooks/usePrivateFundProjects";
+import {
+  usePrivateFundAssets,
+  usePrivateFundProject,
+  usePrivateFundProjects,
+} from "@/hooks/usePrivateFundProjects";
 import {
   activatePrivateFundProject,
   PRIVATE_FUND_DATASET_ID_LABEL_KEY,
@@ -106,6 +111,7 @@ import {
   writeActivePrivateFundProjectId,
   writePrivateFundResearchMode,
 } from "@/lib/privateFundApi";
+import { generatePrivateFundPromptSuggestions } from "@/lib/privateFundPromptSuggestions";
 
 // Hidden from the new-session picker only. `nessie` is superseded by polly.
 // `kimi` / `kimi-code` are the headless SDK harness (kept for sub-agent / `run
@@ -1772,6 +1778,33 @@ export function NewChatLandingScreen() {
       null,
     [privateFundProjects, selectedPrivateFundProjectId],
   );
+  const privateFundProjectQuery = usePrivateFundProject(
+    isPrivateFundProjectLanding ? selectedPrivateFundProjectId : null,
+  );
+  const privateFundAssetsQuery = usePrivateFundAssets(
+    isPrivateFundProjectLanding ? selectedPrivateFundProjectId : null,
+  );
+  const privateFundPromptSuggestions = useMemo(
+    () =>
+      isPrivateFundProjectLanding
+        ? generatePrivateFundPromptSuggestions({
+            companyName:
+              privateFundProjectQuery.data?.project.companyName ||
+              selectedPrivateFundProject?.companyName ||
+              selectedPrivateFundProject?.name ||
+              privateFundProjectParam,
+            files: privateFundProjectQuery.data?.files ?? [],
+            assets: privateFundAssetsQuery.data?.assets ?? [],
+          })
+        : [],
+    [
+      isPrivateFundProjectLanding,
+      privateFundAssetsQuery.data,
+      privateFundProjectParam,
+      privateFundProjectQuery.data,
+      selectedPrivateFundProject,
+    ],
+  );
   const selectedPrivateFundFileCount =
     selectedPrivateFundProject?.uploadCount ?? selectedPrivateFundProject?.fileCount ?? 0;
   const selectedPrivateFundIndexedCount = selectedPrivateFundProject?.indexedDocumentCount ?? 0;
@@ -2451,7 +2484,8 @@ export function NewChatLandingScreen() {
       ref={setLandingSurface}
       className={cn(
         "flex flex-1 items-center justify-center",
-        isPrivateFundProjectLanding && "items-start overflow-y-auto bg-[#F8FAF7]",
+        isPrivateFundProjectLanding &&
+          "private-fund-project-landing-screen items-start overflow-y-auto bg-[var(--pf-canvas)]",
       )}
       data-testid="new-chat-landing"
       data-private-fund-project-landing={isPrivateFundProjectLanding || undefined}
@@ -2468,40 +2502,40 @@ export function NewChatLandingScreen() {
         )}
       >
         {isPrivateFundProjectLanding ? (
-          <div className="flex w-full flex-col gap-5">
+          <div className="private-fund-project-hero flex w-full flex-col gap-5">
             <div>
-              <span className="inline-flex rounded-full bg-[#E6EFE8] px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-[#527362]">
+              <span className="private-fund-project-kicker inline-flex rounded-full bg-[var(--pf-accent-soft)] px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-[var(--pf-accent-ink)]">
                 研究项目
               </span>
               <h1
-                className="mt-3 text-[30px] font-semibold tracking-[-0.035em] text-[#25352D]"
+                className="mt-3 text-[32px] font-semibold leading-[1.1] tracking-[-0.04em] text-[var(--pf-ink)] md:text-[38px]"
                 data-testid="private-fund-project-landing-title"
               >
                 {selectedPrivateFundProject?.name || privateFundProjectParam}
               </h1>
-              <p className="mt-2 max-w-[620px] text-sm leading-6 text-[#69766F]">
-                从项目资料开始一条新的研究路径。提出研究问题后，会自动创建会话并进入图谱工作台。
+              <p className="mt-2 max-w-[620px] text-sm leading-6 text-[var(--pf-ink-secondary)]">
+                从项目资料开始一条新的研究路径。提出研究问题后，会自动创建会话并进入研究工作台。
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-[14px] border border-[#DFE6E1] bg-white px-4 py-3">
-                <p className="text-[11px] text-[#7B8780]">资料来源</p>
-                <p className="mt-1 text-base font-semibold text-[#2D3D35]">
+            <div className="private-fund-project-summary-grid grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="private-fund-summary-card rounded-2xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-3">
+                <p className="text-[11px] text-[var(--pf-ink-muted)]">资料来源</p>
+                <p className="mt-1 text-base font-semibold text-[var(--pf-ink)]">
                   {selectedPrivateFundFileCount} 份
                 </p>
               </div>
-              <div className="rounded-[14px] border border-[#DFE6E1] bg-white px-4 py-3">
-                <p className="text-[11px] text-[#7B8780]">已完成索引</p>
-                <p className="mt-1 text-base font-semibold text-[#2D3D35]">
+              <div className="private-fund-summary-card rounded-2xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-3">
+                <p className="text-[11px] text-[var(--pf-ink-muted)]">已完成索引</p>
+                <p className="mt-1 text-base font-semibold text-[var(--pf-ink)]">
                   {selectedPrivateFundIndexedCount} 份
                 </p>
               </div>
               <div
-                className="rounded-[14px] border border-[#DFE6E1] bg-white px-4 py-3"
+                className="private-fund-summary-card rounded-2xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-3"
                 data-testid="private-fund-project-token-summary"
               >
-                <p className="text-[11px] text-[#7B8780]">Token 消耗</p>
-                <p className="mt-1 text-base font-semibold text-[#2D3D35] tabular-nums">
+                <p className="text-[11px] text-[var(--pf-ink-muted)]">Token 消耗</p>
+                <p className="mt-1 text-base font-semibold text-[var(--pf-ink)] tabular-nums">
                   {selectedPrivateFundTokenUsage?.totalTokens != null
                     ? formatTokenCount(selectedPrivateFundTokenUsage.totalTokens)
                     : selectedPrivateFundTokenUsage?.sessionCount
@@ -2515,15 +2549,15 @@ export function NewChatLandingScreen() {
                 selectedPrivateFundTokenUsage.sessionCount > 0 &&
                 selectedPrivateFundTokenUsage.sessionsWithTotalTokens <
                   selectedPrivateFundTokenUsage.sessionCount ? (
-                  <p className="mt-1 text-[10px] text-[#7B8780] tabular-nums">
+                  <p className="mt-1 text-[10px] text-[var(--pf-ink-muted)] tabular-nums">
                     覆盖 {selectedPrivateFundTokenUsage.sessionsWithTotalTokens}/
                     {selectedPrivateFundTokenUsage.sessionCount} 个会话
                   </p>
                 ) : null}
               </div>
-              <div className="rounded-[14px] border border-[#DFE6E1] bg-white px-4 py-3">
-                <p className="text-[11px] text-[#7B8780]">研究状态</p>
-                <p className="mt-1 text-base font-semibold text-[#2D3D35]">
+              <div className="private-fund-summary-card rounded-2xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-3">
+                <p className="text-[11px] text-[var(--pf-ink-muted)]">研究状态</p>
+                <p className="mt-1 text-base font-semibold text-[var(--pf-ink)]">
                   {selectedPrivateFundProject?.indexReady ? "可以开始" : "资料准备中"}
                 </p>
               </div>
@@ -2543,6 +2577,19 @@ export function NewChatLandingScreen() {
             isPrivateFundProjectLanding && "mx-auto max-w-[760px]",
           )}
         >
+          {isPrivateFundProjectLanding &&
+          message.trim().length === 0 &&
+          privateFundPromptSuggestions.length > 0 &&
+          !creating ? (
+            <PrivateFundPromptSuggestionTray
+              suggestions={privateFundPromptSuggestions}
+              onSelect={(prompt) => {
+                setMessage(prompt);
+                setSlashMenuIndex(-1);
+                textareaRef.current?.focus();
+              }}
+            />
+          ) : null}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -2562,6 +2609,7 @@ export function NewChatLandingScreen() {
             // lifts an inset ring (overlay below).
             className={cn(
               "relative z-10 flex w-full flex-col rounded-2xl border border-border bg-card dark:bg-card-solid shadow-[0_12px_20px_-20px_rgba(0,0,0,0.14),0_20px_28px_-28px_rgba(0,0,0,0.1)] transition-[border-color,box-shadow] duration-150 has-[textarea:focus]:border-foreground",
+              isPrivateFundProjectLanding && "private-fund-start-composer",
               isDragActive && "ring-2 ring-ring ring-inset",
             )}
             data-testid="new-chat-landing-composer"
@@ -2705,7 +2753,12 @@ export function NewChatLandingScreen() {
               // inside them): min 60px = one 20px line + a spare line of
               // breathing room; max 200px = the spec's 180px of content.
               // useAutoGrowTextarea drives the height between the two.
-              className="max-h-[200px] min-h-[60px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 font-['SF_Pro_Text',-apple-system,BlinkMacSystemFont,system-ui,sans-serif] text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground md:select-text"
+              className={cn(
+                "max-h-[200px] min-h-[60px] w-full resize-none overflow-y-auto bg-transparent px-4 pt-4 pb-1 leading-5 text-foreground outline-none placeholder:text-muted-foreground md:select-text",
+                isPrivateFundProjectLanding
+                  ? "font-sans text-base md:text-sm"
+                  : "font-['SF_Pro_Text',-apple-system,BlinkMacSystemFont,system-ui,sans-serif] text-sm",
+              )}
             />
             {/* Gated on an empty draft so it reads as the placeholder.
                 pointer-events-none lets clicks fall through to focus the

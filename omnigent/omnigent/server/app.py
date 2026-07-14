@@ -593,6 +593,10 @@ def _build_claude_native_bundle() -> bytes:
                 "private_fund_equity_report_get",
                 "private_fund_research_context",
                 "private_fund_research_node_save",
+                "private_fund_history_compare",
+                "private_fund_tracking_list",
+                "private_fund_watch_upsert",
+                "private_fund_alert_acknowledge",
             ]
         }
         bundle_dir = Path(tmpdir) / "bundle"

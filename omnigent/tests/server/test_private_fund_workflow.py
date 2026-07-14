@@ -58,12 +58,29 @@ def test_agentic_workflow_starts_empty_without_preset_research_steps(tmp_path: P
 
 
 def test_agentic_research_mcp_tools_are_registered() -> None:
-    names = {tool.name() for tool in build_private_fund_dataset_tools(None)}
+    tools = {tool.name(): tool for tool in build_private_fund_dataset_tools(None)}
+    names = set(tools)
     assert "private_fund_research_context" in names
     assert "private_fund_research_node_save" in names
     assert "private_fund_equity_report_generate" in names
     assert "private_fund_equity_report_status" in names
     assert "private_fund_equity_report_get" in names
+    assert "private_fund_history_compare" in names
+    assert "private_fund_tracking_list" in names
+    assert "private_fund_watch_upsert" in names
+    assert "private_fund_alert_acknowledge" in names
+    history_properties = tools["private_fund_history_compare"].get_schema()["function"][
+        "parameters"
+    ]["properties"]
+    assert {"mode", "from_version_id", "to_version_id", "item_id"} <= set(
+        history_properties
+    )
+    tracking_views = tools["private_fund_tracking_list"].get_schema()["function"][
+        "parameters"
+    ]["properties"]["view"]["enum"]
+    assert {"overview", "items", "alerts", "jobs", "watch_rules", "memo_versions"} == set(
+        tracking_views
+    )
 
 
 def test_equity_report_run_reserves_completes_and_reads_package(tmp_path: Path) -> None:

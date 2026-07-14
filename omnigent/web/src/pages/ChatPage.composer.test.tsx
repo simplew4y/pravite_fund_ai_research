@@ -347,7 +347,7 @@ describe("Composer slash-command submit routing", () => {
         [
           "dataset_id: 阳光电源",
           "必须调用 private_fund_dataset_memo。",
-          "用户勾选的资产上下文:",
+          "用户选择用于分析的研究资产:",
           "[node:valuation] 完整估值节点正文",
         ].join("\n"),
       );
@@ -364,7 +364,7 @@ describe("Composer slash-command submit routing", () => {
       "必须调用 private_fund_dataset_memo，返回 Markdown、HTML 和 PDF。",
       "所有重大事实和数字必须通过数据集工具核验；无法绑定 evidence_id 的内容标记为“资料未覆盖/待复核”。",
       "",
-      "用户勾选的资产上下文:",
+      "用户选择用于分析的研究资产:",
       "[node:valuation] 完整估值节点正文",
     ].join("\n");
 
@@ -1200,5 +1200,46 @@ describe("Composer sub-agent tray", () => {
     // that some tray exists.
     expect(screen.getByText("check-account-eligibility")).toBeTruthy();
     expect(screen.getByText(/Chatting with sub-agent/)).toBeTruthy();
+  });
+});
+
+describe("Composer private-fund prompt suggestions", () => {
+  beforeEach(() => {
+    useChatStore.setState({ conversationId: "conv_test", skills: [] });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("fills a suggested research question without sending it", () => {
+    const onSend = vi.fn();
+    const prompt =
+      "对比阳光电源最新会议纪要中的管理层口径与财报数据，找出新增信息和需要验证的问题。";
+    renderWithTooltips(
+      <Composer
+        {...composerProps({
+          onSend,
+          privateFundDatasetId: "sungrow",
+          privateFundPromptSuggestions: [
+            {
+              id: "financial_meeting_compare",
+              title: "对比会议口径与财报",
+              prompt,
+              stage: "compare",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText("研究问题建议")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "对比会议口径与财报" }));
+
+    expect(textarea().value).toBe(prompt);
+    expect(document.activeElement).toBe(textarea());
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("研究问题建议")).toBeNull();
   });
 });

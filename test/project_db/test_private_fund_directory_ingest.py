@@ -130,6 +130,73 @@ def test_text_pdf_is_indexed_with_page_and_location_provenance(tmp_path: Path) -
         assert chunk["display_text"] == "research.pdf p.1"
 
 
+def test_ingest_persists_controlled_business_type_and_company_detection(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    workspace = tmp_path / "workspace"
+    source.mkdir()
+    _write_pdf(
+        source / "tesla-2025-annual-report.pdf",
+        "Tesla Inc",
+        "2025 Annual Report",
+        "Auditor's Report",
+        "Consolidated Balance Sheet",
+        "Consolidated Statements of Operations and Cash Flows",
+    )
+
+    result = _run(source, workspace)
+
+    assert result.status == "completed"
+    assert result.documents[0].doc_type == "financial_report"
+    assert result.documents[0].doc_subtype == "annual_report"
+    assert result.documents[0].classification_status == "accepted"
+    with _connect(result) as connection:
+        document = _only_document(connection)
+        assert document["doc_type"] == "financial_report"
+        assert document["doc_subtype"] == "annual_report"
+        assert document["doc_type_confidence"] >= 0.9
+        assert document["classification_status"] == "accepted"
+        assert document["classification_taxonomy_version"] == (
+            "private_fund_document_taxonomy_v1"
+        )
+        assert document["classifier_version"] == "hybrid_rules_llm_v1"
+        assert document["company_name"] == "Tesla Inc"
+        metadata = json.loads(document["classification_metadata_json"])
+        assert metadata["doc_type"] == "financial_report"
+        assert metadata["evidence"]
+
+
+def test_company_conflict_preserves_source_but_does_not_index_it(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    workspace = tmp_path / "workspace"
+    source.mkdir()
+    _write_pdf(
+        source / "tesla-annual-report.pdf",
+        "Tesla Corporation",
+        "2025 Annual Report",
+        "Auditor's Report",
+        "Consolidated Balance Sheet",
+    )
+
+    result = ingest.ingest_directory(
+        directory_path=source,
+        workspace_root=workspace,
+        dataset_id=DATASET_ID,
+        dataset_name="Sungrow research",
+        company_name="Sungrow Power Supply Co., Ltd.",
+        company_ticker="300274.SZ",
+    )
+
+    assert result.status == "completed_with_warnings"
+    assert result.documents[0].classification_status == "company_conflict"
+    assert result.documents[0].status == "classification_review_required"
+    assert result.documents[0].chunk_count == 0
+    with _connect(result) as connection:
+        document = _only_document(connection)
+        assert document["company_name"] == "Tesla Corporation"
+        assert document["status"] == "classification_review_required"
+        assert connection.execute("SELECT COUNT(*) FROM chunks").fetchone()[0] == 0
+
+
 def test_blank_pdf_needs_ocr_and_has_no_searchable_chunks(tmp_path: Path) -> None:
     source = tmp_path / "source"
     workspace = tmp_path / "workspace"

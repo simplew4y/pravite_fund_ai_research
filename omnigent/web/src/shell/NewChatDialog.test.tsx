@@ -32,7 +32,11 @@ import { setOmnigentHostConfig } from "@/lib/host";
 import { setPendingInitialPrompt, useChatStore } from "@/store/chatStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const privateFundProjectsState = vi.hoisted(() => ({ projects: [] as unknown[] }));
+const privateFundProjectsState = vi.hoisted(() => ({
+  projects: [] as unknown[],
+  project: undefined as unknown,
+  assets: undefined as unknown,
+}));
 
 // Only authenticatedFetch is stubbed (the create POST under test);
 // the module's other exports stay real for any other consumer in the tree.
@@ -56,6 +60,8 @@ vi.mock("@/hooks/RunnerHealthProvider", () => ({
 }));
 vi.mock("@/hooks/usePrivateFundProjects", () => ({
   usePrivateFundProjects: () => ({ data: privateFundProjectsState.projects }),
+  usePrivateFundProject: () => ({ data: privateFundProjectsState.project }),
+  usePrivateFundAssets: () => ({ data: privateFundProjectsState.assets }),
 }));
 // The composer's project chip lists projects via useProjects; stub it to an
 // empty list so it doesn't fire its own authenticatedFetch (which would skew
@@ -547,6 +553,8 @@ function mockAgents(agents: AvailableAgent[]) {
 // recent workspace so the working-directory field seeds to a known path.
 function setupLandingMocks() {
   privateFundProjectsState.projects = [];
+  privateFundProjectsState.project = undefined;
+  privateFundProjectsState.assets = undefined;
   authenticatedFetchMock.mockReset();
   useHostsMock.mockReset();
   useAvailableAgentsMock.mockReset();
@@ -1709,6 +1717,36 @@ describe("NewChatLandingScreen private-fund research mode", () => {
         },
       },
     ];
+    privateFundProjectsState.project = {
+      project: privateFundProjectsState.projects[0],
+      files: [
+        {
+          name: "2025年报.pdf",
+          fileType: "pdf",
+          size: 1024,
+          status: "indexed",
+          chunkCount: 12,
+          docType: "financial_report",
+        },
+        {
+          name: "业绩交流纪要.pdf",
+          fileType: "pdf",
+          size: 1024,
+          status: "indexed",
+          chunkCount: 8,
+          docType: "meeting_minutes",
+        },
+        {
+          name: "估值模型.xlsx",
+          fileType: "xlsx",
+          size: 1024,
+          status: "indexed",
+          chunkCount: 6,
+          docType: "valuation_model",
+        },
+      ],
+    };
+    privateFundProjectsState.assets = { assets: [], contextAssetIds: [] };
     authenticatedFetchMock.mockImplementation(
       async (url) =>
         ({
@@ -1745,6 +1783,33 @@ describe("NewChatLandingScreen private-fund research mode", () => {
     expect(screen.queryByText("Workspace follows project")).toBeNull();
     expect(screen.getAllByText("3 份")).toHaveLength(2);
     expect(screen.getByTestId("private-fund-project-token-summary")).toHaveTextContent("12.4K");
+  });
+
+  it("shows project-aware prompts before the first conversation is created", async () => {
+    renderLanding({}, "/?private_fund_project=%E9%98%B3%E5%85%89%E7%94%B5%E6%BA%90");
+
+    const suggestions = await screen.findByLabelText("研究问题建议");
+    expect(suggestions).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "形成完整投资判断" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "形成完整投资判断" }));
+
+    expect(screen.getByTestId("new-chat-landing-input")).toHaveValue(
+      "综合财报、会议纪要和估值模型，形成阳光电源当前的核心投资逻辑、关键催化剂、主要风险和待验证问题。",
+    );
+    expect(document.activeElement).toBe(screen.getByTestId("new-chat-landing-input"));
+    expect(screen.queryByLabelText("研究问题建议")).toBeNull();
+    expect(authenticatedFetchMock.mock.calls.some(([url]) => url === "/v1/sessions")).toBe(false);
+  });
+
+  it("shows a research framework prompt for a new project without documents", async () => {
+    privateFundProjectsState.project = {
+      project: privateFundProjectsState.projects[0],
+      files: [],
+    };
+    renderLanding({}, "/?private_fund_project=%E9%98%B3%E5%85%89%E7%94%B5%E6%BA%90");
+
+    expect(await screen.findByRole("button", { name: "制定研究框架" })).toBeInTheDocument();
   });
 
   it("puts the selected research level and citation rules into the initial prompt", async () => {

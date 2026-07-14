@@ -86,8 +86,15 @@ export async function buildAgentBundle(input: AgentBundleInput): Promise<File> {
     lines.push("    - private_fund_dataset_search");
     lines.push("    - private_fund_source_detail");
     lines.push("    - private_fund_dataset_memo");
+    lines.push("    - private_fund_equity_report_generate");
+    lines.push("    - private_fund_equity_report_status");
+    lines.push("    - private_fund_equity_report_get");
     lines.push("    - private_fund_research_context");
     lines.push("    - private_fund_research_node_save");
+    lines.push("    - private_fund_history_compare");
+    lines.push("    - private_fund_tracking_list");
+    lines.push("    - private_fund_watch_upsert");
+    lines.push("    - private_fund_alert_acknowledge");
   }
   // Inline MCP server declarations (parsed by _parse_inline_mcp_servers).
   if (input.mcpServers?.length) {

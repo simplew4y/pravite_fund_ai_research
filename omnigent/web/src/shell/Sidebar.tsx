@@ -290,6 +290,53 @@ function normalizePrivateFundFilePath(
   return path.startsWith("/") ? file.name : path;
 }
 
+const PRIVATE_FUND_DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  financial_report: "财报",
+  annual_report: "年报",
+  interim_report: "中报",
+  quarterly_report: "季报",
+  earnings_release: "业绩公告",
+  meeting_minutes: "会议纪要",
+  earnings_call: "业绩电话会",
+  research_meeting: "调研纪要",
+  expert_interview: "专家访谈",
+  internal_meeting: "内部会议",
+  valuation_model: "估值模型",
+  dcf_model: "DCF 模型",
+  comparable_company_model: "可比公司估值",
+  financial_forecast_model: "财务预测模型",
+  integrated_valuation_model: "综合估值模型",
+  research_report: "研究报告",
+  investor_presentation: "投资者演示",
+  regulatory_announcement: "监管公告",
+  financial_dataset: "财务数据",
+  company_material: "公司资料",
+  other: "其他资料",
+  unknown: "待识别",
+};
+
+function privateFundFileClassificationLabel(file: PrivateFundFile): string {
+  if (!file.docType || file.classificationStatus === "pending") {
+    return `${file.fileType.toUpperCase()} · 待识别`;
+  }
+  const typeLabel =
+    PRIVATE_FUND_DOCUMENT_TYPE_LABELS[file.docSubtype ?? ""] ??
+    PRIVATE_FUND_DOCUMENT_TYPE_LABELS[file.docType] ??
+    file.docType;
+  const parts = [typeLabel];
+  if (file.companyName) parts.push(file.companyName);
+  if ((file.docTypeConfidence ?? 0) > 0) {
+    parts.push(`${Math.round((file.docTypeConfidence ?? 0) * 100)}%`);
+  }
+  if (
+    file.classificationStatus === "needs_review" ||
+    file.classificationStatus === "company_conflict"
+  ) {
+    parts.push("待复核");
+  }
+  return parts.join(" · ");
+}
+
 function PrivateFundAttachmentCheckbox({
   checked,
   mixed = false,
@@ -372,6 +419,8 @@ function PrivateFundCorpusSection({
   const [collapsed, setCollapsed] = useState(readCorpusCollapsed);
   const [projectToDelete, setProjectToDelete] = useState<PrivateFundProject | null>(null);
   const [sourceDeleteOpen, setSourceDeleteOpen] = useState(false);
+  const [sourceManageMode, setSourceManageMode] = useState(false);
+  const [managedSourceNames, setManagedSourceNames] = useState<string[]>([]);
   const deleteProject = useDeletePrivateFundProject();
   const deleteFiles = useDeletePrivateFundFiles(selectedDatasetId);
   const pendingComposerAttachments = useChatStore((s) => s.pendingComposerAttachments);
@@ -411,14 +460,16 @@ function PrivateFundCorpusSection({
     [attachedPathKeys, projectAttachmentKeys],
   );
   const selectedSourceNames = useMemo(
-    () =>
-      fileAttachmentRows.filter((row) => attachedPathKeys.has(row.key)).map((row) => row.file.name),
-    [attachedPathKeys, fileAttachmentRows],
+    () => files.filter((file) => managedSourceNames.includes(file.name)).map((file) => file.name),
+    [files, managedSourceNames],
   );
   const allProjectFilesAttached =
     projectAttachmentKeys.length > 0 && attachedProjectFileCount === projectAttachmentKeys.length;
   const someProjectFilesAttached =
     attachedProjectFileCount > 0 && attachedProjectFileCount < projectAttachmentKeys.length;
+  const allProjectFilesManaged = files.length > 0 && selectedSourceNames.length === files.length;
+  const someProjectFilesManaged =
+    selectedSourceNames.length > 0 && selectedSourceNames.length < files.length;
   const latestConversationByDatasetId = useMemo(() => {
     const latest = new Map<string, Conversation>();
     for (const conversation of sortByUpdatedAtDesc(conversations, null)) {
@@ -454,6 +505,25 @@ function PrivateFundCorpusSection({
     }
   }
 
+  function toggleManagedSources() {
+    setManagedSourceNames(allProjectFilesManaged ? [] : files.map((file) => file.name));
+  }
+
+  function toggleManagedSource(fileName: string) {
+    setManagedSourceNames((current) =>
+      current.includes(fileName)
+        ? current.filter((name) => name !== fileName)
+        : [...current, fileName],
+    );
+  }
+
+  function exitSourceManageMode() {
+    setSourceManageMode(false);
+    setManagedSourceNames([]);
+    setSourceDeleteOpen(false);
+    deleteFiles.reset();
+  }
+
   async function confirmDeleteSources() {
     if (selectedSourceNames.length === 0) return;
     const deleted = new Set(selectedSourceNames);
@@ -467,6 +537,8 @@ function PrivateFundCorpusSection({
       if (deleted.has(row.file.name)) store.removeComposerAttachment(row.attachment);
     }
     setSourceDeleteOpen(false);
+    setSourceManageMode(false);
+    setManagedSourceNames([]);
     showToast(`已删除 ${deleted.size} 份资料来源`);
   }
 
@@ -609,7 +681,7 @@ function PrivateFundCorpusSection({
               tokenUsage &&
               tokenUsage.sessionCount > 0 &&
               tokenUsage.sessionsWithTotalTokens < tokenUsage.sessionCount
-                ? ` · 覆盖 ${tokenUsage.sessionsWithTotalTokens}/${tokenUsage.sessionCount}`
+                ? ` / 覆盖 ${tokenUsage.sessionsWithTotalTokens}/${tokenUsage.sessionCount}`
                 : "";
             const tokenLabel =
               tokenUsage?.totalTokens != null
@@ -662,22 +734,28 @@ function PrivateFundCorpusSection({
                   <span
                     className={cn(
                       "min-w-0 flex-1",
-                      workbench && "flex items-center gap-2 py-3 pr-3",
+                      workbench && "flex flex-col items-start gap-2 py-3 pr-3",
                     )}
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-foreground">
                         {item.name}
                       </span>
-                      <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span
+                        className={cn(
+                          "mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground",
+                          workbench && "flex-col items-start gap-0.5",
+                        )}
+                      >
                         <span className="min-w-0 truncate">
                           {item.uploadCount || item.fileCount} 份资料 ·{" "}
                           {privateFundProjectUpdatedAt(item)}
                         </span>
                         {workbench ? (
                           <span
-                            className="shrink-0 font-medium tabular-nums text-[var(--pf-ink-secondary)]"
+                            className="max-w-full truncate font-medium tabular-nums text-[var(--pf-ink-secondary)]"
                             data-testid={`private-fund-project-token-usage-${item.datasetId}`}
+                            title={tokenLabel}
                           >
                             {tokenLabel}
                           </span>
@@ -695,7 +773,7 @@ function PrivateFundCorpusSection({
                       className={cn(
                         "flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground",
                         status.className,
-                        workbench && "mr-6",
+                        workbench && "self-start",
                       )}
                     >
                       <CircleIcon className="size-2 fill-current" aria-hidden="true" />
@@ -731,8 +809,8 @@ function PrivateFundCorpusSection({
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground">资料来源</h3>
             <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-              {project?.name ?? selectedDatasetId ?? "未选择项目"} · 已选 {attachedProjectFileCount}
-              /{projectAttachmentKeys.length}，勾选后加入上下文
+              {project?.name ?? selectedDatasetId ?? "未选择项目"} / 已选 {attachedProjectFileCount}
+              /{projectAttachmentKeys.length}，勾选后用于当前提问
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -765,32 +843,67 @@ function PrivateFundCorpusSection({
             </button>
           </div>
         </div>
-        <div className="mt-2 flex min-h-8 items-center justify-between gap-2 rounded-lg border border-border bg-muted/35 px-2">
+        <div className="mt-2 flex min-h-9 items-center justify-between gap-2 rounded-lg border border-border bg-muted/35 px-2">
           <label className="flex min-w-0 cursor-pointer items-center gap-2 text-[11px] font-medium text-foreground">
             <PrivateFundAttachmentCheckbox
-              aria-label={`全选${project?.name ?? selectedDatasetId ?? "项目"}的资料来源`}
-              checked={allProjectFilesAttached}
+              aria-label={
+                sourceManageMode
+                  ? `选择${project?.name ?? selectedDatasetId ?? "项目"}的全部资料用于管理`
+                  : `选择${project?.name ?? selectedDatasetId ?? "项目"}的全部资料用于当前提问`
+              }
+              checked={sourceManageMode ? allProjectFilesManaged : allProjectFilesAttached}
               disabled={files.length === 0 || deleteFiles.isPending}
-              mixed={someProjectFilesAttached}
-              onChange={toggleProjectAttachments}
+              mixed={sourceManageMode ? someProjectFilesManaged : someProjectFilesAttached}
+              onChange={sourceManageMode ? toggleManagedSources : toggleProjectAttachments}
             />
-            <span className="truncate">{allProjectFilesAttached ? "取消全选" : "全选资料"}</span>
+            <span className="truncate">
+              {sourceManageMode
+                ? `${selectedSourceNames.length} 份待管理`
+                : allProjectFilesAttached
+                  ? "移出全部资料"
+                  : "全部用于提问"}
+            </span>
           </label>
-          <Button
-            aria-label={`删除已选资料来源 ${selectedSourceNames.length} 项`}
-            className="h-7 shrink-0 gap-1 px-2 text-[11px]"
-            disabled={selectedSourceNames.length === 0 || deleteFiles.isPending}
-            onClick={() => {
-              deleteFiles.reset();
-              setSourceDeleteOpen(true);
-            }}
-            size="sm"
-            type="button"
-            variant="destructive"
-          >
-            <Trash2Icon className="size-3" />
-            删除{selectedSourceNames.length > 0 ? ` ${selectedSourceNames.length}` : ""}
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            {sourceManageMode ? (
+              <>
+                <Button
+                  aria-label={`删除管理选择 ${selectedSourceNames.length} 份资料来源`}
+                  className="h-7 gap-1 px-2 text-[11px]"
+                  disabled={selectedSourceNames.length === 0 || deleteFiles.isPending}
+                  onClick={() => {
+                    deleteFiles.reset();
+                    setSourceDeleteOpen(true);
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="destructive"
+                >
+                  <Trash2Icon className="size-3" />
+                  删除{selectedSourceNames.length > 0 ? ` ${selectedSourceNames.length}` : ""}
+                </Button>
+                <Button
+                  className="h-7 px-2 text-[11px]"
+                  onClick={exitSourceManageMode}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  完成
+                </Button>
+              </>
+            ) : (
+              <Button
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setSourceManageMode(true)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                管理
+              </Button>
+            )}
+          </div>
         </div>
       </div>
       {!collapsed && (
@@ -818,27 +931,39 @@ function PrivateFundCorpusSection({
                       )}
                     >
                       <PrivateFundAttachmentCheckbox
-                        checked={isAttached}
-                        aria-label={`选择资料来源 ${file.name}`}
+                        checked={
+                          sourceManageMode ? selectedSourceNames.includes(file.name) : isAttached
+                        }
+                        aria-label={
+                          sourceManageMode
+                            ? `选择资料来源 ${file.name} 用于管理`
+                            : `选择资料来源 ${file.name} 用于当前提问`
+                        }
                         onChange={() =>
-                          isAttached ? removeFile(attachment) : attachFile(attachment)
+                          sourceManageMode
+                            ? toggleManagedSource(file.name)
+                            : isAttached
+                              ? removeFile(attachment)
+                              : attachFile(attachment)
                         }
                       />
                       <button
                         type="button"
                         className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={() => attachFile(attachment)}
+                        onClick={() =>
+                          sourceManageMode ? toggleManagedSource(file.name) : attachFile(attachment)
+                        }
                       >
                         <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-xs font-medium">{file.name}</span>
                           <span className="block truncate text-[11px] text-muted-foreground">
-                            {file.fileType.toUpperCase()}
+                            {privateFundFileClassificationLabel(file)}
                           </span>
                         </span>
                       </button>
                       {isAttached && (
-                        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
                           已加入
                         </span>
                       )}
@@ -1069,8 +1194,8 @@ export function Sidebar({
           type="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search sessions"
-          placeholder="Search sessions"
+          aria-label={privateFundWorkspace ? "搜索项目会话" : "Search sessions"}
+          placeholder={privateFundWorkspace ? "搜索项目会话" : "Search sessions"}
           className="min-h-8 w-full rounded-full border border-input pr-3 pl-8 text-sm transition placeholder:text-muted-foreground focus-visible:outline-1 md:select-text"
         />
       </div>
@@ -1181,7 +1306,7 @@ export function Sidebar({
               onClick={onNavClick}
               className={cn(
                 "rounded-sm text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/70",
-                privateFundWorkspace && "text-[16px] tracking-[-0.02em]",
+                privateFundWorkspace && "private-fund-brand text-[16px] tracking-[-0.02em]",
               )}
             >
               {privateFundWorkspace ? "投研工作台" : "finsagent"}

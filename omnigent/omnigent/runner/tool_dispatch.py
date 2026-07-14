@@ -268,6 +268,10 @@ _PRIVATE_FUND_DATASET_TOOLS = frozenset(
         "private_fund_equity_report_get",
         "private_fund_research_context",
         "private_fund_research_node_save",
+        "private_fund_history_compare",
+        "private_fund_tracking_list",
+        "private_fund_watch_upsert",
+        "private_fund_alert_acknowledge",
     }
 )
 

@@ -33,6 +33,7 @@ import {
 import { InlineSourcePopover } from "@/components/private-fund/InlineSourcePopover";
 import { toWorkspaceRelativePath, useWorkspaceFileExists } from "@/hooks/useWorkspaceChangedFiles";
 import { ElicitationCard } from "./ApprovalCard";
+import { AssistantHtmlPreview, splitAssistantHtml } from "./AssistantHtmlPreview";
 import { ReasoningView } from "./ReasoningView";
 import { SlashCommandCard } from "./SlashCommandCard";
 import { TerminalCommandCard } from "./TerminalCommandCard";
@@ -699,6 +700,24 @@ function PlainTextFallback({ text }: { text: string }) {
   );
 }
 
+function AssistantTextContent({ text }: { text: string }) {
+  const parts = splitAssistantHtml(text);
+  if (parts.length === 1 && parts[0]?.kind === "markdown") {
+    return <FilePathAwareMessageResponse>{parts[0].content}</FilePathAwareMessageResponse>;
+  }
+  let sourceOffset = 0;
+  const rendered = parts.map((part) => {
+    const key = `${part.kind}:${sourceOffset}`;
+    sourceOffset += part.content.length + 1;
+    return part.kind === "html" ? (
+      <AssistantHtmlPreview html={part.content} key={key} />
+    ) : (
+      <FilePathAwareMessageResponse key={key}>{part.content}</FilePathAwareMessageResponse>
+    );
+  });
+  return <div className="space-y-3">{rendered}</div>;
+}
+
 /**
  * Wraps `MessageResponse` with {@link WorkspacePathInlineCode} via Streamdown's
  * `inlineCode` slot — NOT `code` — so fenced code blocks keep their default
@@ -896,7 +915,7 @@ function renderItem(
           data-testid="assistant-text-section"
           className={cn("min-w-0", followsText && "mt-2")}
         >
-          <FilePathAwareMessageResponse>{item.text}</FilePathAwareMessageResponse>
+          <AssistantTextContent text={item.text} />
         </div>
       );
     case "reasoning":

@@ -187,6 +187,73 @@ _RESEARCH_CONTEXT_SCHEMA: dict[str, Any] = {
     },
 }
 
+_RESEARCH_HISTORY_COMPARE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dataset_id": {"type": "string"},
+        "mode": {"type": "string", "enum": ["memo", "item"]},
+        "from_version_id": {"type": "string"},
+        "to_version_id": {"type": "string"},
+        "item_id": {"type": "string"},
+    },
+}
+
+_RESEARCH_TRACKING_LIST_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dataset_id": {"type": "string"},
+        "view": {
+            "type": "string",
+            "enum": ["overview", "items", "alerts", "jobs", "watch_rules", "memo_versions"],
+        },
+        "item_type": {
+            "type": "string",
+            "enum": ["thesis", "assumption", "risk", "catalyst", "metric", "question"],
+        },
+        "status": {"type": "string"},
+        "alert_status": {
+            "type": "string",
+            "enum": ["new", "acknowledged", "dismissed", "snoozed"],
+        },
+    },
+}
+
+_RESEARCH_WATCH_UPSERT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dataset_id": {"type": "string"},
+        "rule_id": {"type": "string"},
+        "name": {"type": "string"},
+        "target_type": {
+            "type": "string",
+            "enum": ["all", "thesis", "assumption", "risk", "catalyst", "metric", "question"],
+        },
+        "target_item_id": {"type": "string"},
+        "query": {"type": "object"},
+        "min_priority": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"],
+        },
+        "frequency": {"type": "string"},
+        "active": {"type": "boolean"},
+    },
+    "required": ["name", "target_type"],
+}
+
+_RESEARCH_ALERT_ACK_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "dataset_id": {"type": "string"},
+        "alert_id": {"type": "string"},
+        "status": {
+            "type": "string",
+            "enum": ["new", "acknowledged", "dismissed", "snoozed"],
+        },
+        "snoozed_until": {"type": "string"},
+    },
+    "required": ["alert_id"],
+}
+
 _RICH_CONTENT_BLOCK_SCHEMA: dict[str, Any] = {
     "oneOf": [
         {
@@ -1767,6 +1834,27 @@ class _DatasetStore:
         markdown_path.write_text(markdown_content, encoding="utf-8")
         html_path.write_text(html, encoding="utf-8")
         self._render_memo_pdf_from_html(html, pdf_path)
+        from omnigent.server import private_fund_tracking
+
+        memo_version = private_fund_tracking.register_memo_version(
+            Path(info["collection_db_path"]),
+            str(info["dataset_id"]),
+            topic=topic or "综合投研",
+            markdown_path=markdown_path,
+            html_path=html_path,
+            pdf_path=pdf_path,
+            revision_of=revision_of,
+            source_type="agent_generated",
+            input_payload={
+                "instructions": instructions,
+                "conversation_context": conversation_context,
+                "revision_of": revision_of,
+                "key_questions": clean_key_questions,
+                "has_memo_markdown": bool(memo_markdown.strip()),
+                "render_mode": render_mode,
+            },
+            section_evidence=section_payloads,
+        )
         return {
             "dataset": {
                 "dataset_id": info["dataset_id"],
@@ -1780,6 +1868,11 @@ class _DatasetStore:
             "memo_html_url": _memo_artifact_url(html_path),
             "memo_pdf_path": str(pdf_path),
             "memo_pdf_url": _memo_artifact_url(pdf_path),
+            "memo_series_id": memo_version["series_id"],
+            "memo_version_id": memo_version["memo_version_id"],
+            "memo_version_no": memo_version["version_no"],
+            "revision_of_version_id": memo_version["revision_of_version_id"],
+            "tracking_job": memo_version.get("tracking_job"),
             "sections": section_payloads,
             "inputs": {
                 "instructions": instructions,
@@ -2631,6 +2724,198 @@ class PrivateFundResearchNodeSaveTool(_PrivateFundDatasetBaseTool):
         )
 
 
+class PrivateFundResearchHistoryCompareTool(_PrivateFundDatasetBaseTool):
+    """Compare two durable memo versions and their extracted research changes."""
+
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_history_compare"
+
+    @classmethod
+    def description(cls) -> str:
+        return (
+            "Compare two memo versions section-by-section, or read the immutable version "
+            "timeline of one tracked viewpoint, assumption, risk, catalyst, metric, or question."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _RESEARCH_HISTORY_COMPARE_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        from omnigent.server import private_fund_tracking
+
+        dataset_id = payload.get("dataset_id")
+        info = self._store(ctx).dataset_info(dataset_id if isinstance(dataset_id, str) else None)
+        item_id = str(payload.get("item_id") or "").strip()
+        mode = str(payload.get("mode") or ("item" if item_id else "memo"))
+        if mode == "item":
+            if not item_id:
+                raise ValueError("item_id is required for item history")
+            return private_fund_tracking.get_item_timeline(
+                Path(info["collection_db_path"]),
+                str(info["dataset_id"]),
+                item_id,
+            )
+        from_version_id = str(payload.get("from_version_id") or "").strip()
+        to_version_id = str(payload.get("to_version_id") or "").strip()
+        if not from_version_id or not to_version_id:
+            raise ValueError("from_version_id and to_version_id are required for memo comparison")
+        return private_fund_tracking.compare_memo_versions(
+            Path(info["collection_db_path"]),
+            str(info["dataset_id"]),
+            from_version_id,
+            to_version_id,
+        )
+
+
+class PrivateFundResearchTrackingListTool(_PrivateFundDatasetBaseTool):
+    """Read current tracked viewpoints, assumptions, risks, catalysts, and alerts."""
+
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_tracking_list"
+
+    @classmethod
+    def description(cls) -> str:
+        return (
+            "Read the durable research tracking overview or a filtered view of items, alerts, "
+            "background jobs, watch rules, and memo versions."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _RESEARCH_TRACKING_LIST_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        from omnigent.server import private_fund_tracking
+
+        dataset_id = payload.get("dataset_id")
+        info = self._store(ctx).dataset_info(dataset_id if isinstance(dataset_id, str) else None)
+        collection_db = Path(info["collection_db_path"])
+        resolved_dataset_id = str(info["dataset_id"])
+        overview = private_fund_tracking.tracking_overview(
+            collection_db, resolved_dataset_id
+        )
+        if payload.get("item_type") or payload.get("status"):
+            overview["items"] = private_fund_tracking.list_items(
+                collection_db,
+                resolved_dataset_id,
+                item_type=str(payload.get("item_type") or "") or None,
+                status=str(payload.get("status") or "") or None,
+            )
+        if payload.get("alert_status"):
+            overview["alerts"] = private_fund_tracking.list_alerts(
+                collection_db,
+                resolved_dataset_id,
+                status=str(payload["alert_status"]),
+            )
+        view = str(payload.get("view") or "overview")
+        if view == "overview":
+            return overview
+        key_by_view = {
+            "items": "items",
+            "alerts": "alerts",
+            "jobs": "jobs",
+            "watch_rules": "watch_rules",
+            "memo_versions": "memo_versions",
+        }
+        selected_key = key_by_view.get(view)
+        if selected_key is None:
+            raise ValueError(f"unsupported tracking view: {view}")
+        return {
+            "dataset_id": resolved_dataset_id,
+            selected_key: overview[selected_key],
+        }
+
+
+class PrivateFundResearchWatchUpsertTool(_PrivateFundDatasetBaseTool):
+    """Create or update a durable tracking rule."""
+
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_watch_upsert"
+
+    @classmethod
+    def description(cls) -> str:
+        return "Create or update a durable watch rule for a risk, catalyst, assumption, or topic."
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _RESEARCH_WATCH_UPSERT_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        from omnigent.server import private_fund_tracking
+
+        dataset_id = payload.get("dataset_id")
+        info = self._store(ctx).dataset_info(dataset_id if isinstance(dataset_id, str) else None)
+        return private_fund_tracking.upsert_watch_rule(
+            Path(info["collection_db_path"]),
+            str(info["dataset_id"]),
+            rule_id=str(payload.get("rule_id") or ""),
+            name=str(payload.get("name") or ""),
+            target_type=str(payload.get("target_type") or ""),
+            target_item_id=str(payload.get("target_item_id") or ""),
+            query=payload.get("query") if isinstance(payload.get("query"), dict) else {},
+            min_priority=str(payload.get("min_priority") or "medium"),
+            frequency=str(payload.get("frequency") or "on_ingest"),
+            active=bool(payload.get("active", True)),
+        )
+
+
+class PrivateFundResearchAlertAcknowledgeTool(_PrivateFundDatasetBaseTool):
+    """Acknowledge, dismiss, or snooze a durable tracking alert."""
+
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_alert_acknowledge"
+
+    @classmethod
+    def description(cls) -> str:
+        return "Acknowledge, dismiss, or snooze a risk/catalyst tracking alert."
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _RESEARCH_ALERT_ACK_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        from omnigent.server import private_fund_tracking
+
+        dataset_id = payload.get("dataset_id")
+        info = self._store(ctx).dataset_info(dataset_id if isinstance(dataset_id, str) else None)
+        return private_fund_tracking.update_alert_status(
+            Path(info["collection_db_path"]),
+            str(info["dataset_id"]),
+            str(payload.get("alert_id") or ""),
+            status=str(payload.get("status") or "acknowledged"),
+            snoozed_until=str(payload.get("snoozed_until") or ""),
+        )
+
+
 def build_private_fund_dataset_tools(workspace: Path | None) -> list[Tool]:
     """Build local private-fund dataset tools for the Claude Native MCP bridge."""
     return [
@@ -2643,4 +2928,8 @@ def build_private_fund_dataset_tools(workspace: Path | None) -> list[Tool]:
         PrivateFundEquityReportGetTool(workspace),
         PrivateFundResearchContextTool(workspace),
         PrivateFundResearchNodeSaveTool(workspace),
+        PrivateFundResearchHistoryCompareTool(workspace),
+        PrivateFundResearchTrackingListTool(workspace),
+        PrivateFundResearchWatchUpsertTool(workspace),
+        PrivateFundResearchAlertAcknowledgeTool(workspace),
     ]

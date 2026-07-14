@@ -3,7 +3,7 @@ name: private-fund-memo
 description: Generate or revise an evidence-backed private-fund research memo as Markdown, HTML, and PDF. Use when the user requests a focused memo about a company, topic, question, risk, catalyst, comparison, or selected research context rather than a comprehensive long-term report.
 ---
 
-# Private Fund Memo
+# 📝 Private Fund Memo
 
 Create a focused research memo with verifiable citations and durable output files.
 
@@ -15,7 +15,8 @@ Create a focused research memo with verifiable citations and durable output file
 4. If the user selected nodes, call `mcp__omnigent__private_fund_research_context` and use those nodes as prioritized context.
 5. Separate evidence, interpretation, counterevidence, and open questions. Use exact dates, periods, and units.
 6. Call `mcp__omnigent__private_fund_dataset_memo`. Supply `revision_of` when revising an earlier memo.
-7. Return PDF, Markdown, and HTML paths plus a short summary of conclusions and evidence gaps.
+7. When revising or comparing an earlier Memo, use `mcp__omnigent__private_fund_history_compare` after the new version is registered. Report added, changed, unchanged, and `not_mentioned` sections separately; never translate `not_mentioned` into removed or invalidated without explicit evidence.
+8. Return the Memo version ID plus PDF, Markdown, and HTML paths, followed by a short summary of conclusions, changes, and evidence gaps.
 
 Never fabricate citations or silently replace an earlier artifact.
 

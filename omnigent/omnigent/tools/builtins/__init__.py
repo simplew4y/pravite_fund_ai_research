@@ -218,6 +218,22 @@ def _create_private_fund_research_node_save(config: dict[str, str]) -> Tool:
     return _create_private_fund_tool("private_fund_research_node_save")
 
 
+def _create_private_fund_history_compare(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_history_compare")
+
+
+def _create_private_fund_tracking_list(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_tracking_list")
+
+
+def _create_private_fund_watch_upsert(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_watch_upsert")
+
+
+def _create_private_fund_alert_acknowledge(config: dict[str, str]) -> Tool:
+    return _create_private_fund_tool("private_fund_alert_acknowledge")
+
+
 # Unified registry for every reserved builtin name. The value
 # is either a factory callable (for user-enablable tools) or
 # ``None`` for framework-owned names that occupy the name-space
@@ -249,6 +265,10 @@ _BUILTIN_REGISTRY: dict[str, _BuiltinFactory | None] = {
     "private_fund_equity_report_get": _create_private_fund_equity_report_get,
     "private_fund_research_context": _create_private_fund_research_context,
     "private_fund_research_node_save": _create_private_fund_research_node_save,
+    "private_fund_history_compare": _create_private_fund_history_compare,
+    "private_fund_tracking_list": _create_private_fund_tracking_list,
+    "private_fund_watch_upsert": _create_private_fund_watch_upsert,
+    "private_fund_alert_acknowledge": _create_private_fund_alert_acknowledge,
     # Framework-owned: need runtime context. ``web_fetch`` is
     # constructed by ToolManager before reaching this registry.
     # ``list_comments`` and ``update_comment`` are auto-registered by

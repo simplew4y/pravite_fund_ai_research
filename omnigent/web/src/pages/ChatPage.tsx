@@ -30,6 +30,7 @@ import {
   MessageSquareIcon,
   PaperclipIcon,
   SquareIcon,
+  SparklesIcon,
   TerminalIcon,
   WifiOffIcon,
   XIcon,
@@ -201,10 +202,14 @@ import {
   writePrivateFundResearchMode,
   wrapPrivateFundPromptContext,
 } from "@/lib/privateFundApi";
+import type { PrivateFundPromptSuggestion } from "@/lib/privateFundPromptSuggestions";
 import { PrivateFundResearchModeToggle } from "@/components/PrivateFundResearchModeToggle";
 import { TokenUsageBar } from "@/components/private-fund/TokenUsageBar";
+import { PrivateFundPromptSuggestionTray } from "@/components/private-fund/PrivateFundPromptSuggestionTray";
 import {
+  PRIVATE_FUND_GENERATION_OPTIONS,
   PrivateFundResearchWorkbench,
+  type WorkbenchActionContextValue,
   usePrivateFundWorkbenchActions,
 } from "@/components/private-fund/PrivateFundResearchWorkbench";
 import { usePrivateFundShell } from "@/shell/PrivateFundShellContext";
@@ -792,6 +797,18 @@ export function ChatPage() {
     () => hasPrivateFundConversationContext(bubbles),
     [bubbles],
   );
+  const recentPrivateFundUserMessages = useMemo(
+    () =>
+      bubbles
+        .reduce<string[]>((messages, bubble) => {
+          if (bubble.kind !== "user") return messages;
+          const message = extractUserText(bubble.content).trim();
+          if (message) messages.push(message);
+          return messages;
+        }, [])
+        .slice(-8),
+    [bubbles],
+  );
 
   // Picker selection. ChatPage stays mounted across `/` to `/c/:id`,
   // so the pick survives sidebar clicks; resets on full page reload.
@@ -1263,6 +1280,7 @@ export function ChatPage() {
           datasetName={privateFundProjectLabel ?? privateFundDatasetId}
           chat={mainAgent}
           hasConversationContext={hasConversationContext}
+          recentUserMessages={recentPrivateFundUserMessages}
           onGenerateNode={(prompt) => {
             const skillMatch = prompt.match(
               /^\/(private-fund-memo|private-fund-report)(?:\s+([\s\S]*))?$/,
@@ -3426,6 +3444,8 @@ interface ComposerProps {
   privateFundProjectLabel?: string | null;
   /** Private-fund dataset bound to this session; gates research instructions and mode UI. */
   privateFundDatasetId?: string | null;
+  /** Optional direct injection for isolated composer tests and embedded surfaces. */
+  privateFundPromptSuggestions?: PrivateFundPromptSuggestion[];
 }
 
 /**
@@ -3644,7 +3664,7 @@ function PrivateFundConversationTokenUsageIndicator({
               ? `This conversation has used ${totals.totalTokens.toLocaleString()} tokens`
               : "No token usage recorded for this conversation yet"
           }
-          className="flex items-center gap-1.5 rounded-md text-[11px] font-medium text-[#577063] tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex items-center gap-1.5 rounded-md text-[11px] font-medium text-[var(--pf-accent-ink)] tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TokenUsageBar usage={totals} className="w-8" />
           <span>{visibleLabel}</span>
@@ -3993,6 +4013,85 @@ function SubagentComposerTray({ label }: { label: string }) {
   );
 }
 
+function PrivateFundGenerationTray({
+  actions,
+  disabled,
+}: {
+  actions: WorkbenchActionContextValue;
+  disabled: boolean;
+}) {
+  const activeOption = PRIVATE_FUND_GENERATION_OPTIONS.find(
+    (option) => option.value === actions.generationMode,
+  );
+  const placeholder =
+    actions.generationMode === "memo"
+      ? "Memo 主题、关键问题或时间范围"
+      : actions.generationMode === "chart"
+        ? "希望展示的指标、期间或比较对象"
+        : "补充生成要求，可留空使用当前会话";
+
+  return (
+    <section aria-label="生成研究资产" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
+      <div className="rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-xs font-semibold text-[var(--pf-ink)]">生成资产</span>
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+            {PRIVATE_FUND_GENERATION_OPTIONS.map((option) => {
+              const active = actions.generationMode === option.value;
+              return (
+                <button
+                  aria-pressed={active}
+                  className={cn(
+                    "h-7 shrink-0 rounded-md px-2.5 text-xs font-medium text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] active:translate-y-px",
+                    active &&
+                      "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-[var(--pf-shadow)]",
+                  )}
+                  disabled={disabled}
+                  key={option.value}
+                  onClick={() => actions.setGenerationMode(option.value)}
+                  title={option.description}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-[var(--primary-foreground)] transition-colors hover:bg-[var(--pf-accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={disabled}
+            onClick={actions.generateAsset}
+            type="button"
+          >
+            <SparklesIcon className="size-3.5" />
+            {actions.generationMode === "memo" ? "生成 Memo" : "生成"}
+            {actions.selectedInformationCount > 0 ? ` (${actions.selectedInformationCount})` : ""}
+          </button>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            aria-label="生成具体要求"
+            className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-3 text-xs text-[var(--pf-ink)] outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
+            disabled={disabled}
+            maxLength={500}
+            onChange={(event) => actions.setGenerationInstruction(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              actions.generateAsset();
+            }}
+            placeholder={placeholder}
+            value={actions.generationInstruction}
+          />
+          <span className="hidden shrink-0 text-[11px] text-[var(--pf-ink-muted)] sm:inline">
+            {activeOption?.description}
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /**
  * The message-input composer: textarea, attachments, slash-command
  * suggestions menu, and the send/stop controls. Exported for direct
@@ -4031,6 +4130,7 @@ export function Composer({
   subAgentLabel = null,
   privateFundProjectLabel = null,
   privateFundDatasetId = null,
+  privateFundPromptSuggestions,
 }: ComposerProps) {
   const workbenchActions = usePrivateFundWorkbenchActions();
   const [value, setValue] = useState("");
@@ -4518,6 +4618,18 @@ export function Composer({
   // Scope recall to the active conversation so ArrowUp surfaces only this
   // chat's prompts, not the last thing typed in any other chat.
   const { appendEntry, recallPrevious, recallNext, resetCursor } = usePromptHistory(conversationId);
+  const promptSuggestions =
+    privateFundPromptSuggestions ?? workbenchActions?.promptSuggestions ?? [];
+  const applyPrivateFundPromptSuggestion = useCallback(
+    (prompt: string) => {
+      setValue(prompt);
+      dirtyRef.current = true;
+      setCommandError(null);
+      resetCursor();
+      textareaRef.current?.focus();
+    },
+    [resetCursor],
+  );
   // Set just before recall sets `value`; cleared when the resulting onChange
   // fires. Lets onChange distinguish "user typed" (reset cursor) from
   // "recall replaced the value" (keep cursor).
@@ -4591,7 +4703,7 @@ export function Composer({
         ) +
         (workbenchActions && workbenchActions.contextAssets.length > 0
           ? [
-              "用户勾选的研究资产上下文:",
+              "用户选择用于分析的研究资产:",
               ...workbenchActions.contextAssets.map(
                 (asset) =>
                   `- [${asset.assetId}] ${asset.title}（${asset.assetType}）\n` +
@@ -4868,6 +4980,24 @@ export function Composer({
           Truthy (not just non-null) so an empty label never peeks a
           nameless tray. */}
       {subAgentLabel ? <SubagentComposerTray label={subAgentLabel} /> : null}
+      {privateFundDatasetId && workbenchActions ? (
+        <PrivateFundGenerationTray
+          actions={workbenchActions}
+          disabled={disabled || isReadOnly || hasPendingElicitation || isWorking}
+        />
+      ) : null}
+      {privateFundDatasetId &&
+      value.trim().length === 0 &&
+      promptSuggestions.length > 0 &&
+      !isWorking &&
+      !hasPendingElicitation ? (
+        <PrivateFundPromptSuggestionTray
+          className={cn("mx-auto mb-2", CHAT_COLUMN_WIDTH)}
+          suggestions={promptSuggestions}
+          disabled={disabled || isReadOnly || unreachable}
+          onSelect={applyPrivateFundPromptSuggestion}
+        />
+      ) : null}
       {/* Single rounded container — textarea on top, action row beneath.
           No top border on the surrounding form; the box itself is the
           visual container. The static neutral border carries through
@@ -4879,6 +5009,7 @@ export function Composer({
           glass rule still keys off the bg-card class, so the dark border/
           shadow chrome is unchanged; only the fill goes opaque. */}
       <div
+        data-private-fund-composer-surface={privateFundDatasetId ? "true" : undefined}
         className={cn(
           "relative mx-auto flex w-full flex-col rounded-2xl border border-border bg-card dark:bg-card-solid shadow-sm transition",
           CHAT_COLUMN_WIDTH,

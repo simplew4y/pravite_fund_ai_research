@@ -40,7 +40,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from omnigent.runtime.policies.builder import load_session_usage
-from omnigent.server import private_fund_workflow
+from omnigent.server import private_fund_tracking, private_fund_workflow
 from omnigent.server.auth import AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
 from omnigent.stores.conversation_store import ConversationStore
@@ -257,6 +257,31 @@ class SaveResearchAssetRequest(BaseModel):
 
 class SetResearchAssetContextRequest(BaseModel):
     asset_ids: list[str] = Field(default_factory=list)
+
+
+class CreateResearchWatchRuleRequest(BaseModel):
+    name: str
+    target_type: str
+    target_item_id: str = ""
+    query: dict[str, Any] = Field(default_factory=dict)
+    min_priority: str = "medium"
+    frequency: str = "on_ingest"
+    active: bool = True
+
+
+class UpdateResearchWatchRuleRequest(BaseModel):
+    name: str | None = None
+    target_type: str | None = None
+    target_item_id: str | None = None
+    query: dict[str, Any] | None = None
+    min_priority: str | None = None
+    frequency: str | None = None
+    active: bool | None = None
+
+
+class UpdateResearchAlertRequest(BaseModel):
+    status: str
+    snoozed_until: str = ""
 
 
 def _jsonable(value: Any) -> Any:
@@ -492,24 +517,25 @@ def _project_index_stats(dataset_id: str) -> dict[str, Any]:
 
 def _project_memo_stats(dataset_id: str) -> dict[str, Any]:
     memos_dir = _project_dataset_root(dataset_id) / "memos"
-    files = (
-        sorted(
-            (
-                path
-                for path in memos_dir.glob("*")
-                if path.is_file() and path.suffix.lower() in {".md", ".html", ".pdf"}
-            ),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        )
-        if memos_dir.is_dir()
-        else []
+    private_fund_tracking.backfill_memo_artifacts(
+        _collection_db_path(dataset_id), dataset_id, memos_dir
     )
-    latest = files[0] if files else None
+    versions = private_fund_tracking.list_memo_versions(
+        _collection_db_path(dataset_id), dataset_id
+    )
+    latest_path = None
+    latest_name = None
+    if versions:
+        latest_path = (
+            versions[0].get("pdf_path")
+            or versions[0].get("html_path")
+            or versions[0].get("markdown_path")
+        )
+        latest_name = Path(str(latest_path)).name if latest_path else None
     return {
-        "memo_count": len(files),
-        "latest_memo_path": str(latest) if latest else None,
-        "latest_memo_name": latest.name if latest else None,
+        "memo_count": len(versions),
+        "latest_memo_path": str(latest_path) if latest_path else None,
+        "latest_memo_name": latest_name,
     }
 
 
@@ -543,7 +569,13 @@ def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
                 "evidence_count": int(file.get("chunk_count") or 0),
                 "file_type": file.get("file_type"),
                 "stored_path": file.get("stored_path") or file.get("source_path"),
-                "metadata": {"size": int(file.get("size") or 0)},
+                "metadata": {
+                    "size": int(file.get("size") or 0),
+                    "doc_type": file.get("doc_type") or "unknown",
+                    "doc_subtype": file.get("doc_subtype") or "",
+                    "doc_type_confidence": float(file.get("doc_type_confidence") or 0),
+                    "classification_status": file.get("classification_status") or "pending",
+                },
             }
         )
 
@@ -595,8 +627,66 @@ def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
                 }
             )
 
+    memo_dir = _project_dataset_root(dataset_id) / "memos"
+    private_fund_tracking.backfill_memo_artifacts(collection_db, dataset_id, memo_dir)
+    for memo in private_fund_tracking.list_memo_versions(collection_db, dataset_id):
+        artifact_paths = [
+            str(path)
+            for path in (
+                memo.get("markdown_path"),
+                memo.get("html_path"),
+                memo.get("pdf_path"),
+            )
+            if path
+        ]
+        preferred_path = memo.get("pdf_path") or memo.get("html_path") or memo.get("markdown_path")
+        content = ""
+        markdown_path = memo.get("markdown_path")
+        if markdown_path:
+            try:
+                content = Path(str(markdown_path)).read_text(encoding="utf-8")[:100_000]
+            except OSError:
+                content = ""
+        evidence_ids = {
+            evidence_id
+            for section in memo.get("sections") or []
+            for evidence_id in section.get("evidence_ids") or []
+        }
+        assets.append(
+            {
+                "asset_id": f"memo:{memo['memo_version_id']}",
+                "asset_type": "memo",
+                "title": memo.get("series_title") or memo.get("topic") or "研究 Memo",
+                "summary": (
+                    f"Memo v{memo['version_no']} · {len(memo.get('sections') or [])} 个章节"
+                ),
+                "content_markdown": content,
+                "format": Path(str(preferred_path)).suffix.lower().lstrip(".")
+                if preferred_path
+                else "markdown",
+                "status": memo.get("status") or "completed",
+                "source_kind": "memo",
+                "source_id": memo["memo_version_id"],
+                "tags": ["版本化 Memo"],
+                "created_at": memo.get("created_at"),
+                "updated_at": memo.get("created_at"),
+                "version_no": int(memo.get("version_no") or 0),
+                "evidence_count": len(evidence_ids),
+                "file_type": Path(str(preferred_path)).suffix.lower().lstrip(".")
+                if preferred_path
+                else "markdown",
+                "stored_path": str(preferred_path) if preferred_path else None,
+                "metadata": {
+                    "series_id": memo.get("series_id"),
+                    "memo_version_id": memo.get("memo_version_id"),
+                    "revision_of_version_id": memo.get("revision_of_version_id"),
+                    "as_of_date": memo.get("as_of_date"),
+                    "artifact_paths": artifact_paths,
+                },
+            }
+        )
+
     artifact_dirs = (
-        (_project_dataset_root(dataset_id) / "memos", "memo", "memo"),
         (_project_dataset_root(dataset_id) / "reports", "report", "equity_report"),
     )
     for memos_dir, asset_type, source_kind in artifact_dirs:
@@ -863,8 +953,7 @@ def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
                     """
-                    SELECT doc_id, title, original_filename, stored_path, file_type, status,
-                           chunk_count, error_message, file_size, created_at, updated_at
+                    SELECT *
                     FROM documents
                     WHERE dataset_id = ? AND deleted_at IS NULL
                     ORDER BY updated_at DESC
@@ -874,6 +963,14 @@ def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
             indexed = {str(row["original_filename"]): row for row in rows}
         except sqlite3.Error:
             indexed = {}
+
+    def indexed_value(row: sqlite3.Row | None, key: str, default: Any = None) -> Any:
+        if row is None:
+            return default
+        try:
+            return row[key]
+        except IndexError:
+            return default
 
     seen: set[str] = set()
     files: list[dict[str, Any]] = []
@@ -893,6 +990,20 @@ def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
                 "chunk_count": int(row["chunk_count"] or 0) if row else 0,
                 "error_message": row["error_message"] if row else None,
                 "stored_path": row["stored_path"] if row else None,
+                "doc_type": indexed_value(row, "doc_type", "unknown"),
+                "doc_subtype": indexed_value(row, "doc_subtype", ""),
+                "doc_type_confidence": float(
+                    indexed_value(row, "doc_type_confidence", 0) or 0
+                ),
+                "classification_status": indexed_value(
+                    row, "classification_status", "pending"
+                ),
+                "classification_method": indexed_value(row, "classification_method", ""),
+                "company_name": indexed_value(row, "company_name", ""),
+                "company_ticker": indexed_value(row, "company_ticker", ""),
+                "company_confidence": float(
+                    indexed_value(row, "company_confidence", 0) or 0
+                ),
             }
         )
     if not uploads_initialized:
@@ -911,6 +1022,20 @@ def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
                     "chunk_count": int(row["chunk_count"] or 0),
                     "error_message": row["error_message"],
                     "stored_path": row["stored_path"],
+                    "doc_type": indexed_value(row, "doc_type", "unknown"),
+                    "doc_subtype": indexed_value(row, "doc_subtype", ""),
+                    "doc_type_confidence": float(
+                        indexed_value(row, "doc_type_confidence", 0) or 0
+                    ),
+                    "classification_status": indexed_value(
+                        row, "classification_status", "needs_review"
+                    ),
+                    "classification_method": indexed_value(row, "classification_method", ""),
+                    "company_name": indexed_value(row, "company_name", ""),
+                    "company_ticker": indexed_value(row, "company_ticker", ""),
+                    "company_confidence": float(
+                        indexed_value(row, "company_confidence", 0) or 0
+                    ),
                 }
             )
     return files
@@ -1004,6 +1129,17 @@ def _save_uploaded_project_files(dataset_id: str, files: list[UploadFile]) -> di
                 "size": target.stat().st_size,
                 "source_path": str(target),
                 "replaced": replaced,
+                "status": "pending",
+                "doc_id": None,
+                "chunk_count": 0,
+                "doc_type": "unknown",
+                "doc_subtype": "",
+                "doc_type_confidence": 0.0,
+                "classification_status": "pending",
+                "classification_method": "",
+                "company_name": "",
+                "company_ticker": "",
+                "company_confidence": 0.0,
             }
         )
     with _connect_global_registry() as conn:
@@ -1132,9 +1268,21 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
             "dataset_id": dataset_id,
             "status": "running",
             "started_at": _now_iso(),
-        }
+    }
     try:
         ingest = _private_fund_ingest_module()
+        classification_llm = None
+        classifier_llm_enabled = os.environ.get(
+            "PRIVATE_FUND_DOCUMENT_CLASSIFIER_USE_LLM", "1"
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        if classifier_llm_enabled:
+            try:
+                classification_llm, _ = _load_chat_client()
+            except Exception:  # noqa: BLE001
+                _logger.warning(
+                    "document classifier LLM is unavailable; continuing with deterministic rules",
+                    exc_info=True,
+                )
         result = ingest.ingest_directory(
             directory_path=payload["directory_path"],
             workspace_root=payload["workspace_root"],
@@ -1145,8 +1293,29 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
             recursive=bool(payload.get("recursive", True)),
             reset=bool(payload.get("reset", False)),
             job_id=job_id,
+            classification_llm=classification_llm,
         )
         private_fund_workflow.get_or_create_workflow(_collection_db_path(dataset_id), dataset_id)
+        tracking_jobs: list[dict[str, Any]] = []
+        tracking_enqueue_error = ""
+        if result.status in {"completed", "completed_with_warnings"}:
+            try:
+                tracking_jobs = private_fund_tracking.enqueue_current_documents(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    parent_ingest_job_id=job_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                tracking_enqueue_error = str(exc)
+                _logger.exception(
+                    "private fund tracking enqueue failed after ingest: job_id=%s dataset_id=%s",
+                    job_id,
+                    dataset_id,
+                )
+        result_payload = ingest.result_to_dict(result)
+        result_payload["tracking_jobs"] = tracking_jobs
+        if tracking_enqueue_error:
+            result_payload["tracking_enqueue_error"] = tracking_enqueue_error
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
                 "job_id": job_id,
@@ -1154,7 +1323,7 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
                 "status": result.status,
                 "started_at": result.started_at,
                 "finished_at": result.finished_at,
-                "result": ingest.result_to_dict(result),
+                "result": result_payload,
                 "message": result.message,
             }
     except Exception as exc:  # noqa: BLE001
@@ -2868,22 +3037,241 @@ def create_private_fund_pdf_router(
             asset = by_id[asset_id]
             if asset.get("source_kind") not in {"memo", "equity_report"}:
                 continue
-            stored_path = asset.get("stored_path")
-            if not stored_path:
-                continue
-            path = Path(str(stored_path)).expanduser().resolve()
-            if not path.is_relative_to(dataset_root) or path.parent.name not in {
-                "memos",
-                "reports",
-            }:
-                raise HTTPException(status_code=400, detail="Unsafe asset path.")
-            if path.is_file():
-                path.unlink()
+            metadata = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+            artifact_paths = metadata.get("artifact_paths") if isinstance(metadata, dict) else None
+            raw_paths = artifact_paths if isinstance(artifact_paths, list) else [asset.get("stored_path")]
+            for raw_path in raw_paths:
+                if not raw_path:
+                    continue
+                path = Path(str(raw_path)).expanduser().resolve()
+                if not path.is_relative_to(dataset_root) or path.parent.name not in {
+                    "memos",
+                    "reports",
+                }:
+                    raise HTTPException(status_code=400, detail="Unsafe asset path.")
+                if path.is_file():
+                    path.unlink()
+            if asset.get("source_kind") == "memo" and asset.get("source_id"):
+                private_fund_tracking.delete_memo_version(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    str(asset["source_id"]),
+                )
 
         return {
             **_project_assets_payload(dataset_id),
             "deleted_asset_ids": requested,
         }
+
+    @router.get("/private-fund/projects/{dataset_id}/tracking")
+    def get_project_tracking_overview(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        private_fund_tracking.backfill_memo_artifacts(
+            _collection_db_path(dataset_id),
+            dataset_id,
+            _project_dataset_root(dataset_id) / "memos",
+        )
+        return private_fund_tracking.tracking_overview(
+            _collection_db_path(dataset_id), dataset_id
+        )
+
+    @router.post("/private-fund/projects/{dataset_id}/tracking/run", status_code=202)
+    def run_project_tracking(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "job": private_fund_tracking.enqueue_manual_scan(
+                _collection_db_path(dataset_id), dataset_id
+            )
+        }
+
+    @router.get("/private-fund/projects/{dataset_id}/tracking/jobs/{job_id}")
+    def get_project_tracking_job(dataset_id: str, job_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "job": private_fund_tracking.get_job(
+                    _collection_db_path(dataset_id), dataset_id, job_id
+                )
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Tracking job not found.") from exc
+
+    @router.get("/private-fund/projects/{dataset_id}/research-items")
+    def list_project_research_items(
+        dataset_id: str,
+        item_type: str | None = Query(default=None),
+        status: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "items": private_fund_tracking.list_items(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                item_type=item_type,
+                status=status,
+            )
+        }
+
+    @router.get("/private-fund/projects/{dataset_id}/research-items/{item_id}/timeline")
+    def get_project_research_item_timeline(
+        dataset_id: str, item_id: str
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_tracking.get_item_timeline(
+                _collection_db_path(dataset_id), dataset_id, item_id
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Research item not found.") from exc
+
+    @router.get("/private-fund/projects/{dataset_id}/memo-series")
+    def list_project_memo_series(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        private_fund_tracking.backfill_memo_artifacts(
+            _collection_db_path(dataset_id),
+            dataset_id,
+            _project_dataset_root(dataset_id) / "memos",
+        )
+        return {
+            "series": private_fund_tracking.list_memo_series(
+                _collection_db_path(dataset_id), dataset_id
+            ),
+            "versions": private_fund_tracking.list_memo_versions(
+                _collection_db_path(dataset_id), dataset_id
+            ),
+        }
+
+    @router.get("/private-fund/projects/{dataset_id}/memo-comparisons")
+    def compare_project_memo_versions(
+        dataset_id: str,
+        from_version: str = Query(..., min_length=1),
+        to_version: str = Query(..., min_length=1),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_tracking.compare_memo_versions(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                from_version,
+                to_version,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Memo version not found.") from exc
+
+    @router.get("/private-fund/projects/{dataset_id}/watch-rules")
+    def list_project_watch_rules(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "watch_rules": private_fund_tracking.list_watch_rules(
+                _collection_db_path(dataset_id), dataset_id
+            )
+        }
+
+    @router.post("/private-fund/projects/{dataset_id}/watch-rules")
+    def create_project_watch_rule(
+        dataset_id: str, request: CreateResearchWatchRuleRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "watch_rule": private_fund_tracking.upsert_watch_rule(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    name=request.name,
+                    target_type=request.target_type,
+                    target_item_id=request.target_item_id,
+                    query=request.query,
+                    min_priority=request.min_priority,
+                    frequency=request.frequency,
+                    active=request.active,
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.patch("/private-fund/projects/{dataset_id}/watch-rules/{rule_id}")
+    def update_project_watch_rule(
+        dataset_id: str,
+        rule_id: str,
+        request: UpdateResearchWatchRuleRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        current = next(
+            (
+                rule
+                for rule in private_fund_tracking.list_watch_rules(
+                    _collection_db_path(dataset_id), dataset_id
+                )
+                if rule["rule_id"] == rule_id
+            ),
+            None,
+        )
+        if current is None:
+            raise HTTPException(status_code=404, detail="Watch rule not found.")
+        try:
+            return {
+                "watch_rule": private_fund_tracking.upsert_watch_rule(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    rule_id=rule_id,
+                    name=request.name if request.name is not None else current["name"],
+                    target_type=(
+                        request.target_type
+                        if request.target_type is not None
+                        else current["target_type"]
+                    ),
+                    target_item_id=(
+                        request.target_item_id
+                        if request.target_item_id is not None
+                        else current.get("target_item_id") or ""
+                    ),
+                    query=request.query if request.query is not None else current["query"],
+                    min_priority=(
+                        request.min_priority
+                        if request.min_priority is not None
+                        else current["min_priority"]
+                    ),
+                    frequency=(
+                        request.frequency
+                        if request.frequency is not None
+                        else current["frequency"]
+                    ),
+                    active=request.active if request.active is not None else bool(current["active"]),
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/private-fund/projects/{dataset_id}/alerts")
+    def list_project_alerts(
+        dataset_id: str, status: str | None = Query(default=None)
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "alerts": private_fund_tracking.list_alerts(
+                _collection_db_path(dataset_id), dataset_id, status=status
+            )
+        }
+
+    @router.patch("/private-fund/projects/{dataset_id}/alerts/{alert_id}")
+    def update_project_alert(
+        dataset_id: str, alert_id: str, request: UpdateResearchAlertRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "alert": private_fund_tracking.update_alert_status(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    alert_id,
+                    status=request.status,
+                    snoozed_until=request.snoozed_until,
+                )
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Alert not found.") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/private-fund/projects/{dataset_id}/workflow/initialize")
     def initialize_project_workflow(dataset_id: str) -> dict[str, Any]:

@@ -1,15 +1,15 @@
 # 📝 当前 Skills 与 MCP Tools 清单
 
-更新时间：2026-07-13
+更新时间：📝 2026-07-14
 
 ## 📝 结论
 
 当前私募研究主 Agent 是 `claude-native-ui`。服务启动时会把以下能力打入同一个内置 Agent bundle：
 
 - 4 个私募研究 Skills。
-- 9 个私募业务 MCP tools。
+- 13 个私募业务 MCP tools。
 - 28 个 Omnigent 框架 MCP tools。
-- 合计 37 个通过 `omnigent` MCP Server 暴露的工具。
+- 合计 41 个通过 `omnigent` MCP Server 暴露的工具。
 
 用户在 Claude Code 中看到的完整名称通常是 `mcp__omnigent__<tool_name>`；代码、Agent spec 和本文表格使用不带前缀的规范名称 `<tool_name>`。
 
@@ -24,11 +24,12 @@ flowchart LR
     CMD --> AGENT[claude-native-ui bundle]
     AGENT --> SKILL[4 个 private-fund Skills]
     SKILL --> MCP[omnigent MCP Server]
-    MCP --> BIZ[9 个私募业务 tools]
+    MCP --> BIZ[13 个私募业务 tools]
     MCP --> SYS[28 个框架 tools]
     BIZ --> DATA[SQLite 数据集与 evidence IDs]
     BIZ --> FLOW[研究节点与版本工作流]
     BIZ --> OUTPUT[Memo / FinRobot 报告产物]
+    BIZ --> TRACK[历史版本 / 风险催化剂 / 提醒任务]
 ```
 
 MCP Server 使用本地 stdio 启动，Server 名称固定为 `omnigent`。本地 bridge 直接提供 OS 和私募数据集工具；活动回合内的其余工具通过 Omnigent tool relay 注入。重名工具由 relay 版本覆盖，因此调用仍进入统一事件流、权限和审计链路。
@@ -54,12 +55,12 @@ Skills 的共同约束：
 
 | Skill | 正常工作流调用的 MCP tools |
 |---|---|
-| `private-fund-memo` | `private_fund_dataset_status`、`private_fund_dataset_search`、`private_fund_source_detail`、可选 `private_fund_research_context`、`private_fund_dataset_memo` |
+| `private-fund-memo` | `private_fund_dataset_status`、`private_fund_dataset_search`、`private_fund_source_detail`、可选 `private_fund_research_context`、`private_fund_dataset_memo`、修订时 `private_fund_history_compare` |
 | `private-fund-node` | `private_fund_research_context`、`private_fund_dataset_search`、`private_fund_source_detail`、`private_fund_research_node_save` |
 | `private-fund-report` | `private_fund_research_context`、`private_fund_dataset_search`、`private_fund_source_detail`、`private_fund_equity_report_generate`、`private_fund_equity_report_status`、`private_fund_equity_report_get` |
 | `private-fund-report-update` | `sys_os_read`、`private_fund_research_context`、`private_fund_dataset_search`、`private_fund_source_detail`、`private_fund_dataset_memo` |
 
-## 📝 当前 9 个私募业务 MCP Tools
+## 📝 当前 13 个私募业务 MCP Tools
 
 | Tool | 用途 | 必填参数 | 重要可选参数/输出 |
 |---|---|---|---|
@@ -72,6 +73,10 @@ Skills 的共同约束：
 | `private_fund_equity_report_get` | 获取已完成报告 run 的完整 provenance package | 无 | `dataset_id`、`run_id`；返回请求快照、证据索引和完整报告包 |
 | `private_fund_research_context` | 读取用户当前勾选的研究节点和研究 lineage | 无 | `dataset_id`；同时返回未绑定 evidence source 的节点列表和 citation contract |
 | `private_fund_research_node_save` | 保存一个结构化研究节点及证据、父节点和富内容块 | `title`、`summary`、`content_markdown` | `node_type`、`parent_node_ids`、`evidence_ids`、`tags`、`confidence`、`content_blocks` |
+| `private_fund_history_compare` | 比较同系列两个 Memo 版本，或读取单个研究对象的完整版本时间线 | `dataset_id`、`mode` | Memo 模式传 `from_version_id/to_version_id`；item 模式传 `item_id` |
+| `private_fund_tracking_list` | 读取观点、假设、风险、催化剂、提醒、规则和异步任务 | `dataset_id` | 可用 `view`、`item_type`、`status` 过滤，返回持久化 tracking 状态 |
+| `private_fund_watch_upsert` | 新建或更新持续追踪规则 | `dataset_id`、`name`、`target_type` | `rule_id`、目标 item、优先级、频率、active 与 query 条件 |
+| `private_fund_alert_acknowledge` | 更新提醒生命周期 | `dataset_id`、`alert_id`、`status` | 支持 `new/acknowledged/dismissed/snoozed` 与 `snoozed_until` |
 
 ### 📝 `private_fund_research_node_save` 支持的富内容块
 
@@ -83,9 +88,9 @@ Skills 的共同约束：
 
 每个包含事实或数字的 block 都应携带直接支持它的 `evidence_ids`。
 
-## 📝 当前完整 37 个 MCP Tools
+## 📝 当前完整 41 个 MCP Tools
 
-除上述 9 个私募业务 tools 外，`claude-native-ui` 根据当前 spec 自动注册以下 28 个框架 tools：
+除上述 13 个私募业务 tools 外，`claude-native-ui` 根据当前 spec 自动注册以下 28 个框架 tools：
 
 | 分组 | 数量 | 当前注册的 tools | 作用 |
 |---|---:|---|---|
@@ -98,7 +103,7 @@ Skills 的共同约束：
 | 评论 | 2 | `list_comments`、`update_comment` | 读取和更新当前会话的 review comments |
 | Policy | 2 | `sys_add_policy`、`sys_policy_registry` | 浏览可用策略并给当前会话增加策略；新增策略仍受 ASK 审批保护 |
 
-合计：`9 + 1 + 7 + 3 + 4 + 5 + 4 + 2 + 2 = 37`。
+合计：`13 + 1 + 7 + 3 + 4 + 5 + 4 + 2 + 2 = 41`。
 
 ## 📝 当前未注册或未启用的工具面
 
@@ -127,6 +132,8 @@ Skills 的共同约束：
 - `private_fund_dataset_memo` 是聚焦 Memo 产物工具。
 - `private_fund_equity_report_generate` 是 FinRobot 对齐专业研报产物工具。
 - `private_fund_equity_report_status/get` 是报告 run 状态与 provenance 读取工具，不生成新报告。
+- `private_fund_history_compare` 只读取不可变版本和差异，不通过“新版未提及”推断旧观点失效。
+- `private_fund_tracking_list/watch_upsert/alert_acknowledge` 读写持久化 tracking 台账，不依赖交互 Agent 会话常驻。
 
 ## 📝 代码事实来源
 

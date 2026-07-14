@@ -5,6 +5,7 @@ import {
   getPrivateFundAssets,
   getPrivateFundPipelineJob,
   getPrivateFundProject,
+  getPrivateFundTrackingOverview,
   getPrivateFundWorkflow,
   listPrivateFundProjects,
 } from "@/lib/privateFundApi";
@@ -66,6 +67,18 @@ export function usePrivateFundAssets(datasetId: string | null | undefined) {
     queryFn: () => getPrivateFundAssets(datasetId!),
     enabled: Boolean(datasetId),
     refetchInterval: 2500,
+  });
+}
+
+export function usePrivateFundTracking(datasetId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["private-fund-tracking", datasetId],
+    queryFn: () => getPrivateFundTrackingOverview(datasetId!),
+    enabled: Boolean(datasetId),
+    refetchInterval: (query) =>
+      query.state.data?.jobs.some((job) => ["queued", "running"].includes(job.status))
+        ? 2000
+        : 30_000,
   });
 }
 

@@ -461,7 +461,7 @@ describe("Sidebar private fund corpus attachments", () => {
     renderSidebar();
 
     const alphaCheckbox = screen.getByRole("checkbox", {
-      name: "选择资料来源 alpha.pdf",
+      name: "选择资料来源 alpha.pdf 用于当前提问",
     }) as HTMLInputElement;
     expect(alphaCheckbox.closest("button")).toBeNull();
 
@@ -482,7 +482,7 @@ describe("Sidebar private fund corpus attachments", () => {
     renderSidebar();
 
     const alphaCheckbox = screen.getByRole("checkbox", {
-      name: "选择资料来源 alpha.pdf",
+      name: "选择资料来源 alpha.pdf 用于当前提问",
     }) as HTMLInputElement;
     expect(alphaCheckbox.checked).toBe(true);
 
@@ -503,7 +503,7 @@ describe("Sidebar private fund corpus attachments", () => {
     renderSidebar();
 
     const projectCheckbox = screen.getByRole("checkbox", {
-      name: "全选Acme Solar的资料来源",
+      name: "选择Acme Solar的全部资料用于当前提问",
     }) as HTMLInputElement;
     expect(projectCheckbox.closest("button")).toBeNull();
     expect(projectCheckbox).toHaveAttribute("aria-checked", "mixed");
@@ -525,16 +525,22 @@ describe("Sidebar private fund corpus attachments", () => {
     expect(projectCheckbox.checked).toBe(false);
   });
 
-  it("selects every source and confirms bulk deletion", async () => {
+  it("requires a separate management selection before deleting sources", async () => {
     seedPrivateFundCorpus();
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "全选Acme Solar的资料来源" }));
-    expect(screen.getAllByRole("checkbox", { name: "选择资料来源 alpha.pdf" })).toHaveLength(1);
-    expect(screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "选择资料来源 beta.pdf" })).toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: "删除已选资料来源 2 项" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择Acme Solar的全部资料用于当前提问" }));
+    expect(
+      screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于当前提问" }),
+    ).toBeChecked();
+    expect(screen.queryByRole("button", { name: /删除管理选择/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "管理" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择Acme Solar的全部资料用于管理" }));
+    expect(screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于管理" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "选择资料来源 beta.pdf 用于管理" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "删除管理选择 2 份资料来源" }));
     expect(screen.getByRole("heading", { name: "删除 2 份资料来源？" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 

@@ -45,6 +45,23 @@ except ImportError:
         adapt_document,
     )
 
+try:
+    from .document_classifier import (  # type: ignore
+        CLASSIFIER_VERSION,
+        ClassificationChatClient,
+        DocumentClassification,
+        build_document_preview,
+        classify_document,
+    )
+except ImportError:
+    from document_classifier import (  # type: ignore
+        CLASSIFIER_VERSION,
+        ClassificationChatClient,
+        DocumentClassification,
+        build_document_preview,
+        classify_document,
+    )
+
 CORE_EXTENSIONS = {".pdf", ".xlsx", ".xlsm"}
 SUPPORTED_EXTENSIONS = CORE_EXTENSIONS | set(ADAPTER_EXTENSIONS)
 DEFAULT_MAX_PDF_CHARS = 2200
@@ -174,6 +191,14 @@ class DocumentIngestResult:
     parser_version: str = ""
     parser_metadata: dict[str, Any] = field(default_factory=dict)
     lifecycle_state: str = "active"
+    doc_type: str = "unknown"
+    doc_subtype: str = ""
+    doc_type_confidence: float = 0.0
+    classification_status: str = "needs_review"
+    classification_method: str = ""
+    company_name: str = ""
+    company_ticker: str = ""
+    company_confidence: float = 0.0
 
 
 @dataclass
@@ -257,10 +282,19 @@ def ensure_collection_schema(conn: sqlite3.Connection) -> None:
             stored_path TEXT NOT NULL,
             file_type TEXT NOT NULL,
             doc_type TEXT,
+            doc_subtype TEXT,
+            doc_type_confidence REAL NOT NULL DEFAULT 0,
+            classification_status TEXT NOT NULL DEFAULT 'needs_review',
+            classification_method TEXT,
+            classification_taxonomy_version TEXT,
+            classifier_version TEXT,
+            classification_metadata_json TEXT,
             source_type TEXT,
             source_name TEXT,
             company_name TEXT,
             company_ticker TEXT,
+            company_confidence REAL NOT NULL DEFAULT 0,
+            company_detection_method TEXT,
             document_date TEXT,
             checksum TEXT NOT NULL,
             file_size INTEGER NOT NULL,
@@ -632,6 +666,15 @@ def _ensure_collection_schema_migrations(conn: sqlite3.Connection) -> None:
             "parser_name": "TEXT",
             "parser_version": "TEXT",
             "parser_metadata_json": "TEXT",
+            "doc_subtype": "TEXT",
+            "doc_type_confidence": "REAL NOT NULL DEFAULT 0",
+            "classification_status": "TEXT NOT NULL DEFAULT 'needs_review'",
+            "classification_method": "TEXT",
+            "classification_taxonomy_version": "TEXT",
+            "classifier_version": "TEXT",
+            "classification_metadata_json": "TEXT",
+            "company_confidence": "REAL NOT NULL DEFAULT 0",
+            "company_detection_method": "TEXT",
         },
     )
     _ensure_columns(
@@ -785,9 +828,7 @@ def _register_document(
     stored_path: Path,
     original_filename: str,
     checksum: str,
-    company_name: str,
-    company_ticker: str,
-    doc_type: str,
+    classification: DocumentClassification,
     source_root: str,
     source_relpath: str,
     logical_doc_id: str,
@@ -803,47 +844,98 @@ def _register_document(
         INSERT INTO documents (
             doc_id, dataset_id, logical_doc_id, version_no, supersedes_doc_id,
             is_current, lifecycle_state, title, original_filename, source_root, source_relpath,
-            stored_path, file_type, doc_type, source_type, source_name, company_name, company_ticker,
-            document_date, checksum, file_size, status, chunk_count, error_message,
+            stored_path, file_type, doc_type, doc_subtype, doc_type_confidence,
+            classification_status, classification_method, classification_taxonomy_version,
+            classifier_version, classification_metadata_json,
+            source_type, source_name, company_name, company_ticker, company_confidence,
+            company_detection_method, document_date, checksum, file_size, status, chunk_count, error_message,
             metadata_json, parser_name, parser_version, parser_metadata_json,
             created_at, updated_at, deleted_at
-        ) VALUES (?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)
+        ) VALUES (
+            :doc_id, :dataset_id, :logical_doc_id, :version_no, :supersedes_doc_id,
+            0, 'pending', :title, :original_filename, :source_root, :source_relpath,
+            :stored_path, :file_type, :doc_type, :doc_subtype, :doc_type_confidence,
+            :classification_status, :classification_method, :classification_taxonomy_version,
+            :classifier_version, :classification_metadata_json,
+            'local_directory', :source_name, :company_name, :company_ticker, :company_confidence,
+            :company_detection_method, :document_date, :checksum, :file_size, 'parsing', 0, NULL,
+            :metadata_json, NULL, NULL, NULL, :created_at, :updated_at, NULL
+        )
         """,
-        (
-            doc_id,
-            dataset_id,
-            logical_doc_id,
-            version_no,
-            supersedes_doc_id,
-            Path(original_filename).stem,
-            original_filename,
-            source_root,
-            _normalized_source_relpath(source_relpath),
-            str(stored_path),
-            stored_path.suffix.lower().lstrip("."),
-            doc_type,
-            "local_directory",
-            stored_path.name,
-            company_name,
-            company_ticker,
-            _date_from_filename(original_filename),
-            checksum,
-            stored_path.stat().st_size,
-            "parsing",
-            0,
-            None,
-            dumps_json(
+        {
+            "doc_id": doc_id,
+            "dataset_id": dataset_id,
+            "logical_doc_id": logical_doc_id,
+            "version_no": version_no,
+            "supersedes_doc_id": supersedes_doc_id,
+            "title": Path(original_filename).stem,
+            "original_filename": original_filename,
+            "source_root": source_root,
+            "source_relpath": _normalized_source_relpath(source_relpath),
+            "stored_path": str(stored_path),
+            "file_type": stored_path.suffix.lower().lstrip("."),
+            "doc_type": classification.doc_type,
+            "doc_subtype": classification.doc_subtype or None,
+            "doc_type_confidence": classification.confidence,
+            "classification_status": classification.classification_status,
+            "classification_method": classification.method,
+            "classification_taxonomy_version": classification.taxonomy_version,
+            "classifier_version": classification.classifier_version,
+            "classification_metadata_json": dumps_json(classification.to_metadata()),
+            "source_name": stored_path.name,
+            "company_name": classification.company_name,
+            "company_ticker": classification.company_ticker,
+            "company_confidence": classification.company_confidence,
+            "company_detection_method": classification.company_method,
+            "document_date": _date_from_filename(original_filename),
+            "checksum": checksum,
+            "file_size": stored_path.stat().st_size,
+            "metadata_json": dumps_json(
                 {
                     "source": "private_fund_directory_ingest",
                     "source_root": source_root,
                     "source_relpath": _normalized_source_relpath(source_relpath),
                 }
             ),
-            now,
-            now,
-        ),
+            "created_at": now,
+            "updated_at": now,
+        },
     )
     return doc_id
+
+
+def _update_document_classification(
+    conn: sqlite3.Connection,
+    doc_id: str,
+    classification: DocumentClassification,
+) -> None:
+    conn.execute(
+        """
+        UPDATE documents
+        SET doc_type = ?, doc_subtype = ?, doc_type_confidence = ?,
+            classification_status = ?, classification_method = ?,
+            classification_taxonomy_version = ?, classifier_version = ?,
+            classification_metadata_json = ?, company_name = ?, company_ticker = ?,
+            company_confidence = ?, company_detection_method = ?, updated_at = ?
+        WHERE doc_id = ?
+        """,
+        (
+            classification.doc_type,
+            classification.doc_subtype or None,
+            classification.confidence,
+            classification.classification_status,
+            classification.method,
+            classification.taxonomy_version,
+            classification.classifier_version,
+            dumps_json(classification.to_metadata()),
+            classification.company_name,
+            classification.company_ticker,
+            classification.company_confidence,
+            classification.company_method,
+            now_iso(),
+            doc_id,
+        ),
+    )
 
 
 def _next_document_version(conn: sqlite3.Connection, dataset_id: str, logical_doc_id: str) -> int:
@@ -949,6 +1041,14 @@ def _document_result_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Doc
         parser_version=str(row["parser_version"] or ""),
         parser_metadata=parser_metadata,
         lifecycle_state=str(row["lifecycle_state"] or "active"),
+        doc_type=str(row["doc_type"] or "unknown"),
+        doc_subtype=str(row["doc_subtype"] or ""),
+        doc_type_confidence=float(row["doc_type_confidence"] or 0),
+        classification_status=str(row["classification_status"] or "needs_review"),
+        classification_method=str(row["classification_method"] or ""),
+        company_name=str(row["company_name"] or ""),
+        company_ticker=str(row["company_ticker"] or ""),
+        company_confidence=float(row["company_confidence"] or 0),
     )
 
 
@@ -2184,20 +2284,44 @@ def ingest_adapted_document(
 
 
 def _doc_type_for_path(path: Path) -> str:
-    name = normalize_text(path.name).lower()
-    if path.suffix.lower() in {".xlsx", ".xlsm"}:
-        return "valuation_model"
-    if path.suffix.lower() == ".csv":
-        return "structured_table"
-    if path.suffix.lower() == ".pptx":
-        return "research_presentation"
-    if path.suffix.lower() == ".docx":
-        return "research_document"
-    if "交流" in name or "transcript" in name or "电话会" in name:
-        return "meeting_transcript"
-    if "qa" in name or "q&a" in name or "问答" in name:
-        return "research_qa_note"
-    return "research_note" if path.suffix.lower() in {".pdf", ".md", ".markdown", ".txt"} else "document"
+    """Compatibility wrapper returning only the controlled primary type."""
+
+    return classify_document(build_document_preview(path)).doc_type
+
+
+def _fallback_classification(
+    *,
+    company_name: str,
+    company_ticker: str,
+    error: str = "",
+) -> DocumentClassification:
+    classification = DocumentClassification(
+        doc_type="unknown",
+        confidence=0.0,
+        company_name=company_name,
+        company_ticker=company_ticker,
+        company_confidence=0.55 if company_name else 0.0,
+        classification_status="needs_review",
+        method="classifier_fallback",
+        company_method="inherited_project" if company_name else "not_detected",
+        evidence=["文档分类器未能完成，保留为 unknown 等待复核"],
+    )
+    classification.llm_error = error[:500]
+    return classification
+
+
+def _apply_classification_result(
+    result: DocumentIngestResult,
+    classification: DocumentClassification,
+) -> None:
+    result.doc_type = classification.doc_type
+    result.doc_subtype = classification.doc_subtype
+    result.doc_type_confidence = classification.confidence
+    result.classification_status = classification.classification_status
+    result.classification_method = classification.method
+    result.company_name = classification.company_name
+    result.company_ticker = classification.company_ticker
+    result.company_confidence = classification.company_confidence
 
 
 def _update_document_status(
@@ -2364,6 +2488,7 @@ def ingest_directory(
     recursive: bool = True,
     reset: bool = False,
     job_id: Optional[str] = None,
+    classification_llm: ClassificationChatClient | None = None,
 ) -> IngestResult:
     source_dir = Path(directory_path).expanduser().resolve()
     if not source_dir.is_dir():
@@ -2550,6 +2675,25 @@ def ingest_directory(
                     and str(current["status"]) in {"indexed", "needs_ocr"}
                     and current_stored_file_is_valid
                 ):
+                    if str(current["classifier_version"] or "") != CLASSIFIER_VERSION:
+                        try:
+                            refreshed_classification = classify_document(
+                                build_document_preview(current_stored_path),
+                                expected_company=company_name,
+                                expected_ticker=company_ticker,
+                                llm_client=classification_llm,
+                            )
+                        except Exception as classification_exc:  # noqa: BLE001
+                            refreshed_classification = _fallback_classification(
+                                company_name=company_name,
+                                company_ticker=company_ticker,
+                                error=str(classification_exc),
+                            )
+                        _update_document_classification(
+                            conn,
+                            str(current["doc_id"]),
+                            refreshed_classification,
+                        )
                     conn.execute(
                         """
                         UPDATE documents
@@ -2558,6 +2702,7 @@ def ingest_directory(
                         """,
                         (str(source_dir), source_relpath, now_iso(), current["doc_id"]),
                     )
+                    current = _current_document(conn, dataset_id, logical_id) or current
                     reused_result = _document_result_from_row(conn, current)
                     reused_result.filename = source_path.name
                     result.documents.append(reused_result)
@@ -2570,10 +2715,27 @@ def ingest_directory(
                 supersedes_doc_id = str(latest["doc_id"]) if latest is not None else None
                 doc_id = ""
                 savepoint_open = False
+                classification = _fallback_classification(
+                    company_name=company_name,
+                    company_ticker=company_ticker,
+                )
                 try:
                     stored_path = _copy_to_raw(source_path, raw_dir)
                     checksum = sha256_file(stored_path)
-                    doc_type = _doc_type_for_path(source_path)
+                    try:
+                        preview = build_document_preview(stored_path)
+                        classification = classify_document(
+                            preview,
+                            expected_company=company_name,
+                            expected_ticker=company_ticker,
+                            llm_client=classification_llm,
+                        )
+                    except Exception as classification_exc:  # noqa: BLE001
+                        classification = _fallback_classification(
+                            company_name=company_name,
+                            company_ticker=company_ticker,
+                            error=str(classification_exc),
+                        )
                     conn.execute("SAVEPOINT ingest_document")
                     savepoint_open = True
                     doc_id = _register_document(
@@ -2582,9 +2744,7 @@ def ingest_directory(
                         stored_path=stored_path,
                         original_filename=source_path.name,
                         checksum=checksum,
-                        company_name=company_name,
-                        company_ticker=company_ticker,
-                        doc_type=doc_type,
+                        classification=classification,
                         source_root=str(source_dir),
                         source_relpath=source_relpath,
                         logical_doc_id=logical_id,
@@ -2592,7 +2752,19 @@ def ingest_directory(
                         supersedes_doc_id=supersedes_doc_id,
                     )
                     suffix = stored_path.suffix.lower()
-                    if suffix == ".pdf":
+                    if classification.classification_status == "company_conflict":
+                        doc_result = DocumentIngestResult(
+                            doc_id=doc_id,
+                            filename=stored_path.name,
+                            file_type=suffix.lstrip("."),
+                            status="classification_review_required",
+                            error_message=(
+                                "Company classification conflicts with the active project; "
+                                "the document was preserved but not indexed. "
+                                + "; ".join(classification.evidence[-3:])
+                            ),
+                        )
+                    elif suffix == ".pdf":
                         doc_result = ingest_pdf(
                             conn, dataset_id=dataset_id, doc_id=doc_id, path=stored_path
                         )
@@ -2609,6 +2781,7 @@ def ingest_directory(
                     doc_result.logical_doc_id = logical_id
                     doc_result.version_no = version_no
                     doc_result.supersedes_doc_id = supersedes_doc_id
+                    _apply_classification_result(doc_result, classification)
                     _update_document_status(
                         conn,
                         doc_id,
@@ -2647,9 +2820,7 @@ def ingest_directory(
                                 stored_path=stored_path,
                                 original_filename=source_path.name,
                                 checksum=checksum,
-                                company_name=company_name,
-                                company_ticker=company_ticker,
-                                doc_type=_doc_type_for_path(source_path),
+                                classification=classification,
                                 source_root=str(source_dir),
                                 source_relpath=source_relpath,
                                 logical_doc_id=logical_id,
@@ -2695,6 +2866,14 @@ def ingest_directory(
                             lifecycle_state=(
                                 "failed_attempt" if current is not None else "active"
                             ),
+                            doc_type=classification.doc_type,
+                            doc_subtype=classification.doc_subtype,
+                            doc_type_confidence=classification.confidence,
+                            classification_status=classification.classification_status,
+                            classification_method=classification.method,
+                            company_name=classification.company_name,
+                            company_ticker=classification.company_ticker,
+                            company_confidence=classification.company_confidence,
                         )
                     )
                 conn.commit()
@@ -2733,7 +2912,10 @@ def ingest_directory(
             _sync_index_registry(conn, dataset_id, active_doc_ids, int(total_chunks or 0))
             failures = [doc for doc in result.documents if doc.status == "failed"]
             warnings = [
-                doc for doc in result.documents if doc.status in {"unsupported", "needs_ocr"}
+                doc
+                for doc in result.documents
+                if doc.status
+                in {"unsupported", "needs_ocr", "classification_review_required"}
             ]
             result.warning_count = len(warnings)
             if not files or failures:
@@ -2746,6 +2928,7 @@ def ingest_directory(
             result.message = (
                 f"Processed {len(files)} supported files: {len(failures)} failed, "
                 f"{sum(doc.status == 'needs_ocr' for doc in warnings)} need OCR, "
+                f"{sum(doc.status == 'classification_review_required' for doc in warnings)} need company review, "
                 f"{len(unsupported_files)} unsupported, {len(removed_doc_ids)} removed."
             )
             returncode = 1 if result.status == "failed" else (2 if warnings else 0)

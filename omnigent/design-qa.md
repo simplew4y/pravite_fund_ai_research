@@ -1,3 +1,54 @@
+# 📝 Design QA — Honen 风格前端视觉重构（2026-07-14）
+
+> 📝 本轮在不改变现有信息架构和业务布局的前提下，重构配色、组件表面、交互动效与不合理排版。
+
+## 📝 最终结论
+
+- 未发现未解决的 P0、P1 或 P2 视觉、交互、可读性问题。
+- P3：Honen 参考图使用“项目导航 / 研究正文 / 研究上下文”三段式信息架构；当前产品保留用户要求的“项目侧栏 / 对话工作区 / 资产面板”布局，因此只对齐视觉语言，不做逐像素布局克隆。
+- P3：当前真实会话的长提示文本和空资产状态使首屏内容密度与参考样例不同；这属于数据状态差异，组件层级、边界、焦点和节奏已完成对齐。
+
+## 📝 视觉真值与证据
+
+- 参考视觉：`/Users/feiyuzi/.codex/generated_images/019f5cd0-2222-74b0-8481-24cae62bef49/exec-8cf74300-f8e0-4c07-a437-a5ed61130e35.png`
+- 标准化参考图：`/Users/feiyuzi/project/pravite_fund_ai_research/omnigent/design-qa-artifacts/honen-style-target-1280x720.png`
+- 浏览器实现截图：`/Users/feiyuzi/project/pravite_fund_ai_research/omnigent/design-qa-artifacts/honen-restyle-final.png`
+- 全视图并排对照：`/Users/feiyuzi/project/pravite_fund_ai_research/omnigent/design-qa-artifacts/honen-restyle-comparison.png`
+- 输入器与资产区重点对照：`/Users/feiyuzi/project/pravite_fund_ai_research/omnigent/design-qa-artifacts/honen-restyle-comparison-focus.png`
+- 暗色主题证据：`/tmp/omnigent-dark-after-final.png`
+- 视口：1280 × 720，DPR 1；状态为“阳光电源”真实项目会话，研究标签激活，右侧资产面板为空状态。
+
+## 📝 对照与修正历史
+
+1. 初始实现仍使用冷灰 / 钴蓝应用外观，标签、按钮、输入器和资产卡片层级偏重。
+   - 修正：统一为暖白画布、暖灰边框与森林绿主色；移除装饰性渐变，降低阴影和圆角强度，标签改为细下划线激活态。
+2. 1024–1279 px 区间会过早进入三栏布局，聊天区被压缩；侧栏项目元信息和长路径也存在溢出风险。
+   - 修正：主工作区分栏断点由 `lg` 调整为 `xl`，项目元信息改为纵向节奏，长路径使用自然断行，并扩大关键小按钮触控面积。
+3. 输入器和资产筛选缺少足够的交互反馈，项目首屏与内嵌 HTML 资产仍沿用旧冷色语义。
+   - 修正：补齐 `focus-visible`、hover、active、轻微位移与柔和阴影；同步项目首屏、资产库和 HTML iframe 的亮暗主题语义变量。
+4. 最终并排对照确认：暖白背景、森林绿主操作、克制卡片、编辑器边界与留白节奏已形成一致视觉语言；未发现新的 P0、P1 或 P2 差异。
+
+## 📝 关键交互与浏览器检查
+
+- 研究 / 资料标签可正常切换，返回研究标签后会话与输入器状态保持。
+- 输入器聚焦时使用绿色边界、柔和阴影和 1 px 上移动效，未引发布局跳动。
+- 亮色与暗色主题均完成真实页面检查；暗色侧栏主按钮文字对比度已修正。
+- 1280 px 视口无页面级横向溢出，无 Vite 错误覆盖层。
+- 侧栏搜索、项目卡、资料筛选、空状态与提示建议保留原业务行为。
+
+## 📝 验证
+
+- TypeScript `type-check` 通过。
+- 定向测试通过：6 个测试文件，162 / 162 个测试通过。
+- 本轮 8 个相关文件通过 Prettier 检查。
+- 相关 TSX 文件通过 oxlint，无 error；15 条 warning 均为既有代码告警。
+- 生产构建通过，静态资源已写入 `omnigent/server/static/web-ui`。
+- 全仓 lint 与 `NewChatDialog` 历史测试债务不属于本轮视觉改造，继续在项目待办中单独跟踪。
+
+final result: passed
+
+---
+
 # Design QA — Private Fund Research Graph Workbench
 
 > 📝 2026-07-13: Recorded the final private-fund workbench visual and interaction QA state.

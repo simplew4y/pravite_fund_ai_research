@@ -218,8 +218,15 @@ describe("buildAgentBundle", () => {
     expect(yaml).toContain("    - private_fund_dataset_search");
     expect(yaml).toContain("    - private_fund_source_detail");
     expect(yaml).toContain("    - private_fund_dataset_memo");
+    expect(yaml).toContain("    - private_fund_equity_report_generate");
+    expect(yaml).toContain("    - private_fund_equity_report_status");
+    expect(yaml).toContain("    - private_fund_equity_report_get");
     expect(yaml).toContain("    - private_fund_research_context");
     expect(yaml).toContain("    - private_fund_research_node_save");
+    expect(yaml).toContain("    - private_fund_history_compare");
+    expect(yaml).toContain("    - private_fund_tracking_list");
+    expect(yaml).toContain("    - private_fund_watch_upsert");
+    expect(yaml).toContain("    - private_fund_alert_acknowledge");
   });
 
   it("omits API auth when no key is provided", async () => {

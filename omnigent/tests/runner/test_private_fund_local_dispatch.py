@@ -60,6 +60,10 @@ def test_private_fund_tools_are_runner_local_and_native_relayable() -> None:
         "private_fund_equity_report_get",
         "private_fund_research_context",
         "private_fund_research_node_save",
+        "private_fund_history_compare",
+        "private_fund_tracking_list",
+        "private_fund_watch_upsert",
+        "private_fund_alert_acknowledge",
     ):
         assert name in _ALL_LOCAL_TOOLS
         assert should_dispatch_locally(name) is True

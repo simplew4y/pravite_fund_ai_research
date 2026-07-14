@@ -79,6 +79,14 @@ export interface PrivateFundFile {
   chunkCount: number;
   errorMessage?: string | null;
   storedPath?: string | null;
+  docType?: string;
+  docSubtype?: string | null;
+  docTypeConfidence?: number;
+  classificationStatus?: "pending" | "accepted" | "needs_review" | "company_conflict" | string;
+  classificationMethod?: string | null;
+  companyName?: string | null;
+  companyTicker?: string | null;
+  companyConfidence?: number;
 }
 
 export type PrivateFundAssetType =
@@ -237,6 +245,153 @@ export interface PrivateFundResearchReportVersion {
   createdAt: string;
 }
 
+export interface PrivateFundTrackingJob {
+  jobId: string;
+  jobType: string;
+  sourceId: string;
+  status: string;
+  attemptCount: number;
+  maxAttempts: number;
+  createdAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  lastError?: string | null;
+  result?: Record<string, unknown> | null;
+}
+
+export interface PrivateFundResearchItemVersion {
+  itemVersionId: string;
+  versionNo: number;
+  asOfDate?: string | null;
+  sourcePublishedAt?: string | null;
+  observedAt: string;
+  sourceType: string;
+  sourceId: string;
+  content: string;
+  stance: string;
+  state: string;
+  valueNumeric?: number | null;
+  valueText?: string | null;
+  unit?: string | null;
+  period?: string | null;
+  scenario?: string | null;
+  probability?: string | null;
+  impact: string;
+  confidence: number;
+  expectedStart?: string | null;
+  expectedEnd?: string | null;
+  evidenceIds: string[];
+}
+
+export interface PrivateFundResearchItem {
+  itemId: string;
+  itemType: string;
+  canonicalKey: string;
+  title: string;
+  status: string;
+  currentVersionNo: number;
+  currentVersionId?: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  currentVersion?: PrivateFundResearchItemVersion | null;
+}
+
+export interface PrivateFundResearchAlert {
+  alertId: string;
+  ruleId?: string | null;
+  itemId: string;
+  changeEventId?: string | null;
+  alertType: string;
+  priority: string;
+  title: string;
+  summary: string;
+  whyItMatters: string;
+  evidenceIds: string[];
+  status: string;
+  dueAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PrivateFundWatchRule {
+  ruleId: string;
+  name: string;
+  targetType: string;
+  targetItemId?: string | null;
+  query: Record<string, unknown>;
+  minPriority: string;
+  frequency: string;
+  active: boolean;
+}
+
+export interface PrivateFundMemoSeries {
+  seriesId: string;
+  topic: string;
+  title: string;
+  currentVersionNo: number;
+  versionCount: number;
+  currentMemoVersionId?: string | null;
+  updatedAt: string;
+}
+
+export interface PrivateFundMemoVersion {
+  memoVersionId: string;
+  seriesId: string;
+  versionNo: number;
+  revisionOfVersionId?: string | null;
+  asOfDate: string;
+  status: string;
+  topic: string;
+  seriesTitle: string;
+  markdownPath?: string | null;
+  htmlPath?: string | null;
+  pdfPath?: string | null;
+  createdAt: string;
+  sections: Array<{
+    sectionId: string;
+    sectionKey: string;
+    title: string;
+    content: string;
+    evidenceIds: string[];
+    needsReview: boolean;
+  }>;
+}
+
+export interface PrivateFundMemoComparison {
+  fromVersion: PrivateFundMemoVersion;
+  toVersion: PrivateFundMemoVersion;
+  sectionChanges: Array<{
+    sectionKey: string;
+    title: string;
+    changeType: string;
+    similarity: number;
+    oldContent: string;
+    newContent: string;
+    oldEvidenceIds: string[];
+    newEvidenceIds: string[];
+  }>;
+  itemChanges: Array<Record<string, unknown>>;
+}
+
+export interface PrivateFundTrackingOverview {
+  datasetId: string;
+  counts: Record<string, number>;
+  unreadAlertCount: number;
+  items: PrivateFundResearchItem[];
+  alerts: PrivateFundResearchAlert[];
+  watchRules: PrivateFundWatchRule[];
+  jobs: PrivateFundTrackingJob[];
+  memoSeries: PrivateFundMemoSeries[];
+  memoVersions: PrivateFundMemoVersion[];
+}
+
+export interface PrivateFundResearchItemTimeline {
+  item: PrivateFundResearchItem;
+  versions: PrivateFundResearchItemVersion[];
+  changes: Array<Record<string, unknown>>;
+  observations: Array<Record<string, unknown>>;
+}
+
 interface PipelineJobWire {
   job_id: string;
   dataset_id?: string | null;
@@ -299,6 +454,14 @@ interface FileWire {
   chunk_count?: number | null;
   error_message?: string | null;
   stored_path?: string | null;
+  doc_type?: string | null;
+  doc_subtype?: string | null;
+  doc_type_confidence?: number | null;
+  classification_status?: string | null;
+  classification_method?: string | null;
+  company_name?: string | null;
+  company_ticker?: string | null;
+  company_confidence?: number | null;
 }
 
 interface AssetWire {
@@ -386,6 +549,132 @@ interface ResearchWorkflowPayloadWire {
   context_node_ids?: string[];
 }
 
+interface ResearchItemVersionWire {
+  item_version_id: string;
+  version_no: number;
+  as_of_date?: string | null;
+  source_published_at?: string | null;
+  observed_at: string;
+  source_type: string;
+  source_id: string;
+  content: string;
+  stance: string;
+  state: string;
+  value_numeric?: number | null;
+  value_text?: string | null;
+  unit?: string | null;
+  period?: string | null;
+  scenario?: string | null;
+  probability?: string | null;
+  impact: string;
+  confidence: number;
+  expected_start?: string | null;
+  expected_end?: string | null;
+  evidence_ids?: string[];
+}
+
+interface ResearchItemWire {
+  item_id: string;
+  item_type: string;
+  canonical_key: string;
+  title: string;
+  status: string;
+  current_version_no: number;
+  current_version_id?: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  current_version?: ResearchItemVersionWire | null;
+}
+
+interface ResearchAlertWire {
+  alert_id: string;
+  rule_id?: string | null;
+  item_id: string;
+  change_event_id?: string | null;
+  alert_type: string;
+  priority: string;
+  title: string;
+  summary: string;
+  why_it_matters?: string | null;
+  evidence_ids?: string[];
+  status: string;
+  due_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface WatchRuleWire {
+  rule_id: string;
+  name: string;
+  target_type: string;
+  target_item_id?: string | null;
+  query?: Record<string, unknown>;
+  min_priority: string;
+  frequency: string;
+  active: boolean | number;
+}
+
+interface TrackingJobWire {
+  job_id: string;
+  job_type: string;
+  source_id: string;
+  status: string;
+  attempt_count: number;
+  max_attempts: number;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  last_error?: string | null;
+  result?: Record<string, unknown> | null;
+}
+
+interface MemoSectionWire {
+  section_id: string;
+  section_key: string;
+  title: string;
+  content: string;
+  evidence_ids?: string[];
+  needs_review: boolean | number;
+}
+
+interface MemoVersionWire {
+  memo_version_id: string;
+  series_id: string;
+  version_no: number;
+  revision_of_version_id?: string | null;
+  as_of_date: string;
+  status: string;
+  topic: string;
+  series_title: string;
+  markdown_path?: string | null;
+  html_path?: string | null;
+  pdf_path?: string | null;
+  created_at: string;
+  sections?: MemoSectionWire[];
+}
+
+interface MemoSeriesWire {
+  series_id: string;
+  topic: string;
+  title: string;
+  current_version_no: number;
+  version_count: number;
+  current_memo_version_id?: string | null;
+  updated_at: string;
+}
+
+interface TrackingOverviewWire {
+  dataset_id: string;
+  counts?: Record<string, number>;
+  unread_alert_count?: number;
+  items?: ResearchItemWire[];
+  alerts?: ResearchAlertWire[];
+  watch_rules?: WatchRuleWire[];
+  jobs?: TrackingJobWire[];
+  memo_series?: MemoSeriesWire[];
+  memo_versions?: MemoVersionWire[];
+}
+
 function jobFromWire(job: PipelineJobWire | null | undefined): PrivateFundPipelineJob | null {
   if (!job) return null;
   return {
@@ -459,6 +748,14 @@ function fileFromWire(file: FileWire): PrivateFundFile {
     chunkCount: file.chunk_count ?? 0,
     errorMessage: file.error_message ?? null,
     storedPath: file.stored_path ?? null,
+    docType: file.doc_type ?? "unknown",
+    docSubtype: file.doc_subtype ?? null,
+    docTypeConfidence: file.doc_type_confidence ?? 0,
+    classificationStatus: file.classification_status ?? "pending",
+    classificationMethod: file.classification_method ?? null,
+    companyName: file.company_name ?? null,
+    companyTicker: file.company_ticker ?? null,
+    companyConfidence: file.company_confidence ?? 0,
   };
 }
 
@@ -543,6 +840,144 @@ function researchWorkflowFromWire(
       target: edge.target,
       dependencyType: edge.dependency_type,
     })),
+  };
+}
+
+function researchItemVersionFromWire(
+  version: ResearchItemVersionWire,
+): PrivateFundResearchItemVersion {
+  return {
+    itemVersionId: version.item_version_id,
+    versionNo: version.version_no,
+    asOfDate: version.as_of_date ?? null,
+    sourcePublishedAt: version.source_published_at ?? null,
+    observedAt: version.observed_at,
+    sourceType: version.source_type,
+    sourceId: version.source_id,
+    content: version.content,
+    stance: version.stance,
+    state: version.state,
+    valueNumeric: version.value_numeric ?? null,
+    valueText: version.value_text ?? null,
+    unit: version.unit ?? null,
+    period: version.period ?? null,
+    scenario: version.scenario ?? null,
+    probability: version.probability ?? null,
+    impact: version.impact,
+    confidence: version.confidence,
+    expectedStart: version.expected_start ?? null,
+    expectedEnd: version.expected_end ?? null,
+    evidenceIds: version.evidence_ids ?? [],
+  };
+}
+
+function researchItemFromWire(item: ResearchItemWire): PrivateFundResearchItem {
+  return {
+    itemId: item.item_id,
+    itemType: item.item_type,
+    canonicalKey: item.canonical_key,
+    title: item.title,
+    status: item.status,
+    currentVersionNo: item.current_version_no,
+    currentVersionId: item.current_version_id ?? null,
+    firstSeenAt: item.first_seen_at,
+    lastSeenAt: item.last_seen_at,
+    currentVersion: item.current_version ? researchItemVersionFromWire(item.current_version) : null,
+  };
+}
+
+function researchAlertFromWire(alert: ResearchAlertWire): PrivateFundResearchAlert {
+  return {
+    alertId: alert.alert_id,
+    ruleId: alert.rule_id ?? null,
+    itemId: alert.item_id,
+    changeEventId: alert.change_event_id ?? null,
+    alertType: alert.alert_type,
+    priority: alert.priority,
+    title: alert.title,
+    summary: alert.summary,
+    whyItMatters: alert.why_it_matters ?? "",
+    evidenceIds: alert.evidence_ids ?? [],
+    status: alert.status,
+    dueAt: alert.due_at ?? null,
+    createdAt: alert.created_at,
+    updatedAt: alert.updated_at,
+  };
+}
+
+function watchRuleFromWire(rule: WatchRuleWire): PrivateFundWatchRule {
+  return {
+    ruleId: rule.rule_id,
+    name: rule.name,
+    targetType: rule.target_type,
+    targetItemId: rule.target_item_id ?? null,
+    query: rule.query ?? {},
+    minPriority: rule.min_priority,
+    frequency: rule.frequency,
+    active: Boolean(rule.active),
+  };
+}
+
+function trackingJobFromWire(job: TrackingJobWire): PrivateFundTrackingJob {
+  return {
+    jobId: job.job_id,
+    jobType: job.job_type,
+    sourceId: job.source_id,
+    status: job.status,
+    attemptCount: job.attempt_count,
+    maxAttempts: job.max_attempts,
+    createdAt: job.created_at,
+    startedAt: job.started_at ?? null,
+    finishedAt: job.finished_at ?? null,
+    lastError: job.last_error ?? null,
+    result: job.result ?? null,
+  };
+}
+
+function memoVersionFromWire(version: MemoVersionWire): PrivateFundMemoVersion {
+  return {
+    memoVersionId: version.memo_version_id,
+    seriesId: version.series_id,
+    versionNo: version.version_no,
+    revisionOfVersionId: version.revision_of_version_id ?? null,
+    asOfDate: version.as_of_date,
+    status: version.status,
+    topic: version.topic,
+    seriesTitle: version.series_title,
+    markdownPath: version.markdown_path ?? null,
+    htmlPath: version.html_path ?? null,
+    pdfPath: version.pdf_path ?? null,
+    createdAt: version.created_at,
+    sections: (version.sections ?? []).map((section) => ({
+      sectionId: section.section_id,
+      sectionKey: section.section_key,
+      title: section.title,
+      content: section.content,
+      evidenceIds: section.evidence_ids ?? [],
+      needsReview: Boolean(section.needs_review),
+    })),
+  };
+}
+
+function trackingOverviewFromWire(payload: TrackingOverviewWire): PrivateFundTrackingOverview {
+  return {
+    datasetId: payload.dataset_id,
+    counts: payload.counts ?? {},
+    unreadAlertCount: payload.unread_alert_count ?? 0,
+    items: (payload.items ?? []).map(researchItemFromWire),
+    alerts: (payload.alerts ?? []).map(researchAlertFromWire),
+    watchRules: (payload.watch_rules ?? []).map(watchRuleFromWire),
+    jobs: (payload.jobs ?? []).map(trackingJobFromWire),
+    memoSeries: (payload.memo_series ?? []).map((series) => ({
+      seriesId: series.series_id,
+      topic: series.topic,
+      title: series.title,
+      currentVersionNo: series.current_version_no,
+      versionCount: series.version_count,
+      currentMemoVersionId: series.current_memo_version_id ?? null,
+      updatedAt: series.updated_at,
+    })),
+    memoVersions: (payload.memo_versions ?? []).map(memoVersionFromWire),
   };
 }
 
@@ -768,6 +1203,186 @@ export async function getPrivateFundWorkflow(
     await authenticatedFetch(`/v1/private-fund/projects/${encodeURIComponent(datasetId)}/workflow`),
   );
   return researchWorkflowFromWire(payload);
+}
+
+export async function getPrivateFundTrackingOverview(
+  datasetId: string,
+): Promise<PrivateFundTrackingOverview> {
+  const payload = await jsonOrThrow<TrackingOverviewWire>(
+    await authenticatedFetch(`/v1/private-fund/projects/${encodeURIComponent(datasetId)}/tracking`),
+  );
+  return trackingOverviewFromWire(payload);
+}
+
+export async function runPrivateFundTracking(datasetId: string): Promise<PrivateFundTrackingJob> {
+  const body = await jsonOrThrow<{ job: TrackingJobWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/tracking/run`,
+      { method: "POST" },
+    ),
+  );
+  return trackingJobFromWire(body.job);
+}
+
+export async function getPrivateFundTrackingJob(
+  datasetId: string,
+  jobId: string,
+): Promise<PrivateFundTrackingJob> {
+  const body = await jsonOrThrow<{ job: TrackingJobWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/tracking/jobs/${encodeURIComponent(jobId)}`,
+    ),
+  );
+  return trackingJobFromWire(body.job);
+}
+
+export async function comparePrivateFundMemoVersions(
+  datasetId: string,
+  fromVersion: string,
+  toVersion: string,
+): Promise<PrivateFundMemoComparison> {
+  const params = new URLSearchParams({ from_version: fromVersion, to_version: toVersion });
+  const payload = await jsonOrThrow<{
+    from_version: MemoVersionWire;
+    to_version: MemoVersionWire;
+    section_changes?: Array<{
+      section_key: string;
+      title: string;
+      change_type: string;
+      similarity: number;
+      old_content?: string | null;
+      new_content?: string | null;
+      old_evidence_ids?: string[];
+      new_evidence_ids?: string[];
+    }>;
+    item_changes?: Array<Record<string, unknown>>;
+  }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/memo-comparisons?${params}`,
+    ),
+  );
+  return {
+    fromVersion: memoVersionFromWire(payload.from_version),
+    toVersion: memoVersionFromWire(payload.to_version),
+    sectionChanges: (payload.section_changes ?? []).map((change) => ({
+      sectionKey: change.section_key,
+      title: change.title,
+      changeType: change.change_type,
+      similarity: change.similarity,
+      oldContent: change.old_content ?? "",
+      newContent: change.new_content ?? "",
+      oldEvidenceIds: change.old_evidence_ids ?? [],
+      newEvidenceIds: change.new_evidence_ids ?? [],
+    })),
+    itemChanges: payload.item_changes ?? [],
+  };
+}
+
+export async function getPrivateFundResearchItemTimeline(
+  datasetId: string,
+  itemId: string,
+): Promise<PrivateFundResearchItemTimeline> {
+  const payload = await jsonOrThrow<{
+    item: ResearchItemWire;
+    versions?: ResearchItemVersionWire[];
+    changes?: Array<Record<string, unknown>>;
+    observations?: Array<Record<string, unknown>>;
+  }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/research-items/${encodeURIComponent(itemId)}/timeline`,
+    ),
+  );
+  return {
+    item: researchItemFromWire(payload.item),
+    versions: (payload.versions ?? []).map(researchItemVersionFromWire),
+    changes: payload.changes ?? [],
+    observations: payload.observations ?? [],
+  };
+}
+
+export async function updatePrivateFundAlert(
+  datasetId: string,
+  alertId: string,
+  input: { status: "new" | "acknowledged" | "dismissed" | "snoozed"; snoozedUntil?: string },
+): Promise<PrivateFundResearchAlert> {
+  const body = await jsonOrThrow<{ alert: ResearchAlertWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/alerts/${encodeURIComponent(alertId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: input.status, snoozed_until: input.snoozedUntil }),
+      },
+    ),
+  );
+  return researchAlertFromWire(body.alert);
+}
+
+export async function createPrivateFundWatchRule(
+  datasetId: string,
+  input: {
+    name: string;
+    targetType: string;
+    targetItemId?: string;
+    query?: Record<string, unknown>;
+    minPriority?: string;
+    frequency?: string;
+    active?: boolean;
+  },
+): Promise<PrivateFundWatchRule> {
+  const body = await jsonOrThrow<{ watch_rule: WatchRuleWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/watch-rules`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: input.name,
+          target_type: input.targetType,
+          target_item_id: input.targetItemId,
+          query: input.query ?? {},
+          min_priority: input.minPriority ?? "medium",
+          frequency: input.frequency ?? "on_ingest",
+          active: input.active ?? true,
+        }),
+      },
+    ),
+  );
+  return watchRuleFromWire(body.watch_rule);
+}
+
+export async function updatePrivateFundWatchRule(
+  datasetId: string,
+  ruleId: string,
+  input: Partial<{
+    name: string;
+    targetType: string;
+    targetItemId: string;
+    query: Record<string, unknown>;
+    minPriority: string;
+    frequency: string;
+    active: boolean;
+  }>,
+): Promise<PrivateFundWatchRule> {
+  const body = await jsonOrThrow<{ watch_rule: WatchRuleWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/watch-rules/${encodeURIComponent(ruleId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: input.name,
+          target_type: input.targetType,
+          target_item_id: input.targetItemId,
+          query: input.query,
+          min_priority: input.minPriority,
+          frequency: input.frequency,
+          active: input.active,
+        }),
+      },
+    ),
+  );
+  return watchRuleFromWire(body.watch_rule);
 }
 
 export async function selectPrivateFundWorkflowNode(

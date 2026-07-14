@@ -1177,6 +1177,12 @@ def test_private_fund_builtins_register_only_when_declared() -> None:
         "private_fund_equity_report_generate",
         "private_fund_equity_report_status",
         "private_fund_equity_report_get",
+        "private_fund_research_context",
+        "private_fund_research_node_save",
+        "private_fund_history_compare",
+        "private_fund_tracking_list",
+        "private_fund_watch_upsert",
+        "private_fund_alert_acknowledge",
     ]
     spec = AgentSpec(
         spec_version=1,

@@ -1152,8 +1152,22 @@ def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
             **_private_fund_ingest_jobs.get(job_id, {}),
             "status": "running",
             "started_at": datetime.now(timezone.utc).isoformat(),
-        }
+    }
     try:
+        classification_llm = None
+        classifier_llm_enabled = os.environ.get(
+            "PRIVATE_FUND_DOCUMENT_CLASSIFIER_USE_LLM", "1"
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        if classifier_llm_enabled:
+            try:
+                classifier_config = load_llm_config(CONFIG_PATH)
+                if classifier_config:
+                    classification_llm = OpenAICompatibleChatClient(classifier_config)
+            except Exception:
+                logger.warning(
+                    "document classifier LLM is unavailable; continuing with deterministic rules",
+                    exc_info=True,
+                )
         result = ingest_private_fund_directory(
             directory_path=payload["directory_path"],
             workspace_root=payload.get("workspace_root") or str(_private_fund_workspace_root()),
@@ -1164,6 +1178,7 @@ def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
             recursive=bool(payload.get("recursive", True)),
             reset=bool(payload.get("reset", False)),
             job_id=job_id,
+            classification_llm=classification_llm,
         )
         with _private_fund_ingest_jobs_lock:
             _private_fund_ingest_jobs[job_id] = {

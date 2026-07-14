@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RenderItem } from "@/lib/renderItems";
 import { FileViewerContext } from "@/shell/FileViewerContext";
+import { prepareAssistantHtmlPreviewDoc, splitAssistantHtml } from "./AssistantHtmlPreview";
 import { BlockRenderer } from "./BlockRenderer";
 
 afterEach(cleanup);
@@ -399,6 +400,75 @@ describe("BlockRenderer dispatch", () => {
     // Wait for Streamdown to finish parsing the (streamed) markdown.
     const pre = await screen.findByText(/def foo/, { selector: "pre, pre *" });
     expect(pre.closest("pre")).not.toBeNull();
+  });
+
+  describe("assistant HTML previews", () => {
+    const renderAssistantText = (text: string) =>
+      render(
+        <FileViewerContext.Provider value={FILE_VIEWER_NOOP}>
+          <BlockRenderer
+            items={[{ kind: "text", itemId: "html_1", text, final: true }]}
+            sessionStatus="idle"
+          />
+        </FileViewerContext.Provider>,
+      );
+
+    it("renders an unfenced complete HTML document after explanatory prose", () => {
+      renderAssistantText(
+        [
+          "I created a financial comparison.",
+          "",
+          "html",
+          "",
+          "<!DOCTYPE html>",
+          '<html lang="en"><head><style>h1{color:red}</style></head>',
+          "<body><h1>Financial Metrics Comparison</h1></body></html>",
+        ].join("\n"),
+      );
+
+      expect(screen.getByText("I created a financial comparison.")).toBeInTheDocument();
+      const frame = screen.getByTitle("Agent-generated HTML preview");
+      expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+      expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+      expect(frame.getAttribute("srcdoc")).toContain("Financial Metrics Comparison");
+      expect(frame.getAttribute("srcdoc")).toContain("connect-src 'none'");
+      expect(frame.getAttribute("srcdoc")).toContain("h1{color:red}");
+      expect(screen.queryByText(/^html$/i)).toBeNull();
+    });
+
+    it("renders an explicit html fence but leaves non-html fences as code", async () => {
+      const htmlParts = splitAssistantHtml(
+        "Before\n\n```html\n<section><strong>Rendered card</strong></section>\n```\n\nAfter",
+      );
+      expect(htmlParts).toEqual([
+        { kind: "markdown", content: "Before" },
+        { kind: "html", content: "<section><strong>Rendered card</strong></section>" },
+        { kind: "markdown", content: "After" },
+      ]);
+
+      renderAssistantText("```text\n<!DOCTYPE html><html><body>Source example</body></html>\n```");
+      expect(screen.queryByTitle("Agent-generated HTML preview")).toBeNull();
+      const pre = await screen.findByText(/Source example/, { selector: "pre, pre *" });
+      expect(pre.closest("pre")).not.toBeNull();
+    });
+
+    it("waits for a complete closing html tag before promoting streamed output", () => {
+      renderAssistantText("html\n<!DOCTYPE html><html><body><h1>Still streaming</h1>");
+      expect(screen.queryByTitle("Agent-generated HTML preview")).toBeNull();
+    });
+
+    it("removes refresh navigation while retaining inline scripts and styles", () => {
+      const doc = prepareAssistantHtmlPreviewDoc(
+        '<html><head><meta http-equiv="refresh" content="0; url=https://example.com">' +
+          "<style>.chart{height:10px}</style></head><body>" +
+          "<script>document.body.dataset.ready='yes'</script></body></html>",
+      );
+
+      expect(doc).not.toContain('http-equiv="refresh"');
+      expect(doc).toContain(".chart{height:10px}");
+      expect(doc).toContain("document.body.dataset.ready='yes'");
+      expect(doc).toContain("default-src 'none'");
+    });
   });
 });
 

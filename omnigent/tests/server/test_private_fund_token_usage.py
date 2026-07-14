@@ -143,6 +143,76 @@ def test_project_uploads_accept_supported_research_document_formats() -> None:
     assert expected == private_fund_pdf.SUPPORTED_PROJECT_UPLOAD_SUFFIXES
 
 
+def test_project_files_expose_business_classification(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    uploads = tmp_path / "_uploads" / "fund-a"
+    uploads.mkdir(parents=True)
+    source = uploads / "annual-report.pdf"
+    source.write_bytes(b"pdf placeholder")
+    collection_db = tmp_path / "fund-a" / "meta" / "collection.sqlite3"
+    collection_db.parent.mkdir(parents=True)
+    with sqlite3.connect(str(collection_db)) as conn:
+        conn.execute(
+            """
+            CREATE TABLE documents (
+                doc_id TEXT PRIMARY KEY,
+                dataset_id TEXT NOT NULL,
+                title TEXT,
+                original_filename TEXT,
+                stored_path TEXT,
+                file_type TEXT,
+                file_size INTEGER,
+                status TEXT,
+                chunk_count INTEGER,
+                error_message TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                deleted_at TEXT,
+                doc_type TEXT,
+                doc_subtype TEXT,
+                doc_type_confidence REAL,
+                classification_status TEXT,
+                classification_method TEXT,
+                company_name TEXT,
+                company_ticker TEXT,
+                company_confidence REAL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO documents VALUES (
+                'doc-1', 'fund-a', 'Annual report', 'annual-report.pdf', ?, 'pdf', 15,
+                'indexed', 8, NULL, '2026-07-14', '2026-07-14', NULL,
+                'financial_report', 'annual_report', 0.97, 'accepted', 'rules',
+                'Sungrow Power Supply Co., Ltd.', '300274.SZ', 0.96
+            )
+            """,
+            (str(tmp_path / "fund-a" / "raw" / "annual-report.pdf"),),
+        )
+
+    monkeypatch.setattr(private_fund_pdf, "_dataset_workspace_root", lambda: tmp_path)
+
+    files = private_fund_pdf._project_files_payload("fund-a")
+
+    assert len(files) == 1
+    assert files[0]["doc_type"] == "financial_report"
+    assert files[0]["doc_subtype"] == "annual_report"
+    assert files[0]["doc_type_confidence"] == 0.97
+    assert files[0]["classification_status"] == "accepted"
+    assert files[0]["company_name"] == "Sungrow Power Supply Co., Ltd."
+    assert files[0]["company_ticker"] == "300274.SZ"
+
+    catalog = private_fund_pdf._project_assets_payload("fund-a")
+    document_asset = next(
+        asset for asset in catalog["assets"] if asset["asset_type"] == "document"
+    )
+    assert document_asset["metadata"]["doc_type"] == "financial_report"
+    assert document_asset["metadata"]["doc_subtype"] == "annual_report"
+    assert document_asset["metadata"]["doc_type_confidence"] == 0.97
+
+
 def test_project_stats_exclude_deleted_documents_and_their_chunks(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
