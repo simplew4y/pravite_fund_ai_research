@@ -1243,3 +1243,44 @@ describe("Composer private-fund prompt suggestions", () => {
     expect(screen.queryByLabelText("研究问题建议")).toBeNull();
   });
 });
+
+describe("Composer private-fund context compaction", () => {
+  const realCompact = useChatStore.getState().compact;
+
+  beforeEach(() => {
+    useChatStore.setState({
+      conversationId: "conv_test",
+      skills: [],
+      compact: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    useChatStore.setState({ compact: realCompact });
+  });
+
+  it("compacts a private-fund session without clearing the current draft", () => {
+    renderWithTooltips(
+      <Composer
+        {...composerProps({
+          isNativeWrapper: true,
+          privateFundDatasetId: "sungrow",
+        })}
+      />,
+    );
+    fireEvent.change(textarea(), { target: { value: "尚未发送的研究问题" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "压缩上下文" }));
+
+    expect(useChatStore.getState().compact).toHaveBeenCalledOnce();
+    expect(textarea().value).toBe("尚未发送的研究问题");
+  });
+
+  it("does not add the dedicated compact button to ordinary sessions", () => {
+    renderWithTooltips(<Composer {...composerProps({ isNativeWrapper: true })} />);
+
+    expect(screen.queryByRole("button", { name: "压缩上下文" })).toBeNull();
+  });
+});

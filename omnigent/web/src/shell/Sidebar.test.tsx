@@ -16,6 +16,7 @@ import {
   PRIVATE_FUND_DATASET_ID_LABEL_KEY,
   type PrivateFundFile,
   type PrivateFundProject,
+  type PrivateFundSourceFolderTree,
 } from "@/lib/privateFundApi";
 import { useChatStore } from "@/store/chatStore";
 
@@ -31,8 +32,13 @@ const {
   projectSessionsMock,
   privateFundProjectsRef,
   privateFundProjectDetailsRef,
+  privateFundSourceFoldersRef,
   deletePrivateFundProjectSpy,
   deletePrivateFundFilesSpy,
+  createPrivateFundSourceFolderSpy,
+  renamePrivateFundSourceFolderSpy,
+  deletePrivateFundSourceFolderSpy,
+  movePrivateFundSourceFileSpy,
 } = vi.hoisted(() => ({
   projectsMock: [] as string[],
   moveToProjectSpy: vi.fn(),
@@ -53,8 +59,15 @@ const {
   privateFundProjectDetailsRef: {
     current: {} as Record<string, { project: PrivateFundProject; files: PrivateFundFile[] }>,
   },
+  privateFundSourceFoldersRef: {
+    current: {} as Record<string, PrivateFundSourceFolderTree>,
+  },
   deletePrivateFundProjectSpy: vi.fn(),
   deletePrivateFundFilesSpy: vi.fn(),
+  createPrivateFundSourceFolderSpy: vi.fn(),
+  renamePrivateFundSourceFolderSpy: vi.fn(),
+  deletePrivateFundSourceFolderSpy: vi.fn(),
+  movePrivateFundSourceFileSpy: vi.fn(),
 }));
 
 // Mutation hooks are only invoked on row actions; stub them. useConversations
@@ -127,6 +140,31 @@ vi.mock("@/hooks/usePrivateFundProjects", () => ({
     isError: false,
     error: null,
     reset: vi.fn(),
+  }),
+  usePrivateFundSourceFolders: (datasetId: string | null | undefined) => ({
+    data: datasetId ? privateFundSourceFoldersRef.current[datasetId] : undefined,
+    isLoading: false,
+    isError: false,
+  }),
+  useCreatePrivateFundSourceFolder: () => ({
+    mutate: createPrivateFundSourceFolderSpy,
+    mutateAsync: createPrivateFundSourceFolderSpy,
+    isPending: false,
+  }),
+  useRenamePrivateFundSourceFolder: () => ({
+    mutate: renamePrivateFundSourceFolderSpy,
+    mutateAsync: renamePrivateFundSourceFolderSpy,
+    isPending: false,
+  }),
+  useDeletePrivateFundSourceFolder: () => ({
+    mutate: deletePrivateFundSourceFolderSpy,
+    mutateAsync: deletePrivateFundSourceFolderSpy,
+    isPending: false,
+  }),
+  useMovePrivateFundSourceFile: () => ({
+    mutate: movePrivateFundSourceFileSpy,
+    mutateAsync: movePrivateFundSourceFileSpy,
+    isPending: false,
   }),
 }));
 // Header / dialog children that pull their own context — stub to keep the
@@ -263,7 +301,29 @@ function seedPrivateFundCorpus() {
   privateFundProjectDetailsRef.current = {
     [project.datasetId]: { project, files },
   };
+  privateFundSourceFoldersRef.current = {
+    [project.datasetId]: {
+      datasetId: project.datasetId,
+      folders: [
+        {
+          folderId: "system:unknown",
+          name: "待识别",
+          kind: "system",
+          classificationKey: "unknown",
+          files: files.map((file) => ({ fileName: file.name, assignment: "auto" as const })),
+          fileCount: files.length,
+          createdAt: "2026-07-14T00:00:00Z",
+          updatedAt: "2026-07-14T00:00:00Z",
+        },
+      ],
+    },
+  };
   return { project, files };
+}
+
+function expandSourceFolder(name = "待识别") {
+  const trigger = screen.queryByRole("button", { name: `展开文件夹 ${name}` });
+  if (trigger) fireEvent.click(trigger);
 }
 
 beforeEach(() => {
@@ -281,6 +341,11 @@ beforeEach(() => {
   projectSessionsMock.current = {};
   privateFundProjectsRef.current = [];
   privateFundProjectDetailsRef.current = {};
+  privateFundSourceFoldersRef.current = {};
+  createPrivateFundSourceFolderSpy.mockReset();
+  renamePrivateFundSourceFolderSpy.mockReset();
+  deletePrivateFundSourceFolderSpy.mockReset();
+  movePrivateFundSourceFileSpy.mockReset();
   useChatStore.setState({
     pendingComposerAttachments: [],
     pendingComposerAttachmentRemovals: [],
@@ -290,12 +355,21 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Sidebar private fund corpus attachments", () => {
+  it("exposes the desktop resize handle in the private-fund workspace", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
+
+    expect(screen.getByRole("separator", { name: "调整项目栏宽度" })).toBeInTheDocument();
+  });
+
   it("opens the unified new research project dialog from the left project header", () => {
     seedPrivateFundCorpus();
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    fireEvent.click(screen.getByRole("button", { name: "新建研究项目" }));
+    fireEvent.click(screen.getByTestId("private-fund-project-switcher"));
+    fireEvent.click(screen.getByTestId("private-fund-create-project-option"));
     expect(screen.getByRole("dialog", { name: "新建研究项目" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建并进入工作台" })).toBeDisabled();
   });
@@ -305,11 +379,59 @@ describe("Sidebar private fund corpus attachments", () => {
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    fireEvent.click(screen.getByRole("button", { name: "从资料来源上传文档" }));
+    fireEvent.click(screen.getByRole("button", { name: "上传资料到Acme Solar" }));
     expect(screen.getByRole("dialog", { name: "上传资料并建立索引" })).toBeInTheDocument();
   });
 
-  it("renders projects as an image-free list and links each project to its latest conversation", () => {
+  it("starts source folders collapsed and reveals compact file rows on demand", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
+
+    expect(screen.getByRole("button", { name: "展开文件夹 待识别" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于当前提问" }),
+    ).toBeNull();
+
+    expandSourceFolder();
+    expect(
+      screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于当前提问" }),
+    ).toBeInTheDocument();
+  });
+
+  it("creates and renames a logical source folder inline", async () => {
+    seedPrivateFundCorpus();
+    createPrivateFundSourceFolderSpy.mockResolvedValue(undefined);
+    renamePrivateFundSourceFolderSpy.mockResolvedValue(undefined);
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
+
+    fireEvent.click(screen.getByRole("button", { name: "新建资料文件夹" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "新文件夹名称" }), {
+      target: { value: "核心资料" },
+    });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "新文件夹名称" }), {
+      key: "Enter",
+    });
+    await waitFor(() => expect(createPrivateFundSourceFolderSpy).toHaveBeenCalledWith("核心资料"));
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "文件夹 待识别 的操作" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重命名" }));
+    const renameInput = screen.getByRole("textbox", { name: "重命名文件夹 待识别" });
+    fireEvent.change(renameInput, { target: { value: "历史资料" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+    await waitFor(() =>
+      expect(renamePrivateFundSourceFolderSpy).toHaveBeenCalledWith({
+        folderId: "system:unknown",
+        name: "历史资料",
+      }),
+    );
+  });
+
+  it("renders projects in a compact searchable popover without persistent project cards", () => {
     const acme = privateFundProject();
     const beta = privateFundProject({
       datasetId: "beta",
@@ -355,20 +477,14 @@ describe("Sidebar private fund corpus attachments", () => {
 
     renderSidebar(true, "/c/conv_acme", "acme", true);
 
-    const projectList = screen.getByTestId("private-fund-project-list");
-    expect(projectList.querySelector("img")).toBeNull();
-    expect(screen.getByTestId("private-fund-project-beta")).toHaveAttribute(
-      "href",
-      "/c/conv_beta?private_fund_project=beta",
+    expect(screen.queryByTestId("private-fund-project-list")).toBeNull();
+    fireEvent.click(screen.getByTestId("private-fund-project-switcher"));
+    expect(screen.getByTestId("private-fund-project-option-acme")).toHaveTextContent("Acme Solar");
+    expect(screen.getByTestId("private-fund-project-option-beta")).toHaveTextContent("Beta Wind");
+    expect(screen.getByTestId("private-fund-project-option-empty")).toHaveTextContent(
+      "Empty Project",
     );
-    expect(screen.getByTestId("private-fund-project-empty")).toHaveAttribute(
-      "href",
-      "/?private_fund_project=empty",
-    );
-    expect(screen.getByTestId("private-fund-project-token-usage-beta")).toHaveTextContent(
-      "12.4K tokens",
-    );
-    expect(screen.getByTestId("private-fund-project-token-bar-beta")).toBeInTheDocument();
+    expect(screen.queryByTestId("private-fund-project-token-bar-beta")).toBeNull();
     expect(screen.getByRole("link", { name: "投研工作台" })).toHaveAttribute(
       "href",
       "/?private_fund_project=acme",
@@ -408,17 +524,15 @@ describe("Sidebar private fund corpus attachments", () => {
     expect(screen.queryByText("Beta research chat")).toBeNull();
     expect(screen.queryByText("Unscoped chat")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("private-fund-project-beta"), { ctrlKey: true });
-    expect(localStorage.getItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY)).toBe("acme");
-    expect(screen.getByText("Acme research chat")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("private-fund-project-beta"));
+    fireEvent.click(screen.getByTestId("private-fund-project-switcher"));
+    fireEvent.click(screen.getByTestId("private-fund-project-option-beta"));
     await waitFor(() => {
       expect(screen.getByText("Beta research chat")).toBeInTheDocument();
       expect(screen.queryByText("Acme research chat")).toBeNull();
     });
 
-    fireEvent.click(screen.getByTestId("private-fund-project-empty"));
+    fireEvent.click(screen.getByTestId("private-fund-project-switcher"));
+    fireEvent.click(screen.getByTestId("private-fund-project-option-empty"));
     await waitFor(() => {
       expect(screen.getByText("当前项目暂无会话")).toBeInTheDocument();
       expect(screen.queryByText("Beta research chat")).toBeNull();
@@ -459,6 +573,7 @@ describe("Sidebar private fund corpus attachments", () => {
     seedPrivateFundCorpus();
     mockConversations([]);
     renderSidebar();
+    expandSourceFolder();
 
     const alphaCheckbox = screen.getByRole("checkbox", {
       name: "选择资料来源 alpha.pdf 用于当前提问",
@@ -480,6 +595,7 @@ describe("Sidebar private fund corpus attachments", () => {
     });
     mockConversations([]);
     renderSidebar();
+    expandSourceFolder();
 
     const alphaCheckbox = screen.getByRole("checkbox", {
       name: "选择资料来源 alpha.pdf 用于当前提问",
@@ -494,7 +610,7 @@ describe("Sidebar private fund corpus attachments", () => {
     expect(alphaCheckbox.checked).toBe(false);
   });
 
-  it("uses a mixed project checkbox and toggles all current project files", () => {
+  it("does not show a project-wide attach-all row in question mode", () => {
     seedPrivateFundCorpus();
     useChatStore.setState({
       activeComposerAttachments: [{ path: "reports/alpha.pdf", isDir: false }],
@@ -502,27 +618,8 @@ describe("Sidebar private fund corpus attachments", () => {
     mockConversations([]);
     renderSidebar();
 
-    const projectCheckbox = screen.getByRole("checkbox", {
-      name: "选择Acme Solar的全部资料用于当前提问",
-    }) as HTMLInputElement;
-    expect(projectCheckbox.closest("button")).toBeNull();
-    expect(projectCheckbox).toHaveAttribute("aria-checked", "mixed");
-    expect(projectCheckbox.indeterminate).toBe(true);
-
-    fireEvent.click(projectCheckbox);
-
-    expect(useChatStore.getState().pendingComposerAttachments).toEqual([
-      { path: "reports/beta.pdf", isDir: false },
-    ]);
-    expect(projectCheckbox.checked).toBe(true);
-
-    fireEvent.click(projectCheckbox);
-
-    expect(useChatStore.getState().pendingComposerAttachments).toEqual([]);
-    expect(useChatStore.getState().pendingComposerAttachmentRemovals).toEqual([
-      { path: "reports/alpha.pdf", isDir: false },
-    ]);
-    expect(projectCheckbox.checked).toBe(false);
+    expect(screen.queryByRole("checkbox", { name: "选择当前项目全部资料用于当前提问" })).toBeNull();
+    expect(screen.queryByText("全部用于提问")).toBeNull();
   });
 
   it("requires a separate management selection before deleting sources", async () => {
@@ -530,17 +627,18 @@ describe("Sidebar private fund corpus attachments", () => {
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择Acme Solar的全部资料用于当前提问" }));
+    expandSourceFolder();
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于当前提问" }));
     expect(
       screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于当前提问" }),
     ).toBeChecked();
     expect(screen.queryByRole("button", { name: /删除管理选择/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "管理" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择Acme Solar的全部资料用于管理" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前项目全部资料用于管理" }));
     expect(screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于管理" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "选择资料来源 beta.pdf 用于管理" })).toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: "删除管理选择 2 份资料来源" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除 2" }));
     expect(screen.getByRole("heading", { name: "删除 2 份资料来源？" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 
@@ -554,7 +652,11 @@ describe("Sidebar private fund corpus attachments", () => {
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    fireEvent.click(screen.getByRole("button", { name: "删除研究项目 Acme Solar" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "当前研究项目操作" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除当前项目" }));
     expect(screen.getByRole("heading", { name: "删除研究项目？" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 

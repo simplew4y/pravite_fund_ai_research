@@ -1,16 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  createPrivateFundSourceFolder,
   deletePrivateFundFiles,
   deletePrivateFundProject,
+  deletePrivateFundSourceFolder,
   getPrivateFundAssets,
   getPrivateFundPipelineJob,
   getPrivateFundProject,
+  getPrivateFundSourceFolders,
   getPrivateFundTrackingOverview,
   getPrivateFundWorkflow,
   listPrivateFundProjects,
+  movePrivateFundSourceFile,
+  renamePrivateFundSourceFolder,
+  type PrivateFundSourceFolderTree,
 } from "@/lib/privateFundApi";
 
 export const privateFundProjectsQueryKey = ["private-fund-projects"] as const;
+export const privateFundSourceFoldersQueryKey = (datasetId: string | null | undefined) =>
+  ["private-fund-source-folders", datasetId] as const;
 
 export function usePrivateFundProjects() {
   return useQuery({
@@ -33,6 +41,7 @@ export function useDeletePrivateFundProject() {
       queryClient.removeQueries({ queryKey: ["private-fund-project", datasetId] });
       queryClient.removeQueries({ queryKey: ["private-fund-assets", datasetId] });
       queryClient.removeQueries({ queryKey: ["private-fund-workflow", datasetId] });
+      queryClient.removeQueries({ queryKey: privateFundSourceFoldersQueryKey(datasetId) });
       await queryClient.invalidateQueries({ queryKey: privateFundProjectsQueryKey });
     },
   });
@@ -47,8 +56,80 @@ export function useDeletePrivateFundFiles(datasetId: string | null | undefined) 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: privateFundProjectsQueryKey }),
         queryClient.invalidateQueries({ queryKey: ["private-fund-assets", datasetId] }),
+        queryClient.invalidateQueries({ queryKey: privateFundSourceFoldersQueryKey(datasetId) }),
       ]);
     },
+  });
+}
+
+export function usePrivateFundSourceFolders(datasetId: string | null | undefined) {
+  return useQuery({
+    queryKey: privateFundSourceFoldersQueryKey(datasetId),
+    queryFn: () => getPrivateFundSourceFolders(datasetId!),
+    enabled: Boolean(datasetId),
+  });
+}
+
+function useSourceFolderMutationResult(datasetId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  return (next: Awaited<ReturnType<typeof getPrivateFundSourceFolders>>) => {
+    queryClient.setQueryData(privateFundSourceFoldersQueryKey(datasetId), next);
+  };
+}
+
+export function useCreatePrivateFundSourceFolder(datasetId: string | null | undefined) {
+  const setResult = useSourceFolderMutationResult(datasetId);
+  return useMutation({
+    mutationFn: (name: string) => createPrivateFundSourceFolder(datasetId!, name),
+    onSuccess: setResult,
+  });
+}
+
+export function useRenamePrivateFundSourceFolder(datasetId: string | null | undefined) {
+  const setResult = useSourceFolderMutationResult(datasetId);
+  return useMutation({
+    mutationFn: ({ folderId, name }: { folderId: string; name: string }) =>
+      renamePrivateFundSourceFolder(datasetId!, folderId, name),
+    onSuccess: setResult,
+  });
+}
+
+export function useDeletePrivateFundSourceFolder(datasetId: string | null | undefined) {
+  const setResult = useSourceFolderMutationResult(datasetId);
+  return useMutation({
+    mutationFn: (folderId: string) => deletePrivateFundSourceFolder(datasetId!, folderId),
+    onSuccess: setResult,
+  });
+}
+
+export function useMovePrivateFundSourceFile(datasetId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  const queryKey = privateFundSourceFoldersQueryKey(datasetId);
+  return useMutation({
+    mutationFn: ({ fileName, folderId }: { fileName: string; folderId: string | null }) =>
+      movePrivateFundSourceFile(datasetId!, fileName, folderId),
+    onMutate: async ({ fileName, folderId }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<PrivateFundSourceFolderTree>(queryKey);
+      if (previous && folderId) {
+        queryClient.setQueryData<PrivateFundSourceFolderTree>(queryKey, {
+          ...previous,
+          folders: previous.folders.map((folder) => {
+            const remaining = folder.files.filter((file) => file.fileName !== fileName);
+            const files =
+              folder.folderId === folderId
+                ? [...remaining, { fileName, assignment: "manual" as const }]
+                : remaining;
+            return { ...folder, files, fileCount: files.length };
+          }),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+    },
+    onSuccess: (next) => queryClient.setQueryData(queryKey, next),
   });
 }
 

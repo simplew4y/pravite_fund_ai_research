@@ -17,6 +17,7 @@ import {
 import {
   createContext,
   lazy,
+  type CSSProperties,
   type ReactNode,
   Suspense,
   useCallback,
@@ -53,6 +54,7 @@ import { PrivateFundHistoryPanel } from "./PrivateFundHistoryPanel";
 import { PrivateFundTrackingPanel } from "./PrivateFundTrackingPanel";
 import { FilePathAwareMessageResponse } from "@/components/blocks/BlockRenderer";
 import { hostFetch } from "@/lib/host";
+import { useResizableInlinePanel } from "@/hooks/useResizableInlinePanel";
 
 const RichNodeContent = lazy(() =>
   import("./RichNodeContent").then((module) => ({ default: module.RichNodeContent })),
@@ -320,6 +322,7 @@ function buildGenerationPrompt(
 }
 
 export function PrivateFundResearchWorkbench({
+  conversationId,
   datasetId,
   datasetName,
   chat,
@@ -342,6 +345,8 @@ export function PrivateFundResearchWorkbench({
   const [presentationMode, setPresentationMode] = useState<PrivateFundGenerationMode>("plain_text");
   const [presentationInstruction, setPresentationInstruction] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const { panelWidth: contextPanelWidth, handleProps: contextResizeHandleProps } =
+    useResizableInlinePanel(conversationId, 300, 360);
 
   useEffect(() => {
     if (!notice) return;
@@ -740,13 +745,19 @@ export function PrivateFundResearchWorkbench({
         </header>
 
         <div
+          data-testid="private-fund-workbench-grid"
           className={cn(
             "grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:overflow-hidden",
             (workspaceView === "research" || selectedAsset) &&
               !assetPanelExpanded &&
-              "xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)]",
+              "xl:grid-cols-[minmax(0,1fr)_var(--pf-context-panel-width)]",
             selectedAsset && assetPanelExpanded ? "xl:grid-cols-1" : "",
           )}
+          style={
+            {
+              "--pf-context-panel-width": `${contextPanelWidth}px`,
+            } as CSSProperties
+          }
         >
           <main
             aria-label={workspaceView === "research" ? "Agent 输入与输出" : "研究资产工作区"}
@@ -813,10 +824,18 @@ export function PrivateFundResearchWorkbench({
 
           <aside
             className={cn(
-              "private-fund-context-panel min-h-[40vh] flex-col border-t border-[var(--pf-line)] bg-[var(--pf-panel)] xl:min-h-0 xl:border-t-0 xl:border-l",
+              "private-fund-context-panel relative min-h-[40vh] flex-col border-t border-[var(--pf-line)] bg-[var(--pf-panel)] xl:min-h-0 xl:border-t-0 xl:border-l",
               workspaceView === "research" || selectedAsset ? "flex" : "hidden",
             )}
           >
+            {!assetPanelExpanded ? (
+              <div
+                {...contextResizeHandleProps}
+                aria-label="调整右侧栏宽度"
+                data-testid="private-fund-context-resize-handle"
+                className="absolute inset-y-0 left-0 z-20 hidden w-1.5 -translate-x-1/2 cursor-col-resize touch-none transition-colors hover:bg-[var(--pf-accent)]/30 active:bg-[var(--pf-accent)]/50 xl:block"
+              />
+            ) : null}
             {selectedAsset ? (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--pf-line)] px-3">

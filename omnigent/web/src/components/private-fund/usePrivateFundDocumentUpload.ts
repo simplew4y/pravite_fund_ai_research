@@ -59,6 +59,9 @@ export function usePrivateFundDocumentUpload(datasetId: string | null | undefine
       void queryClient.invalidateQueries({ queryKey: ["private-fund-projects"] });
       void queryClient.invalidateQueries({ queryKey: ["private-fund-assets", datasetId] });
       void queryClient.invalidateQueries({ queryKey: ["private-fund-workflow", datasetId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["private-fund-source-folders", datasetId],
+      });
     },
     onError: (error) => {
       setStage("failed");

@@ -64,7 +64,12 @@ def _clean_origin_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(_ALLOWLIST_ENV, raising=False)
 
 
-def _request_with_origin(origin: str | None) -> Request:
+def _request_with_origin(
+    origin: str | None,
+    *,
+    host: str | None = None,
+    scheme: str = "http",
+) -> Request:
     """
     Build a real Starlette ``Request`` carrying (or omitting) an Origin.
 
@@ -77,7 +82,16 @@ def _request_with_origin(origin: str | None) -> Request:
     raw_headers: list[tuple[bytes, bytes]] = []
     if origin is not None:
         raw_headers.append((b"origin", origin.encode("latin-1")))
-    return Request({"type": "http", "method": "POST", "headers": raw_headers})
+    if host is not None:
+        raw_headers.append((b"host", host.encode("latin-1")))
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "scheme": scheme,
+            "headers": raw_headers,
+        }
+    )
 
 
 @pytest.mark.parametrize("local_mode", [True, False])
@@ -122,6 +136,32 @@ def test_cross_origin_is_rejected_in_local_mode(monkeypatch: pytest.MonkeyPatch)
         require_trusted_origin(_request_with_origin(_EVIL_ORIGIN))
     # 403 Forbidden is the documented rejection status for an untrusted
     # Origin; any other code (or no raise) means the guard did not fire.
+    assert exc_info.value.status_code == 403
+
+
+def test_external_same_origin_is_allowed_in_local_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public same-origin request forwarded by FRP remains first-party."""
+    monkeypatch.setenv(_LOCAL_ENV, "1")
+    request = _request_with_origin(
+        "http://research.example.com:6768",
+        host="research.example.com:6768",
+    )
+    assert require_trusted_origin(request) is None
+
+
+def test_external_cross_origin_is_rejected_in_local_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Matching the public request Host must not admit another site's Origin."""
+    monkeypatch.setenv(_LOCAL_ENV, "1")
+    request = _request_with_origin(
+        "https://evil.example.com",
+        host="research.example.com:6768",
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        require_trusted_origin(request)
     assert exc_info.value.status_code == 403
 
 

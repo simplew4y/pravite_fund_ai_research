@@ -40,7 +40,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from omnigent.runtime.policies.builder import load_session_usage
-from omnigent.server import private_fund_tracking, private_fund_workflow
+from omnigent.server import (
+    private_fund_source_folders,
+    private_fund_tracking,
+    private_fund_workflow,
+)
 from omnigent.server.auth import AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
 from omnigent.stores.conversation_store import ConversationStore
@@ -208,6 +212,19 @@ class RunProjectPipelineRequest(BaseModel):
 
 class DeleteProjectFilesRequest(BaseModel):
     file_names: list[str] = Field(default_factory=list)
+
+
+class CreateSourceFolderRequest(BaseModel):
+    name: str
+
+
+class RenameSourceFolderRequest(BaseModel):
+    name: str
+
+
+class MoveSourceFolderFileRequest(BaseModel):
+    file_name: str
+    folder_id: str | None = None
 
 
 class DeleteResearchAssetsRequest(BaseModel):
@@ -1194,6 +1211,9 @@ def _delete_project_files(dataset_id: str, file_names: list[str]) -> dict[str, A
                 for name in safe_names
                 if name in project_files
             ],
+        )
+        private_fund_source_folders.cleanup_file_overrides(
+            collection_db, dataset_id, safe_names
         )
     count = len(_supported_files_in(uploads_dir))
     with _connect_global_registry() as conn:
@@ -2916,6 +2936,85 @@ def create_private_fund_pdf_router(
         dataset_id: str, request: DeleteProjectFilesRequest
     ) -> dict[str, Any]:
         return _delete_project_files(dataset_id, request.file_names)
+
+    def source_folder_files(dataset_id: str) -> list[dict[str, Any]]:
+        _require_project_row(dataset_id)
+        return _project_files_payload(dataset_id)
+
+    def source_folder_error(exc: ValueError) -> HTTPException:
+        status_code = (
+            409
+            if isinstance(
+                exc,
+                (
+                    private_fund_source_folders.SourceFolderConflictError,
+                    private_fund_source_folders.SourceFolderNotEmptyError,
+                ),
+            )
+            else 400
+        )
+        return HTTPException(status_code=status_code, detail=str(exc))
+
+    @router.get("/private-fund/projects/{dataset_id}/source-folders")
+    def get_project_source_folders(dataset_id: str) -> dict[str, Any]:
+        files = source_folder_files(dataset_id)
+        return private_fund_source_folders.get_folder_tree(
+            _collection_db_path(dataset_id), dataset_id, files
+        )
+
+    @router.post("/private-fund/projects/{dataset_id}/source-folders")
+    def create_project_source_folder(
+        dataset_id: str, request: CreateSourceFolderRequest
+    ) -> dict[str, Any]:
+        files = source_folder_files(dataset_id)
+        try:
+            return private_fund_source_folders.create_folder(
+                _collection_db_path(dataset_id), dataset_id, request.name, files
+            )
+        except ValueError as exc:
+            raise source_folder_error(exc) from exc
+
+    @router.patch("/private-fund/projects/{dataset_id}/source-folders/{folder_id}")
+    def rename_project_source_folder(
+        dataset_id: str, folder_id: str, request: RenameSourceFolderRequest
+    ) -> dict[str, Any]:
+        files = source_folder_files(dataset_id)
+        try:
+            return private_fund_source_folders.rename_folder(
+                _collection_db_path(dataset_id), dataset_id, folder_id, request.name, files
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Source folder not found.") from exc
+        except ValueError as exc:
+            raise source_folder_error(exc) from exc
+
+    @router.delete("/private-fund/projects/{dataset_id}/source-folders/{folder_id}")
+    def delete_project_source_folder(dataset_id: str, folder_id: str) -> dict[str, Any]:
+        files = source_folder_files(dataset_id)
+        try:
+            return private_fund_source_folders.delete_folder(
+                _collection_db_path(dataset_id), dataset_id, folder_id, files
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Source folder not found.") from exc
+        except ValueError as exc:
+            raise source_folder_error(exc) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/source-folders/move-file")
+    def move_project_source_file(
+        dataset_id: str, request: MoveSourceFolderFileRequest
+    ) -> dict[str, Any]:
+        files = source_folder_files(dataset_id)
+        try:
+            return private_fund_source_folders.move_file(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                request.file_name,
+                request.folder_id,
+                files,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Source file or folder not found.") from exc
 
     @router.post("/private-fund/projects/{dataset_id}/pipeline")
     def run_project_pipeline(

@@ -90,17 +90,19 @@ export function resetSidebarWidthStoreForTesting(): void {
  * handle element. Desktop-only — callers should not render the handle on
  * mobile (where the sidebar is a full-screen overlay).
  */
-export function useResizableSidebar() {
+export function useResizableSidebar(defaultWidthOverride = DEFAULT_WIDTH_PX) {
   const raw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const width = clamp(raw ?? DEFAULT_WIDTH_PX);
+  const width = clamp(raw ?? defaultWidthOverride);
   const dragging = useRef(false);
+  const defaultWidthRef = useRef(defaultWidthOverride);
+  defaultWidthRef.current = defaultWidthOverride;
 
   // Re-clamp on viewport resize so a shrunken window pulls the sidebar back
   // under the ceiling; widening re-derives from the persisted preference so the
   // user's chosen width springs back when space returns.
   useEffect(() => {
     function onResize() {
-      setStoredWidth((prev) => clamp(preferredWidth ?? prev ?? DEFAULT_WIDTH_PX));
+      setStoredWidth((prev) => clamp(preferredWidth ?? prev ?? defaultWidthRef.current));
     }
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);

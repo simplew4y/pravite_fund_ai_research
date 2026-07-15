@@ -56,6 +56,7 @@ __all__ = [
     "WebSocketOriginMiddleware",
     "origin_allowed",
     "origin_hostname_is_loopback",
+    "origin_matches_scope",
     "parse_allowed_origins",
 ]
 
@@ -97,6 +98,48 @@ def origin_hostname_is_loopback(origin: str) -> bool:
         return False
     mapped_ipv4 = getattr(addr, "ipv4_mapped", None)
     return addr.is_loopback or (mapped_ipv4 is not None and mapped_ipv4.is_loopback)
+
+
+def origin_matches_scope(origin: str | None, scope: Scope) -> bool:
+    """Return whether ``origin`` is the browser origin serving this request.
+
+    This admits same-origin browser traffic received through a transparent
+    reverse tunnel such as FRP without requiring every public hostname or
+    port to be copied into the explicit allowlist. Cross-site requests still
+    fail because their Origin host differs from the request Host header.
+    """
+    if origin is None:
+        return False
+
+    host_header: str | None = None
+    headers: Iterable[tuple[bytes, bytes]] = scope.get("headers", [])
+    for key, value in headers:
+        if key == b"host":
+            host_header = value.decode("latin-1")
+            break
+    if not host_header:
+        return False
+
+    request_scheme = str(scope.get("scheme", "")).lower()
+    browser_scheme = {"ws": "http", "wss": "https"}.get(request_scheme, request_scheme)
+    if browser_scheme not in {"http", "https"}:
+        return False
+
+    try:
+        origin_url = urlsplit(origin)
+        request_url = urlsplit(f"{browser_scheme}://{host_header}")
+        origin_port = origin_url.port or (443 if origin_url.scheme == "https" else 80)
+        request_port = request_url.port or (443 if browser_scheme == "https" else 80)
+    except ValueError:
+        return False
+
+    return (
+        origin_url.scheme.lower() == browser_scheme
+        and origin_url.hostname is not None
+        and request_url.hostname is not None
+        and origin_url.hostname.lower() == request_url.hostname.lower()
+        and origin_port == request_port
+    )
 
 
 def parse_allowed_origins() -> frozenset[str]:
@@ -188,9 +231,10 @@ class WebSocketOriginMiddleware:
 
     Wraps the downstream app and, for ``websocket``-typed scopes only,
     rejects handshakes whose ``Origin`` is not permitted by
-    :func:`origin_allowed` — closing the connection before it
-    reaches a route handler (and thus before any ``websocket.accept()``).
-    Non-WebSocket scopes and permitted handshakes pass through untouched.
+    the request's own browser origin or :func:`origin_allowed` — closing
+    the connection before it reaches a route handler (and thus before any
+    ``websocket.accept()``). Non-WebSocket scopes and permitted handshakes
+    pass through untouched.
 
     The server mode (``local_mode``) and the allowlist are read per
     connection from the environment, so behavior tracks the runtime
@@ -220,7 +264,7 @@ class WebSocketOriginMiddleware:
             return
 
         origin = _origin_from_scope(scope)
-        if origin_allowed(
+        if origin_matches_scope(origin, scope) or origin_allowed(
             origin,
             local_mode=local_single_user_enabled(),
             extra_allowed=parse_allowed_origins(),

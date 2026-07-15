@@ -217,6 +217,21 @@ describe("PrivateFundResearchWorkbench", () => {
     });
   });
 
+  it("resizes the research context rail with the keyboard separator", () => {
+    renderWorkbench();
+    const grid = screen.getByTestId("private-fund-workbench-grid");
+    const before = Number.parseFloat(
+      grid.style.getPropertyValue("--pf-context-panel-width"),
+    );
+
+    fireEvent.keyDown(screen.getByRole("separator", { name: "调整右侧栏宽度" }), {
+      key: "ArrowLeft",
+    });
+
+    const after = Number.parseFloat(grid.style.getPropertyValue("--pf-context-panel-width"));
+    expect(after).toBe(before + 20);
+  });
+
   it("keeps the real chat mounted while inspecting an agent-created node", async () => {
     renderWorkbench();
     const chat = screen.getByLabelText("真实 AI 对话") as HTMLTextAreaElement;

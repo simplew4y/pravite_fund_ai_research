@@ -29,6 +29,7 @@ import {
   Loader2Icon,
   MessageSquareIcon,
   PaperclipIcon,
+  ShrinkIcon,
   SquareIcon,
   SparklesIcon,
   TerminalIcon,
@@ -4480,6 +4481,20 @@ export function Composer({
     // setMentionedItems is a stable useState setter (from useMentionBrowser).
   }, [pendingComposerAttachments, pendingComposerAttachmentRemovals, setMentionedItems]);
 
+  const compactConversation = () => {
+    if (!showCompact) {
+      setCommandError("/compact is not supported for this agent type");
+      return;
+    }
+    setCommandError(null);
+    void useChatStore
+      .getState()
+      .compact()
+      .catch((err: unknown) => {
+        setCommandError(err instanceof Error ? err.message : "Compact failed");
+      });
+  };
+
   /**
    * Execute a slash command by name + optional argument string.
    * Clears the input and error state on success (or sets an error on
@@ -4494,13 +4509,7 @@ export function Composer({
         }
         dirtyRef.current = true;
         setValue("");
-        setCommandError(null);
-        void useChatStore
-          .getState()
-          .compact()
-          .catch((err: unknown) => {
-            setCommandError(err instanceof Error ? err.message : "Compact failed");
-          });
+        compactConversation();
         return true;
       case "/effort": {
         if (!showEffort) return false;
@@ -5259,6 +5268,29 @@ export function Composer({
               <PaperclipIcon className="size-4" />
               <span className="sr-only">Attach files</span>
             </Button>
+            {privateFundDatasetId && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-9 md:size-8"
+                    disabled={
+                      disabled || isReadOnly || hasPendingElicitation || isWorking || !showCompact
+                    }
+                    onClick={compactConversation}
+                    aria-label="压缩上下文"
+                    data-testid="private-fund-compact-button"
+                  >
+                    <ShrinkIcon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {showCompact ? "压缩上下文（/compact）" : "当前 Agent 不支持上下文压缩"}
+                </TooltipContent>
+              </Tooltip>
+            )}
             {!privateFundDatasetId && (
               <ComposerMicButton
                 disabled={disabled || isReadOnly || hasPendingElicitation}

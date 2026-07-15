@@ -89,6 +89,27 @@ export interface PrivateFundFile {
   companyConfidence?: number;
 }
 
+export interface PrivateFundSourceFolderFile {
+  fileName: string;
+  assignment: "auto" | "manual";
+}
+
+export interface PrivateFundSourceFolder {
+  folderId: string;
+  name: string;
+  kind: "system" | "custom";
+  classificationKey?: string | null;
+  files: PrivateFundSourceFolderFile[];
+  fileCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PrivateFundSourceFolderTree {
+  datasetId: string;
+  folders: PrivateFundSourceFolder[];
+}
+
 export type PrivateFundAssetType =
   | "document"
   | "information"
@@ -464,6 +485,23 @@ interface FileWire {
   company_confidence?: number | null;
 }
 
+interface SourceFolderTreeWire {
+  dataset_id: string;
+  folders: Array<{
+    folder_id: string;
+    name: string;
+    kind: "system" | "custom";
+    classification_key?: string | null;
+    files?: Array<{
+      file_name: string;
+      assignment: "auto" | "manual";
+    }>;
+    file_count?: number | null;
+    created_at: string;
+    updated_at: string;
+  }>;
+}
+
 interface AssetWire {
   asset_id: string;
   asset_type: string;
@@ -756,6 +794,25 @@ function fileFromWire(file: FileWire): PrivateFundFile {
     companyName: file.company_name ?? null,
     companyTicker: file.company_ticker ?? null,
     companyConfidence: file.company_confidence ?? 0,
+  };
+}
+
+function sourceFolderTreeFromWire(payload: SourceFolderTreeWire): PrivateFundSourceFolderTree {
+  return {
+    datasetId: payload.dataset_id,
+    folders: payload.folders.map((folder) => ({
+      folderId: folder.folder_id,
+      name: folder.name,
+      kind: folder.kind,
+      classificationKey: folder.classification_key ?? null,
+      files: (folder.files ?? []).map((file) => ({
+        fileName: file.file_name,
+        assignment: file.assignment,
+      })),
+      fileCount: folder.file_count ?? folder.files?.length ?? 0,
+      createdAt: folder.created_at,
+      updatedAt: folder.updated_at,
+    })),
   };
 }
 
@@ -1164,6 +1221,83 @@ export async function deletePrivateFundFiles(
     project: projectFromWire(body.project),
     files: body.files.map(fileFromWire),
   };
+}
+
+export async function getPrivateFundSourceFolders(
+  datasetId: string,
+): Promise<PrivateFundSourceFolderTree> {
+  const body = await jsonOrThrow<SourceFolderTreeWire>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders`,
+    ),
+  );
+  return sourceFolderTreeFromWire(body);
+}
+
+export async function createPrivateFundSourceFolder(
+  datasetId: string,
+  name: string,
+): Promise<PrivateFundSourceFolderTree> {
+  const body = await jsonOrThrow<SourceFolderTreeWire>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      },
+    ),
+  );
+  return sourceFolderTreeFromWire(body);
+}
+
+export async function renamePrivateFundSourceFolder(
+  datasetId: string,
+  folderId: string,
+  name: string,
+): Promise<PrivateFundSourceFolderTree> {
+  const body = await jsonOrThrow<SourceFolderTreeWire>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders/${encodeURIComponent(folderId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      },
+    ),
+  );
+  return sourceFolderTreeFromWire(body);
+}
+
+export async function deletePrivateFundSourceFolder(
+  datasetId: string,
+  folderId: string,
+): Promise<PrivateFundSourceFolderTree> {
+  const body = await jsonOrThrow<SourceFolderTreeWire>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders/${encodeURIComponent(folderId)}`,
+      { method: "DELETE" },
+    ),
+  );
+  return sourceFolderTreeFromWire(body);
+}
+
+export async function movePrivateFundSourceFile(
+  datasetId: string,
+  fileName: string,
+  folderId: string | null,
+): Promise<PrivateFundSourceFolderTree> {
+  const body = await jsonOrThrow<SourceFolderTreeWire>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders/move-file`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_name: fileName, folder_id: folderId }),
+      },
+    ),
+  );
+  return sourceFolderTreeFromWire(body);
 }
 
 export async function activatePrivateFundProject(datasetId: string): Promise<void> {

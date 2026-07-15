@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { authenticatedFetch } from "./identity";
 import {
   PRIVATE_FUND_RESEARCH_MODE_STORAGE_KEY,
+  createPrivateFundSourceFolder,
   deletePrivateFundAssets,
   deletePrivateFundFiles,
   deletePrivateFundProject,
   comparePrivateFundMemoVersions,
   getPrivateFundProject,
+  getPrivateFundSourceFolders,
   getPrivateFundResearchItemTimeline,
   getPrivateFundTrackingOverview,
   getPrivateFundWorkflow,
@@ -16,6 +18,8 @@ import {
   readPrivateFundResearchMode,
   runPrivateFundPipeline,
   runPrivateFundTracking,
+  movePrivateFundSourceFile,
+  renamePrivateFundSourceFolder,
   updatePrivateFundAlert,
   writePrivateFundResearchMode,
 } from "./privateFundApi";
@@ -88,6 +92,76 @@ describe("private-fund pipeline requests", () => {
     const [url, init] = vi.mocked(authenticatedFetch).mock.calls[0];
     expect(url).toBe("/v1/private-fund/projects/sungrow/pipeline");
     expect(JSON.parse(String(init?.body))).toEqual({ reset: false, recursive: true });
+  });
+});
+
+describe("private-fund source folder requests", () => {
+  const folderTree = {
+    dataset_id: "sungrow",
+    folders: [
+      {
+        folder_id: "system:financial_report",
+        name: "财务报告",
+        kind: "system",
+        classification_key: "financial_report",
+        files: [{ file_name: "annual.pdf", assignment: "auto" }],
+        file_count: 1,
+        created_at: "2026-07-14T00:00:00Z",
+        updated_at: "2026-07-14T00:00:00Z",
+      },
+    ],
+  };
+
+  it("maps the source folder tree", async () => {
+    vi.mocked(authenticatedFetch).mockResolvedValue(
+      new Response(JSON.stringify(folderTree), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const tree = await getPrivateFundSourceFolders("sungrow");
+
+    expect(tree.folders[0]).toMatchObject({
+      folderId: "system:financial_report",
+      classificationKey: "financial_report",
+      fileCount: 1,
+      files: [{ fileName: "annual.pdf", assignment: "auto" }],
+    });
+  });
+
+  it("creates, renames, and moves files with the folder API", async () => {
+    vi.mocked(authenticatedFetch).mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(folderTree), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    await createPrivateFundSourceFolder("sungrow", "核心资料");
+    await renamePrivateFundSourceFolder("sungrow", "folder_1", "重点跟踪");
+    await movePrivateFundSourceFile("sungrow", "annual.pdf", "folder_1");
+
+    expect(authenticatedFetch).toHaveBeenNthCalledWith(
+      1,
+      "/v1/private-fund/projects/sungrow/source-folders",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "核心资料" }) }),
+    );
+    expect(authenticatedFetch).toHaveBeenNthCalledWith(
+      2,
+      "/v1/private-fund/projects/sungrow/source-folders/folder_1",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "重点跟踪" }) }),
+    );
+    expect(authenticatedFetch).toHaveBeenNthCalledWith(
+      3,
+      "/v1/private-fund/projects/sungrow/source-folders/move-file",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ file_name: "annual.pdf", folder_id: "folder_1" }),
+      }),
+    );
   });
 });
 
