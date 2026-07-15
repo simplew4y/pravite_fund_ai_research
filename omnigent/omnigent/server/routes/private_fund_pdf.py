@@ -1212,7 +1212,7 @@ def _delete_project_files(dataset_id: str, file_names: list[str]) -> dict[str, A
                 if name in project_files
             ],
         )
-        private_fund_source_folders.cleanup_file_overrides(
+        private_fund_source_folders.cleanup_file_assignments(
             collection_db, dataset_id, safe_names
         )
     count = len(_supported_files_in(uploads_dir))
@@ -2992,6 +2992,27 @@ def create_private_fund_pdf_router(
     def delete_project_source_folder(dataset_id: str, folder_id: str) -> dict[str, Any]:
         files = source_folder_files(dataset_id)
         try:
+            tree = private_fund_source_folders.get_folder_tree(
+                _collection_db_path(dataset_id), dataset_id, files
+            )
+            folder = next(
+                (
+                    item
+                    for item in tree["folders"]
+                    if str(item.get("folder_id")) == folder_id
+                ),
+                None,
+            )
+            if folder is None:
+                raise KeyError(folder_id)
+            file_names = [
+                str(item.get("file_name") or "")
+                for item in folder.get("files", [])
+                if str(item.get("file_name") or "")
+            ]
+            if file_names:
+                _delete_project_files(dataset_id, file_names)
+                files = source_folder_files(dataset_id)
             return private_fund_source_folders.delete_folder(
                 _collection_db_path(dataset_id), dataset_id, folder_id, files
             )

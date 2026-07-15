@@ -19,6 +19,7 @@ import {
   type PrivateFundSourceFolderTree,
 } from "@/lib/privateFundApi";
 import { useChatStore } from "@/store/chatStore";
+import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
 
 // Project mocks are declared via vi.hoisted so they exist before the hoisted
 // vi.mock factory runs. projectsMock is mutated per-test to drive project
@@ -160,6 +161,9 @@ vi.mock("@/hooks/usePrivateFundProjects", () => ({
     mutate: deletePrivateFundSourceFolderSpy,
     mutateAsync: deletePrivateFundSourceFolderSpy,
     isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
   }),
   useMovePrivateFundSourceFile: () => ({
     mutate: movePrivateFundSourceFileSpy,
@@ -389,6 +393,8 @@ describe("Sidebar private fund corpus attachments", () => {
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
     expect(screen.getByRole("button", { name: "展开文件夹 待识别" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "待识别(2)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "文件夹 待识别 的操作" })).toBeVisible();
     expect(
       screen.queryByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于当前提问" }),
     ).toBeNull();
@@ -428,6 +434,27 @@ describe("Sidebar private fund corpus attachments", () => {
         folderId: "system:unknown",
         name: "历史资料",
       }),
+    );
+  });
+
+  it("confirms deleting a folder together with all files inside it", async () => {
+    seedPrivateFundCorpus();
+    deletePrivateFundSourceFolderSpy.mockResolvedValue(undefined);
+    mockConversations([]);
+    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "文件夹 待识别 的操作" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除文件夹" }));
+
+    expect(screen.getByRole("dialog", { name: "删除文件夹「待识别」？" })).toBeInTheDocument();
+    expect(screen.getByText(/从当前项目删除文件夹内全部 2 份资料/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() =>
+      expect(deletePrivateFundSourceFolderSpy).toHaveBeenCalledWith("system:unknown"),
     );
   });
 
@@ -586,6 +613,21 @@ describe("Sidebar private fund corpus attachments", () => {
       { path: "reports/alpha.pdf", isDir: false },
     ]);
     expect(alphaCheckbox.checked).toBe(true);
+  });
+
+  it("opens a document preview when its file name is clicked without attaching it", () => {
+    seedPrivateFundCorpus();
+    mockConversations([]);
+    renderSidebar();
+    expandSourceFolder();
+
+    fireEvent.click(screen.getByRole("button", { name: "预览资料 alpha.pdf" }));
+
+    expect(usePrivateFundWorkspaceStore.getState().documentPreviewRequest).toMatchObject({
+      datasetId: "acme",
+      fileName: "alpha.pdf",
+    });
+    expect(useChatStore.getState().pendingComposerAttachments).toEqual([]);
   });
 
   it("queues removal and immediately unchecks a file already present in composer chips", () => {

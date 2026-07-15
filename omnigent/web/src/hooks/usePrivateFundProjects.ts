@@ -95,10 +95,17 @@ export function useRenamePrivateFundSourceFolder(datasetId: string | null | unde
 }
 
 export function useDeletePrivateFundSourceFolder(datasetId: string | null | undefined) {
-  const setResult = useSourceFolderMutationResult(datasetId);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (folderId: string) => deletePrivateFundSourceFolder(datasetId!, folderId),
-    onSuccess: setResult,
+    onSuccess: async (next) => {
+      queryClient.setQueryData(privateFundSourceFoldersQueryKey(datasetId), next);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: privateFundProjectsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["private-fund-project", datasetId] }),
+        queryClient.invalidateQueries({ queryKey: ["private-fund-assets", datasetId] }),
+      ]);
+    },
   });
 }
 

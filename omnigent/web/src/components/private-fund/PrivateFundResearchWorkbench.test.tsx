@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -19,6 +19,7 @@ import {
   PrivateFundResearchWorkbench,
   usePrivateFundWorkbenchActions,
 } from "./PrivateFundResearchWorkbench";
+import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
 
 vi.mock("@/hooks/usePrivateFundProjects", () => ({
   usePrivateFundWorkflow: vi.fn(),
@@ -192,6 +193,7 @@ function renderWorkbench(
 describe("PrivateFundResearchWorkbench", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    usePrivateFundWorkspaceStore.setState({ documentPreviewRequest: null });
     vi.mocked(usePrivateFundWorkflow).mockReturnValue({
       data: workflow,
       isLoading: false,
@@ -217,12 +219,46 @@ describe("PrivateFundResearchWorkbench", () => {
     });
   });
 
+  it("switches to sources and opens the existing document preview on request", async () => {
+    vi.mocked(usePrivateFundAssets).mockReturnValue({
+      data: {
+        ...assetCatalog,
+        assets: [
+          ...assetCatalog.assets,
+          {
+            ...assetCatalog.assets[0],
+            assetId: "document:alpha",
+            assetType: "document",
+            title: "alpha.pdf",
+            sourceKind: "document",
+            format: "pdf",
+          },
+        ],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof usePrivateFundAssets>);
+    renderWorkbench();
+
+    act(() => {
+      usePrivateFundWorkspaceStore.getState().openDocumentPreview(workflow.datasetId, "alpha.pdf");
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "资料" })).toHaveAttribute("aria-current", "page"),
+    );
+    expect(document.querySelector('iframe[title^="alpha.pdf"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回对话" }));
+
+    expect(screen.getByRole("button", { name: "研究" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
+  });
+
   it("resizes the research context rail with the keyboard separator", () => {
     renderWorkbench();
     const grid = screen.getByTestId("private-fund-workbench-grid");
-    const before = Number.parseFloat(
-      grid.style.getPropertyValue("--pf-context-panel-width"),
-    );
+    const before = Number.parseFloat(grid.style.getPropertyValue("--pf-context-panel-width"));
 
     fireEvent.keyDown(screen.getByRole("separator", { name: "调整右侧栏宽度" }), {
       key: "ArrowLeft",

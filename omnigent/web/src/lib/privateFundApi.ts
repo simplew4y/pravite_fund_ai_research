@@ -97,7 +97,7 @@ export interface PrivateFundSourceFolderFile {
 export interface PrivateFundSourceFolder {
   folderId: string;
   name: string;
-  kind: "system" | "custom";
+  kind: "auto" | "custom" | "system";
   classificationKey?: string | null;
   files: PrivateFundSourceFolderFile[];
   fileCount: number;
@@ -490,7 +490,7 @@ interface SourceFolderTreeWire {
   folders: Array<{
     folder_id: string;
     name: string;
-    kind: "system" | "custom";
+    kind: "auto" | "custom" | "system";
     classification_key?: string | null;
     files?: Array<{
       file_name: string;

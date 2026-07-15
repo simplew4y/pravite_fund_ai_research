@@ -74,6 +74,7 @@ import {
 import { useLocation, useNavigate } from "@/lib/routing";
 import { cn } from "@/lib/utils";
 import { composerAttachmentKey, type ComposerAttachment, useChatStore } from "@/store/chatStore";
+import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
 import { sortByUpdatedAtDesc } from "./sidebarNav";
 
 const EMPTY_FILES: PrivateFundFile[] = [];
@@ -193,6 +194,7 @@ function DraggableFileRow({
   managed,
   movePending,
   onToggle,
+  onPreview,
   onRestore,
 }: {
   row: FolderFileRow;
@@ -202,6 +204,7 @@ function DraggableFileRow({
   managed: boolean;
   movePending: boolean;
   onToggle: () => void;
+  onPreview: () => void;
   onRestore: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -242,8 +245,9 @@ function DraggableFileRow({
       />
       <button
         type="button"
+        aria-label={`预览资料 ${row.file.name}`}
         className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={onToggle}
+        onClick={onPreview}
       >
         <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-xs font-medium">{row.file.name}</span>
@@ -349,15 +353,15 @@ function FolderDropRow({
       ) : (
         <button
           type="button"
-          className="min-w-0 flex-1 truncate py-1 text-left text-xs font-medium"
+          className="flex min-w-0 flex-1 items-center gap-1 py-1 text-left text-xs font-medium"
           onClick={onToggleExpanded}
         >
-          {folder.name}
+          <span className="min-w-0 truncate">{folder.name}</span>
+          <span className="shrink-0 text-[10px] font-normal tabular-nums text-muted-foreground">
+            ({folder.fileCount})
+          </span>
         </button>
       )}
-      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-        {folder.fileCount}
-      </span>
       {!editing ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -366,7 +370,7 @@ function FolderDropRow({
               size="icon-sm"
               variant="ghost"
               aria-label={`文件夹 ${folder.name} 的操作`}
-              className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+              className="size-6 shrink-0 text-muted-foreground"
               disabled={busy}
             >
               <MoreHorizontalIcon className="size-3" />
@@ -377,19 +381,14 @@ function FolderDropRow({
               <PencilIcon className="size-3.5" />
               重命名
             </DropdownMenuItem>
-            {folder.kind === "custom" ? (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  disabled={folder.fileCount > 0}
-                  className="text-destructive focus:text-destructive"
-                  onClick={onDelete}
-                >
-                  <Trash2Icon className="size-3.5" />
-                  {folder.fileCount > 0 ? "请先移出文件" : "删除文件夹"}
-                </DropdownMenuItem>
-              </>
-            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={onDelete}
+            >
+              <Trash2Icon className="size-3.5" />
+              删除文件夹
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       ) : null}
@@ -428,6 +427,9 @@ export function PrivateFundCorpusSection({
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [projectDeleteOpen, setProjectDeleteOpen] = useState(false);
   const [sourceDeleteOpen, setSourceDeleteOpen] = useState(false);
+  const [folderDeleteTarget, setFolderDeleteTarget] = useState<PrivateFundSourceFolder | null>(
+    null,
+  );
   const [manageMode, setManageMode] = useState(false);
   const [managedNames, setManagedNames] = useState<Set<string>>(new Set());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() =>
@@ -438,6 +440,7 @@ export function PrivateFundCorpusSection({
   const [editingFolderId, setEditingFolderId] = useState("");
   const [editingFolderName, setEditingFolderName] = useState("");
   const [draggedFileName, setDraggedFileName] = useState("");
+  const openDocumentPreview = usePrivateFundWorkspaceStore((state) => state.openDocumentPreview);
 
   const pendingAttachments = useChatStore((state) => state.pendingComposerAttachments);
   const pendingRemovals = useChatStore((state) => state.pendingComposerAttachmentRemovals);
@@ -528,6 +531,7 @@ export function PrivateFundCorpusSection({
     setManagedNames(new Set());
     setCreatingFolder(false);
     setEditingFolderId("");
+    setFolderDeleteTarget(null);
   }, [selectedDatasetId]);
 
   useEffect(() => {
@@ -686,6 +690,27 @@ export function PrivateFundCorpusSection({
     }
   }
 
+  async function confirmDeleteFolder() {
+    if (!folderDeleteTarget) return;
+    const target = folderDeleteTarget;
+    try {
+      await deleteFolder.mutateAsync(target.folderId);
+      const store = useChatStore.getState();
+      for (const item of target.files) {
+        const row = fileRows.get(item.fileName);
+        if (row) store.removeComposerAttachment(row.attachment);
+      }
+      setFolderDeleteTarget(null);
+      showToast(
+        target.fileCount > 0
+          ? `已删除文件夹「${target.name}」及其中 ${target.fileCount} 份资料`
+          : `已删除文件夹「${target.name}」`,
+      );
+    } catch {
+      // The mutation error remains visible in the confirmation dialog.
+    }
+  }
+
   async function confirmDeleteProject() {
     if (!selectedDatasetId) return;
     try {
@@ -796,6 +821,40 @@ export function PrivateFundCorpusSection({
               onClick={() => void confirmDeleteSources()}
             >
               {deleteFiles.isPending ? "正在删除…" : "确认删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(folderDeleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleteFolder.isPending) setFolderDeleteTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除文件夹「{folderDeleteTarget?.name}」？</DialogTitle>
+            <DialogDescription>
+              {folderDeleteTarget?.fileCount
+                ? `此操作会从当前项目删除文件夹内全部 ${folderDeleteTarget.fileCount} 份资料；历史版本证据仍按项目规则保留。`
+                : "此操作会永久删除该空文件夹，且无法撤销。"}
+            </DialogDescription>
+          </DialogHeader>
+          {deleteFolder.isError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {deleteFolder.error instanceof Error ? deleteFolder.error.message : "删除文件夹失败"}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setFolderDeleteTarget(null)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteFolder.isPending}
+              onClick={() => void confirmDeleteFolder()}
+            >
+              {deleteFolder.isPending ? "正在删除…" : "确认删除"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -934,7 +993,7 @@ export function PrivateFundCorpusSection({
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex min-h-8 items-center gap-1 px-1">
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs font-semibold">资料来源（{files.length}）</h3>
+              <h3 className="text-xs font-semibold">资料来源</h3>
               <p className="truncate text-[10px] text-muted-foreground">
                 已加入当前提问 {attachedCount} 份
               </p>
@@ -1087,12 +1146,10 @@ export function PrivateFundCorpusSection({
                           setEditingFolderId(folder.folderId);
                           setEditingFolderName(folder.name);
                         }}
-                        onDelete={() =>
-                          deleteFolder.mutate(folder.folderId, {
-                            onError: (error) =>
-                              showToast(error instanceof Error ? error.message : "删除文件夹失败"),
-                          })
-                        }
+                        onDelete={() => {
+                          deleteFolder.reset();
+                          setFolderDeleteTarget(folder);
+                        }}
                       />
                       {expanded
                         ? rows.map((row) => (
@@ -1105,6 +1162,10 @@ export function PrivateFundCorpusSection({
                               managed={managedNames.has(row.file.name)}
                               movePending={moveFile.isPending}
                               onToggle={() => toggleFile(row)}
+                              onPreview={() => {
+                                if (!selectedDatasetId) return;
+                                openDocumentPreview(selectedDatasetId, row.file.name);
+                              }}
                               onRestore={() =>
                                 moveFile.mutate(
                                   { fileName: row.file.name, folderId: null },

@@ -24,6 +24,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -55,6 +56,7 @@ import { PrivateFundTrackingPanel } from "./PrivateFundTrackingPanel";
 import { FilePathAwareMessageResponse } from "@/components/blocks/BlockRenderer";
 import { hostFetch } from "@/lib/host";
 import { useResizableInlinePanel } from "@/hooks/useResizableInlinePanel";
+import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
 
 const RichNodeContent = lazy(() =>
   import("./RichNodeContent").then((module) => ({ default: module.RichNodeContent })),
@@ -339,12 +341,17 @@ export function PrivateFundResearchWorkbench({
   const workflow = workflowQuery.data;
   const assetCatalog = assetsQuery.data;
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [returnToResearchAfterPreview, setReturnToResearchAfterPreview] = useState(false);
   const [assetPanelExpanded, setAssetPanelExpanded] = useState(false);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("research");
   const [selectedInformation, setSelectedInformation] = useState<SelectedInformation[]>([]);
   const [presentationMode, setPresentationMode] = useState<PrivateFundGenerationMode>("plain_text");
   const [presentationInstruction, setPresentationInstruction] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const documentPreviewRequest = usePrivateFundWorkspaceStore(
+    (state) => state.documentPreviewRequest,
+  );
+  const handledPreviewRequestId = useRef(0);
   const { panelWidth: contextPanelWidth, handleProps: contextResizeHandleProps } =
     useResizableInlinePanel(conversationId, 300, 360);
 
@@ -413,9 +420,33 @@ export function PrivateFundResearchWorkbench({
   }, [datasetId, selectedAsset]);
 
   const openAsset = useCallback((asset: PrivateFundAsset) => {
+    setReturnToResearchAfterPreview(false);
     setSelectedAssetId(asset.assetId);
     setAssetPanelExpanded(assetNeedsWidePreview(asset));
   }, []);
+
+  useEffect(() => {
+    if (
+      !documentPreviewRequest ||
+      documentPreviewRequest.datasetId !== datasetId ||
+      documentPreviewRequest.requestId === handledPreviewRequestId.current
+    ) {
+      return;
+    }
+    const documentAsset = assets.find(
+      (asset) =>
+        asset.assetType === "document" &&
+        (asset.title === documentPreviewRequest.fileName ||
+          asset.metadata.fileName === documentPreviewRequest.fileName ||
+          asset.metadata.file_name === documentPreviewRequest.fileName),
+    );
+    if (!documentAsset) return;
+    handledPreviewRequestId.current = documentPreviewRequest.requestId;
+    setReturnToResearchAfterPreview(true);
+    setWorkspaceView("sources");
+    setSelectedAssetId(documentAsset.assetId);
+    setAssetPanelExpanded(assetNeedsWidePreview(documentAsset));
+  }, [assets, datasetId, documentPreviewRequest]);
 
   const contextMutation = useMutation({
     mutationFn: (assetIds: string[]) => setPrivateFundAssetContext(datasetId, assetIds),
@@ -728,6 +759,7 @@ export function PrivateFundResearchWorkbench({
                   key={item.value}
                   onClick={() => {
                     setWorkspaceView(item.value);
+                    setReturnToResearchAfterPreview(false);
                     setSelectedAssetId("");
                     setAssetPanelExpanded(false);
                   }}
@@ -840,9 +872,11 @@ export function PrivateFundResearchWorkbench({
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--pf-line)] px-3">
                   <button
-                    aria-label="返回资产库"
+                    aria-label={returnToResearchAfterPreview ? "返回对话" : "返回资产库"}
                     className="flex size-9 items-center justify-center rounded-lg text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
                     onClick={() => {
+                      if (returnToResearchAfterPreview) setWorkspaceView("research");
+                      setReturnToResearchAfterPreview(false);
                       setSelectedAssetId("");
                       setAssetPanelExpanded(false);
                     }}
