@@ -406,6 +406,216 @@ export interface PrivateFundTrackingOverview {
   memoVersions: PrivateFundMemoVersion[];
 }
 
+export interface PrivateFundValuationTrackingJob {
+  jobId: string;
+  jobType: string;
+  sourceId: string;
+  status: string;
+  attemptCount: number;
+  maxAttempts: number;
+  createdAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  lastError?: string | null;
+  result?: Record<string, unknown> | null;
+}
+
+export interface PrivateFundValuationAnalysis {
+  analysisVersionId: string;
+  status: string;
+  summaryMarkdown: string;
+  analysis: Record<string, unknown>;
+  analyzerVersion: string;
+  createdAt: string;
+}
+
+export interface PrivateFundValuationModelVersion {
+  modelVersionId: string;
+  documentVersionNo: number;
+  originalFilename: string;
+  nodeCount: number;
+  formulaNodeCount: number;
+  reviewRequiredCount: number;
+  revertedToVersionId?: string | null;
+  createdAt: string;
+  analysis?: PrivateFundValuationAnalysis | null;
+}
+
+export interface PrivateFundValuationModelSeries {
+  seriesId: string;
+  seriesKey: string;
+  name: string;
+  companyName?: string | null;
+  companyTicker?: string | null;
+  modelType?: string | null;
+  currentModelVersionId?: string | null;
+  currentVersionNo: number;
+  versionCount: number;
+  status: string;
+  updatedAt: string;
+  currentVersion?: PrivateFundValuationModelVersion | null;
+  versions: PrivateFundValuationModelVersion[];
+}
+
+export interface PrivateFundValuationChange {
+  canonicalKey: string;
+  nodeId?: string | null;
+  nodeKind?: string | null;
+  metricKey?: string | null;
+  displayName: string;
+  scope?: string | null;
+  period?: string | null;
+  scenario?: string | null;
+  changeType: string;
+  materiality: string;
+  summary: string;
+  oldValue: Record<string, unknown>;
+  newValue: Record<string, unknown>;
+  absoluteChange?: number | null;
+  relativeChange?: number | null;
+  evidenceIds: string[];
+}
+
+export interface PrivateFundValuationAlert {
+  alertId: string;
+  seriesId: string;
+  ruleId?: string | null;
+  changeId: string;
+  alertType: string;
+  priority: string;
+  title: string;
+  summary: string;
+  evidenceIds: string[];
+  status: string;
+  snoozedUntil?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PrivateFundValuationWatchRule {
+  ruleId: string;
+  seriesId?: string | null;
+  name: string;
+  minMateriality: string;
+  changeTypes: string[];
+  active: boolean;
+}
+
+export interface PrivateFundValuationAgentFinding {
+  title: string;
+  detail: string;
+  impact: string;
+  confidence: number;
+  evidenceIds: string[];
+}
+
+export interface PrivateFundValuationAgentEvidence {
+  evidenceId: string;
+  kind: string;
+  label: string;
+  source: string;
+  detail: string;
+  nodeId?: string | null;
+  writable?: boolean;
+}
+
+export interface PrivateFundValuationRecommendedChange {
+  nodeId: string;
+  displayName: string;
+  metricKey: string;
+  period?: string | null;
+  scenario?: string | null;
+  currentValueNumeric?: number | null;
+  currentValueText?: string | null;
+  proposedValueNumeric?: number | null;
+  proposedValueText?: string | null;
+  unit?: string | null;
+  rationale: string;
+  confidence: number;
+  evidenceIds: string[];
+  writable: boolean;
+  sheetName?: string | null;
+  cellRef?: string | null;
+  formula?: string | null;
+}
+
+export interface PrivateFundValuationAgentAnalysis {
+  analysisId: string;
+  datasetId: string;
+  seriesId: string;
+  baseModelVersionId: string;
+  comparisonModelVersionId?: string | null;
+  status: string;
+  focus: string;
+  valuationMethod: string;
+  executiveSummary: string;
+  investmentConclusion: string;
+  keyFindings: PrivateFundValuationAgentFinding[];
+  evidenceChain: PrivateFundValuationAgentFinding[];
+  recommendedChanges: PrivateFundValuationRecommendedChange[];
+  risks: PrivateFundValuationAgentFinding[];
+  openQuestions: string[];
+  selectedEvidence: PrivateFundValuationAgentEvidence[];
+  planner: Record<string, unknown>;
+  evidenceIds: string[];
+  modelName: string;
+  agentVersion: string;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null;
+}
+
+export interface PrivateFundValuationDerivedModel {
+  derivedModelId: string;
+  datasetId: string;
+  seriesId: string;
+  analysisId: string;
+  baseModelVersionId: string;
+  derivedVersionNo: number;
+  outputFilename: string;
+  outputPath: string;
+  checksum: string;
+  appliedChanges: Array<Record<string, unknown>>;
+  skippedChanges: Array<Record<string, unknown>>;
+  resourceFileName?: string | null;
+  resourcePipelineJobId?: string | null;
+  resourceStatus: "not_added" | "queued" | "running" | "completed" | "failed" | string;
+  resourceDocId?: string | null;
+  resourceAddedAt?: string | null;
+  resourceError?: string | null;
+  createdAt: string;
+}
+
+export interface PrivateFundValuationResourceImport {
+  derivedModel: PrivateFundValuationDerivedModel;
+  job: PrivateFundPipelineJob | null;
+  status: string;
+  fileName: string;
+  alreadyAdded: boolean;
+  copied: boolean;
+}
+
+export interface PrivateFundValuationTrackingOverview {
+  datasetId: string;
+  series: PrivateFundValuationModelSeries[];
+  alerts: PrivateFundValuationAlert[];
+  watchRules: PrivateFundValuationWatchRule[];
+  jobs: PrivateFundValuationTrackingJob[];
+  agentAnalyses: PrivateFundValuationAgentAnalysis[];
+  derivedModels: PrivateFundValuationDerivedModel[];
+  unreadAlertCount: number;
+  changeCounts: Record<string, number>;
+  analyzerVersion: string;
+}
+
+export interface PrivateFundValuationComparison {
+  series: PrivateFundValuationModelSeries;
+  fromVersion: PrivateFundValuationModelVersion;
+  toVersion: PrivateFundValuationModelVersion;
+  changes: PrivateFundValuationChange[];
+}
+
 export interface PrivateFundResearchItemTimeline {
   item: PrivateFundResearchItem;
   versions: PrivateFundResearchItemVersion[];
@@ -711,6 +921,204 @@ interface TrackingOverviewWire {
   jobs?: TrackingJobWire[];
   memo_series?: MemoSeriesWire[];
   memo_versions?: MemoVersionWire[];
+}
+
+interface ValuationTrackingJobWire {
+  job_id: string;
+  job_type: string;
+  source_id: string;
+  status: string;
+  attempt_count: number;
+  max_attempts: number;
+  created_at: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  last_error?: string | null;
+  result?: Record<string, unknown> | null;
+}
+
+interface ValuationAnalysisWire {
+  analysis_version_id: string;
+  status: string;
+  summary_markdown: string;
+  analysis?: Record<string, unknown>;
+  analyzer_version: string;
+  created_at: string;
+}
+
+interface ValuationModelVersionWire {
+  model_version_id: string;
+  document_version_no: number;
+  original_filename: string;
+  node_count: number;
+  formula_node_count: number;
+  review_required_count: number;
+  reverted_to_version_id?: string | null;
+  created_at: string;
+  analysis?: ValuationAnalysisWire | null;
+}
+
+interface ValuationModelSeriesWire {
+  series_id: string;
+  series_key: string;
+  name: string;
+  company_name?: string | null;
+  company_ticker?: string | null;
+  model_type?: string | null;
+  current_model_version_id?: string | null;
+  current_version_no: number;
+  version_count?: number;
+  status: string;
+  updated_at: string;
+  current_version?: ValuationModelVersionWire | null;
+  versions?: ValuationModelVersionWire[];
+}
+
+interface ValuationChangeWire {
+  canonical_key: string;
+  node_id?: string | null;
+  node_kind?: string | null;
+  metric_key?: string | null;
+  display_name: string;
+  scope?: string | null;
+  period?: string | null;
+  scenario?: string | null;
+  change_type: string;
+  materiality: string;
+  summary: string;
+  old_value?: Record<string, unknown>;
+  new_value?: Record<string, unknown>;
+  absolute_change?: number | null;
+  relative_change?: number | null;
+  evidence_ids?: string[];
+}
+
+interface ValuationAlertWire {
+  alert_id: string;
+  series_id: string;
+  rule_id?: string | null;
+  change_id: string;
+  alert_type: string;
+  priority: string;
+  title: string;
+  summary: string;
+  evidence_ids?: string[];
+  status: string;
+  snoozed_until?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ValuationWatchRuleWire {
+  rule_id: string;
+  series_id?: string | null;
+  name: string;
+  min_materiality: string;
+  change_types?: string[];
+  active: boolean | number;
+}
+
+interface ValuationAgentFindingWire {
+  title?: string;
+  claim?: string;
+  detail?: string;
+  reasoning?: string;
+  impact?: string;
+  confidence?: number;
+  evidence_ids?: string[];
+}
+
+interface ValuationAgentEvidenceWire {
+  evidence_id: string;
+  kind?: string;
+  label?: string;
+  source?: string;
+  detail?: string;
+  node_id?: string | null;
+  writable?: boolean | number;
+}
+
+interface ValuationRecommendedChangeWire {
+  node_id: string;
+  display_name?: string;
+  metric_key?: string;
+  period?: string | null;
+  scenario?: string | null;
+  current_value_numeric?: number | null;
+  current_value_text?: string | null;
+  proposed_value_numeric?: number | null;
+  proposed_value_text?: string | null;
+  unit?: string | null;
+  rationale?: string;
+  confidence?: number;
+  evidence_ids?: string[];
+  writable?: boolean | number;
+  sheet_name?: string | null;
+  cell_ref?: string | null;
+  formula?: string | null;
+}
+
+interface ValuationAgentAnalysisWire {
+  analysis_id: string;
+  dataset_id: string;
+  series_id: string;
+  base_model_version_id: string;
+  comparison_model_version_id?: string | null;
+  status: string;
+  focus?: string;
+  valuation_method?: string;
+  executive_summary?: string;
+  investment_conclusion?: string;
+  analysis?: {
+    key_findings?: ValuationAgentFindingWire[];
+    evidence_chain?: ValuationAgentFindingWire[];
+    recommended_changes?: ValuationRecommendedChangeWire[];
+    risks?: ValuationAgentFindingWire[];
+    open_questions?: string[];
+    selected_evidence?: ValuationAgentEvidenceWire[];
+  };
+  planner?: Record<string, unknown>;
+  evidence_ids?: string[];
+  model_name?: string;
+  agent_version?: string;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+}
+
+interface ValuationDerivedModelWire {
+  derived_model_id: string;
+  dataset_id: string;
+  series_id: string;
+  analysis_id: string;
+  base_model_version_id: string;
+  derived_version_no: number;
+  output_filename: string;
+  output_path: string;
+  checksum: string;
+  applied_changes?: Array<Record<string, unknown>>;
+  skipped_changes?: Array<Record<string, unknown>>;
+  resource_file_name?: string | null;
+  resource_pipeline_job_id?: string | null;
+  resource_status?: string | null;
+  resource_doc_id?: string | null;
+  resource_added_at?: string | null;
+  resource_error?: string | null;
+  created_at: string;
+}
+
+interface ValuationTrackingOverviewWire {
+  dataset_id: string;
+  series?: ValuationModelSeriesWire[];
+  alerts?: ValuationAlertWire[];
+  watch_rules?: ValuationWatchRuleWire[];
+  jobs?: ValuationTrackingJobWire[];
+  agent_analyses?: ValuationAgentAnalysisWire[];
+  derived_models?: ValuationDerivedModelWire[];
+  unread_alert_count?: number;
+  change_counts?: Record<string, number>;
+  analyzer_version: string;
 }
 
 function jobFromWire(job: PipelineJobWire | null | undefined): PrivateFundPipelineJob | null {
@@ -1035,6 +1443,235 @@ function trackingOverviewFromWire(payload: TrackingOverviewWire): PrivateFundTra
       updatedAt: series.updated_at,
     })),
     memoVersions: (payload.memo_versions ?? []).map(memoVersionFromWire),
+  };
+}
+
+function valuationTrackingJobFromWire(
+  job: ValuationTrackingJobWire,
+): PrivateFundValuationTrackingJob {
+  return {
+    jobId: job.job_id,
+    jobType: job.job_type,
+    sourceId: job.source_id,
+    status: job.status,
+    attemptCount: job.attempt_count,
+    maxAttempts: job.max_attempts,
+    createdAt: job.created_at,
+    startedAt: job.started_at ?? null,
+    finishedAt: job.finished_at ?? null,
+    lastError: job.last_error ?? null,
+    result: job.result ?? null,
+  };
+}
+
+function valuationAnalysisFromWire(analysis: ValuationAnalysisWire): PrivateFundValuationAnalysis {
+  return {
+    analysisVersionId: analysis.analysis_version_id,
+    status: analysis.status,
+    summaryMarkdown: analysis.summary_markdown,
+    analysis: analysis.analysis ?? {},
+    analyzerVersion: analysis.analyzer_version,
+    createdAt: analysis.created_at,
+  };
+}
+
+function valuationModelVersionFromWire(
+  version: ValuationModelVersionWire,
+): PrivateFundValuationModelVersion {
+  return {
+    modelVersionId: version.model_version_id,
+    documentVersionNo: version.document_version_no,
+    originalFilename: version.original_filename,
+    nodeCount: version.node_count,
+    formulaNodeCount: version.formula_node_count,
+    reviewRequiredCount: version.review_required_count,
+    revertedToVersionId: version.reverted_to_version_id ?? null,
+    createdAt: version.created_at,
+    analysis: version.analysis ? valuationAnalysisFromWire(version.analysis) : null,
+  };
+}
+
+function valuationModelSeriesFromWire(
+  series: ValuationModelSeriesWire,
+): PrivateFundValuationModelSeries {
+  return {
+    seriesId: series.series_id,
+    seriesKey: series.series_key,
+    name: series.name,
+    companyName: series.company_name ?? null,
+    companyTicker: series.company_ticker ?? null,
+    modelType: series.model_type ?? null,
+    currentModelVersionId: series.current_model_version_id ?? null,
+    currentVersionNo: series.current_version_no,
+    versionCount: series.version_count ?? series.versions?.length ?? 0,
+    status: series.status,
+    updatedAt: series.updated_at,
+    currentVersion: series.current_version
+      ? valuationModelVersionFromWire(series.current_version)
+      : null,
+    versions: (series.versions ?? []).map(valuationModelVersionFromWire),
+  };
+}
+
+function valuationChangeFromWire(change: ValuationChangeWire): PrivateFundValuationChange {
+  return {
+    canonicalKey: change.canonical_key,
+    nodeId: change.node_id ?? null,
+    nodeKind: change.node_kind ?? null,
+    metricKey: change.metric_key ?? null,
+    displayName: change.display_name,
+    scope: change.scope ?? null,
+    period: change.period ?? null,
+    scenario: change.scenario ?? null,
+    changeType: change.change_type,
+    materiality: change.materiality,
+    summary: change.summary,
+    oldValue: change.old_value ?? {},
+    newValue: change.new_value ?? {},
+    absoluteChange: change.absolute_change ?? null,
+    relativeChange: change.relative_change ?? null,
+    evidenceIds: change.evidence_ids ?? [],
+  };
+}
+
+function valuationAlertFromWire(alert: ValuationAlertWire): PrivateFundValuationAlert {
+  return {
+    alertId: alert.alert_id,
+    seriesId: alert.series_id,
+    ruleId: alert.rule_id ?? null,
+    changeId: alert.change_id,
+    alertType: alert.alert_type,
+    priority: alert.priority,
+    title: alert.title,
+    summary: alert.summary,
+    evidenceIds: alert.evidence_ids ?? [],
+    status: alert.status,
+    snoozedUntil: alert.snoozed_until ?? null,
+    createdAt: alert.created_at,
+    updatedAt: alert.updated_at,
+  };
+}
+
+function valuationWatchRuleFromWire(rule: ValuationWatchRuleWire): PrivateFundValuationWatchRule {
+  return {
+    ruleId: rule.rule_id,
+    seriesId: rule.series_id ?? null,
+    name: rule.name,
+    minMateriality: rule.min_materiality,
+    changeTypes: rule.change_types ?? [],
+    active: Boolean(rule.active),
+  };
+}
+
+function valuationAgentFindingFromWire(
+  finding: ValuationAgentFindingWire,
+): PrivateFundValuationAgentFinding {
+  return {
+    title: finding.title ?? finding.claim ?? "分析结论",
+    detail: finding.detail ?? finding.reasoning ?? "",
+    impact: finding.impact ?? "medium",
+    confidence: finding.confidence ?? 0.5,
+    evidenceIds: finding.evidence_ids ?? [],
+  };
+}
+
+function valuationAgentAnalysisFromWire(
+  item: ValuationAgentAnalysisWire,
+): PrivateFundValuationAgentAnalysis {
+  const analysis = item.analysis ?? {};
+  return {
+    analysisId: item.analysis_id,
+    datasetId: item.dataset_id,
+    seriesId: item.series_id,
+    baseModelVersionId: item.base_model_version_id,
+    comparisonModelVersionId: item.comparison_model_version_id ?? null,
+    status: item.status,
+    focus: item.focus ?? "",
+    valuationMethod: item.valuation_method ?? "",
+    executiveSummary: item.executive_summary ?? "",
+    investmentConclusion: item.investment_conclusion ?? "",
+    keyFindings: (analysis.key_findings ?? []).map(valuationAgentFindingFromWire),
+    evidenceChain: (analysis.evidence_chain ?? []).map(valuationAgentFindingFromWire),
+    recommendedChanges: (analysis.recommended_changes ?? []).map((change) => ({
+      nodeId: change.node_id,
+      displayName: change.display_name ?? change.metric_key ?? change.node_id,
+      metricKey: change.metric_key ?? "",
+      period: change.period ?? null,
+      scenario: change.scenario ?? null,
+      currentValueNumeric: change.current_value_numeric ?? null,
+      currentValueText: change.current_value_text ?? null,
+      proposedValueNumeric: change.proposed_value_numeric ?? null,
+      proposedValueText: change.proposed_value_text ?? null,
+      unit: change.unit ?? null,
+      rationale: change.rationale ?? "",
+      confidence: change.confidence ?? 0.5,
+      evidenceIds: change.evidence_ids ?? [],
+      writable: Boolean(change.writable),
+      sheetName: change.sheet_name ?? null,
+      cellRef: change.cell_ref ?? null,
+      formula: change.formula ?? null,
+    })),
+    risks: (analysis.risks ?? []).map(valuationAgentFindingFromWire),
+    openQuestions: analysis.open_questions ?? [],
+    selectedEvidence: (analysis.selected_evidence ?? []).map((evidence) => ({
+      evidenceId: evidence.evidence_id,
+      kind: evidence.kind ?? "unknown",
+      label: evidence.label ?? evidence.evidence_id,
+      source: evidence.source ?? "",
+      detail: evidence.detail ?? "",
+      nodeId: evidence.node_id ?? null,
+      writable: Boolean(evidence.writable),
+    })),
+    planner: item.planner ?? {},
+    evidenceIds: item.evidence_ids ?? [],
+    modelName: item.model_name ?? "",
+    agentVersion: item.agent_version ?? "",
+    errorMessage: item.error_message ?? null,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+    completedAt: item.completed_at ?? null,
+  };
+}
+
+function valuationDerivedModelFromWire(
+  item: ValuationDerivedModelWire,
+): PrivateFundValuationDerivedModel {
+  return {
+    derivedModelId: item.derived_model_id,
+    datasetId: item.dataset_id,
+    seriesId: item.series_id,
+    analysisId: item.analysis_id,
+    baseModelVersionId: item.base_model_version_id,
+    derivedVersionNo: item.derived_version_no,
+    outputFilename: item.output_filename,
+    outputPath: item.output_path,
+    checksum: item.checksum,
+    appliedChanges: item.applied_changes ?? [],
+    skippedChanges: item.skipped_changes ?? [],
+    resourceFileName: item.resource_file_name ?? null,
+    resourcePipelineJobId: item.resource_pipeline_job_id ?? null,
+    resourceStatus: item.resource_status ?? "not_added",
+    resourceDocId: item.resource_doc_id ?? null,
+    resourceAddedAt: item.resource_added_at ?? null,
+    resourceError: item.resource_error ?? null,
+    createdAt: item.created_at,
+  };
+}
+
+function valuationTrackingOverviewFromWire(
+  payload: ValuationTrackingOverviewWire,
+): PrivateFundValuationTrackingOverview {
+  return {
+    datasetId: payload.dataset_id,
+    series: (payload.series ?? []).map(valuationModelSeriesFromWire),
+    alerts: (payload.alerts ?? []).map(valuationAlertFromWire),
+    watchRules: (payload.watch_rules ?? []).map(valuationWatchRuleFromWire),
+    jobs: (payload.jobs ?? []).map(valuationTrackingJobFromWire),
+    agentAnalyses: (payload.agent_analyses ?? []).map(valuationAgentAnalysisFromWire),
+    derivedModels: (payload.derived_models ?? []).map(valuationDerivedModelFromWire),
+    unreadAlertCount: payload.unread_alert_count ?? 0,
+    changeCounts: payload.change_counts ?? {},
+    analyzerVersion: payload.analyzer_version,
   };
 }
 
@@ -1368,6 +2005,186 @@ export async function getPrivateFundTrackingJob(
     ),
   );
   return trackingJobFromWire(body.job);
+}
+
+export async function getPrivateFundValuationTrackingOverview(
+  datasetId: string,
+): Promise<PrivateFundValuationTrackingOverview> {
+  const payload = await jsonOrThrow<ValuationTrackingOverviewWire>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-tracking`,
+    ),
+  );
+  return valuationTrackingOverviewFromWire(payload);
+}
+
+export async function runPrivateFundValuationTracking(
+  datasetId: string,
+): Promise<PrivateFundValuationTrackingJob[]> {
+  const body = await jsonOrThrow<{ jobs?: ValuationTrackingJobWire[] }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-tracking/run`,
+      { method: "POST" },
+    ),
+  );
+  return (body.jobs ?? []).map(valuationTrackingJobFromWire);
+}
+
+export async function comparePrivateFundValuationModelVersions(
+  datasetId: string,
+  seriesId: string,
+  fromVersion: string,
+  toVersion: string,
+): Promise<PrivateFundValuationComparison> {
+  const params = new URLSearchParams({ from_version: fromVersion, to_version: toVersion });
+  const payload = await jsonOrThrow<{
+    series: ValuationModelSeriesWire;
+    from_version: ValuationModelVersionWire;
+    to_version: ValuationModelVersionWire;
+    changes?: ValuationChangeWire[];
+  }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-models/${encodeURIComponent(seriesId)}/compare?${params}`,
+    ),
+  );
+  return {
+    series: valuationModelSeriesFromWire(payload.series),
+    fromVersion: valuationModelVersionFromWire(payload.from_version),
+    toVersion: valuationModelVersionFromWire(payload.to_version),
+    changes: (payload.changes ?? []).map(valuationChangeFromWire),
+  };
+}
+
+export async function runPrivateFundValuationAgentAnalysis(
+  datasetId: string,
+  seriesId: string,
+  input: {
+    baseModelVersionId?: string;
+    comparisonModelVersionId?: string;
+    focus?: string;
+  } = {},
+): Promise<PrivateFundValuationAgentAnalysis> {
+  const body = await jsonOrThrow<{ analysis: ValuationAgentAnalysisWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-models/${encodeURIComponent(seriesId)}/agent-analysis`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_model_version_id: input.baseModelVersionId ?? "",
+          comparison_model_version_id: input.comparisonModelVersionId ?? "",
+          focus: input.focus ?? "",
+        }),
+      },
+    ),
+  );
+  return valuationAgentAnalysisFromWire(body.analysis);
+}
+
+export async function getPrivateFundValuationAgentAnalysis(
+  datasetId: string,
+  analysisId: string,
+): Promise<PrivateFundValuationAgentAnalysis> {
+  const body = await jsonOrThrow<{ analysis: ValuationAgentAnalysisWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-agent-analyses/${encodeURIComponent(analysisId)}`,
+    ),
+  );
+  return valuationAgentAnalysisFromWire(body.analysis);
+}
+
+export async function derivePrivateFundValuationModel(
+  datasetId: string,
+  analysisId: string,
+): Promise<PrivateFundValuationDerivedModel> {
+  const body = await jsonOrThrow<{ derived_model: ValuationDerivedModelWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-agent-analyses/${encodeURIComponent(analysisId)}/derive-model`,
+      { method: "POST" },
+    ),
+  );
+  return valuationDerivedModelFromWire(body.derived_model);
+}
+
+export async function fetchPrivateFundValuationDerivedModelFile(
+  datasetId: string,
+  derivedModelId: string,
+): Promise<Blob> {
+  const response = await authenticatedFetch(
+    `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-derived-models/${encodeURIComponent(derivedModelId)}/file`,
+  );
+  if (!response.ok) {
+    await jsonOrThrow<never>(response);
+  }
+  return response.blob();
+}
+
+export async function addPrivateFundValuationDerivedModelToResources(
+  datasetId: string,
+  derivedModelId: string,
+): Promise<PrivateFundValuationResourceImport> {
+  const body = await jsonOrThrow<{
+    derived_model: ValuationDerivedModelWire;
+    job?: PipelineJobWire | null;
+    resource_import: {
+      status: string;
+      file_name: string;
+      already_added?: boolean;
+      copied?: boolean;
+    };
+  }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-derived-models/${encodeURIComponent(derivedModelId)}/add-to-resources`,
+      { method: "POST" },
+    ),
+  );
+  return {
+    derivedModel: valuationDerivedModelFromWire(body.derived_model),
+    job: jobFromWire(body.job),
+    status: body.resource_import.status,
+    fileName: body.resource_import.file_name,
+    alreadyAdded: Boolean(body.resource_import.already_added),
+    copied: Boolean(body.resource_import.copied),
+  };
+}
+
+export async function updatePrivateFundValuationAlert(
+  datasetId: string,
+  alertId: string,
+  input: { status: "new" | "acknowledged" | "dismissed" | "snoozed"; snoozedUntil?: string },
+): Promise<PrivateFundValuationAlert> {
+  const body = await jsonOrThrow<{ alert: ValuationAlertWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-alerts/${encodeURIComponent(alertId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: input.status, snoozed_until: input.snoozedUntil }),
+      },
+    ),
+  );
+  return valuationAlertFromWire(body.alert);
+}
+
+export async function updatePrivateFundValuationWatchRule(
+  datasetId: string,
+  ruleId: string,
+  input: Partial<{ active: boolean; minMateriality: string }>,
+): Promise<PrivateFundValuationWatchRule> {
+  const body = await jsonOrThrow<{ watch_rule: ValuationWatchRuleWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-watch-rules/${encodeURIComponent(ruleId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          active: input.active,
+          min_materiality: input.minMateriality,
+        }),
+      },
+    ),
+  );
+  return valuationWatchRuleFromWire(body.watch_rule);
 }
 
 export async function comparePrivateFundMemoVersions(

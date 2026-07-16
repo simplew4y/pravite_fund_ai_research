@@ -43,6 +43,8 @@ from omnigent.runtime.policies.builder import load_session_usage
 from omnigent.server import (
     private_fund_source_folders,
     private_fund_tracking,
+    private_fund_valuation_agent,
+    private_fund_valuation_tracking,
     private_fund_workflow,
 )
 from omnigent.server.auth import AuthProvider
@@ -301,6 +303,22 @@ class UpdateResearchAlertRequest(BaseModel):
     snoozed_until: str = ""
 
 
+class UpdateValuationWatchRuleRequest(BaseModel):
+    active: bool | None = None
+    min_materiality: str | None = None
+
+
+class UpdateValuationAlertRequest(BaseModel):
+    status: str
+    snoozed_until: str = ""
+
+
+class RunValuationAgentAnalysisRequest(BaseModel):
+    base_model_version_id: str = ""
+    comparison_model_version_id: str = ""
+    focus: str = Field(default="", max_length=2000)
+
+
 def _jsonable(value: Any) -> Any:
     if hasattr(value, "to_dict"):
         return _jsonable(value.to_dict())
@@ -473,6 +491,12 @@ def _persisted_project_pipeline_job(job_id: str) -> dict[str, Any] | None:
         if row is not None:
             return dict(row)
     return None
+
+
+def _get_project_pipeline_job_payload(job_id: str) -> dict[str, Any] | None:
+    with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
+        job = _PRIVATE_FUND_PIPELINE_JOBS.get(job_id)
+    return dict(job) if job else _persisted_project_pipeline_job(job_id)
 
 
 def _project_index_stats(dataset_id: str) -> dict[str, Any]:
@@ -1159,6 +1183,15 @@ def _save_uploaded_project_files(dataset_id: str, files: list[UploadFile]) -> di
                 "company_confidence": 0.0,
             }
         )
+    _mark_project_uploads_changed(dataset_id, uploads_dir)
+    return {
+        "dataset_id": dataset_id,
+        "files": saved,
+        "project": _project_payload(_require_project_row(dataset_id)),
+    }
+
+
+def _mark_project_uploads_changed(dataset_id: str, uploads_dir: Path) -> None:
     with _connect_global_registry() as conn:
         conn.execute(
             """
@@ -1169,11 +1202,6 @@ def _save_uploaded_project_files(dataset_id: str, files: list[UploadFile]) -> di
             (str(uploads_dir), len(_supported_files_in(uploads_dir)), _now_iso(), dataset_id),
         )
         conn.commit()
-    return {
-        "dataset_id": dataset_id,
-        "files": saved,
-        "project": _project_payload(_require_project_row(dataset_id)),
-    }
 
 
 def _set_active_dataset(dataset_id: str) -> dict[str, Any]:
@@ -1289,6 +1317,11 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
             "status": "running",
             "started_at": _now_iso(),
     }
+    _sync_derived_resource_import(
+        dataset_id,
+        job_id,
+        "running",
+    )
     try:
         ingest = _private_fund_ingest_module()
         classification_llm = None
@@ -1318,6 +1351,8 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
         private_fund_workflow.get_or_create_workflow(_collection_db_path(dataset_id), dataset_id)
         tracking_jobs: list[dict[str, Any]] = []
         tracking_enqueue_error = ""
+        valuation_tracking_jobs: list[dict[str, Any]] = []
+        valuation_tracking_enqueue_error = ""
         if result.status in {"completed", "completed_with_warnings"}:
             try:
                 tracking_jobs = private_fund_tracking.enqueue_current_documents(
@@ -1332,10 +1367,32 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
                     job_id,
                     dataset_id,
                 )
+            try:
+                valuation_tracking_jobs = (
+                    private_fund_valuation_tracking.enqueue_model_documents(
+                        _collection_db_path(dataset_id),
+                        dataset_id,
+                        include_history=False,
+                    )
+                )
+            except Exception as exc:
+                valuation_tracking_enqueue_error = str(exc)
+                _logger.exception(
+                    "private fund valuation tracking enqueue failed after ingest: "
+                    "job_id=%s dataset_id=%s",
+                    job_id,
+                    dataset_id,
+                )
         result_payload = ingest.result_to_dict(result)
         result_payload["tracking_jobs"] = tracking_jobs
+        result_payload["valuation_tracking_jobs"] = valuation_tracking_jobs
         if tracking_enqueue_error:
             result_payload["tracking_enqueue_error"] = tracking_enqueue_error
+        if valuation_tracking_enqueue_error:
+            result_payload["valuation_tracking_enqueue_error"] = (
+                valuation_tracking_enqueue_error
+            )
+        _sync_derived_resource_import(dataset_id, job_id, result.status)
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
                 "job_id": job_id,
@@ -1350,6 +1407,7 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
         _logger.exception(
             "private fund project pipeline failed: job_id=%s dataset_id=%s", job_id, dataset_id
         )
+        _sync_derived_resource_import(dataset_id, job_id, "failed", error=str(exc))
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
                 **_PRIVATE_FUND_PIPELINE_JOBS.get(job_id, {}),
@@ -1359,6 +1417,65 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
                 "finished_at": _now_iso(),
                 "message": str(exc),
             }
+
+
+def _sync_derived_resource_import(
+    dataset_id: str,
+    pipeline_job_id: str,
+    status: str,
+    *,
+    error: str = "",
+) -> None:
+    try:
+        private_fund_valuation_agent.update_resource_import_for_pipeline(
+            _collection_db_path(dataset_id),
+            dataset_id,
+            pipeline_job_id,
+            status,
+            error=error,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception(
+            "failed to update derived-model resource state: dataset_id=%s job_id=%s",
+            dataset_id,
+            pipeline_job_id,
+        )
+
+
+def _queue_project_pipeline_job(
+    dataset_id: str,
+    background_tasks: BackgroundTasks,
+    request: RunProjectPipelineRequest | None = None,
+) -> dict[str, Any]:
+    row = _require_project_row(dataset_id)
+    uploads_dir = _seed_uploads_from_raw(dataset_id)
+    if not _supported_files_in(uploads_dir):
+        raise HTTPException(
+            status_code=400,
+            detail="Upload at least one supported document before running pipeline.",
+        )
+    job_id = hashlib.sha256(f"{dataset_id}\0{_now_iso()}".encode("utf-8")).hexdigest()[:16]
+    payload = {
+        "dataset_id": dataset_id,
+        "dataset_name": row["name"],
+        "company_name": row["company_name"],
+        "company_ticker": row["company_ticker"],
+        "directory_path": str(uploads_dir),
+        "workspace_root": str(_dataset_workspace_root()),
+        "recursive": request.recursive if request else True,
+        "reset": request.reset if request else False,
+    }
+    with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
+        _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
+            "job_id": job_id,
+            "dataset_id": dataset_id,
+            "status": "queued",
+            "created_at": _now_iso(),
+            "directory_path": str(uploads_dir),
+            "workspace_root": str(_dataset_workspace_root()),
+        }
+    background_tasks.add_task(_project_pipeline_worker, job_id, payload)
+    return dict(_PRIVATE_FUND_PIPELINE_JOBS[job_id])
 
 
 def _trace_payload(demo: PdfResearchDemo, citations: list[Citation]) -> list[dict[str, Any]]:
@@ -3043,42 +3160,11 @@ def create_private_fund_pdf_router(
         background_tasks: BackgroundTasks,
         request: RunProjectPipelineRequest | None = None,
     ) -> dict[str, Any]:
-        row = _require_project_row(dataset_id)
-        uploads_dir = _seed_uploads_from_raw(dataset_id)
-        if not _supported_files_in(uploads_dir):
-            raise HTTPException(
-                status_code=400,
-                detail="Upload at least one supported document before running pipeline.",
-            )
-        job_id = hashlib.sha256(f"{dataset_id}\0{_now_iso()}".encode("utf-8")).hexdigest()[:16]
-        payload = {
-            "dataset_id": dataset_id,
-            "dataset_name": row["name"],
-            "company_name": row["company_name"],
-            "company_ticker": row["company_ticker"],
-            "directory_path": str(uploads_dir),
-            "workspace_root": str(_dataset_workspace_root()),
-            "recursive": request.recursive if request else True,
-            "reset": request.reset if request else False,
-        }
-        with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
-            _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
-                "job_id": job_id,
-                "dataset_id": dataset_id,
-                "status": "queued",
-                "created_at": _now_iso(),
-                "directory_path": str(uploads_dir),
-                "workspace_root": str(_dataset_workspace_root()),
-            }
-        background_tasks.add_task(_project_pipeline_worker, job_id, payload)
-        return {"job": dict(_PRIVATE_FUND_PIPELINE_JOBS[job_id])}
+        return {"job": _queue_project_pipeline_job(dataset_id, background_tasks, request)}
 
     @router.get("/private-fund/pipeline-jobs/{job_id}")
     def get_project_pipeline_job(job_id: str) -> dict[str, Any]:
-        with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
-            job = _PRIVATE_FUND_PIPELINE_JOBS.get(job_id)
-        if not job:
-            job = _persisted_project_pipeline_job(job_id)
+        job = _get_project_pipeline_job_payload(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Unknown private-fund pipeline job.")
         return {"job": dict(job)}
@@ -3194,6 +3280,295 @@ def create_private_fund_pdf_router(
         return private_fund_tracking.tracking_overview(
             _collection_db_path(dataset_id), dataset_id
         )
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-tracking")
+    def get_project_valuation_tracking_overview(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return private_fund_valuation_tracking.tracking_overview(
+            _collection_db_path(dataset_id), dataset_id
+        )
+
+    @router.post(
+        "/private-fund/projects/{dataset_id}/valuation-tracking/run",
+        status_code=202,
+    )
+    def run_project_valuation_tracking(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        jobs = private_fund_valuation_tracking.enqueue_model_documents(
+            _collection_db_path(dataset_id),
+            dataset_id,
+            include_history=True,
+            requeue_failed=True,
+        )
+        return {"jobs": jobs}
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-models/{series_id}/compare")
+    def compare_project_valuation_model_versions(
+        dataset_id: str,
+        series_id: str,
+        from_version: str = Query(..., min_length=1),
+        to_version: str = Query(..., min_length=1),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_valuation_tracking.compare_versions(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                series_id,
+                from_version,
+                to_version,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="Valuation model series or version not found."
+            ) from exc
+
+    @router.post(
+        "/private-fund/projects/{dataset_id}/valuation-models/{series_id}/agent-analysis",
+        status_code=202,
+    )
+    def run_project_valuation_agent_analysis(
+        dataset_id: str,
+        series_id: str,
+        request: RunValuationAgentAnalysisRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_valuation_agent.enqueue_analysis(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                series_id,
+                base_model_version_id=request.base_model_version_id,
+                comparison_model_version_id=request.comparison_model_version_id,
+                focus=request.focus,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="Valuation model series or version not found."
+            ) from exc
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-agent-analyses/{analysis_id}")
+    def get_project_valuation_agent_analysis(
+        dataset_id: str, analysis_id: str
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "analysis": private_fund_valuation_agent.get_analysis(
+                    _collection_db_path(dataset_id), dataset_id, analysis_id
+                )
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Valuation Agent analysis not found.") from exc
+
+    @router.post(
+        "/private-fund/projects/{dataset_id}/valuation-agent-analyses/{analysis_id}/derive-model",
+        status_code=201,
+    )
+    def derive_project_valuation_model(
+        dataset_id: str, analysis_id: str
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "derived_model": private_fund_valuation_agent.derive_model_version(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    analysis_id,
+                    _project_dataset_root(dataset_id),
+                )
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Valuation Agent analysis not found.") from exc
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get(
+        "/private-fund/projects/{dataset_id}/valuation-derived-models/{derived_model_id}/file"
+    )
+    def get_project_valuation_derived_model_file(
+        dataset_id: str, derived_model_id: str
+    ) -> FileResponse:
+        _require_project_row(dataset_id)
+        try:
+            derived = private_fund_valuation_agent.get_derived_model(
+                _collection_db_path(dataset_id), dataset_id, derived_model_id
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Derived valuation model not found.") from exc
+        path = Path(str(derived["output_path"] or "")).expanduser().resolve()
+        allowed_root = (_project_dataset_root(dataset_id) / "derived_models").resolve()
+        if not path.is_relative_to(allowed_root) or not path.is_file():
+            raise HTTPException(status_code=404, detail="Derived valuation model file is missing.")
+        return FileResponse(
+            path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=str(derived["output_filename"]),
+        )
+
+    @router.post(
+        "/private-fund/projects/{dataset_id}/valuation-derived-models/"
+        "{derived_model_id}/add-to-resources",
+        status_code=202,
+    )
+    def add_project_valuation_derived_model_to_resources(
+        dataset_id: str,
+        derived_model_id: str,
+        background_tasks: BackgroundTasks,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        collection_db = _collection_db_path(dataset_id)
+        try:
+            derived = private_fund_valuation_agent.get_derived_model(
+                collection_db, dataset_id, derived_model_id
+            )
+            base_version = private_fund_valuation_tracking.get_model_version(
+                collection_db,
+                dataset_id,
+                str(derived["base_model_version_id"]),
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="Derived valuation model or its base version was not found.",
+            ) from exc
+
+        output_path = Path(str(derived["output_path"] or "")).expanduser().resolve()
+        allowed_root = (_project_dataset_root(dataset_id) / "derived_models").resolve()
+        if not output_path.is_relative_to(allowed_root) or not output_path.is_file():
+            raise HTTPException(status_code=404, detail="Derived valuation model file is missing.")
+        actual_checksum = hashlib.sha256(output_path.read_bytes()).hexdigest()
+        if actual_checksum != str(derived["checksum"]):
+            raise HTTPException(
+                status_code=409,
+                detail="Derived valuation model checksum no longer matches its audit record.",
+            )
+
+        resource_file_name = _safe_upload_name(str(base_version["original_filename"] or ""))
+        uploads_dir = _seed_uploads_from_raw(dataset_id)
+        target = uploads_dir / resource_file_name
+        existing_checksum = (
+            hashlib.sha256(target.read_bytes()).hexdigest() if target.is_file() else ""
+        )
+        copied = existing_checksum != actual_checksum
+        if copied:
+            shutil.copy2(output_path, target)
+        _mark_project_uploads_changed(dataset_id, uploads_dir)
+
+        document = private_fund_valuation_agent.find_imported_document(
+            collection_db,
+            dataset_id,
+            resource_file_name,
+            actual_checksum,
+        )
+        if document is not None:
+            completed = private_fund_valuation_agent.mark_resource_import_completed(
+                collection_db,
+                dataset_id,
+                derived_model_id,
+                file_name=resource_file_name,
+                doc_id=str(document["doc_id"]),
+            )
+            return {
+                "derived_model": completed,
+                "job": None,
+                "resource_import": {
+                    "status": "completed",
+                    "file_name": resource_file_name,
+                    "already_added": True,
+                    "copied": copied,
+                },
+            }
+
+        existing_job_id = str(derived.get("resource_pipeline_job_id") or "")
+        if existing_job_id and str(derived.get("resource_status") or "") in {
+            "queued",
+            "running",
+        }:
+            existing_job = _get_project_pipeline_job_payload(existing_job_id)
+            if existing_job and str(existing_job.get("status") or "") in {
+                "queued",
+                "running",
+            }:
+                return {
+                    "derived_model": derived,
+                    "job": existing_job,
+                    "resource_import": {
+                        "status": str(existing_job["status"]),
+                        "file_name": resource_file_name,
+                        "already_added": False,
+                        "copied": copied,
+                    },
+                }
+
+        job = _queue_project_pipeline_job(
+            dataset_id,
+            background_tasks,
+            RunProjectPipelineRequest(reset=False, recursive=True),
+        )
+        queued = private_fund_valuation_agent.mark_resource_import_requested(
+            collection_db,
+            dataset_id,
+            derived_model_id,
+            file_name=resource_file_name,
+            pipeline_job_id=str(job["job_id"]),
+        )
+        return {
+            "derived_model": queued,
+            "job": job,
+            "resource_import": {
+                "status": "queued",
+                "file_name": resource_file_name,
+                "already_added": False,
+                "copied": copied,
+            },
+        }
+
+    @router.patch(
+        "/private-fund/projects/{dataset_id}/valuation-watch-rules/{rule_id}"
+    )
+    def update_project_valuation_watch_rule(
+        dataset_id: str,
+        rule_id: str,
+        request: UpdateValuationWatchRuleRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "watch_rule": private_fund_valuation_tracking.update_rule(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    rule_id,
+                    active=request.active,
+                    min_materiality=request.min_materiality,
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Valuation watch rule not found.") from exc
+
+    @router.patch("/private-fund/projects/{dataset_id}/valuation-alerts/{alert_id}")
+    def update_project_valuation_alert(
+        dataset_id: str,
+        alert_id: str,
+        request: UpdateValuationAlertRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "alert": private_fund_valuation_tracking.update_alert_status(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    alert_id,
+                    status=request.status,
+                    snoozed_until=request.snoozed_until,
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Valuation alert not found.") from exc
 
     @router.post("/private-fund/projects/{dataset_id}/tracking/run", status_code=202)
     def run_project_tracking(dataset_id: str) -> dict[str, Any]:

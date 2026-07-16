@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   BellRing,
   BookOpen,
+  Calculator,
   Check,
   FileStack,
   History,
@@ -53,6 +54,7 @@ import type { PdfSourceSelection } from "@/shell/FileViewerContext";
 import { ResearchAssetLibrary } from "./ResearchAssetLibrary";
 import { PrivateFundHistoryPanel } from "./PrivateFundHistoryPanel";
 import { PrivateFundTrackingPanel } from "./PrivateFundTrackingPanel";
+import { PrivateFundValuationTrackingPanel } from "./PrivateFundValuationTrackingPanel";
 import { FilePathAwareMessageResponse } from "@/components/blocks/BlockRenderer";
 import { hostFetch } from "@/lib/host";
 import { useResizableInlinePanel } from "@/hooks/useResizableInlinePanel";
@@ -70,7 +72,14 @@ type SelectedInformation = { responseId: string; content: string };
 type SaveInformationInput = SelectedInformation & { optimisticAssetId: string };
 type PresentationMode = "plain_text" | "table" | "chart";
 export type PrivateFundGenerationMode = PresentationMode | "memo";
-type WorkspaceView = "research" | "sources" | "findings" | "memos" | "history" | "tracking";
+type WorkspaceView =
+  | "research"
+  | "sources"
+  | "findings"
+  | "memos"
+  | "valuation"
+  | "history"
+  | "tracking";
 
 export const PRIVATE_FUND_GENERATION_OPTIONS: Array<{
   value: PrivateFundGenerationMode;
@@ -92,6 +101,7 @@ const WORKSPACE_VIEWS: Array<{
   { value: "sources", label: "资料", icon: FileStack },
   { value: "findings", label: "研究成果", icon: BookOpen },
   { value: "memos", label: "Memo", icon: NotebookPen },
+  { value: "valuation", label: "估值跟踪", icon: Calculator },
   { value: "history", label: "历史变化", icon: History },
   { value: "tracking", label: "追踪提醒", icon: BellRing },
 ];
@@ -813,6 +823,8 @@ export function PrivateFundResearchWorkbench({
                 chat
               ) : workspaceView === "history" ? (
                 <PrivateFundHistoryPanel datasetId={datasetId} />
+              ) : workspaceView === "valuation" ? (
+                <PrivateFundValuationTrackingPanel datasetId={datasetId} />
               ) : workspaceView === "tracking" ? (
                 <PrivateFundTrackingPanel datasetId={datasetId} />
               ) : (

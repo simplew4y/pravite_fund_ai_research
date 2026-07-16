@@ -71,6 +71,9 @@ vi.mock("./PrivateFundHistoryPanel", () => ({
 vi.mock("./PrivateFundTrackingPanel", () => ({
   PrivateFundTrackingPanel: () => <div>风险催化剂面板</div>,
 }));
+vi.mock("./PrivateFundValuationTrackingPanel", () => ({
+  PrivateFundValuationTrackingPanel: () => <div>估值模型跟踪面板</div>,
+}));
 
 const workflow: PrivateFundResearchWorkflow = {
   workflowId: "wf-agentic",
@@ -456,8 +459,12 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(screen.queryByText("2025 年报.pdf")).toBeNull();
   });
 
-  it("opens history comparison and risk tracking as independent workspaces", () => {
+  it("opens valuation, history, and risk tracking as independent workspaces", () => {
     renderWorkbench();
+
+    fireEvent.click(screen.getByRole("button", { name: "估值跟踪" }));
+    expect(screen.getByText("估值模型跟踪面板")).toBeInTheDocument();
+    expect(screen.queryByLabelText("真实 AI 对话")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "历史变化" }));
     expect(screen.getByText("历史追踪面板")).toBeInTheDocument();
