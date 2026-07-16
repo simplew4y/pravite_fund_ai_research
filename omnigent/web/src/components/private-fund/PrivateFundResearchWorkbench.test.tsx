@@ -251,6 +251,7 @@ describe("PrivateFundResearchWorkbench", () => {
       expect(screen.getByRole("button", { name: "资料" })).toHaveAttribute("aria-current", "page"),
     );
     expect(document.querySelector('iframe[title^="alpha.pdf"]')).not.toBeNull();
+    expect(usePrivateFundWorkspaceStore.getState().documentPreviewRequest).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "返回对话" }));
 
