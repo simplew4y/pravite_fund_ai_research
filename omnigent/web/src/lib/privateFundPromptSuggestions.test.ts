@@ -33,6 +33,8 @@ function asset(assetType: string): PrivateFundAsset {
     versionNo: 1,
     evidenceCount: 0,
     metadata: {},
+    displayGroup: "source",
+    displayLabel: "资料",
   };
 }
 

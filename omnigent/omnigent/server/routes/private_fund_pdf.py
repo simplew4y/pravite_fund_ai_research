@@ -580,8 +580,58 @@ def _project_memo_stats(dataset_id: str) -> dict[str, Any]:
     }
 
 
-def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
-    """Project documents, agent outputs and saved excerpts into one asset catalog."""
+
+def _asset_display_fields(asset_type: str, source_kind: str = "") -> dict[str, Any]:
+    """User-facing group/label for contextable catalog items."""
+    kind = str(source_kind or "")
+    atype = str(asset_type or "")
+    if atype == "document" or kind == "document":
+        return {"display_group": "source", "display_label": "资料"}
+    if atype == "information" or kind == "saved_information":
+        return {"display_group": "answer_note", "display_label": "回答笔记"}
+    if atype == "analysis" or kind == "research_node":
+        return {"display_group": "research_note", "display_label": "研究笔记"}
+    if kind == "research_node_block":
+        return {"display_group": "research_note", "display_label": "研究笔记附件"}
+    if atype == "memo" or kind == "memo":
+        return {"display_group": "memo", "display_label": "Memo"}
+    if atype == "report" or kind == "equity_report":
+        return {"display_group": "report", "display_label": "专业研报"}
+    if atype in {"metrics", "table", "chart", "infographic"}:
+        return {"display_group": "research_note", "display_label": "研究笔记附件"}
+    return {"display_group": "other", "display_label": atype or "条目"}
+
+
+def _normalize_context_asset_ids(asset_ids: list[str]) -> list[str]:
+    """Prefer main research notes over projected content-block ids."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in asset_ids:
+        asset_id = str(raw or "").strip()
+        if not asset_id:
+            continue
+        if asset_id.startswith("block:"):
+            node_id, separator, _index = asset_id.removeprefix("block:").rpartition(":")
+            if separator and node_id:
+                asset_id = f"node:{node_id}"
+        if asset_id in seen:
+            continue
+        seen.add(asset_id)
+        normalized.append(asset_id)
+    return normalized
+
+
+def _project_assets_payload(
+    dataset_id: str,
+    *,
+    include_blocks: bool = False,
+) -> dict[str, Any]:
+    """Project documents, agent outputs and saved excerpts into one asset catalog.
+
+    By default content-block sub-items are omitted from the library list so
+    research notes appear once; blocks remain on the workflow node for detail.
+    Pass include_blocks=True for admin/delete resolution of legacy block ids.
+    """
     collection_db = _collection_db_path(dataset_id)
     workflow = private_fund_workflow.get_or_create_workflow(collection_db, dataset_id)
     saved = private_fund_workflow.list_saved_assets(collection_db, dataset_id)
@@ -628,7 +678,7 @@ def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
             {
                 "asset_id": f"node:{node_id}",
                 "asset_type": "analysis",
-                "title": node.get("title") or "Agent 分析",
+                "title": node.get("title") or "研究笔记",
                 "summary": node.get("summary") or "",
                 "content_markdown": node.get("latest_output") or "",
                 "format": "rich" if blocks else "markdown",
@@ -643,30 +693,31 @@ def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
                 "metadata": {"node_type": node.get("node_type")},
             }
         )
-        for index, block in enumerate(blocks):
-            block_type = str(block.get("type") or "markdown")
-            if block_type == "markdown":
-                continue
-            block_title = str(block.get("title") or f"{node.get('title')} · {block_type}")
-            assets.append(
-                {
-                    "asset_id": f"block:{node_id}:{index}",
-                    "asset_type": "infographic" if block_type == "html" else block_type,
-                    "title": block_title,
-                    "summary": f"来自分析资产《{node.get('title') or ''}》",
-                    "content_markdown": json.dumps(block, ensure_ascii=False),
-                    "format": block_type,
-                    "status": node.get("status") or "completed",
-                    "source_kind": "research_node_block",
-                    "source_id": node_id,
-                    "tags": [],
-                    "created_at": node.get("created_at"),
-                    "updated_at": node.get("updated_at"),
-                    "version_no": int(node.get("current_version_no") or 0),
-                    "evidence_count": len(block.get("evidence_ids") or []),
-                    "metadata": {"block_index": index, "block": block},
-                }
-            )
+        if include_blocks:
+            for index, block in enumerate(blocks):
+                block_type = str(block.get("type") or "markdown")
+                if block_type == "markdown":
+                    continue
+                block_title = str(block.get("title") or f"{node.get('title')} · {block_type}")
+                assets.append(
+                    {
+                        "asset_id": f"block:{node_id}:{index}",
+                        "asset_type": "infographic" if block_type == "html" else block_type,
+                        "title": block_title,
+                        "summary": f"来自研究笔记《{node.get('title') or ''}》",
+                        "content_markdown": json.dumps(block, ensure_ascii=False),
+                        "format": block_type,
+                        "status": node.get("status") or "completed",
+                        "source_kind": "research_node_block",
+                        "source_id": node_id,
+                        "tags": [],
+                        "created_at": node.get("created_at"),
+                        "updated_at": node.get("updated_at"),
+                        "version_no": int(node.get("current_version_no") or 0),
+                        "evidence_count": len(block.get("evidence_ids") or []),
+                        "metadata": {"block_index": index, "block": block},
+                    }
+                )
 
     memo_dir = _project_dataset_root(dataset_id) / "memos"
     private_fund_tracking.backfill_memo_artifacts(collection_db, dataset_id, memo_dir)
@@ -781,7 +832,14 @@ def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
                 "evidence_count": 0,
             }
         )
-    context_ids = list(saved["context_asset_ids"])
+    for asset in assets:
+        asset.update(
+            _asset_display_fields(
+                str(asset.get("asset_type") or ""),
+                str(asset.get("source_kind") or ""),
+            )
+        )
+    context_ids = _normalize_context_asset_ids(list(saved["context_asset_ids"]))
     if not context_ids:
         context_ids = [f"node:{node_id}" for node_id in workflow.get("context_node_ids", [])]
     return {"assets": assets, "context_asset_ids": context_ids}
@@ -3206,7 +3264,9 @@ def create_private_fund_pdf_router(
     ) -> dict[str, Any]:
         _require_project_row(dataset_id)
         private_fund_workflow.set_asset_context(
-            _collection_db_path(dataset_id), dataset_id, request.asset_ids
+            _collection_db_path(dataset_id),
+            dataset_id,
+            _normalize_context_asset_ids(list(request.asset_ids or [])),
         )
         return _project_assets_payload(dataset_id)
 
@@ -3222,7 +3282,7 @@ def create_private_fund_pdf_router(
         ]
         if not requested:
             raise HTTPException(status_code=400, detail="Select at least one asset.")
-        catalog = _project_assets_payload(dataset_id)
+        catalog = _project_assets_payload(dataset_id, include_blocks=True)
         by_id = {str(asset["asset_id"]): asset for asset in catalog["assets"]}
         unknown = [asset_id for asset_id in requested if asset_id not in by_id]
         if unknown:

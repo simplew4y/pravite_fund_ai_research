@@ -125,6 +125,8 @@ const assetCatalog: PrivateFundAssetCatalog = {
       versionNo: 1,
       evidenceCount: 0,
       metadata: {},
+      displayGroup: "research_note",
+      displayLabel: "研究笔记",
     },
   ],
 };
@@ -157,7 +159,7 @@ function ActionFixture() {
             value={actions.generationInstruction}
           />
           <button onClick={actions.generateAsset} type="button">
-            {actions.generationMode === "memo" ? "生成 Memo" : "生成研究资产"}
+            {actions.generationMode === "memo" ? "生成 Memo" : "生成研究笔记"}
           </button>
         </div>
       ) : null}
@@ -195,6 +197,8 @@ function renderWorkbench(
 
 describe("PrivateFundResearchWorkbench", () => {
   beforeEach(() => {
+    window.localStorage.setItem("omnigent.privateFund.workbenchChrome", "tabs");
+    window.localStorage.removeItem("omnigent.privateFund.idePanelWidth");
     vi.clearAllMocks();
     usePrivateFundWorkspaceStore.setState({ documentPreviewRequest: null });
     vi.mocked(usePrivateFundWorkflow).mockReturnValue({
@@ -235,6 +239,8 @@ describe("PrivateFundResearchWorkbench", () => {
             title: "alpha.pdf",
             sourceKind: "document",
             format: "pdf",
+            displayGroup: "source",
+            displayLabel: "资料",
           },
         ],
       },
@@ -253,37 +259,28 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(document.querySelector('iframe[title^="alpha.pdf"]')).not.toBeNull();
     expect(usePrivateFundWorkspaceStore.getState().documentPreviewRequest).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "返回对话" }));
+    fireEvent.click(screen.getByRole("button", { name: "返回列表" }));
 
     expect(screen.getByRole("button", { name: "研究" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
   });
 
-  it("resizes the research context rail with the keyboard separator", () => {
+  it("renders the research workspace as a flex layout", () => {
     renderWorkbench();
     const grid = screen.getByTestId("private-fund-workbench-grid");
-    const before = Number.parseFloat(grid.style.getPropertyValue("--pf-context-panel-width"));
-
-    fireEvent.keyDown(screen.getByRole("separator", { name: "调整右侧栏宽度" }), {
-      key: "ArrowLeft",
-    });
-
-    const after = Number.parseFloat(grid.style.getPropertyValue("--pf-context-panel-width"));
-    expect(after).toBe(before + 20);
+    expect(grid.className).toContain("flex");
   });
 
-  it("keeps the real chat mounted while inspecting an agent-created node", async () => {
+  it("opens research note detail from the notes workspace", async () => {
     renderWorkbench();
-    const chat = screen.getByLabelText("真实 AI 对话") as HTMLTextAreaElement;
+    fireEvent.click(screen.getByRole("button", { name: "笔记" }));
     fireEvent.click(screen.getByText("海外盈利质量改善"));
     expect(
       await screen.findByText("结论、证据、不确定性和下一步问题", {}, { timeout: 5000 }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("真实 AI 对话")).toBe(chat);
-    expect(chat).toHaveValue("保留的草稿");
   });
 
-  it("keeps only the asset list in the research workspace right rail", () => {
+  it("uses full-width research chat without a right-side asset library", () => {
     vi.mocked(usePrivateFundAssets).mockReturnValue({
       data: {
         ...assetCatalog,
@@ -294,24 +291,17 @@ describe("PrivateFundResearchWorkbench", () => {
     } as unknown as ReturnType<typeof usePrivateFundAssets>);
 
     renderWorkbench();
-
-    expect(screen.getByRole("region", { name: "资产" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "资产" })).toBeInTheDocument();
-    expect(screen.getByText("海外盈利质量改善")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "资产类型" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "文档类型" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "资产排序" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "选择资产 海外盈利质量改善" })).toBeChecked();
-    expect(screen.getByRole("button", { name: "删除已选 1 项资产" })).toBeEnabled();
-    expect(screen.queryByText("研究检查器")).toBeNull();
-    expect(screen.queryByText("分析资产")).toBeNull();
-    expect(screen.queryByText("最近资产")).toBeNull();
+    expect(screen.queryByRole("region", { name: "资产" })).toBeNull();
+    expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "研究" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "资料" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "笔记" })).toBeInTheDocument();
   });
 
   it("sends selected LLM information to the agent instead of creating a preset node", async () => {
     const onGenerateNode = renderWorkbench();
     fireEvent.click(screen.getByRole("button", { name: "勾选回答" }));
-    fireEvent.click(screen.getByRole("button", { name: "生成研究资产" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
 
     await waitFor(() =>
       expect(savePrivateFundAsset).toHaveBeenCalledWith(
@@ -330,7 +320,7 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(prompt).toContain("不要套用预设研究流程");
     expect(prompt).toContain("content_blocks");
     expect(prompt).toContain("本次节点输出形式: 文本");
-    expect(prompt).toContain("文本模式下不得保存 content_blocks");
+    expect(prompt).toContain("文本模式");
   });
 
   it("writes a newly saved response into the asset cache before the request completes", async () => {
@@ -365,6 +355,8 @@ describe("PrivateFundResearchWorkbench", () => {
       sourceKind: "document",
       sourceId: "doc-annual-report",
       format: "pdf",
+      displayGroup: "source",
+      displayLabel: "资料",
     };
     vi.mocked(usePrivateFundAssets).mockReturnValue({
       data: {
@@ -377,21 +369,21 @@ describe("PrivateFundResearchWorkbench", () => {
 
     const onGenerateNode = renderWorkbench();
     fireEvent.click(screen.getByRole("button", { name: "生成模式 表格" }));
-    fireEvent.click(screen.getByRole("button", { name: "生成研究资产" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
 
     expect(onGenerateNode).toHaveBeenCalledOnce();
     const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
     expect(prompt).toContain("本次节点输出形式: 表格");
-    expect(prompt).toContain("用户选择用于分析的资产");
+    expect(prompt).toContain("用户选择的问题上下文");
     expect(prompt).toContain("2025 年报.pdf（document）");
     expect(prompt).toContain("海外收入同比增长 28%，但仍需核验证据");
     expect(prompt).toContain("作为分析依据的父节点: 无");
-    expect(prompt).not.toContain("用户勾选的 AI 重要信息");
+    expect(prompt).not.toContain("用户保存的回答笔记");
   });
 
   it("generates from existing conversation context without requiring selected information", () => {
     const onGenerateNode = renderWorkbench(vi.fn(), { hasConversationContext: true });
-    fireEvent.click(screen.getByRole("button", { name: "生成研究资产" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
 
     expect(onGenerateNode).toHaveBeenCalledOnce();
     expect(vi.mocked(onGenerateNode).mock.calls[0][0]).toContain("当前会话也是本次生成依据");
@@ -399,10 +391,10 @@ describe("PrivateFundResearchWorkbench", () => {
 
   it("asks for context only when the conversation and selections are both empty", () => {
     const onGenerateNode = renderWorkbench();
-    fireEvent.click(screen.getByRole("button", { name: "生成研究资产" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
 
     expect(onGenerateNode).not.toHaveBeenCalled();
-    expect(screen.getByRole("status")).toHaveTextContent("请先提供对话内容，或选择至少一项资产");
+    expect(screen.getByRole("status")).toHaveTextContent("请先提供对话内容，或选择至少一项上下文");
   });
 
   it("only exposes text, table, chart, and memo generation modes", () => {
@@ -427,11 +419,15 @@ describe("PrivateFundResearchWorkbench", () => {
             title: "2025 年报.pdf",
             sourceKind: "document",
             format: "pdf",
+            displayGroup: "source",
+            displayLabel: "资料",
           },
           {
             ...assetCatalog.assets[0],
             assetId: "memo:investment-case",
             assetType: "memo",
+            displayGroup: "memo",
+            displayLabel: "Memo",
             title: "投资逻辑 Memo",
             sourceKind: "memo",
             format: "markdown",
@@ -449,8 +445,8 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(screen.getByText("2025 年报.pdf")).toBeInTheDocument();
     expect(screen.queryByText("海外盈利质量改善")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "研究成果" }));
-    expect(screen.getByRole("heading", { name: "研究成果" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "笔记" }));
+    expect(screen.getByRole("heading", { name: "笔记" })).toBeInTheDocument();
     expect(screen.getByText("海外盈利质量改善")).toBeInTheDocument();
     expect(screen.queryByText("投资逻辑 Memo")).toBeNull();
 
@@ -486,7 +482,7 @@ describe("PrivateFundResearchWorkbench", () => {
       target: { value: "展示海外与国内盈利质量差异，由模型选择最合适图形。" },
     });
     fireEvent.click(screen.getByRole("button", { name: "勾选回答" }));
-    fireEvent.click(screen.getByRole("button", { name: "生成研究资产" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
 
     const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
     expect(prompt).toContain("本次节点输出形式: 图表");
@@ -581,6 +577,7 @@ describe("PrivateFundResearchWorkbench", () => {
     } as unknown as ReturnType<typeof usePrivateFundWorkflow>);
 
     renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: "笔记" }));
     fireEvent.click(screen.getByText("海外盈利质量改善"));
     expect(
       await screen.findByRole("heading", { name: "关键指标" }, { timeout: 5000 }),
@@ -612,6 +609,8 @@ describe("PrivateFundResearchWorkbench", () => {
             ...assetCatalog.assets[0],
             assetId: "asset:management-view",
             assetType: "information",
+            displayGroup: "answer_note",
+            displayLabel: "回答笔记",
             title: "管理层观点摘录",
             sourceKind: "saved_information",
             sourceId: "response-2",
@@ -632,6 +631,7 @@ describe("PrivateFundResearchWorkbench", () => {
     } as unknown as ReturnType<typeof usePrivateFundAssets>);
 
     renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: "笔记" }));
     fireEvent.click(screen.getByText("管理层观点摘录"));
 
     expect(await screen.findByRole("heading", { name: "核心观点" })).toBeInTheDocument();
@@ -651,6 +651,8 @@ describe("PrivateFundResearchWorkbench", () => {
             ...assetCatalog.assets[0],
             assetId: "memo:pdf",
             assetType: "memo",
+            displayGroup: "memo",
+            displayLabel: "Memo",
             title: "private_fund_memo_阳光电源_20260712_161105",
             summary: "长期报告产物 · PDF",
             sourceKind: "memo",
@@ -667,6 +669,7 @@ describe("PrivateFundResearchWorkbench", () => {
     } as unknown as ReturnType<typeof usePrivateFundAssets>);
 
     renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: "Memo" }));
     fireEvent.click(screen.getByText("private_fund_memo_阳光电源_20260712_161105"));
 
     const frame = screen.getByTitle("private_fund_memo_阳光电源_20260712_161105 PDF 预览");
@@ -685,6 +688,8 @@ describe("PrivateFundResearchWorkbench", () => {
             ...assetCatalog.assets[0],
             assetId: "document:workbook",
             assetType: "document",
+            displayGroup: "source",
+            displayLabel: "资料",
             title: "300274 v44.xlsx",
             summary: "XLSX · 51 个可检索片段",
             sourceKind: "document",
@@ -701,24 +706,42 @@ describe("PrivateFundResearchWorkbench", () => {
     } as unknown as ReturnType<typeof usePrivateFundAssets>);
 
     renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: "资料" }));
     fireEvent.click(screen.getByText("300274 v44.xlsx"));
 
     expect(screen.getByTestId("structured-document-preview")).toHaveTextContent(
       "300274 v44.xlsx · 阳光电源",
     );
-    expect(screen.queryByText("该资产保留原文件位置")).toBeNull();
-    expect(screen.getByLabelText("Agent 输入与输出")).toHaveClass("hidden");
-    expect(screen.getByRole("button", { name: "收起资产详情" })).toBeInTheDocument();
+    expect(screen.queryByText("该资料保留原文件位置")).toBeNull();
+    expect(screen.getByRole("button", { name: "返回列表" })).toBeInTheDocument();
   });
 
   it("persists selected assets for the next analysis", async () => {
     renderWorkbench();
-    fireEvent.click(screen.getByRole("button", { name: "研究成果" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择资产 海外盈利质量改善" }));
+    fireEvent.click(screen.getByRole("button", { name: "笔记" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "加入上下文 海外盈利质量改善" }));
 
     await waitFor(() =>
       expect(setPrivateFundAssetContext).toHaveBeenCalledWith("阳光电源", ["node:node-overseas"]),
     );
     expect(screen.queryByText("上下文")).toBeNull();
   });
+
+  it("keeps 研究/资料 as primary tabs and only secondary tools on the side rail", () => {
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: "侧栏布局" }));
+    expect(screen.getByTestId("private-fund-ide-activity-rail")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "主工作区" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "研究" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "资料" })).toBeInTheDocument();
+    const rail = screen.getByTestId("private-fund-ide-activity-rail");
+    expect(rail.querySelector('[aria-label="研究"]')).toBeNull();
+    expect(rail.querySelector('[aria-label="资料"]')).toBeNull();
+    expect(rail.querySelector('[aria-label="笔记"]')).not.toBeNull();
+    expect(screen.getByTestId("private-fund-ide-side-panel")).toHaveTextContent("笔记");
+    expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "资料" }));
+    expect(screen.getByRole("heading", { name: "资料" })).toBeInTheDocument();
+  });
+
 });
