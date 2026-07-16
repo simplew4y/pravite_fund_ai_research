@@ -351,6 +351,9 @@ export function PrivateFundResearchWorkbench({
   const documentPreviewRequest = usePrivateFundWorkspaceStore(
     (state) => state.documentPreviewRequest,
   );
+  const clearDocumentPreview = usePrivateFundWorkspaceStore(
+    (state) => state.clearDocumentPreview,
+  );
   const handledPreviewRequestId = useRef(0);
   const { panelWidth: contextPanelWidth, handleProps: contextResizeHandleProps } =
     useResizableInlinePanel(conversationId, 300, 360);
@@ -446,7 +449,8 @@ export function PrivateFundResearchWorkbench({
     setWorkspaceView("sources");
     setSelectedAssetId(documentAsset.assetId);
     setAssetPanelExpanded(assetNeedsWidePreview(documentAsset));
-  }, [assets, datasetId, documentPreviewRequest]);
+    clearDocumentPreview(documentPreviewRequest.requestId);
+  }, [assets, clearDocumentPreview, datasetId, documentPreviewRequest]);
 
   const contextMutation = useMutation({
     mutationFn: (assetIds: string[]) => setPrivateFundAssetContext(datasetId, assetIds),

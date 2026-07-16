@@ -9,6 +9,7 @@ export type PrivateFundDocumentPreviewRequest = {
 type PrivateFundWorkspaceState = {
   documentPreviewRequest: PrivateFundDocumentPreviewRequest | null;
   openDocumentPreview: (datasetId: string, fileName: string) => void;
+  clearDocumentPreview: (requestId: number) => void;
 };
 
 let nextPreviewRequestId = 1;
@@ -23,4 +24,11 @@ export const usePrivateFundWorkspaceStore = create<PrivateFundWorkspaceState>((s
         fileName,
       },
     }),
+  clearDocumentPreview: (requestId) =>
+    set((state) => ({
+      documentPreviewRequest:
+        state.documentPreviewRequest?.requestId === requestId
+          ? null
+          : state.documentPreviewRequest,
+    })),
 }));
