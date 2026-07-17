@@ -422,6 +422,14 @@ def test_valuation_tracking_http_api_exposes_comparison_and_lifecycle(
         "revenue",
     }
 
+    model_overview = client.get(
+        f"/v1/private-fund/projects/demo/valuation-models/{series['series_id']}"
+        f"/versions/{versions[1]['model_version_id']}/overview"
+    )
+    assert model_overview.status_code == 200
+    assert model_overview.json()["overview"]["model_version_no"] == 2
+    assert model_overview.json()["html"].startswith("<!DOCTYPE html>")
+
     queued = client.post("/v1/private-fund/projects/demo/valuation-tracking/run")
     assert queued.status_code == 202
     assert len(queued.json()["jobs"]) == 2

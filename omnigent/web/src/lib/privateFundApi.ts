@@ -121,6 +121,14 @@ export type PrivateFundAssetType =
   | "memo"
   | string;
 
+export type PrivateFundDisplayGroup =
+  | "source"
+  | "answer_note"
+  | "research_note"
+  | "memo"
+  | "report"
+  | "other";
+
 export interface PrivateFundAsset {
   assetId: string;
   assetType: PrivateFundAssetType;
@@ -139,6 +147,57 @@ export interface PrivateFundAsset {
   fileType?: string | null;
   storedPath?: string | null;
   metadata: Record<string, unknown>;
+  /** User-facing catalog group (资料 / 回答笔记 / 研究笔记 / Memo / …). */
+  displayGroup: PrivateFundDisplayGroup;
+  displayLabel: string;
+}
+
+export function inferDisplayGroup(assetType: string, sourceKind = ""): PrivateFundDisplayGroup {
+  if (assetType === "document" || sourceKind === "document") return "source";
+  if (assetType === "information" || sourceKind === "saved_information") return "answer_note";
+  if (assetType === "analysis" || sourceKind === "research_node") return "research_note";
+  if (sourceKind === "research_node_block") return "research_note";
+  if (assetType === "memo" || sourceKind === "memo") return "memo";
+  if (assetType === "report" || sourceKind === "equity_report") return "report";
+  if (["metrics", "table", "chart", "infographic"].includes(assetType)) return "research_note";
+  return "other";
+}
+
+export function displayLabelForGroup(group: PrivateFundDisplayGroup, assetType = ""): string {
+  switch (group) {
+    case "source":
+      return "资料";
+    case "answer_note":
+      return "回答笔记";
+    case "research_note":
+      return assetType === "analysis" || !assetType ? "研究笔记" : "研究笔记";
+    case "memo":
+      return "Memo";
+    case "report":
+      return "专业研报";
+    default:
+      return assetType || "条目";
+  }
+}
+
+/** Collapse legacy block:* context ids onto parent research notes. */
+export function normalizeContextAssetIds(assetIds: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of assetIds) {
+    let id = String(raw || "").trim();
+    if (!id) continue;
+    if (id.startsWith("block:")) {
+      const rest = id.slice("block:".length);
+      const idx = rest.lastIndexOf(":");
+      const nodeId = idx >= 0 ? rest.slice(0, idx) : rest;
+      if (nodeId) id = `node:${nodeId}`;
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
 }
 
 export interface PrivateFundAssetCatalog {
@@ -441,6 +500,89 @@ export interface PrivateFundValuationModelVersion {
   analysis?: PrivateFundValuationAnalysis | null;
 }
 
+export interface PrivateFundValuationOverviewValue {
+  period: string;
+  value: number | null;
+  valueText?: string;
+  evidenceId: string;
+  source: string;
+  qualityStatus?: string;
+  confidence?: number;
+}
+
+export interface PrivateFundValuationStatementTable {
+  statementType: string;
+  title: string;
+  sheetName: string;
+  periods: string[];
+  rows: Array<{
+    metricKey: string;
+    metricName: string;
+    unit: string;
+    rowIndex: number;
+    values: Array<PrivateFundValuationOverviewValue | null>;
+  }>;
+  sourceRefs: string[];
+}
+
+export interface PrivateFundValuationTrendSeries {
+  metricKey: string;
+  label: string;
+  statementType: string;
+  unit: string;
+  sheetName: string;
+  values: PrivateFundValuationOverviewValue[];
+}
+
+export interface PrivateFundValuationKeyMetric {
+  metricKey: string;
+  label: string;
+  period: string;
+  valueNumeric: number | null;
+  valueText: string;
+  unit: string;
+  evidenceId: string;
+  source: string;
+}
+
+export interface PrivateFundValuationModelOverview {
+  overviewId: string;
+  datasetId: string;
+  seriesId: string;
+  modelVersionId: string;
+  docId: string;
+  status: string;
+  overviewVersion: string;
+  createdAt: string;
+  html: string;
+  overview: {
+    schemaVersion: number;
+    modelName: string;
+    companyName: string;
+    companyTicker: string;
+    modelVersionNo: number;
+    modelType: string;
+    originalFilename: string;
+    generatedAt: string;
+    summary: {
+      detectedStatements: string[];
+      missingStatements: string[];
+      statementCount: number;
+      trendCount: number;
+      keyMetricCount: number;
+      periodStart: string;
+      periodEnd: string;
+      periods: string[];
+      factCount: number;
+      reviewRequiredCount: number;
+      qualityFlags: string[];
+    };
+    keyMetrics: PrivateFundValuationKeyMetric[];
+    trends: PrivateFundValuationTrendSeries[];
+    statements: PrivateFundValuationStatementTable[];
+  };
+}
+
 export interface PrivateFundValuationModelSeries {
   seriesId: string;
   seriesKey: string;
@@ -730,6 +872,8 @@ interface AssetWire {
   file_type?: string | null;
   stored_path?: string | null;
   metadata?: Record<string, unknown> | null;
+  display_group?: string | null;
+  display_label?: string | null;
 }
 
 interface AssetCatalogWire {
@@ -956,6 +1100,83 @@ interface ValuationModelVersionWire {
   reverted_to_version_id?: string | null;
   created_at: string;
   analysis?: ValuationAnalysisWire | null;
+}
+
+interface ValuationOverviewValueWire {
+  period: string;
+  value: number | null;
+  value_text?: string;
+  evidence_id: string;
+  source: string;
+  quality_status?: string;
+  confidence?: number;
+}
+
+interface ValuationModelOverviewWire {
+  overview_id: string;
+  dataset_id: string;
+  series_id: string;
+  model_version_id: string;
+  doc_id: string;
+  status: string;
+  overview_version: string;
+  created_at: string;
+  html: string;
+  overview?: {
+    schema_version?: number;
+    model_name?: string;
+    company_name?: string;
+    company_ticker?: string;
+    model_version_no?: number;
+    model_type?: string;
+    original_filename?: string;
+    generated_at?: string;
+    summary?: {
+      detected_statements?: string[];
+      missing_statements?: string[];
+      statement_count?: number;
+      trend_count?: number;
+      key_metric_count?: number;
+      period_start?: string;
+      period_end?: string;
+      periods?: string[];
+      fact_count?: number;
+      review_required_count?: number;
+      quality_flags?: string[];
+    };
+    key_metrics?: Array<{
+      metric_key: string;
+      label: string;
+      period?: string;
+      value_numeric?: number | null;
+      value_text?: string;
+      unit?: string;
+      evidence_id?: string;
+      source?: string;
+    }>;
+    trends?: Array<{
+      metric_key: string;
+      label: string;
+      statement_type: string;
+      unit?: string;
+      sheet_name: string;
+      values?: ValuationOverviewValueWire[];
+    }>;
+    statements?: Array<{
+      statement_type: string;
+      title: string;
+      sheet_name: string;
+      periods?: string[];
+      rows?: Array<{
+        metric_key?: string;
+        metric_name: string;
+        unit?: string;
+        row_index?: number;
+        values?: Array<ValuationOverviewValueWire | null>;
+      }>;
+      source_refs?: string[];
+    }>;
+  };
 }
 
 interface ValuationModelSeriesWire {
@@ -1226,26 +1447,34 @@ function sourceFolderTreeFromWire(payload: SourceFolderTreeWire): PrivateFundSou
 
 function assetCatalogFromWire(payload: AssetCatalogWire): PrivateFundAssetCatalog {
   return {
-    assets: payload.assets.map((asset) => ({
-      assetId: asset.asset_id,
-      assetType: asset.asset_type,
-      title: asset.title,
-      summary: asset.summary ?? "",
-      contentMarkdown: asset.content_markdown ?? "",
-      format: asset.format ?? "markdown",
-      status: asset.status ?? "completed",
-      sourceKind: asset.source_kind ?? "saved_information",
-      sourceId: asset.source_id ?? null,
-      tags: asset.tags ?? [],
-      createdAt: asset.created_at ?? null,
-      updatedAt: asset.updated_at ?? null,
-      versionNo: asset.version_no ?? 1,
-      evidenceCount: asset.evidence_count ?? 0,
-      fileType: asset.file_type ?? null,
-      storedPath: asset.stored_path ?? null,
-      metadata: asset.metadata ?? {},
-    })),
-    contextAssetIds: payload.context_asset_ids ?? [],
+    assets: payload.assets.map((asset) => {
+      const sourceKind = asset.source_kind ?? "saved_information";
+      const group =
+        (asset.display_group as PrivateFundDisplayGroup | undefined) ||
+        inferDisplayGroup(asset.asset_type, sourceKind);
+      return {
+        assetId: asset.asset_id,
+        assetType: asset.asset_type,
+        title: asset.title,
+        summary: asset.summary ?? "",
+        contentMarkdown: asset.content_markdown ?? "",
+        format: asset.format ?? "markdown",
+        status: asset.status ?? "completed",
+        sourceKind,
+        sourceId: asset.source_id ?? null,
+        tags: asset.tags ?? [],
+        createdAt: asset.created_at ?? null,
+        updatedAt: asset.updated_at ?? null,
+        versionNo: asset.version_no ?? 1,
+        evidenceCount: asset.evidence_count ?? 0,
+        fileType: asset.file_type ?? null,
+        storedPath: asset.stored_path ?? null,
+        metadata: asset.metadata ?? {},
+        displayGroup: group,
+        displayLabel: asset.display_label || displayLabelForGroup(group, asset.asset_type),
+      };
+    }),
+    contextAssetIds: normalizeContextAssetIds(payload.context_asset_ids ?? []),
   };
 }
 
@@ -1488,6 +1717,95 @@ function valuationModelVersionFromWire(
     revertedToVersionId: version.reverted_to_version_id ?? null,
     createdAt: version.created_at,
     analysis: version.analysis ? valuationAnalysisFromWire(version.analysis) : null,
+  };
+}
+
+function valuationOverviewValueFromWire(
+  value: ValuationOverviewValueWire,
+): PrivateFundValuationOverviewValue {
+  return {
+    period: value.period,
+    value: value.value,
+    valueText: value.value_text,
+    evidenceId: value.evidence_id,
+    source: value.source,
+    qualityStatus: value.quality_status,
+    confidence: value.confidence,
+  };
+}
+
+function valuationModelOverviewFromWire(
+  item: ValuationModelOverviewWire,
+): PrivateFundValuationModelOverview {
+  const overview = item.overview ?? {};
+  const summary = overview.summary ?? {};
+  return {
+    overviewId: item.overview_id,
+    datasetId: item.dataset_id,
+    seriesId: item.series_id,
+    modelVersionId: item.model_version_id,
+    docId: item.doc_id,
+    status: item.status,
+    overviewVersion: item.overview_version,
+    createdAt: item.created_at,
+    html: item.html,
+    overview: {
+      schemaVersion: overview.schema_version ?? 1,
+      modelName: overview.model_name ?? "估值模型",
+      companyName: overview.company_name ?? "",
+      companyTicker: overview.company_ticker ?? "",
+      modelVersionNo: overview.model_version_no ?? 0,
+      modelType: overview.model_type ?? "",
+      originalFilename: overview.original_filename ?? "",
+      generatedAt: overview.generated_at ?? item.created_at,
+      summary: {
+        detectedStatements: summary.detected_statements ?? [],
+        missingStatements: summary.missing_statements ?? [],
+        statementCount: summary.statement_count ?? 0,
+        trendCount: summary.trend_count ?? 0,
+        keyMetricCount: summary.key_metric_count ?? 0,
+        periodStart: summary.period_start ?? "",
+        periodEnd: summary.period_end ?? "",
+        periods: summary.periods ?? [],
+        factCount: summary.fact_count ?? 0,
+        reviewRequiredCount: summary.review_required_count ?? 0,
+        qualityFlags: summary.quality_flags ?? [],
+      },
+      keyMetrics: (overview.key_metrics ?? []).map((metric) => ({
+        metricKey: metric.metric_key,
+        label: metric.label,
+        period: metric.period ?? "",
+        valueNumeric: metric.value_numeric ?? null,
+        valueText: metric.value_text ?? "",
+        unit: metric.unit ?? "",
+        evidenceId: metric.evidence_id ?? "",
+        source: metric.source ?? "",
+      })),
+      trends: (overview.trends ?? []).map((trend) => ({
+        metricKey: trend.metric_key,
+        label: trend.label,
+        statementType: trend.statement_type,
+        unit: trend.unit ?? "",
+        sheetName: trend.sheet_name,
+        values: (trend.values ?? []).map(valuationOverviewValueFromWire),
+      })),
+      statements: (overview.statements ?? []).map((statement) => ({
+        statementType: statement.statement_type,
+        title: statement.title,
+        sheetName: statement.sheet_name,
+        periods: statement.periods ?? [],
+        rows: (statement.rows ?? []).map((row) => ({
+          metricKey: row.metric_key ?? "",
+          metricName: row.metric_name,
+          unit: row.unit ?? "",
+          rowIndex: row.row_index ?? 0,
+          values: (row.values ?? []).map((value) =>
+            value ? valuationOverviewValueFromWire(value) : null,
+          ),
+        })),
+        sourceRefs: statement.source_refs ?? [],
+      })),
+    },
   };
 }
 
@@ -1761,7 +2079,7 @@ export async function setPrivateFundAssetContext(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ asset_ids: assetIds }),
+        body: JSON.stringify({ asset_ids: normalizeContextAssetIds(assetIds) }),
       },
     ),
   );
@@ -2028,6 +2346,19 @@ export async function runPrivateFundValuationTracking(
     ),
   );
   return (body.jobs ?? []).map(valuationTrackingJobFromWire);
+}
+
+export async function getPrivateFundValuationModelOverview(
+  datasetId: string,
+  seriesId: string,
+  modelVersionId: string,
+): Promise<PrivateFundValuationModelOverview> {
+  const payload = await jsonOrThrow<ValuationModelOverviewWire>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-models/${encodeURIComponent(seriesId)}/versions/${encodeURIComponent(modelVersionId)}/overview`,
+    ),
+  );
+  return valuationModelOverviewFromWire(payload);
 }
 
 export async function comparePrivateFundValuationModelVersions(

@@ -1629,11 +1629,16 @@ def _numeric_value(value: Any) -> Optional[float]:
 
 def _period_from_label(label: str) -> str:
     label = normalize_text(label)
+    # A financial value such as ``12068.32666`` can contain a ``20xx``
+    # substring after the decimal point.  Treat only standalone period tokens
+    # as years; otherwise long statement rows inherit fictitious periods.
     patterns = [
-        r"\b(20\d{2}[A-Z]?)\b",
-        r"\b([1-4]Q\s*20\d{2})\b",
-        r"\b(20\d{2}\s*[EQAF])\b",
-        r"\b(FY\s*20\d{2})\b",
+        r"(?<![\d.])([1-4]Q\s*20\d{2})(?![\d.])",
+        r"(?<![\d.])(20\d{2}\s*[1-4]Q)(?![\d.])",
+        r"(?<![\d.])(FY\s*20\d{2})(?![\d.])",
+        r"(?<![\d.])([1-4]Q\s*\d{2})(?![\d.])",
+        r"(?<![\d.])(FY\s*\d{2})(?![\d.])",
+        r"(?<![\d.])(20\d{2}\s*[EQAF]?)(?![\d.])",
     ]
     for pattern in patterns:
         match = re.search(pattern, label, flags=re.IGNORECASE)
@@ -1661,6 +1666,12 @@ def _unit_from_number_format(number_format: str) -> str:
 
 
 def _sheet_role(sheet_name: str, sample_text: str) -> str:
+    normalized_name = normalize_text(sheet_name).lower()
+    if any(
+        marker in normalized_name
+        for marker in ("upload", "download", "raw data", "raw_data", "bloomberg", "__fdscache__")
+    ):
+        return "raw_upload"
     text = f"{sheet_name} {sample_text}".lower()
     checks = [
         ("valuation_dcf", ("dcf", "wacc", "terminal value", "valuation")),
@@ -1895,6 +1906,7 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
 
         row_text_cols: dict[int, list[tuple[int, str]]] = {}
         col_text_rows: dict[int, list[tuple[int, str]]] = {}
+        col_period_rows: dict[int, list[tuple[int, str]]] = {}
         for (row, col), value in cells.items():
             is_formula, _, _, _ = _formula_details(value)
             cached_for_label = values_ws.cell(row, col).value if is_formula and values_ws is not None else None
@@ -1904,6 +1916,8 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
             raw_text = cell_display(value, 120)
             if text and not is_formula and _numeric_value(value) is None:
                 row_text_cols.setdefault(row, []).append((col, text))
+            if text and _looks_like_period_label(text):
+                col_period_rows.setdefault(col, []).append((row, text))
             if text and (_numeric_value(text) is None or _looks_like_period_label(text) or row <= max(5, min_row + 4)):
                 col_text_rows.setdefault(col, []).append((row, text))
             elif raw_text and not is_formula and _numeric_value(raw_text) is None:
@@ -1911,6 +1925,8 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
         for items in row_text_cols.values():
             items.sort(key=lambda x: x[0])
         for items in col_text_rows.values():
+            items.sort(key=lambda x: x[0])
+        for items in col_period_rows.values():
             items.sort(key=lambda x: x[0])
 
         for (row, col), value in sorted(cells.items(), key=lambda item: item[0]):
@@ -1921,7 +1937,12 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
             display = cell_display(display_source, 200)
             row_label = _nearest_left_label(row_text_cols, row, col)
             col_label = _nearest_top_label(col_text_rows, row, col)
-            period = _period_from_label(col_label) or _period_from_label(display)
+            period_label = _nearest_top_label(col_period_rows, row, col)
+            period = (
+                _period_from_label(period_label)
+                or _period_from_label(col_label)
+                or _period_from_label(display)
+            )
             number_format = str(ws.cell(row, col).number_format or "")
             unit = (
                 _unit_from_text(row_label)

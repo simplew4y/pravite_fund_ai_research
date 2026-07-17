@@ -21,6 +21,15 @@ ingest = importlib.import_module("private_fund_directory_ingest")
 DATASET_ID = "pipeline-regression"
 
 
+def test_period_parser_rejects_year_like_fragments_inside_financial_values() -> None:
+    assert ingest._period_from_label("2025") == "2025"
+    assert ingest._period_from_label("2026E") == "2026E"
+    assert ingest._period_from_label("FY 2027") == "FY 2027"
+    assert ingest._period_from_label("1Q26") == "1Q26"
+    assert ingest._period_from_label("12068.32666") == ""
+    assert ingest._period_from_label("0.207812345") == ""
+
+
 def _write_pdf(path: Path, *lines: str) -> None:
     """Write a deterministic one-page PDF, replacing an older fixture safely."""
 
