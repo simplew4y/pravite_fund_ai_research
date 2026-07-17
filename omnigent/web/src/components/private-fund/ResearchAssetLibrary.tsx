@@ -235,7 +235,9 @@ export function ResearchAssetLibrary({
     const needle = query.trim().toLocaleLowerCase();
     const filtered = assets.filter((asset) => {
       if (zone === "notes" && noteGroupFilter !== "all") {
-        const group = asset.displayGroup || (asset.assetType === "information" ? "answer_note" : "research_note");
+        const group =
+          asset.displayGroup ||
+          (asset.assetType === "information" ? "answer_note" : "research_note");
         if (group !== noteGroupFilter) return false;
       }
       if (typeFilter !== "all" && asset.assetType !== typeFilter) return false;
@@ -455,7 +457,11 @@ export function ResearchAssetLibrary({
               </select>
             </label>
           ) : null}
-          <label className={zone === "notes" || zone === "sources" ? "relative col-span-2" : "relative col-span-2"}>
+          <label
+            className={
+              zone === "notes" || zone === "sources" ? "relative col-span-2" : "relative col-span-2"
+            }
+          >
             <ArrowDownAZ className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
             <span className="sr-only">排序</span>
             <select

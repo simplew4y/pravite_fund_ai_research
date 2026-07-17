@@ -4033,93 +4033,90 @@ function PrivateFundGenerationTray({
 
   return (
     <>
-    {actions.contextAssets.length > 0 ? (
-      <section
-        aria-label="问题上下文"
-        className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}
-      >
-        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-2.5 py-2">
-          <span className="mr-1 text-[11px] font-semibold text-[var(--pf-ink-secondary)]">
-            问题上下文
-          </span>
-          {actions.contextAssets.map((asset) => (
+      {actions.contextAssets.length > 0 ? (
+        <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
+          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-2.5 py-2">
+            <span className="mr-1 text-[11px] font-semibold text-[var(--pf-ink-secondary)]">
+              问题上下文
+            </span>
+            {actions.contextAssets.map((asset) => (
+              <button
+                key={asset.assetId}
+                type="button"
+                className="inline-flex max-w-[220px] items-center gap-1 rounded-full border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 py-0.5 text-[11px] text-[var(--pf-ink)] hover:border-[var(--pf-accent)]"
+                title={asset.title}
+                onClick={() => actions.removeContextAsset(asset.assetId)}
+              >
+                <span className="truncate">
+                  {(asset.displayLabel || asset.assetType) + " · " + asset.title}
+                </span>
+                <span aria-hidden className="text-[var(--pf-ink-muted)]">
+                  ×
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section aria-label="生成研究笔记" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
+        <div className="rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-xs font-semibold text-[var(--pf-ink)]">生成笔记</span>
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+              {PRIVATE_FUND_GENERATION_OPTIONS.map((option) => {
+                const active = actions.generationMode === option.value;
+                return (
+                  <button
+                    aria-pressed={active}
+                    className={cn(
+                      "h-7 shrink-0 rounded-md px-2.5 text-xs font-medium text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] active:translate-y-px",
+                      active &&
+                        "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-[var(--pf-shadow)]",
+                    )}
+                    disabled={disabled}
+                    key={option.value}
+                    onClick={() => actions.setGenerationMode(option.value)}
+                    title={option.description}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
             <button
-              key={asset.assetId}
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-[var(--primary-foreground)] transition-colors hover:bg-[var(--pf-accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={disabled}
+              onClick={actions.generateAsset}
               type="button"
-              className="inline-flex max-w-[220px] items-center gap-1 rounded-full border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 py-0.5 text-[11px] text-[var(--pf-ink)] hover:border-[var(--pf-accent)]"
-              title={asset.title}
-              onClick={() => actions.removeContextAsset(asset.assetId)}
             >
-              <span className="truncate">
-                {(asset.displayLabel || asset.assetType) + " · " + asset.title}
-              </span>
-              <span aria-hidden className="text-[var(--pf-ink-muted)]">
-                ×
-              </span>
+              <SparklesIcon className="size-3.5" />
+              {actions.generationMode === "memo" ? "生成 Memo" : "生成"}
+              {actions.selectedInformationCount > 0 ? ` (${actions.selectedInformationCount})` : ""}
             </button>
-          ))}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              aria-label="生成具体要求"
+              className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-3 text-xs text-[var(--pf-ink)] outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
+              disabled={disabled}
+              maxLength={500}
+              onChange={(event) => actions.setGenerationInstruction(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                actions.generateAsset();
+              }}
+              placeholder={placeholder}
+              value={actions.generationInstruction}
+            />
+            <span className="hidden shrink-0 text-[11px] text-[var(--pf-ink-muted)] sm:inline">
+              {activeOption?.description}
+            </span>
+          </div>
         </div>
       </section>
-    ) : null}
-
-    <section aria-label="生成研究笔记" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
-      <div className="rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-3 py-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-xs font-semibold text-[var(--pf-ink)]">生成笔记</span>
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {PRIVATE_FUND_GENERATION_OPTIONS.map((option) => {
-              const active = actions.generationMode === option.value;
-              return (
-                <button
-                  aria-pressed={active}
-                  className={cn(
-                    "h-7 shrink-0 rounded-md px-2.5 text-xs font-medium text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] active:translate-y-px",
-                    active &&
-                      "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-[var(--pf-shadow)]",
-                  )}
-                  disabled={disabled}
-                  key={option.value}
-                  onClick={() => actions.setGenerationMode(option.value)}
-                  title={option.description}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-[var(--primary-foreground)] transition-colors hover:bg-[var(--pf-accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={disabled}
-            onClick={actions.generateAsset}
-            type="button"
-          >
-            <SparklesIcon className="size-3.5" />
-            {actions.generationMode === "memo" ? "生成 Memo" : "生成"}
-            {actions.selectedInformationCount > 0 ? ` (${actions.selectedInformationCount})` : ""}
-          </button>
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          <input
-            aria-label="生成具体要求"
-            className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-3 text-xs text-[var(--pf-ink)] outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
-            disabled={disabled}
-            maxLength={500}
-            onChange={(event) => actions.setGenerationInstruction(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-              event.preventDefault();
-              actions.generateAsset();
-            }}
-            placeholder={placeholder}
-            value={actions.generationInstruction}
-          />
-          <span className="hidden shrink-0 text-[11px] text-[var(--pf-ink-muted)] sm:inline">
-            {activeOption?.description}
-          </span>
-        </div>
-      </div>
-    </section>
     </>
   );
 }

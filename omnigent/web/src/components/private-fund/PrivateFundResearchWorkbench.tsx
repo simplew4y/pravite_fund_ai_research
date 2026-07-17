@@ -413,9 +413,7 @@ export function PrivateFundResearchWorkbench({
   const documentPreviewRequest = usePrivateFundWorkspaceStore(
     (state) => state.documentPreviewRequest,
   );
-  const clearDocumentPreview = usePrivateFundWorkspaceStore(
-    (state) => state.clearDocumentPreview,
-  );
+  const clearDocumentPreview = usePrivateFundWorkspaceStore((state) => state.clearDocumentPreview);
   const handledPreviewRequestId = useRef(0);
   useEffect(() => {
     if (!notice) return;
@@ -865,7 +863,13 @@ export function PrivateFundResearchWorkbench({
               )
             : assets.filter((asset) => asset.assetType !== "report");
     const zone =
-      view === "sources" ? "sources" : view === "notes" ? "notes" : view === "memos" ? "memos" : "generic";
+      view === "sources"
+        ? "sources"
+        : view === "notes"
+          ? "notes"
+          : view === "memos"
+            ? "memos"
+            : "generic";
     return (
       <ResearchAssetLibrary
         key={`${view}-${compact ? "c" : "f"}`}
@@ -892,9 +896,7 @@ export function PrivateFundResearchWorkbench({
           deleteAssetsMutation.mutateAsync(assetIds).then(() => undefined)
         }
         onOpenAsset={openAsset}
-        onSetContext={(assetIds) =>
-          contextMutation.mutateAsync(assetIds).then(() => undefined)
-        }
+        onSetContext={(assetIds) => contextMutation.mutateAsync(assetIds).then(() => undefined)}
         title={view === "sources" ? "资料" : view === "memos" ? "Memo" : "笔记"}
       />
     );
@@ -1119,8 +1121,7 @@ export function PrivateFundResearchWorkbench({
                 aria-label="顶部标签布局"
                 className={cn(
                   "flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-muted)] transition-all duration-200 hover:text-[var(--pf-ink)]",
-                  !isIde &&
-                    "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-sm",
+                  !isIde && "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-sm",
                 )}
                 onClick={() => setChromeMode("tabs")}
               >
@@ -1133,8 +1134,7 @@ export function PrivateFundResearchWorkbench({
                 aria-label="侧栏布局"
                 className={cn(
                   "flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-muted)] transition-all duration-200 hover:text-[var(--pf-ink)]",
-                  isIde &&
-                    "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-sm",
+                  isIde && "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-sm",
                 )}
                 onClick={() => {
                   setChromeMode("ide");
@@ -1158,10 +1158,7 @@ export function PrivateFundResearchWorkbench({
 
         <div
           data-testid="private-fund-workbench-grid"
-          className={cn(
-            "flex min-h-0 flex-1 overflow-hidden",
-            isIde ? "flex-row" : "flex-col",
-          )}
+          className={cn("flex min-h-0 flex-1 overflow-hidden", isIde ? "flex-row" : "flex-col")}
         >
           <main
             aria-label={
@@ -1205,11 +1202,7 @@ export function PrivateFundResearchWorkbench({
                 ? "border-l opacity-100"
                 : "pointer-events-none w-0 overflow-hidden border-l-0 opacity-0",
             )}
-            style={
-              showIdeSidePanel
-                ? { width: idePanelWidth }
-                : { width: 0 }
-            }
+            style={showIdeSidePanel ? { width: idePanelWidth } : { width: 0 }}
           >
             {showIdeSidePanel ? (
               <>
@@ -1306,5 +1299,4 @@ export function PrivateFundResearchWorkbench({
       </div>
     </WorkbenchActionContext.Provider>
   );
-
 }
