@@ -39,6 +39,7 @@ import {
 } from "./blocks";
 import type { StreamEvent } from "./events";
 import type { Response } from "./types";
+import { decodeForDisplay, decodeUnicodeEscapes } from "./jsonDisplay";
 
 const DEFAULT_FLUSH_THRESHOLD = 30;
 
@@ -55,6 +56,7 @@ export function formatToolArgsBrief(name: string, args: Record<string, unknown>)
   if (Object.keys(args).length === 0) {
     return "";
   }
+  const displayArgs = decodeForDisplay(args) as Record<string, unknown>;
   const KEYS: Record<string, string> = {
     Read: "file_path",
     Write: "file_path",
@@ -65,8 +67,8 @@ export function formatToolArgsBrief(name: string, args: Record<string, unknown>)
     web_search: "query",
   };
   const key = KEYS[name];
-  if (key && key in args) {
-    let s = String(args[key]);
+  if (key && key in displayArgs) {
+    let s = decodeUnicodeEscapes(String(displayArgs[key]));
     if (key === "file_path" && s.includes("/")) {
       const idx = s.lastIndexOf("/");
       s = s.slice(idx + 1);
@@ -75,10 +77,11 @@ export function formatToolArgsBrief(name: string, args: Record<string, unknown>)
   }
   let s: string;
   try {
-    s = JSON.stringify(args);
+    s = JSON.stringify(displayArgs);
   } catch {
-    s = String(args);
+    s = String(displayArgs);
   }
+  s = decodeUnicodeEscapes(s);
   return s.length > 80 ? s.slice(0, 80) + "…" : s;
 }
 
