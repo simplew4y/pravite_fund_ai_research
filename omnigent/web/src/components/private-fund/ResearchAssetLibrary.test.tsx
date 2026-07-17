@@ -8,6 +8,8 @@ const assets: PrivateFundAsset[] = [
   {
     assetId: "document:report",
     assetType: "document",
+    displayGroup: "source",
+    displayLabel: "资料",
     title: "交流会原文.pdf",
     summary: "PDF · 12 个可检索片段",
     contentMarkdown: "",
@@ -27,6 +29,8 @@ const assets: PrivateFundAsset[] = [
   {
     assetId: "asset_info",
     assetType: "information",
+    displayGroup: "answer_note",
+    displayLabel: "回答笔记",
     title: "管理层网络安全观点",
     summary: "电网稳定性比网络攻击更值得关注",
     contentMarkdown: "电网稳定性不足。",
@@ -54,13 +58,13 @@ describe("ResearchAssetLibrary", () => {
       />,
     );
 
-    fireEvent.change(screen.getByRole("combobox", { name: "资产类型" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "条目类型" }), {
       target: { value: "document" },
     });
     expect(screen.getByText("交流会原文.pdf")).toBeInTheDocument();
     expect(screen.queryByText("管理层网络安全观点")).toBeNull();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择资产 交流会原文.pdf" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "加入上下文 交流会原文.pdf" }));
     expect(setContext).toHaveBeenCalledWith(["document:report"]);
   });
 
@@ -76,14 +80,14 @@ describe("ResearchAssetLibrary", () => {
       />,
     );
 
-    fireEvent.change(screen.getByRole("textbox", { name: "搜索资产" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索" }), {
       target: { value: "网络安全" },
     });
     fireEvent.click(screen.getByRole("button", { name: "卡片视图" }));
     fireEvent.click(screen.getByRole("button", { name: /管理层网络安全观点/ }));
     expect(open).toHaveBeenCalledWith(expect.objectContaining({ assetId: "asset_info" }));
     expect(screen.getByText("已加入上下文")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "选择资产 管理层网络安全观点" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "加入上下文 管理层网络安全观点" })).toBeChecked();
   });
 
   it("does not render the document upload entry in the right asset library", () => {
@@ -112,10 +116,10 @@ describe("ResearchAssetLibrary", () => {
       />,
     );
 
-    fireEvent.change(screen.getByRole("combobox", { name: "资产类型" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "条目类型" }), {
       target: { value: "document" },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部资产" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部条目" }));
     expect(setContext).toHaveBeenCalledWith(["document:report"]);
 
     rerender(
@@ -127,9 +131,9 @@ describe("ResearchAssetLibrary", () => {
         onSetContext={setContext}
       />,
     );
-    expect(screen.getByRole("checkbox", { name: "选择资产 交流会原文.pdf" })).toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: "删除已选 1 项资产" }));
-    expect(screen.getByRole("heading", { name: "删除 1 项资产？" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "加入上下文 交流会原文.pdf" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "删除已选 1 项" }));
+    expect(screen.getByRole("heading", { name: "删除 1 项？" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 
     expect(deleteAssets).toHaveBeenCalledWith(["document:report"]);
@@ -155,7 +159,7 @@ describe("ResearchAssetLibrary", () => {
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual(["打开资产 管理层网络安全观点", "打开资产 交流会原文.pdf"]);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "资产排序" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "排序" }), {
       target: { value: "oldest" },
     });
     expect(
@@ -164,20 +168,20 @@ describe("ResearchAssetLibrary", () => {
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual(["打开资产 交流会原文.pdf", "打开资产 管理层网络安全观点"]);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "资产类型" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "条目类型" }), {
       target: { value: "document" },
     });
     expect(screen.getByText("交流会原文.pdf")).toBeInTheDocument();
     expect(screen.queryByText("管理层网络安全观点")).toBeNull();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "文档类型" }), {
+    fireEvent.change(screen.getByRole("combobox", { name: "资料类型" }), {
       target: { value: "annual_report" },
     });
     expect(screen.getByRole("button", { name: "打开资产 交流会原文.pdf" })).toHaveTextContent(
       "年报",
     );
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择资产 交流会原文.pdf" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "加入上下文 交流会原文.pdf" }));
     expect(setContext).toHaveBeenCalledWith(["document:report"]);
 
     rerender(
@@ -191,7 +195,7 @@ describe("ResearchAssetLibrary", () => {
         title="资产"
       />,
     );
-    expect(screen.getByRole("checkbox", { name: "选择资产 交流会原文.pdf" })).toBeChecked();
-    expect(screen.getByRole("button", { name: "删除已选 1 项资产" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "加入上下文 交流会原文.pdf" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "删除已选 1 项" })).toBeEnabled();
   });
 });

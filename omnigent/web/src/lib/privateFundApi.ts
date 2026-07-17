@@ -121,6 +121,14 @@ export type PrivateFundAssetType =
   | "memo"
   | string;
 
+export type PrivateFundDisplayGroup =
+  | "source"
+  | "answer_note"
+  | "research_note"
+  | "memo"
+  | "report"
+  | "other";
+
 export interface PrivateFundAsset {
   assetId: string;
   assetType: PrivateFundAssetType;
@@ -139,6 +147,57 @@ export interface PrivateFundAsset {
   fileType?: string | null;
   storedPath?: string | null;
   metadata: Record<string, unknown>;
+  /** User-facing catalog group (资料 / 回答笔记 / 研究笔记 / Memo / …). */
+  displayGroup: PrivateFundDisplayGroup;
+  displayLabel: string;
+}
+
+export function inferDisplayGroup(assetType: string, sourceKind = ""): PrivateFundDisplayGroup {
+  if (assetType === "document" || sourceKind === "document") return "source";
+  if (assetType === "information" || sourceKind === "saved_information") return "answer_note";
+  if (assetType === "analysis" || sourceKind === "research_node") return "research_note";
+  if (sourceKind === "research_node_block") return "research_note";
+  if (assetType === "memo" || sourceKind === "memo") return "memo";
+  if (assetType === "report" || sourceKind === "equity_report") return "report";
+  if (["metrics", "table", "chart", "infographic"].includes(assetType)) return "research_note";
+  return "other";
+}
+
+export function displayLabelForGroup(group: PrivateFundDisplayGroup, assetType = ""): string {
+  switch (group) {
+    case "source":
+      return "资料";
+    case "answer_note":
+      return "回答笔记";
+    case "research_note":
+      return assetType === "analysis" || !assetType ? "研究笔记" : "研究笔记";
+    case "memo":
+      return "Memo";
+    case "report":
+      return "专业研报";
+    default:
+      return assetType || "条目";
+  }
+}
+
+/** Collapse legacy block:* context ids onto parent research notes. */
+export function normalizeContextAssetIds(assetIds: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of assetIds) {
+    let id = String(raw || "").trim();
+    if (!id) continue;
+    if (id.startsWith("block:")) {
+      const rest = id.slice("block:".length);
+      const idx = rest.lastIndexOf(":");
+      const nodeId = idx >= 0 ? rest.slice(0, idx) : rest;
+      if (nodeId) id = `node:${nodeId}`;
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
 }
 
 export interface PrivateFundAssetCatalog {
@@ -813,6 +872,8 @@ interface AssetWire {
   file_type?: string | null;
   stored_path?: string | null;
   metadata?: Record<string, unknown> | null;
+  display_group?: string | null;
+  display_label?: string | null;
 }
 
 interface AssetCatalogWire {
@@ -1386,26 +1447,34 @@ function sourceFolderTreeFromWire(payload: SourceFolderTreeWire): PrivateFundSou
 
 function assetCatalogFromWire(payload: AssetCatalogWire): PrivateFundAssetCatalog {
   return {
-    assets: payload.assets.map((asset) => ({
-      assetId: asset.asset_id,
-      assetType: asset.asset_type,
-      title: asset.title,
-      summary: asset.summary ?? "",
-      contentMarkdown: asset.content_markdown ?? "",
-      format: asset.format ?? "markdown",
-      status: asset.status ?? "completed",
-      sourceKind: asset.source_kind ?? "saved_information",
-      sourceId: asset.source_id ?? null,
-      tags: asset.tags ?? [],
-      createdAt: asset.created_at ?? null,
-      updatedAt: asset.updated_at ?? null,
-      versionNo: asset.version_no ?? 1,
-      evidenceCount: asset.evidence_count ?? 0,
-      fileType: asset.file_type ?? null,
-      storedPath: asset.stored_path ?? null,
-      metadata: asset.metadata ?? {},
-    })),
-    contextAssetIds: payload.context_asset_ids ?? [],
+    assets: payload.assets.map((asset) => {
+      const sourceKind = asset.source_kind ?? "saved_information";
+      const group =
+        (asset.display_group as PrivateFundDisplayGroup | undefined) ||
+        inferDisplayGroup(asset.asset_type, sourceKind);
+      return {
+        assetId: asset.asset_id,
+        assetType: asset.asset_type,
+        title: asset.title,
+        summary: asset.summary ?? "",
+        contentMarkdown: asset.content_markdown ?? "",
+        format: asset.format ?? "markdown",
+        status: asset.status ?? "completed",
+        sourceKind,
+        sourceId: asset.source_id ?? null,
+        tags: asset.tags ?? [],
+        createdAt: asset.created_at ?? null,
+        updatedAt: asset.updated_at ?? null,
+        versionNo: asset.version_no ?? 1,
+        evidenceCount: asset.evidence_count ?? 0,
+        fileType: asset.file_type ?? null,
+        storedPath: asset.stored_path ?? null,
+        metadata: asset.metadata ?? {},
+        displayGroup: group,
+        displayLabel: asset.display_label || displayLabelForGroup(group, asset.asset_type),
+      };
+    }),
+    contextAssetIds: normalizeContextAssetIds(payload.context_asset_ids ?? []),
   };
 }
 
@@ -2010,7 +2079,7 @@ export async function setPrivateFundAssetContext(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ asset_ids: assetIds }),
+        body: JSON.stringify({ asset_ids: normalizeContextAssetIds(assetIds) }),
       },
     ),
   );
