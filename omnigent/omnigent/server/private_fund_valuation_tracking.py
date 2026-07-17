@@ -20,7 +20,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-VALUATION_TRACKING_SCHEMA_VERSION = 1
+from omnigent.server import private_fund_valuation_overview
+
+VALUATION_TRACKING_SCHEMA_VERSION = 2
 VALUATION_ANALYZER_VERSION = "valuation-tracking-v1"
 ALERT_STATUSES = frozenset({"new", "acknowledged", "dismissed", "snoozed"})
 JOB_STATUSES = frozenset({"queued", "running", "completed", "failed"})
@@ -274,6 +276,20 @@ def ensure_valuation_schema(conn: sqlite3.Connection, dataset_id: str | None = N
             UNIQUE(model_version_id, analyzer_version)
         );
 
+        CREATE TABLE IF NOT EXISTS valuation_model_overviews (
+            overview_id TEXT PRIMARY KEY,
+            dataset_id TEXT NOT NULL,
+            series_id TEXT NOT NULL,
+            model_version_id TEXT NOT NULL,
+            doc_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            overview_json TEXT NOT NULL DEFAULT '{}',
+            html TEXT NOT NULL,
+            overview_version TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(model_version_id, overview_version)
+        );
+
         CREATE TABLE IF NOT EXISTS valuation_watch_rules (
             rule_id TEXT PRIMARY KEY,
             dataset_id TEXT NOT NULL,
@@ -376,6 +392,8 @@ def ensure_valuation_schema(conn: sqlite3.Connection, dataset_id: str | None = N
             ON valuation_model_versions(series_id, document_version_no DESC);
         CREATE INDEX IF NOT EXISTS ix_valuation_values_version
             ON valuation_model_node_values(model_version_id, node_id);
+        CREATE INDEX IF NOT EXISTS ix_valuation_overviews_version
+            ON valuation_model_overviews(model_version_id, overview_version);
         CREATE INDEX IF NOT EXISTS ix_valuation_changes_series
             ON valuation_model_changes(series_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS ix_valuation_alerts_dataset_status
@@ -964,12 +982,20 @@ def build_model_version(collection_db: Path, dataset_id: str, doc_id: str) -> di
             (doc_id, VALUATION_ANALYZER_VERSION),
         ).fetchone()
         if existing:
+            overview = private_fund_valuation_overview.ensure_model_overview(
+                conn,
+                dataset_id=dataset_id,
+                series=dict(series),
+                version=dict(existing),
+            )
+            conn.commit()
             return {
                 "model_version_id": existing["model_version_id"],
                 "series_id": existing["series_id"],
                 "node_count": existing["node_count"],
                 "changes_created": 0,
                 "alerts_created": 0,
+                "overview_id": overview["overview_id"],
                 "already_processed": True,
             }
 
@@ -1062,6 +1088,7 @@ def build_model_version(collection_db: Path, dataset_id: str, doc_id: str) -> di
                     now,
                 ),
             )
+
             conn.execute(
                 """
                 INSERT INTO valuation_model_node_values
@@ -1089,6 +1116,13 @@ def build_model_version(collection_db: Path, dataset_id: str, doc_id: str) -> di
                     now,
                 ),
             )
+
+        overview_payload = private_fund_valuation_overview.ensure_model_overview(
+            conn,
+            dataset_id=dataset_id,
+            series=dict(series),
+            version={**dict(document), **version_payload, "doc_id": doc_id},
+        )
 
         changes: list[dict[str, Any]] = []
         changes_created = alerts_created = 0
@@ -1164,6 +1198,7 @@ def build_model_version(collection_db: Path, dataset_id: str, doc_id: str) -> di
             "node_count": len(nodes),
             "changes_created": changes_created,
             "alerts_created": alerts_created,
+            "overview_id": overview_payload["overview_id"],
             "reverted_to_version_id": reverted["model_version_id"] if reverted else None,
             "already_processed": False,
         }
@@ -1467,6 +1502,39 @@ def get_model_version(
         if row is None:
             raise KeyError(model_version_id)
         return _version_payload(conn, row)
+
+
+def get_model_overview(
+    collection_db: Path,
+    dataset_id: str,
+    series_id: str,
+    model_version_id: str,
+) -> dict[str, Any]:
+    """Return or idempotently backfill the structured and HTML model overview."""
+
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn, dataset_id)
+        series = conn.execute(
+            "SELECT * FROM valuation_model_series WHERE dataset_id=? AND series_id=?",
+            (dataset_id, series_id),
+        ).fetchone()
+        version = conn.execute(
+            """
+            SELECT * FROM valuation_model_versions
+            WHERE dataset_id=? AND series_id=? AND model_version_id=?
+            """,
+            (dataset_id, series_id, model_version_id),
+        ).fetchone()
+        if series is None or version is None:
+            raise KeyError(model_version_id)
+        overview = private_fund_valuation_overview.ensure_model_overview(
+            conn,
+            dataset_id=dataset_id,
+            series=dict(series),
+            version=dict(version),
+        )
+        conn.commit()
+        return overview
 
 
 def compare_versions(

@@ -3323,6 +3323,28 @@ def create_private_fund_pdf_router(
                 status_code=404, detail="Valuation model series or version not found."
             ) from exc
 
+    @router.get(
+        "/private-fund/projects/{dataset_id}/valuation-models/{series_id}/"
+        "versions/{model_version_id}/overview"
+    )
+    def get_project_valuation_model_overview(
+        dataset_id: str,
+        series_id: str,
+        model_version_id: str,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_valuation_tracking.get_model_overview(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                series_id,
+                model_version_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="Valuation model overview was not found."
+            ) from exc
+
     @router.post(
         "/private-fund/projects/{dataset_id}/valuation-models/{series_id}/agent-analysis",
         status_code=202,

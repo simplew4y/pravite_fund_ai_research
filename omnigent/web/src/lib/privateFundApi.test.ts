@@ -16,6 +16,7 @@ import {
   getPrivateFundSourceFolders,
   getPrivateFundResearchItemTimeline,
   getPrivateFundTrackingOverview,
+  getPrivateFundValuationModelOverview,
   getPrivateFundValuationTrackingOverview,
   getPrivateFundWorkflow,
   privateFundTokenUsageFromWire,
@@ -571,6 +572,134 @@ describe("private-fund valuation tracking requests", () => {
       derivedModelId: "vdm-1",
       derivedVersionNo: 3,
     });
+  });
+
+  it("maps structured valuation overview data and self-contained HTML", async () => {
+    vi.mocked(authenticatedFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          overview_id: "overview-2",
+          dataset_id: "sungrow",
+          series_id: "series-1",
+          model_version_id: "vmv-2",
+          doc_id: "doc-2",
+          status: "completed",
+          overview_version: "valuation-overview-v1",
+          created_at: "2026-07-02T00:00:00Z",
+          html: "<!DOCTYPE html><html><body>总览</body></html>",
+          overview: {
+            schema_version: 1,
+            model_name: "阳光电源 DCF",
+            company_name: "阳光电源",
+            company_ticker: "300274.SZ",
+            model_version_no: 2,
+            model_type: "dcf_model",
+            original_filename: "model-v2.xlsx",
+            generated_at: "2026-07-02T00:00:00Z",
+            summary: {
+              detected_statements: ["income_statement", "balance_sheet", "cash_flow"],
+              missing_statements: [],
+              statement_count: 3,
+              trend_count: 1,
+              key_metric_count: 2,
+              period_start: "2024A",
+              period_end: "2026E",
+              periods: ["2024A", "2025E", "2026E"],
+              fact_count: 30,
+              review_required_count: 1,
+              quality_flags: ["facts_require_review"],
+            },
+            key_metrics: [
+              {
+                metric_key: "target_price",
+                label: "Target Price",
+                period: "2026E",
+                value_numeric: 120,
+                unit: "CNY/share",
+                evidence_id: "fact:target-price",
+                source: "DCF!D20",
+              },
+            ],
+            trends: [
+              {
+                metric_key: "revenue",
+                label: "Revenue",
+                statement_type: "income_statement",
+                unit: "CNYm",
+                sheet_name: "PL_BS_CFS",
+                values: [
+                  {
+                    period: "2024A",
+                    value: 100,
+                    evidence_id: "fact:revenue-2024",
+                    source: "PL_BS_CFS!B3",
+                  },
+                  {
+                    period: "2025E",
+                    value: 120,
+                    evidence_id: "fact:revenue-2025",
+                    source: "PL_BS_CFS!C3",
+                  },
+                ],
+              },
+            ],
+            statements: [
+              {
+                statement_type: "income_statement",
+                title: "利润表",
+                sheet_name: "PL_BS_CFS",
+                periods: ["2024A", "2025E"],
+                rows: [
+                  {
+                    metric_key: "revenue",
+                    metric_name: "Revenue",
+                    unit: "CNYm",
+                    row_index: 3,
+                    values: [
+                      {
+                        period: "2024A",
+                        value: 100,
+                        evidence_id: "fact:revenue-2024",
+                        source: "PL_BS_CFS!B3",
+                      },
+                      null,
+                    ],
+                  },
+                ],
+                source_refs: ["PL_BS_CFS!B3"],
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const modelOverview = await getPrivateFundValuationModelOverview(
+      "sungrow",
+      "series-1",
+      "vmv-2",
+    );
+
+    expect(modelOverview.overview.summary).toMatchObject({
+      statementCount: 3,
+      trendCount: 1,
+      factCount: 30,
+    });
+    expect(modelOverview.overview.trends[0]).toMatchObject({
+      metricKey: "revenue",
+      sheetName: "PL_BS_CFS",
+    });
+    expect(modelOverview.overview.keyMetrics[0]).toMatchObject({
+      metricKey: "target_price",
+      valueNumeric: 120,
+      evidenceId: "fact:target-price",
+    });
+    expect(modelOverview.overview.statements[0].rows[0].values[1]).toBeNull();
+    expect(modelOverview.html).toContain("<!DOCTYPE html>");
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      "/v1/private-fund/projects/sungrow/valuation-models/series-1/versions/vmv-2/overview",
+    );
   });
 
   it("compares versions and calls valuation mutations", async () => {

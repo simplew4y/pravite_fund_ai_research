@@ -26,6 +26,7 @@ import {
   derivePrivateFundValuationModel,
   fetchPrivateFundValuationDerivedModelFile,
   getPrivateFundPipelineJob,
+  getPrivateFundValuationModelOverview,
   runPrivateFundValuationAgentAnalysis,
   runPrivateFundValuationTracking,
   updatePrivateFundValuationAlert,
@@ -237,6 +238,18 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
     ),
   });
 
+  const modelOverviewQuery = useQuery({
+    queryKey: [
+      "private-fund-valuation-model-overview",
+      datasetId,
+      activeSeriesId,
+      activeToVersionId,
+    ],
+    queryFn: () =>
+      getPrivateFundValuationModelOverview(datasetId, activeSeriesId, activeToVersionId),
+    enabled: Boolean(activeSeriesId && activeToVersionId),
+  });
+
   const refreshMutation = useMutation({
     mutationFn: () => runPrivateFundValuationTracking(datasetId),
     onSuccess: async () => {
@@ -348,6 +361,7 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
   );
   const currentVersion = activeSeries?.currentVersion;
   const currentAnalysis = currentVersion?.analysis;
+  const modelOverview = modelOverviewQuery.data;
   const changes = comparisonQuery.data?.changes ?? [];
   const agentAnalysis =
     data.agentAnalyses.find(
@@ -483,6 +497,53 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
             </aside>
 
             <div className="min-w-0 space-y-6">
+              <section aria-label="估值模型总览">
+                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-[var(--pf-ink)]">模型总览</h2>
+                    <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
+                      自动提取三表、关键估值输出与连续期间走势；结构化 JSON 与此 HTML
+                      总览使用同一份可追溯数据。
+                    </p>
+                  </div>
+                  {modelOverview ? (
+                    <div className="flex flex-wrap gap-2 text-[9px] text-[var(--pf-ink-muted)]">
+                      <span className="rounded-full border border-[var(--pf-line)] px-2 py-1">
+                        三表 {modelOverview.overview.summary.statementCount}/3
+                      </span>
+                      <span className="rounded-full border border-[var(--pf-line)] px-2 py-1">
+                        趋势 {modelOverview.overview.summary.trendCount} 条
+                      </span>
+                      <span className="rounded-full border border-[var(--pf-line)] px-2 py-1">
+                        事实 {modelOverview.overview.summary.factCount} 条
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
+                  {modelOverviewQuery.isLoading ? (
+                    <div className="flex min-h-52 items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]">
+                      <Loader2 className="size-3.5 animate-spin" /> 正在生成估值模型总览…
+                    </div>
+                  ) : modelOverviewQuery.isError ? (
+                    <div className="p-5 text-xs text-red-700">
+                      无法生成模型总览：{modelOverviewQuery.error.message}
+                    </div>
+                  ) : modelOverview ? (
+                    <iframe
+                      className="h-[860px] w-full border-0 bg-[var(--pf-bg)]"
+                      sandbox=""
+                      srcDoc={modelOverview.html}
+                      title={`${activeSeries?.name ?? "估值模型"} v${modelOverview.overview.modelVersionNo} 总览`}
+                    />
+                  ) : (
+                    <div className="p-8 text-center text-xs text-[var(--pf-ink-muted)]">
+                      当前版本尚未生成总览。
+                    </div>
+                  )}
+                </div>
+              </section>
+
               <section>
                 <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                   <div>
@@ -701,15 +762,11 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
                                     derivedModel.resourceStatus,
                                   )
                                 }
-                                onClick={() =>
-                                  resourceMutation.mutate(derivedModel.derivedModelId)
-                                }
+                                onClick={() => resourceMutation.mutate(derivedModel.derivedModelId)}
                                 type="button"
                               >
                                 {resourceMutation.isPending ||
-                                ["queued", "running"].includes(
-                                  derivedModel.resourceStatus,
-                                ) ? (
+                                ["queued", "running"].includes(derivedModel.resourceStatus) ? (
                                   <Loader2 className="size-3 animate-spin" />
                                 ) : derivedModel.resourceStatus === "completed" ? (
                                   <Check className="size-3 text-emerald-600" />
@@ -717,9 +774,7 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
                                   <UploadCloud className="size-3" />
                                 )}
                                 {resourceMutation.isPending ||
-                                ["queued", "running"].includes(
-                                  derivedModel.resourceStatus,
-                                )
+                                ["queued", "running"].includes(derivedModel.resourceStatus)
                                   ? "正在加入资源"
                                   : derivedModel.resourceStatus === "completed"
                                     ? "已加入资源"

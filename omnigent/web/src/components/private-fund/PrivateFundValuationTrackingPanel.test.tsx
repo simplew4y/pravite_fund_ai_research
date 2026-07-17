@@ -9,6 +9,7 @@ import {
   derivePrivateFundValuationModel,
   fetchPrivateFundValuationDerivedModelFile,
   getPrivateFundPipelineJob,
+  getPrivateFundValuationModelOverview,
   runPrivateFundValuationAgentAnalysis,
   runPrivateFundValuationTracking,
   updatePrivateFundValuationAlert,
@@ -29,6 +30,7 @@ vi.mock("@/lib/privateFundApi", async (importOriginal) => {
     derivePrivateFundValuationModel: vi.fn(),
     fetchPrivateFundValuationDerivedModelFile: vi.fn(),
     getPrivateFundPipelineJob: vi.fn(),
+    getPrivateFundValuationModelOverview: vi.fn(),
     runPrivateFundValuationAgentAnalysis: vi.fn(),
     runPrivateFundValuationTracking: vi.fn(),
     updatePrivateFundValuationAlert: vi.fn(),
@@ -215,6 +217,43 @@ describe("PrivateFundValuationTrackingPanel", () => {
         },
       ],
     });
+    vi.mocked(getPrivateFundValuationModelOverview).mockResolvedValue({
+      overviewId: "overview-2",
+      datasetId: "sungrow",
+      seriesId: "series-1",
+      modelVersionId: "vmv-2",
+      docId: "doc-2",
+      status: "completed",
+      overviewVersion: "valuation-overview-v1",
+      createdAt: "2026-07-14T00:00:00Z",
+      html: "<!DOCTYPE html><html><body><h1>阳光电源估值总览</h1></body></html>",
+      overview: {
+        schemaVersion: 1,
+        modelName: "阳光电源 DCF 模型",
+        companyName: "阳光电源",
+        companyTicker: "300274.SZ",
+        modelVersionNo: 2,
+        modelType: "dcf_model",
+        originalFilename: "阳光电源估值-v2.xlsx",
+        generatedAt: "2026-07-14T00:00:00Z",
+        summary: {
+          detectedStatements: ["income_statement", "balance_sheet", "cash_flow"],
+          missingStatements: [],
+          statementCount: 3,
+          trendCount: 4,
+          keyMetricCount: 3,
+          periodStart: "2022A",
+          periodEnd: "2027E",
+          periods: ["2022A", "2023A", "2024E", "2025E", "2026E", "2027E"],
+          factCount: 96,
+          reviewRequiredCount: 2,
+          qualityFlags: ["facts_require_review"],
+        },
+        keyMetrics: [],
+        trends: [],
+        statements: [],
+      },
+    });
     vi.mocked(runPrivateFundValuationTracking).mockResolvedValue([]);
     vi.mocked(runPrivateFundValuationAgentAnalysis).mockResolvedValue({
       ...completedAgentAnalysis,
@@ -291,6 +330,14 @@ describe("PrivateFundValuationTrackingPanel", () => {
     expect(await screen.findByText("20.0%")).toBeInTheDocument();
     expect(screen.getByText("100")).toBeInTheDocument();
     expect(screen.getByText("120")).toBeInTheDocument();
+    const modelOverviewFrame = await screen.findByTitle("阳光电源 DCF 模型 v2 总览");
+    expect(modelOverviewFrame).toHaveAttribute("sandbox", "");
+    expect(modelOverviewFrame.getAttribute("srcdoc")).toContain("阳光电源估值总览");
+    expect(getPrivateFundValuationModelOverview).toHaveBeenCalledWith(
+      "sungrow",
+      "series-1",
+      "vmv-2",
+    );
   });
 
   it("scans models and persists alert and rule actions", async () => {
