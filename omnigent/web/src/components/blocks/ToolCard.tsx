@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import type { RenderItem, ToolState } from "@/lib/renderItems";
 import { iconForTool } from "@/lib/toolIcon";
+import { formatArgumentsForDisplay, prettyPrintForDisplay } from "@/lib/jsonDisplay";
 import { type ToolTitle, formatToolTitle } from "@/lib/toolTitle";
 import { useFileViewer } from "@/shell/FileViewerContext";
 
@@ -40,21 +41,6 @@ const OUTPUT_PREVIEW_CHAR_LIMIT = 12_000;
  * should be able to click to open in the FileViewer.
  */
 const FILE_PATH_TOOLS = new Set(["sys_os_read", "sys_os_write", "sys_os_edit"]);
-
-/**
- * If the string is valid JSON, return its 2-space-indented form.
- * Otherwise return the string verbatim. The code block renders inside a
- * `<pre>`, so a compact one-line JSON payload otherwise becomes a single
- * horizontal-scrolling line.
- */
-function prettyPrintIfJson(s: string): string {
-  try {
-    const parsed: unknown = JSON.parse(s);
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return s;
-  }
-}
 
 export function formatToolDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) {
@@ -173,9 +159,9 @@ export function ToolCard({
   duration,
 }: ToolCardProps) {
   const title = useMemo(() => formatToolTitle(name, args, argsSummary), [name, args, argsSummary]);
-  const inputJson = useMemo(() => JSON.stringify(args, null, 2), [args]);
+  const inputJson = useMemo(() => formatArgumentsForDisplay(args), [args]);
   const formattedOutput = useMemo(
-    () => (output === null ? null : prettyPrintIfJson(output)),
+    () => (output === null ? null : prettyPrintForDisplay(output)),
     [output],
   );
   const elapsedDuration = useElapsedDuration(state === "input-available" ? startedAt : null);

@@ -31,7 +31,6 @@ import {
   PaperclipIcon,
   ShrinkIcon,
   SquareIcon,
-  SparklesIcon,
   TerminalIcon,
   WifiOffIcon,
   XIcon,
@@ -208,7 +207,12 @@ import { PrivateFundResearchModeToggle } from "@/components/PrivateFundResearchM
 import { TokenUsageBar } from "@/components/private-fund/TokenUsageBar";
 import { PrivateFundPromptSuggestionTray } from "@/components/private-fund/PrivateFundPromptSuggestionTray";
 import {
-  PRIVATE_FUND_GENERATION_OPTIONS,
+  PrivateFundComposerGenerateControls,
+  PrivateFundComposeIntentBanner,
+  type PrivateFundComposeIntent,
+} from "@/components/private-fund/PrivateFundComposerGenerateControls";
+import type { PresentationMode } from "@/components/private-fund/PrivateFundResearchWorkbench";
+import {
   PrivateFundResearchWorkbench,
   type WorkbenchActionContextValue,
   usePrivateFundWorkbenchActions,
@@ -810,6 +814,25 @@ export function ChatPage() {
         .slice(-8),
     [bubbles],
   );
+  const recentPrivateFundAssistantMessages = useMemo(
+    () =>
+      bubbles
+        .reduce<string[]>((messages, bubble) => {
+          if (bubble.kind !== "assistant") return messages;
+          const text = bubble.items
+            .filter(
+              (item): item is Extract<(typeof bubble.items)[number], { kind: "text" }> =>
+                item.kind === "text",
+            )
+            .map((item) => item.text.trim())
+            .filter(Boolean)
+            .join("\n");
+          if (text) messages.push(text);
+          return messages;
+        }, [])
+        .slice(-4),
+    [bubbles],
+  );
 
   // Picker selection. ChatPage stays mounted across `/` to `/c/:id`,
   // so the pick survives sidebar clicks; resets on full page reload.
@@ -1282,6 +1305,7 @@ export function ChatPage() {
           chat={mainAgent}
           hasConversationContext={hasConversationContext}
           recentUserMessages={recentPrivateFundUserMessages}
+          recentAssistantMessages={recentPrivateFundAssistantMessages}
           onGenerateNode={(prompt) => {
             const skillMatch = prompt.match(
               /^\/(private-fund-memo|private-fund-report)(?:\s+([\s\S]*))?$/,
@@ -4014,112 +4038,39 @@ function SubagentComposerTray({ label }: { label: string }) {
   );
 }
 
-function PrivateFundGenerationTray({
+function PrivateFundContextTray({
   actions,
-  disabled,
 }: {
   actions: WorkbenchActionContextValue;
-  disabled: boolean;
 }) {
-  const activeOption = PRIVATE_FUND_GENERATION_OPTIONS.find(
-    (option) => option.value === actions.generationMode,
-  );
-  const placeholder =
-    actions.generationMode === "memo"
-      ? "Memo 主题、关键问题或时间范围"
-      : actions.generationMode === "chart"
-        ? "希望展示的指标、期间或比较对象"
-        : "补充生成要求，可留空使用当前会话";
-
+  if (actions.contextAssets.length === 0) return null;
   return (
-    <>
-      {actions.contextAssets.length > 0 ? (
-        <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
-          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-2.5 py-2">
-            <span className="mr-1 text-[11px] font-semibold text-[var(--pf-ink-secondary)]">
-              问题上下文
+    <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
+      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-2.5 py-2">
+        <span className="mr-1 text-[11px] font-semibold text-[var(--pf-ink-secondary)]">
+          问题上下文
+        </span>
+        {actions.contextAssets.map((asset) => (
+          <button
+            key={asset.assetId}
+            type="button"
+            className="inline-flex max-w-[220px] items-center gap-1 rounded-full border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 py-0.5 text-[11px] text-[var(--pf-ink)] hover:border-[var(--pf-accent)]"
+            title={asset.title}
+            onClick={() => actions.removeContextAsset(asset.assetId)}
+          >
+            <span className="truncate">
+              {(asset.displayLabel || asset.assetType) + " · " + asset.title}
             </span>
-            {actions.contextAssets.map((asset) => (
-              <button
-                key={asset.assetId}
-                type="button"
-                className="inline-flex max-w-[220px] items-center gap-1 rounded-full border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 py-0.5 text-[11px] text-[var(--pf-ink)] hover:border-[var(--pf-accent)]"
-                title={asset.title}
-                onClick={() => actions.removeContextAsset(asset.assetId)}
-              >
-                <span className="truncate">
-                  {(asset.displayLabel || asset.assetType) + " · " + asset.title}
-                </span>
-                <span aria-hidden className="text-[var(--pf-ink-muted)]">
-                  ×
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section aria-label="生成研究笔记" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
-        <div className="rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-3 py-2.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-xs font-semibold text-[var(--pf-ink)]">生成笔记</span>
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-              {PRIVATE_FUND_GENERATION_OPTIONS.map((option) => {
-                const active = actions.generationMode === option.value;
-                return (
-                  <button
-                    aria-pressed={active}
-                    className={cn(
-                      "h-7 shrink-0 rounded-md px-2.5 text-xs font-medium text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-raised)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] active:translate-y-px",
-                      active &&
-                        "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-[var(--pf-shadow)]",
-                    )}
-                    disabled={disabled}
-                    key={option.value}
-                    onClick={() => actions.setGenerationMode(option.value)}
-                    title={option.description}
-                    type="button"
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-[var(--primary-foreground)] transition-colors hover:bg-[var(--pf-accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={disabled}
-              onClick={actions.generateAsset}
-              type="button"
-            >
-              <SparklesIcon className="size-3.5" />
-              {actions.generationMode === "memo" ? "生成 Memo" : "生成"}
-              {actions.selectedInformationCount > 0 ? ` (${actions.selectedInformationCount})` : ""}
-            </button>
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <input
-              aria-label="生成具体要求"
-              className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-3 text-xs text-[var(--pf-ink)] outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
-              disabled={disabled}
-              maxLength={500}
-              onChange={(event) => actions.setGenerationInstruction(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
-                event.preventDefault();
-                actions.generateAsset();
-              }}
-              placeholder={placeholder}
-              value={actions.generationInstruction}
-            />
-            <span className="hidden shrink-0 text-[11px] text-[var(--pf-ink-muted)] sm:inline">
-              {activeOption?.description}
+            <span aria-hidden className="text-[var(--pf-ink-muted)]">
+              ×
             </span>
-          </div>
-        </div>
-      </section>
-    </>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
+
 
 /**
  * The message-input composer: textarea, attachments, slash-command
@@ -4162,6 +4113,8 @@ export function Composer({
   privateFundPromptSuggestions,
 }: ComposerProps) {
   const workbenchActions = usePrivateFundWorkbenchActions();
+  const [composeIntent, setComposeIntent] = useState<PrivateFundComposeIntent>(null);
+  const [composeNoteMode, setComposeNoteMode] = useState<PresentationMode>("plain_text");
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -4722,6 +4675,23 @@ export function Composer({
 
   const submit = () => {
     const trimmed = value.trim();
+
+    // Armed note/Memo mode: main composer text is the instruction; do not
+    // send a normal chat turn.
+    if (privateFundDatasetId && workbenchActions && composeIntent) {
+      if (disabled || hasPendingElicitation || isReadOnly) return;
+      const mode =
+        composeIntent === "memo" ? ("memo" as const) : composeNoteMode;
+      workbenchActions.generateAsset(mode, trimmed);
+      dirtyRef.current = true;
+      setValue("");
+      setFiles([]);
+      setCommandError(null);
+      setComposeIntent(null);
+      onClearAllQuotes();
+      return;
+    }
+
     // Allow send if there's text, attached files, OR "@"-tagged paths.
     if (
       (!trimmed && files.length === 0 && mentionedItems.length === 0) ||
@@ -5018,22 +4988,29 @@ export function Composer({
           nameless tray. */}
       {subAgentLabel ? <SubagentComposerTray label={subAgentLabel} /> : null}
       {privateFundDatasetId && workbenchActions ? (
-        <PrivateFundGenerationTray
-          actions={workbenchActions}
-          disabled={disabled || isReadOnly || hasPendingElicitation || isWorking}
-        />
+        <PrivateFundContextTray actions={workbenchActions} />
       ) : null}
       {privateFundDatasetId &&
       value.trim().length === 0 &&
       promptSuggestions.length > 0 &&
       !isWorking &&
-      !hasPendingElicitation ? (
+      !hasPendingElicitation &&
+      !composeIntent ? (
         <PrivateFundPromptSuggestionTray
           className={cn("mx-auto mb-2", CHAT_COLUMN_WIDTH)}
           suggestions={promptSuggestions}
           disabled={disabled || isReadOnly || unreachable}
           onSelect={applyPrivateFundPromptSuggestion}
         />
+      ) : null}
+      {privateFundDatasetId && composeIntent ? (
+        <div className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
+          <PrivateFundComposeIntentBanner
+            intent={composeIntent}
+            noteMode={composeNoteMode}
+            onClear={() => setComposeIntent(null)}
+          />
+        </div>
       ) : null}
       {/* Single rounded container — textarea on top, action row beneath.
           No top border on the surrounding form; the box itself is the
@@ -5193,9 +5170,13 @@ export function Composer({
                             ? "Current session's host is offline. Next message will resume the sandbox host which can take minutes"
                             : reconnectHint
                               ? "Send a message to reconnect this session"
-                              : privateFundDatasetId
-                                ? "继续讨论这个节点，例如验证假设或对比情景…"
-                                : "Ask the agent anything…"
+                              : composeIntent === "memo"
+                                ? "输入 Memo 主题或范围（可留空），发送即生成…"
+                                : composeIntent === "note"
+                                  ? `输入${composeNoteMode === "table" ? "表格" : composeNoteMode === "chart" ? "图表" : "文本"}笔记的补充要求（可留空），发送即生成…`
+                                  : privateFundDatasetId
+                                    ? "继续讨论这个节点，例如验证假设或对比情景…"
+                                    : "Ask the agent anything…"
             }
             rows={1}
             disabled={disabled || isReadOnly || unreachable || hasPendingElicitation}
@@ -5319,6 +5300,16 @@ export function Composer({
                 </TooltipContent>
               </Tooltip>
             )}
+            {privateFundDatasetId && workbenchActions ? (
+              <PrivateFundComposerGenerateControls
+                actions={workbenchActions}
+                disabled={disabled || isReadOnly || hasPendingElicitation || isWorking}
+                intent={composeIntent}
+                onIntentChange={setComposeIntent}
+                noteMode={composeNoteMode}
+                onNoteModeChange={setComposeNoteMode}
+              />
+            ) : null}
             {!privateFundDatasetId && (
               <ComposerMicButton
                 disabled={disabled || isReadOnly || hasPendingElicitation}

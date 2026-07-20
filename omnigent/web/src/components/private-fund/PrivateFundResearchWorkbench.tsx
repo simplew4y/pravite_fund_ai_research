@@ -68,8 +68,6 @@ const EMPTY_RECENT_USER_MESSAGES: string[] = [];
 
 type SelectedInformation = { responseId: string; content: string };
 type SaveInformationInput = SelectedInformation & { optimisticAssetId: string };
-type PresentationMode = "plain_text" | "table" | "chart";
-export type PrivateFundGenerationMode = PresentationMode | "memo";
 type WorkspaceView =
   | "research"
   | "sources"
@@ -79,14 +77,25 @@ type WorkspaceView =
   | "history"
   | "tracking";
 
+export type PresentationMode = "plain_text" | "table" | "chart";
+export type PrivateFundGenerationMode = PresentationMode | "memo";
+
+export const PRIVATE_FUND_NOTE_OPTIONS: Array<{
+  value: PresentationMode;
+  label: string;
+  description: string;
+}> = [
+  { value: "plain_text", label: "文本", description: "长期可读的研究正文与结论" },
+  { value: "table", label: "表格", description: "期间 / 对象对比的精确表格" },
+  { value: "chart", label: "图表", description: "自包含图文可视化研究笔记" },
+];
+
 export const PRIVATE_FUND_GENERATION_OPTIONS: Array<{
   value: PrivateFundGenerationMode;
   label: string;
   description: string;
 }> = [
-  { value: "plain_text", label: "文本", description: "生成长期可读的研究文本" },
-  { value: "table", label: "表格", description: "生成精确的期间或对象对比表" },
-  { value: "chart", label: "图表", description: "由模型选择图形并生成图文研究笔记" },
+  ...PRIVATE_FUND_NOTE_OPTIONS,
   { value: "memo", label: "Memo", description: "调用 private-fund-memo 生成聚焦报告" },
 ];
 
@@ -169,7 +178,7 @@ export type WorkbenchActionContextValue = {
   promptSuggestions: PrivateFundPromptSuggestion[];
   setGenerationMode: (mode: PrivateFundGenerationMode) => void;
   setGenerationInstruction: (instruction: string) => void;
-  generateAsset: () => void;
+  generateAsset: (mode?: PrivateFundGenerationMode, instruction?: string) => void;
 };
 
 const WorkbenchActionContext = createContext<WorkbenchActionContextValue | null>(null);
@@ -185,6 +194,7 @@ export type PrivateFundResearchWorkbenchProps = {
   chat: ReactNode;
   hasConversationContext?: boolean;
   recentUserMessages?: string[];
+  recentAssistantMessages?: string[];
   onGenerateNode: (prompt: string) => void;
   sidebarOpen?: boolean;
   onOpenSidebar?: () => void;
@@ -382,6 +392,7 @@ export function PrivateFundResearchWorkbench({
   chat,
   hasConversationContext = false,
   recentUserMessages = EMPTY_RECENT_USER_MESSAGES,
+  recentAssistantMessages = EMPTY_RECENT_USER_MESSAGES,
   onGenerateNode,
   sidebarOpen = true,
   onOpenSidebar,
@@ -431,9 +442,18 @@ export function PrivateFundResearchWorkbench({
             files: projectQuery.data.files,
             assets,
             recentUserMessages,
+            recentAssistantMessages,
+            contextAssetIds,
           })
         : [],
-    [assets, datasetName, projectQuery.data, recentUserMessages],
+    [
+      assets,
+      contextAssetIds,
+      datasetName,
+      projectQuery.data,
+      recentAssistantMessages,
+      recentUserMessages,
+    ],
   );
   const selectedAsset = assets.find((asset) => asset.assetId === selectedAssetId);
   const selectedNode = selectedAsset?.sourceKind.startsWith("research_node")
@@ -707,66 +727,78 @@ export function PrivateFundResearchWorkbench({
     [contextAssetIds, contextMutation],
   );
 
-  const generateNode = useCallback(() => {
-    if (!workflow) return;
-    const documentMode = isDocumentGenerationMode(presentationMode);
-    const contextAssets = contextAssetIds
-      .map((assetId) => assets.find((asset) => asset.assetId === assetId))
-      .filter((asset): asset is PrivateFundAsset => Boolean(asset));
-    if (
-      !documentMode &&
-      !hasConversationContext &&
-      selectedInformation.length === 0 &&
-      contextAssets.length === 0
-    ) {
-      setNotice("请先提供对话内容，或选择至少一项上下文");
-      return;
-    }
-    if (
-      documentMode &&
-      selectedInformation.length === 0 &&
-      contextAssetIds.length === 0 &&
-      !hasConversationContext &&
-      !presentationInstruction.trim()
-    ) {
-      setNotice("请填写 Memo/研报主题，或先选择至少一项上下文");
-      return;
-    }
-    onGenerateNode(
-      buildGenerationPrompt(
-        datasetId,
-        selectedInformation,
-        contextAssets
-          .filter((asset) => asset.sourceKind.startsWith("research_node"))
-          .map((asset) => asset.sourceId)
-          .filter((sourceId): sourceId is string => Boolean(sourceId)),
-        contextAssets,
-        hasConversationContext,
-        presentationMode,
-        presentationInstruction,
-      ),
-    );
-    setNotice(
-      presentationMode === "memo"
-        ? "已调用 private-fund-memo，Agent 将核验证据并生成 Memo"
-        : "已交给 Agent：它会核验信息并保存为研究笔记",
-    );
-    setSelectedInformation([]);
-    setPresentationMode("plain_text");
-    setPresentationInstruction("");
-    window.setTimeout(() => void workflowQuery.refetch(), 2500);
-  }, [
-    datasetId,
-    onGenerateNode,
-    presentationMode,
-    presentationInstruction,
-    selectedInformation,
-    hasConversationContext,
-    contextAssetIds,
-    assets,
-    workflow,
-    workflowQuery,
-  ]);
+  const generateNode = useCallback(
+    (modeOverride?: PrivateFundGenerationMode, instructionOverride?: string) => {
+      if (!workflow) return;
+      const mode = modeOverride ?? presentationMode;
+      const instruction =
+        instructionOverride !== undefined ? instructionOverride : presentationInstruction;
+      const documentMode = isDocumentGenerationMode(mode);
+      const contextAssets = contextAssetIds
+        .map((assetId) => assets.find((asset) => asset.assetId === assetId))
+        .filter((asset): asset is PrivateFundAsset => Boolean(asset));
+      if (
+        !documentMode &&
+        !hasConversationContext &&
+        selectedInformation.length === 0 &&
+        contextAssets.length === 0
+      ) {
+        setNotice("请先提供对话内容，或选择至少一项上下文");
+        return;
+      }
+      if (
+        documentMode &&
+        selectedInformation.length === 0 &&
+        contextAssetIds.length === 0 &&
+        !hasConversationContext &&
+        !instruction.trim()
+      ) {
+        setNotice("请填写 Memo 主题，或先选择至少一项上下文");
+        return;
+      }
+      if (modeOverride !== undefined) {
+        setPresentationMode(modeOverride);
+      }
+      if (instructionOverride !== undefined) {
+        setPresentationInstruction(instructionOverride);
+      }
+      onGenerateNode(
+        buildGenerationPrompt(
+          datasetId,
+          selectedInformation,
+          contextAssets
+            .filter((asset) => asset.sourceKind.startsWith("research_node"))
+            .map((asset) => asset.sourceId)
+            .filter((sourceId): sourceId is string => Boolean(sourceId)),
+          contextAssets,
+          hasConversationContext,
+          mode,
+          instruction,
+        ),
+      );
+      setNotice(
+        mode === "memo"
+          ? "已调用 private-fund-memo，Agent 将核验证据并生成 Memo"
+          : "已交给 Agent：它会核验信息并保存为研究笔记",
+      );
+      setSelectedInformation([]);
+      setPresentationMode("plain_text");
+      setPresentationInstruction("");
+      window.setTimeout(() => void workflowQuery.refetch(), 2500);
+    },
+    [
+      datasetId,
+      onGenerateNode,
+      presentationMode,
+      presentationInstruction,
+      selectedInformation,
+      hasConversationContext,
+      contextAssetIds,
+      assets,
+      workflow,
+      workflowQuery,
+    ],
+  );
 
   const workbenchActions = useMemo<WorkbenchActionContextValue>(
     () => ({
