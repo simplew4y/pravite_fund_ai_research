@@ -158,7 +158,7 @@ function ActionFixture() {
             onChange={(event) => actions.setGenerationInstruction(event.target.value)}
             value={actions.generationInstruction}
           />
-          <button onClick={actions.generateAsset} type="button">
+          <button onClick={() => actions.generateAsset()} type="button">
             {actions.generationMode === "memo" ? "生成 Memo" : "生成研究笔记"}
           </button>
         </div>
