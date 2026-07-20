@@ -49,8 +49,14 @@ except Exception as exc:
     RAGManager = None
     DocumentTriageAgent = None
     CORE_IMPORT_ERROR = exc
-from pdf_research_demo import PdfResearchDemo
-from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+
+try:
+    from pdf_research_demo import PdfResearchDemo
+    from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+except Exception:
+    PdfResearchDemo = None
+    OpenAICompatibleChatClient = None
+    load_llm_config = None
 from utils.session_history_store import SessionHistoryStore
 
 from data_pipeline.ingest_documents_db import (
@@ -176,6 +182,39 @@ def _reset_rag_manager_singleton() -> None:
     RAGManager._collections = {}
     RAGManager._retrievers = []
     RAGManager._embedding_lock = None
+
+
+def _sync_collection_to_chroma(
+    collection_db_path: str,
+    dataset_id: str,
+    documents: list[Any],
+) -> None:
+    """入库完成后：SQLite chunks → Chroma 增量写入 + 重建检索器。"""
+    if RAGManager is None:
+        return
+    import logging
+    logger = logging.getLogger("chroma_bridge")
+    try:
+        from data_ingestion.chroma_bridge import sync_chunks_to_chroma
+        rag_manager = RAGManager()
+        if not hasattr(rag_manager, "_collections") or not rag_manager._collections:
+            logger.warning("RAGManager has no collections; skipping chroma sync")
+            return
+        result = sync_chunks_to_chroma(
+            rag_manager,
+            collection_db_path,
+            collection_name="default",
+            batch_size=64,
+        )
+        if result["text_chunks"] > 0 or result["table_chunks"] > 0:
+            _reset_rag_manager_singleton()
+            logger.info(
+                "Chroma sync complete (%d text + %d table). RAGManager reset for retriever rebuild.",
+                result["text_chunks"],
+                result["table_chunks"],
+            )
+    except Exception:
+        logger.exception("Chroma sync failed (non-fatal) for dataset %s", dataset_id)
 
 
 def _path_counts_toward_rag_busy(path: str) -> bool:
@@ -1179,6 +1218,12 @@ def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
             reset=bool(payload.get("reset", False)),
             job_id=job_id,
             classification_llm=classification_llm,
+        )
+        # ── SQLite → Chroma 增量同步 ──
+        _sync_collection_to_chroma(
+            result.collection_db_path,
+            result.dataset_id,
+            result.documents,
         )
         with _private_fund_ingest_jobs_lock:
             _private_fund_ingest_jobs[job_id] = {
