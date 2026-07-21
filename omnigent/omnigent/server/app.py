@@ -585,6 +585,7 @@ def _build_claude_native_bundle() -> bytes:
         raw["tools"] = {
             "builtins": [
                 "private_fund_dataset_status",
+                "private_fund_knowledge_status",
                 "private_fund_dataset_search",
                 "private_fund_source_detail",
                 "private_fund_dataset_memo",

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PrivateFundValuationMetricExtraction",
+  "type": "object",
+  "required": ["valuation_date", "target_period", "metrics", "warnings"],
+  "properties": {
+    "valuation_date": {
+      "type": "object",
+      "required": ["value", "status", "confidence", "source", "evidence_ids", "reason"],
+      "properties": {
+        "value": {"type": ["string", "null"], "format": "date"},
+        "status": {"enum": ["available", "unavailable"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "source": {"type": "string"},
+        "evidence_ids": {"type": "array", "items": {"type": "string"}},
+        "reason": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "target_period": {"type": "string"},
+    "metrics": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": [
+          "metric_key",
+          "value_numeric",
+          "unit",
+          "period",
+          "status",
+          "confidence",
+          "method",
+          "source",
+          "evidence_ids",
+          "derivation"
+        ],
+        "properties": {
+          "metric_key": {
+            "enum": [
+              "quarter_net_profit_yoy",
+              "quarter_gross_margin_qoq_delta",
+              "forward_pe",
+              "avg_turnover_amount_20d",
+              "quarter_revenue_growth_qoq"
+            ]
+          },
+          "value_numeric": {"type": ["number", "null"]},
+          "unit": {"enum": ["percent", "percentage_point", "multiple", "currency"]},
+          "period": {"type": "string"},
+          "status": {"enum": ["available", "unavailable"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "method": {"type": "string"},
+          "source": {"type": "string"},
+          "evidence_ids": {"type": "array", "items": {"type": "string"}},
+          "derivation": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

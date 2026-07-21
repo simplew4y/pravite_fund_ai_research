@@ -38,6 +38,7 @@ PY
 export LITELLM_TARGET_MODEL_NAME="${LITELLM_TARGET_MODEL_NAME:-$(read_yaml_value llm_model_name)}"
 export LITELLM_TARGET_API_BASE="${LITELLM_TARGET_API_BASE:-${OPENAI_BASE_URL:-${DEEPSEEK_BASE_URL:-${DASHSCOPE_BASE_URL:-$(read_yaml_value llm_base_url)}}}}"
 export LITELLM_TARGET_API_KEY="${LITELLM_TARGET_API_KEY:-${OPENAI_API_KEY:-${DEEPSEEK_API_KEY:-${DASHSCOPE_API_KEY:-$(read_yaml_value llm_api_key)}}}}"
+export LITELLM_CHAT_TEMPLATE_ENABLE_THINKING="${LITELLM_CHAT_TEMPLATE_ENABLE_THINKING:-$(read_yaml_value llm_chat_template_enable_thinking || true)}"
 
 if [[ -z "${LITELLM_TARGET_PROVIDER:-}" ]]; then
   case "$LITELLM_TARGET_API_BASE" in
@@ -62,17 +63,25 @@ path = Path(sys.argv[1])
 target_model_name = os.environ["LITELLM_TARGET_MODEL_NAME"]
 target_provider = os.environ["LITELLM_TARGET_PROVIDER"].strip().strip("/")
 target_model = target_model_name if "/" in target_model_name else f"{target_provider}/{target_model_name}"
+thinking_setting = os.environ.get("LITELLM_CHAT_TEMPLATE_ENABLE_THINKING", "").strip().lower()
 
-model_names = [
-    target_model_name,
-    "claude-sonnet-4-6",
-    "claude-sonnet-4-5",
-    "claude-opus-4-6",
-    "claude-opus-4-7",
-    "claude-opus-4-8",
-    "claude-haiku-4-6",
-    "claude-haiku-4-5",
-]
+model_names = list(
+    dict.fromkeys(
+        [
+            target_model_name,
+            # Existing Claude Native sessions use this name. Keep it as a
+            # stable compatibility alias when the upstream model changes.
+            "qwen3-max",
+            "claude-sonnet-4-6",
+            "claude-sonnet-4-5",
+            "claude-opus-4-6",
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-haiku-4-6",
+            "claude-haiku-4-5",
+        ]
+    )
+)
 
 lines = ["model_list:"]
 for name in model_names:
@@ -85,6 +94,14 @@ for name in model_names:
             "      api_key: os.environ/LITELLM_TARGET_API_KEY",
         ]
     )
+    if thinking_setting in {"0", "false", "no", "off"}:
+        lines.extend(
+            [
+                "      extra_body:",
+                "        chat_template_kwargs:",
+                "          enable_thinking: false",
+            ]
+        )
 
 lines.extend(
     [

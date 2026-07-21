@@ -1,0 +1,4 @@
+interface:
+  display_name: "Private Fund Knowledge Base"
+  short_description: "Readable, evidence-linked Memo and valuation knowledge"
+  default_prompt: "Use $private-fund-knowledge-base to maintain a readable, evidence-linked Memo and valuation knowledge trail in Obsidian."

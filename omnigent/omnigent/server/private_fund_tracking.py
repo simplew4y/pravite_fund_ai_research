@@ -1186,7 +1186,9 @@ For assumptions also return metric, value_numeric/value_text, unit, period, scen
 For catalysts return expected_start/expected_end when explicitly supported.
 For risks/catalysts distinguish a real business or investment event from finance labels:
 "risk free rate"/"无风险利率" is an assumption, never a risk.
-Do not infer that an item is removed merely because it is not mentioned.
+Preserve explicit lifecycle language such as invalidated, withdrawn, resolved, achieved,
+or missed only when the evidence states it. Do not infer that an item is removed,
+invalidated, or withdrawn merely because it is not mentioned in a later Memo.
 Default source date: {default_date}.
 
 Evidence:

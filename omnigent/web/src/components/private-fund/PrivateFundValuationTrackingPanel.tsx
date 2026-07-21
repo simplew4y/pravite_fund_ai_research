@@ -1,198 +1,776 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  BellRing,
-  Bot,
-  Calculator,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
   Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  CircleDot,
   Clock3,
-  Download,
+  Database,
+  FileSearch,
   FileSpreadsheet,
-  FilePlus2,
-  GitCompare,
-  Link2,
-  Loader2,
+  Info,
   RefreshCw,
-  RotateCcw,
-  ShieldCheck,
-  UploadCloud,
-  X,
+  Scale,
+  ShieldAlert,
+  Sparkles,
 } from "lucide-react";
-import { useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 
 import { usePrivateFundValuationTracking } from "@/hooks/usePrivateFundProjects";
 import {
-  addPrivateFundValuationDerivedModelToResources,
-  comparePrivateFundValuationModelVersions,
-  derivePrivateFundValuationModel,
-  fetchPrivateFundValuationDerivedModelFile,
-  getPrivateFundPipelineJob,
-  getPrivateFundValuationModelOverview,
-  runPrivateFundValuationAgentAnalysis,
   runPrivateFundValuationTracking,
-  updatePrivateFundValuationAlert,
-  updatePrivateFundValuationWatchRule,
-  type PrivateFundPipelineJob,
-  type PrivateFundValuationChange,
-  type PrivateFundValuationModelSeries,
+  type PrivateFundValuationImpactAnalysis,
+  type PrivateFundValuationMetricComparison,
+  type PrivateFundValuationMetricTimeline,
+  type PrivateFundValuationPriceComparison,
 } from "@/lib/privateFundApi";
-import { triggerBrowserDownload } from "@/hooks/useFileContent";
 import { cn } from "@/lib/utils";
 
-const MATERIALITY_LABELS: Record<string, string> = {
-  critical: "关键",
-  high: "重大",
-  medium: "中等",
-  low: "轻微",
-};
+const EXPECTED_METRICS = [
+  "quarter_net_profit_yoy",
+  "quarter_gross_margin_qoq_delta",
+  "forward_pe",
+  "avg_turnover_amount_20d",
+  "quarter_revenue_growth_qoq",
+] as const;
 
-const MATERIALITY_STYLES: Record<string, string> = {
-  critical:
-    "border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200",
-  high: "border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-200",
-  medium:
-    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
-  low: "border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] text-[var(--pf-ink-secondary)]",
-};
+const IMPACT_DIRECTION_STYLES = {
+  up: {
+    label: "估值上行",
+    icon: ArrowUpRight,
+    badge:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
+  },
+  down: {
+    label: "估值下行",
+    icon: ArrowDownRight,
+    badge:
+      "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+  },
+  mixed: {
+    label: "双向影响",
+    icon: Scale,
+    badge:
+      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
+  },
+} as const;
 
-const CHANGE_TYPE_LABELS: Record<string, string> = {
-  added: "新增节点",
-  removed: "移除节点",
-  value_changed: "数值变化",
-  formula_changed: "公式变化",
-  value_and_formula_changed: "数值与公式变化",
-};
+const SEVERITY = {
+  normal: {
+    label: "一致",
+    icon: Check,
+    badge:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
+    rail: "bg-emerald-500",
+  },
+  warning: {
+    label: "关注",
+    icon: AlertTriangle,
+    badge:
+      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
+    rail: "bg-amber-500",
+  },
+  critical: {
+    label: "预警",
+    icon: ShieldAlert,
+    badge:
+      "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+    rail: "bg-red-500",
+  },
+  unavailable: {
+    label: "待补充",
+    icon: CircleDot,
+    badge: "border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] text-[var(--pf-ink-muted)]",
+    rail: "bg-[var(--pf-line-strong)]",
+  },
+} as const;
 
 function formatTime(value?: string | null): string {
-  if (!value) return "—";
-  const timestamp = Date.parse(value);
+  if (!value) return "暂无";
+  const compactDate = /^\d{8}$/.test(value)
+    ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
+    : value;
+  const timestamp = Date.parse(compactDate);
   if (!Number.isFinite(timestamp)) return value;
   return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    hour: value.includes("T") ? "2-digit" : undefined,
+    minute: value.includes("T") ? "2-digit" : undefined,
   }).format(timestamp);
 }
 
-function formatNodeValue(value: Record<string, unknown>): string {
-  if (typeof value.value_numeric === "number") {
-    const number = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 4 }).format(
-      value.value_numeric,
-    );
-    return value.unit ? `${number} ${String(value.unit)}` : number;
+function formatMetricValue(value: number | null, unit: string): string {
+  if (value === null || !Number.isFinite(value)) return "暂无";
+  if (unit === "percent" || unit === "percentage_point") {
+    return new Intl.NumberFormat("zh-CN", {
+      style: "percent",
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+      signDisplay: "exceptZero",
+    }).format(value);
   }
-  if (value.value_text !== null && value.value_text !== undefined && value.value_text !== "") {
-    return String(value.value_text);
+  if (unit === "multiple") {
+    return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value)}x`;
   }
-  return "—";
+  if (unit === "currency") {
+    const absolute = Math.abs(value);
+    if (absolute >= 100_000_000) return `${(value / 100_000_000).toFixed(2)} 亿元`;
+    if (absolute >= 10_000) return `${(value / 10_000).toFixed(1)} 万元`;
+    return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value)} 元`;
+  }
+  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
 }
 
-function plainAnalysis(value: string): string {
-  return value
-    .replace(/^#{1,6}\s*/gm, "")
-    .replace(/\*\*/g, "")
-    .replace(/`([^`]+)`/g, "$1");
-}
-
-async function waitForPipelineCompletion(
-  job: PrivateFundPipelineJob,
-  attempt = 0,
-): Promise<PrivateFundPipelineJob> {
-  if (!["queued", "running"].includes(job.status)) return job;
-  if (attempt >= 400) {
-    throw new Error("资源索引等待超时，请稍后在资料页查看处理状态。");
+function formatPrice(value: number | null, currency: string): string {
+  if (value === null || !Number.isFinite(value)) return "暂无";
+  try {
+    return new Intl.NumberFormat("zh-CN", {
+      style: "currency",
+      currency: currency || "CNY",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${value.toFixed(2)} ${currency}`.trim();
   }
-  await new Promise((resolve) => window.setTimeout(resolve, 1500));
-  const nextJob = await getPrivateFundPipelineJob(job.jobId);
-  return waitForPipelineCompletion(nextJob, attempt + 1);
 }
 
-function ModelSelector({
-  series,
-  selectedSeriesId,
-  onSelect,
-}: {
-  series: PrivateFundValuationModelSeries[];
-  selectedSeriesId: string;
-  onSelect: (seriesId: string) => void;
-}) {
+function formatUpside(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "暂无";
+  return new Intl.NumberFormat("zh-CN", {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+    signDisplay: "exceptZero",
+  }).format(value);
+}
+
+export function PriceComparisonCard({ price }: { price: PrivateFundValuationPriceComparison }) {
+  const items = [
+    {
+      label: "模型目标价",
+      value: formatPrice(price.targetPrice, price.currency),
+      meta: price.targetSource,
+    },
+    {
+      label: "估值日收盘",
+      value: formatPrice(price.benchmarkClose, price.currency),
+      meta: formatTime(price.benchmarkTradeDate || price.valuationDate),
+    },
+    {
+      label: "估值日隐含空间",
+      value: formatUpside(price.impliedUpside),
+      meta: "目标价 ÷ 收盘价 − 1",
+    },
+    {
+      label: "最新收盘",
+      value: formatPrice(price.latestClose, price.currency),
+      meta: formatTime(price.latestTradeDate),
+    },
+    { label: "当前剩余空间", value: formatUpside(price.latestUpside), meta: "目标价 ÷ 最新价 − 1" },
+  ];
   return (
-    <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
-      {series.map((model, index) => {
-        const active = model.seriesId === selectedSeriesId;
-        return (
-          <button
-            className={cn(
-              "flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors",
-              index > 0 && "border-t border-[var(--pf-line)]",
-              active
-                ? "bg-[var(--pf-accent-soft)] text-[var(--pf-accent-ink)]"
-                : "hover:bg-[var(--pf-panel-subtle)]",
-            )}
-            key={model.seriesId}
-            onClick={() => onSelect(model.seriesId)}
-            type="button"
-          >
-            <FileSpreadsheet className="mt-0.5 size-4 shrink-0" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-semibold">{model.name}</span>
-              <span className="mt-1 block text-[10px] opacity-70">
-                v{model.currentVersionNo} · {model.versionCount} 个版本 · 更新于{" "}
-                {formatTime(model.updatedAt)}
-              </span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <section
+      aria-label="目标价与市场价格对比"
+      className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] shadow-sm"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-4 py-2.5">
+        <div>
+          <h2 className="text-xs font-semibold text-[var(--pf-ink)]">目标价与真实价格</h2>
+          <p className="mt-0.5 text-[9px] text-[var(--pf-ink-muted)]">
+            原始收盘价（不复权）· {price.provider || "AKShare"} {price.providerSymbol}
+          </p>
+        </div>
+        <span className="rounded-full border border-[var(--pf-line)] px-2 py-0.5 text-[9px] text-[var(--pf-ink-muted)]">
+          {price.status === "completed"
+            ? "已对比"
+            : price.status === "failed"
+              ? "查询失败"
+              : "待补充"}
+        </span>
+      </div>
+      <div className="grid gap-px bg-[var(--pf-line)] sm:grid-cols-2 xl:grid-cols-5">
+        {items.map((item) => (
+          <div className="bg-[var(--pf-panel-raised)] px-4 py-3" key={item.label}>
+            <p className="text-[9px] font-medium uppercase tracking-[0.1em] text-[var(--pf-ink-muted)]">
+              {item.label}
+            </p>
+            <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-[var(--pf-ink)]">
+              {item.value}
+            </p>
+            <p className="mt-0.5 truncate text-[9px] text-[var(--pf-ink-muted)]">
+              {item.meta || "暂无"}
+            </p>
+          </div>
+        ))}
+      </div>
+      {price.errorMessage ? (
+        <p className="border-t border-[var(--pf-line)] px-4 py-2 text-[9px] text-amber-700 dark:text-amber-300">
+          {price.errorMessage}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
-function ChangeRow({ change }: { change: PrivateFundValuationChange }) {
+function ComparisonRow({ metric }: { metric: PrivateFundValuationMetricComparison }) {
+  const style = SEVERITY[metric.severity as keyof typeof SEVERITY] ?? SEVERITY.unavailable;
+  const StatusIcon = style.icon;
+  const isManuallyVerified = metric.modelQualityStatus.startsWith("manual_verified");
   return (
-    <article className="grid gap-3 border-t border-[var(--pf-line)] px-4 py-3 first:border-t-0 lg:grid-cols-[minmax(180px,1fr)_minmax(120px,0.6fr)_minmax(130px,0.75fr)_minmax(130px,0.75fr)] lg:items-center">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-1.5">
+    <article className="group relative grid gap-3 border-t border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-4 first:border-t-0 lg:grid-cols-[minmax(220px,1.35fr)_minmax(140px,0.75fr)_32px_minmax(140px,0.75fr)] lg:items-center lg:px-5">
+      <span aria-hidden className={cn("absolute inset-y-3 left-0 w-0.5 rounded-r", style.rail)} />
+      <div className="min-w-0 pl-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold tracking-tight text-[var(--pf-ink)]">
+            {metric.label}
+          </h3>
           <span
             className={cn(
-              "rounded-full border px-1.5 py-0.5 text-[9px] font-semibold",
-              MATERIALITY_STYLES[change.materiality] ?? MATERIALITY_STYLES.low,
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold",
+              style.badge,
             )}
           >
-            {MATERIALITY_LABELS[change.materiality] ?? change.materiality}
-          </span>
-          <span className="text-[10px] text-[var(--pf-ink-muted)]">
-            {CHANGE_TYPE_LABELS[change.changeType] ?? change.changeType}
+            <StatusIcon className="size-2.5" /> {style.label}
           </span>
         </div>
-        <p className="mt-1.5 truncate text-xs font-semibold text-[var(--pf-ink)]">
-          {change.displayName}
-        </p>
-        <p className="mt-0.5 text-[10px] text-[var(--pf-ink-muted)]">
-          {[change.period, change.scenario, change.scope].filter(Boolean).join(" · ") || "模型节点"}
+        <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
+          {metric.description}
         </p>
       </div>
-      <div className="text-[10px] text-[var(--pf-ink-muted)]">
-        变化幅度
-        <p className="mt-1 text-xs font-medium text-[var(--pf-ink)]">
-          {typeof change.relativeChange === "number"
-            ? `${(change.relativeChange * 100).toFixed(1)}%`
-            : "结构变化"}
+
+      <div className="rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel)] px-3 py-2.5">
+        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-[var(--pf-ink-muted)]">
+          模型值
+        </p>
+        <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-[var(--pf-ink)]">
+          {formatMetricValue(metric.modelValue, metric.unit)}
+        </p>
+        <p className="mt-0.5 truncate text-[9px] text-[var(--pf-ink-muted)]">
+          {metric.modelPeriod || "模型未提取"}
+          {isManuallyVerified ? " · 人工核验" : ""}
         </p>
       </div>
-      <div className="rounded-lg bg-[var(--pf-panel-subtle)] px-3 py-2">
-        <p className="text-[9px] uppercase tracking-wide text-[var(--pf-ink-muted)]">原版本</p>
-        <p className="mt-1 break-all text-xs font-medium text-[var(--pf-ink-secondary)]">
-          {formatNodeValue(change.oldValue)}
+
+      <ArrowRight className="hidden size-4 text-[var(--pf-ink-muted)] lg:block" />
+
+      <div className="rounded-lg border border-[var(--pf-accent)]/25 bg-[var(--pf-accent-soft)] px-3 py-2.5">
+        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-[var(--pf-accent-ink)]">
+          真实值 · API
+        </p>
+        <p className="mt-1 font-mono text-lg font-semibold tabular-nums text-[var(--pf-ink)]">
+          {formatMetricValue(metric.actualValue, metric.unit)}
+        </p>
+        <p className="mt-0.5 truncate text-[9px] text-[var(--pf-ink-muted)]">
+          {metric.actualPeriod || "数据源未返回"}
         </p>
       </div>
-      <div className="rounded-lg bg-[var(--pf-accent-soft)] px-3 py-2">
-        <p className="text-[9px] uppercase tracking-wide text-[var(--pf-accent-ink)]">新版本</p>
-        <p className="mt-1 break-all text-xs font-semibold text-[var(--pf-ink)]">
-          {formatNodeValue(change.newValue)}
-        </p>
-      </div>
+
+      <details className="group/details lg:col-span-4">
+        <summary className="flex cursor-pointer list-none items-center gap-1 text-[9px] text-[var(--pf-ink-muted)] hover:text-[var(--pf-ink)]">
+          <ChevronDown className="size-3 transition-transform group-open/details:rotate-180" />
+          查看口径与来源
+        </summary>
+        <div className="mt-2 grid gap-2 rounded-lg bg-[var(--pf-panel-subtle)] p-3 text-[10px] leading-4 text-[var(--pf-ink-secondary)] md:grid-cols-2">
+          <p>
+            <span className="text-[var(--pf-ink-muted)]">
+              模型{isManuallyVerified ? "（人工核验）" : ""}：
+            </span>
+            {metric.modelSource || "未定位到对应模型单元格"}
+          </p>
+          <p>
+            <span className="text-[var(--pf-ink-muted)]">真实：</span>
+            {metric.actualSource || "API 未返回同口径数据"}
+          </p>
+          <p className="md:col-span-2">
+            <span className="text-[var(--pf-ink-muted)]">判断：</span>
+            {metric.explanation}
+          </p>
+        </div>
+      </details>
     </article>
+  );
+}
+
+const TIMELINE_STATUS = {
+  comparable: {
+    label: "模型 + API",
+    dot: "border-[var(--pf-accent)] bg-[var(--pf-accent)]",
+  },
+  partial: {
+    label: "部分可比",
+    dot: "border-amber-500 bg-amber-500",
+  },
+  model_only: {
+    label: "仅模型",
+    dot: "border-[var(--pf-ink-muted)] bg-[var(--pf-panel-raised)]",
+  },
+  actual_only: {
+    label: "仅 API",
+    dot: "border-sky-500 bg-sky-500",
+  },
+  unavailable: {
+    label: "暂无数据",
+    dot: "border-[var(--pf-line-strong)] bg-[var(--pf-panel-raised)]",
+  },
+} as const;
+
+const TIMELINE_NEARBY_PERIODS = 2;
+
+function preferredTimelinePeriod(timeline: PrivateFundValuationMetricTimeline): string {
+  for (let index = timeline.periods.length - 1; index >= 0; index -= 1) {
+    if (timeline.periods[index].comparedCount > 0) return timeline.periods[index].period;
+  }
+  for (let index = timeline.periods.length - 1; index >= 0; index -= 1) {
+    const period = timeline.periods[index];
+    if (period.modelAvailableCount > 0 && period.actualAvailableCount > 0) return period.period;
+  }
+  return timeline.defaultPeriod || timeline.latestPeriod || timeline.periods.at(-1)?.period || "";
+}
+
+function MetricTimeline({
+  timeline,
+  selectedPeriod,
+  onSelect,
+}: {
+  timeline: PrivateFundValuationMetricTimeline;
+  selectedPeriod: string;
+  onSelect: (period: string) => void;
+}) {
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  const reduceMotion = useReducedMotion();
+  const [earlierExpanded, setEarlierExpanded] = useState(false);
+  const [laterExpanded, setLaterExpanded] = useState(false);
+  const activeIndex = timeline.periods.findIndex((item) => item.period === selectedPeriod);
+  const active = timeline.periods[activeIndex] ?? timeline.periods[0];
+  const preferredPeriod = preferredTimelinePeriod(timeline);
+  const preferredIndex = Math.max(
+    0,
+    timeline.periods.findIndex((item) => item.period === preferredPeriod),
+  );
+  const collapsedStart = Math.max(0, preferredIndex - TIMELINE_NEARBY_PERIODS);
+  const collapsedEnd = Math.min(
+    timeline.periods.length - 1,
+    preferredIndex + TIMELINE_NEARBY_PERIODS,
+  );
+  const hiddenEarlierCount = collapsedStart;
+  const hiddenLaterCount = Math.max(0, timeline.periods.length - 1 - collapsedEnd);
+  const visiblePeriods = timeline.periods.filter(
+    (_item, index) =>
+      index >= (earlierExpanded ? 0 : collapsedStart) &&
+      index <= (laterExpanded ? timeline.periods.length - 1 : collapsedEnd),
+  );
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ block: "nearest", inline: "center" });
+  }, [selectedPeriod]);
+
+  useEffect(() => {
+    setEarlierExpanded(false);
+    setLaterExpanded(false);
+  }, [preferredPeriod, timeline.periods.length]);
+
+  if (!active) return null;
+
+  const selectPeriod = (period: string) => {
+    const nextIndex = timeline.periods.findIndex((item) => item.period === period);
+    if (nextIndex < collapsedStart) setEarlierExpanded(true);
+    if (nextIndex > collapsedEnd) setLaterExpanded(true);
+    onSelect(period);
+  };
+
+  const move = (offset: number) => {
+    const next =
+      timeline.periods[Math.min(timeline.periods.length - 1, Math.max(0, activeIndex + offset))];
+    if (next) selectPeriod(next.period);
+  };
+
+  const toggleEarlier = () => {
+    if (earlierExpanded && activeIndex < collapsedStart) onSelect(preferredPeriod);
+    setEarlierExpanded((current) => !current);
+  };
+
+  const toggleLater = () => {
+    if (laterExpanded && activeIndex > collapsedEnd) onSelect(preferredPeriod);
+    setLaterExpanded((current) => !current);
+  };
+
+  return (
+    <section
+      aria-labelledby="valuation-timeline-title"
+      className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] shadow-sm"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--pf-line)] px-4 py-3">
+        <div>
+          <h2 id="valuation-timeline-title" className="text-xs font-semibold text-[var(--pf-ink)]">
+            历史估值时间轴
+          </h2>
+          <p className="mt-0.5 text-[9px] text-[var(--pf-ink-muted)]">
+            默认聚焦最近可比期，左右可按需展开
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          {selectedPeriod !== timeline.latestPeriod ? (
+            <button
+              className="mr-1 rounded-md border border-[var(--pf-line)] px-2 py-1 text-[9px] font-semibold text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
+              onClick={() => selectPeriod(timeline.latestPeriod)}
+              type="button"
+            >
+              跳到最新披露
+            </button>
+          ) : null}
+          <button
+            aria-label="上一个期间"
+            className="grid size-7 place-items-center rounded-md border border-[var(--pf-line)] text-[var(--pf-ink-muted)] hover:bg-[var(--pf-panel-subtle)] disabled:opacity-35"
+            disabled={activeIndex <= 0}
+            onClick={() => move(-1)}
+            type="button"
+          >
+            <ChevronLeft className="size-3.5" />
+          </button>
+          <button
+            aria-label="下一个期间"
+            className="grid size-7 place-items-center rounded-md border border-[var(--pf-line)] text-[var(--pf-ink-muted)] hover:bg-[var(--pf-panel-subtle)] disabled:opacity-35"
+            disabled={activeIndex >= timeline.periods.length - 1}
+            onClick={() => move(1)}
+            type="button"
+          >
+            <ChevronRight className="size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-stretch gap-2 px-3 py-4 sm:px-4">
+        {hiddenEarlierCount ? (
+          <button
+            aria-controls="valuation-period-tabs"
+            aria-expanded={earlierExpanded}
+            aria-label={
+              earlierExpanded
+                ? `收起 ${hiddenEarlierCount} 个更早期间`
+                : `展开 ${hiddenEarlierCount} 个更早期间`
+            }
+            className="group inline-flex w-9 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-1 text-[9px] font-semibold text-[var(--pf-ink-muted)] outline-none transition-[border-color,background-color,color,transform] hover:border-[var(--pf-line-strong)] hover:text-[var(--pf-ink)] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] sm:w-[4.5rem]"
+            onClick={toggleEarlier}
+            type="button"
+          >
+            {earlierExpanded ? (
+              <ChevronsRight className="size-3.5" />
+            ) : (
+              <ChevronsLeft className="size-3.5" />
+            )}
+            <span className="hidden sm:block">{earlierExpanded ? "收起更早" : "展开更早"}</span>
+            <span className="font-mono text-[8px] font-medium">{hiddenEarlierCount} 期</span>
+          </button>
+        ) : null}
+
+        <div className="relative min-w-0 flex-1 overflow-x-auto [scrollbar-width:thin]">
+          <div
+            aria-hidden
+            className="absolute left-4 right-4 top-[2.15rem] h-px bg-[var(--pf-line-strong)]"
+          />
+          <div
+            aria-label="选择估值期间"
+            className="relative flex min-w-max gap-1"
+            id="valuation-period-tabs"
+            role="tablist"
+          >
+            <AnimatePresence initial={false} mode="popLayout">
+              {visiblePeriods.map((item) => {
+                const periodIndex = timeline.periods.findIndex(
+                  (period) => period.period === item.period,
+                );
+                const status =
+                  TIMELINE_STATUS[item.status as keyof typeof TIMELINE_STATUS] ??
+                  TIMELINE_STATUS.unavailable;
+                const selected = item.period === selectedPeriod;
+                const preferred = item.period === preferredPeriod;
+                const [year, quarter = ""] = item.period.split("Q");
+                return (
+                  <motion.div
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="shrink-0"
+                    exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
+                    initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
+                    key={item.period}
+                    layout={reduceMotion ? false : "position"}
+                    role="presentation"
+                    transition={{
+                      duration: reduceMotion ? 0 : 0.18,
+                      ease: [0.16, 1, 0.3, 1],
+                    }}
+                  >
+                    <button
+                      aria-controls="valuation-period-panel"
+                      aria-label={`${item.label} ${preferred ? "最新可比 " : ""}${status.label}`}
+                      aria-posinset={periodIndex + 1}
+                      aria-selected={selected}
+                      aria-setsize={timeline.periods.length}
+                      className={cn(
+                        "group min-w-[6.5rem] scroll-mx-4 rounded-lg border px-3 py-2.5 text-left outline-none transition-[border-color,background-color,transform] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)]",
+                        selected
+                          ? "border-[var(--pf-accent)] bg-[var(--pf-accent-soft)]"
+                          : preferred
+                            ? "border-[var(--pf-accent)]/45 bg-[var(--pf-accent-soft)]/45 hover:border-[var(--pf-accent)]"
+                            : "border-transparent bg-[var(--pf-panel-raised)] hover:border-[var(--pf-line-strong)] hover:bg-[var(--pf-panel-subtle)]",
+                      )}
+                      onClick={() => selectPeriod(item.period)}
+                      onKeyDown={(event) => {
+                        if (event.key === "ArrowLeft") {
+                          event.preventDefault();
+                          move(-1);
+                        }
+                        if (event.key === "ArrowRight") {
+                          event.preventDefault();
+                          move(1);
+                        }
+                      }}
+                      ref={selected ? activeRef : undefined}
+                      role="tab"
+                      tabIndex={selected ? 0 : -1}
+                      type="button"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "relative z-10 size-2.5 rounded-full border-2 ring-4 ring-[var(--pf-panel-raised)]",
+                            status.dot,
+                          )}
+                        />
+                        <span className="font-mono text-[10px] text-[var(--pf-ink-muted)]">
+                          {year}
+                        </span>
+                      </span>
+                      <span className="mt-2 block text-sm font-semibold text-[var(--pf-ink)]">
+                        Q{quarter}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[9px] text-[var(--pf-ink-muted)]">
+                        {status.label}
+                        {preferred ? (
+                          <span className="rounded border border-[var(--pf-accent)]/30 px-1 py-px font-semibold text-[var(--pf-accent-ink)]">
+                            最新可比
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {hiddenLaterCount ? (
+          <button
+            aria-controls="valuation-period-tabs"
+            aria-expanded={laterExpanded}
+            aria-label={
+              laterExpanded
+                ? `收起 ${hiddenLaterCount} 个较新期间`
+                : `展开 ${hiddenLaterCount} 个较新期间`
+            }
+            className="group inline-flex w-9 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-1 text-[9px] font-semibold text-[var(--pf-ink-muted)] outline-none transition-[border-color,background-color,color,transform] hover:border-[var(--pf-line-strong)] hover:text-[var(--pf-ink)] active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)] sm:w-[4.5rem]"
+            onClick={toggleLater}
+            type="button"
+          >
+            {laterExpanded ? (
+              <ChevronsLeft className="size-3.5" />
+            ) : (
+              <ChevronsRight className="size-3.5" />
+            )}
+            <span className="hidden sm:block">{laterExpanded ? "收起较新" : "展开较新"}</span>
+            <span className="font-mono text-[8px] font-medium">{hiddenLaterCount} 期</span>
+          </button>
+        ) : null}
+      </div>
+
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-4 py-2.5"
+        id="valuation-period-panel"
+        role="tabpanel"
+      >
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[var(--pf-ink-secondary)]">
+          <span className="font-semibold text-[var(--pf-ink)]">{active.label}</span>
+          <span>模型 {active.modelAvailableCount}/5</span>
+          <span>API {active.actualAvailableCount}/5</span>
+          <span>可直接对比 {active.comparedCount}/5</span>
+        </div>
+        <span
+          className={cn(
+            "rounded-full border px-2 py-0.5 text-[9px] font-semibold",
+            active.alertCount ? SEVERITY.warning.badge : SEVERITY.normal.badge,
+          )}
+        >
+          {active.alertCount ? active.alertCount + " 项偏差预警" : "无偏差预警"}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+const IMPACT_INPUT_LABELS: Record<string, string> = {
+  revenue_growth: "收入增速",
+  gross_margin: "毛利率",
+  operating_margin: "营业利润率",
+  unit_economics: "单位经济性",
+  r_and_d: "研发费用",
+  capex: "资本开支",
+  working_capital: "营运资金",
+  free_cash_flow: "自由现金流",
+  wacc: "WACC",
+  terminal_growth: "终值增速",
+  valuation_multiple: "估值倍数",
+  success_probability: "成功概率",
+  timing_discount: "时间折现",
+  overseas_revenue: "海外收入",
+  order_conversion: "订单转化",
+};
+
+function impactConfidenceLabel(confidence: number): string {
+  if (confidence >= 0.8) return "高";
+  if (confidence >= 0.65) return "中高";
+  if (confidence >= 0.5) return "中等";
+  return "中低";
+}
+
+function ValuationImpactSection({ analysis }: { analysis: PrivateFundValuationImpactAnalysis }) {
+  const statusLabel =
+    analysis.status === "completed"
+      ? `资料综合分析 · ${analysis.cards.length} 张`
+      : analysis.status === "failed"
+        ? "生成失败"
+        : analysis.status === "no_evidence"
+          ? "暂无可引用资料"
+          : "等待生成";
+  return (
+    <section
+      aria-labelledby="valuation-impact-title"
+      className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] shadow-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-4 py-3.5">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-[var(--pf-accent-soft)] text-[var(--pf-accent-ink)]">
+            <Sparkles className="size-3.5" />
+          </span>
+          <div>
+            <h2 id="valuation-impact-title" className="text-sm font-semibold text-[var(--pf-ink)]">
+              其他资料对估值的综合影响
+            </h2>
+            <p className="mt-0.5 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
+              Agent 基于当前项目的研究资料、会议纪要和财务资料生成，并保留原文证据定位。
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2.5 py-1 text-[9px] font-semibold text-[var(--pf-ink-muted)]">
+          {statusLabel}
+        </span>
+      </div>
+
+      {analysis.cards.length ? (
+        <div className="grid gap-px bg-[var(--pf-line)] lg:grid-cols-2 2xl:grid-cols-3">
+          {analysis.cards.map((card) => {
+            const style = IMPACT_DIRECTION_STYLES[card.direction];
+            const DirectionIcon = style.icon;
+            return (
+              <article className="flex flex-col bg-[var(--pf-panel-raised)] p-4" key={card.cardId}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold",
+                      style.badge,
+                    )}
+                  >
+                    <DirectionIcon className="size-2.5" /> {style.label}
+                  </span>
+                  <span className="text-[9px] text-[var(--pf-ink-muted)]">
+                    {card.horizon} · 置信度{impactConfidenceLabel(card.confidence)}
+                  </span>
+                </div>
+
+                <h3 className="mt-3 text-sm font-semibold tracking-tight text-[var(--pf-ink)]">
+                  {card.title}
+                </h3>
+                <p className="mt-1.5 text-[10px] leading-4 text-[var(--pf-ink-secondary)]">
+                  {card.evidenceSummary}
+                </p>
+
+                <div className="mt-3 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] p-3">
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--pf-accent)]">
+                    对当前估值的可能影响
+                  </p>
+                  <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink)]">
+                    {card.valuationImpact}
+                  </p>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {card.affectedInputs.map((input) => (
+                    <span
+                      className="rounded-md bg-[var(--pf-accent-soft)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--pf-accent-ink)]"
+                      key={input}
+                    >
+                      {IMPACT_INPUT_LABELS[input] ?? input}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-auto border-t border-[var(--pf-line)] pt-3 text-[9px] leading-4 text-[var(--pf-ink-muted)]">
+                  <p>
+                    <span className="font-semibold text-[var(--pf-ink-secondary)]">后续观察：</span>
+                    {card.watchItems.join("、")}
+                  </p>
+                  <p className="mt-1">来源：{card.sourceRefs.join("；")}</p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="px-5 py-8 text-center text-[10px] leading-5 text-[var(--pf-ink-muted)]">
+          {analysis.errorMessage || "上传或更新辅助资料后，系统会生成可追溯的估值影响卡片。"}
+        </div>
+      )}
+
+      <p className="border-t border-[var(--pf-line)] px-4 py-2.5 text-[9px] leading-4 text-[var(--pf-ink-muted)]">
+        由 {analysis.skillName || "估值影响 Agent"} 基于当前资料生成；服务端已校验证据 ID。
+        结果不直接改写估值模型，也不参与五指标数值与预警。
+      </p>
+    </section>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div
+      aria-label="正在加载估值对比"
+      className="overflow-hidden rounded-xl border border-[var(--pf-line)]"
+    >
+      {EXPECTED_METRICS.map((key) => (
+        <div
+          className="grid animate-pulse gap-3 border-t border-[var(--pf-line)] p-4 first:border-t-0 lg:grid-cols-[1.35fr_0.75fr_32px_0.75fr]"
+          key={key}
+        >
+          <div className="space-y-2">
+            <div className="h-4 w-36 rounded bg-[var(--pf-panel-subtle)]" />
+            <div className="h-3 w-52 rounded bg-[var(--pf-panel-subtle)]" />
+          </div>
+          <div className="h-16 rounded-lg bg-[var(--pf-panel-subtle)]" />
+          <div />
+          <div className="h-16 rounded-lg bg-[var(--pf-panel-subtle)]" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -200,55 +778,35 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
   const queryClient = useQueryClient();
   const valuationQuery = usePrivateFundValuationTracking(datasetId);
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
-  const [fromVersionId, setFromVersionId] = useState("");
-  const [toVersionId, setToVersionId] = useState("");
-  const [agentFocus, setAgentFocus] = useState("");
-
+  const [selectedPeriod, setSelectedPeriod] = useState("");
   const data = valuationQuery.data;
   const activeSeriesId = selectedSeriesId || data?.series[0]?.seriesId || "";
   const activeSeries = data?.series.find((series) => series.seriesId === activeSeriesId);
-  const versions = activeSeries?.versions ?? [];
-  const activeToVersionId = versions.some((version) => version.modelVersionId === toVersionId)
-    ? toVersionId
-    : versions[0]?.modelVersionId || "";
-  const activeFromVersionId = versions.some((version) => version.modelVersionId === fromVersionId)
-    ? fromVersionId
-    : versions[1]?.modelVersionId || versions[0]?.modelVersionId || "";
-
-  const comparisonQuery = useQuery({
-    queryKey: [
-      "private-fund-valuation-comparison",
-      datasetId,
-      activeSeriesId,
-      activeFromVersionId,
-      activeToVersionId,
-    ],
-    queryFn: () =>
-      comparePrivateFundValuationModelVersions(
-        datasetId,
-        activeSeriesId,
-        activeFromVersionId,
-        activeToVersionId,
-      ),
-    enabled: Boolean(
-      activeSeriesId &&
-      activeFromVersionId &&
-      activeToVersionId &&
-      activeFromVersionId !== activeToVersionId,
+  const metricAnalysis = activeSeries?.metricAnalysis;
+  const metricTimeline = metricAnalysis?.metricTimeline;
+  const preferredPeriod = metricTimeline ? preferredTimelinePeriod(metricTimeline) : "";
+  const effectiveSelectedPeriod = metricTimeline?.periods.some(
+    (period) => period.period === selectedPeriod,
+  )
+    ? selectedPeriod
+    : preferredPeriod;
+  const activeTimelinePeriod = metricTimeline?.periods.find(
+    (period) => period.period === effectiveSelectedPeriod,
+  );
+  const rawComparisons = EXPECTED_METRICS.map((key) =>
+    (activeTimelinePeriod?.comparisons ?? metricAnalysis?.metricComparisons ?? []).find(
+      (metric) => metric.metricKey === key,
     ),
-  });
+  ).filter((metric): metric is PrivateFundValuationMetricComparison => Boolean(metric));
+  const comparisons = rawComparisons;
+  const selectedGapAlerts = comparisons.filter((metric) =>
+    ["warning", "critical"].includes(metric.severity),
+  );
+  const running = data?.jobs.some((job) => ["queued", "running"].includes(job.status));
 
-  const modelOverviewQuery = useQuery({
-    queryKey: [
-      "private-fund-valuation-model-overview",
-      datasetId,
-      activeSeriesId,
-      activeToVersionId,
-    ],
-    queryFn: () =>
-      getPrivateFundValuationModelOverview(datasetId, activeSeriesId, activeToVersionId),
-    enabled: Boolean(activeSeriesId && activeToVersionId),
-  });
+  useEffect(() => {
+    setSelectedPeriod(preferredPeriod);
+  }, [activeSeriesId, preferredPeriod]);
 
   const refreshMutation = useMutation({
     mutationFn: () => runPrivateFundValuationTracking(datasetId),
@@ -258,787 +816,230 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
       });
     },
   });
-  const alertMutation = useMutation({
-    mutationFn: ({ alertId, status }: { alertId: string; status: "acknowledged" | "dismissed" }) =>
-      updatePrivateFundValuationAlert(datasetId, alertId, { status }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["private-fund-valuation-tracking", datasetId],
-      });
-    },
-  });
-  const ruleMutation = useMutation({
-    mutationFn: ({ ruleId, active }: { ruleId: string; active: boolean }) =>
-      updatePrivateFundValuationWatchRule(datasetId, ruleId, { active }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["private-fund-valuation-tracking", datasetId],
-      });
-    },
-  });
-  const agentMutation = useMutation({
-    mutationFn: () =>
-      runPrivateFundValuationAgentAnalysis(datasetId, activeSeriesId, {
-        baseModelVersionId: activeToVersionId,
-        comparisonModelVersionId:
-          activeFromVersionId === activeToVersionId ? "" : activeFromVersionId,
-        focus: agentFocus,
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["private-fund-valuation-tracking", datasetId],
-      });
-    },
-  });
-  const deriveMutation = useMutation({
-    mutationFn: (analysisId: string) => derivePrivateFundValuationModel(datasetId, analysisId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["private-fund-valuation-tracking", datasetId],
-      });
-    },
-  });
-  const downloadMutation = useMutation({
-    mutationFn: async ({
-      derivedModelId,
-      filename,
-    }: {
-      derivedModelId: string;
-      filename: string;
-    }) => ({
-      blob: await fetchPrivateFundValuationDerivedModelFile(datasetId, derivedModelId),
-      filename,
-    }),
-    onSuccess: ({ blob, filename }) => triggerBrowserDownload(blob, filename),
-  });
-  const resourceMutation = useMutation({
-    mutationFn: async (derivedModelId: string) => {
-      const imported = await addPrivateFundValuationDerivedModelToResources(
-        datasetId,
-        derivedModelId,
-      );
-      let job = imported.job;
-      if (job) job = await waitForPipelineCompletion(job);
-      if (job?.status === "failed") {
-        throw new Error(job.message || "派生模型加入资源失败。");
-      }
-      return { ...imported, job };
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["private-fund-valuation-tracking", datasetId],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["private-fund-project", datasetId] }),
-        queryClient.invalidateQueries({ queryKey: ["private-fund-projects"] }),
-        queryClient.invalidateQueries({ queryKey: ["private-fund-assets", datasetId] }),
-        queryClient.invalidateQueries({
-          queryKey: ["private-fund-source-folders", datasetId],
-        }),
-      ]);
-    },
-  });
-
-  if (valuationQuery.isLoading) {
+  if (valuationQuery.isLoading) return <LoadingState />;
+  if (valuationQuery.isError) {
     return (
-      <div className="flex min-h-[420px] items-center justify-center gap-2 text-sm text-[var(--pf-ink-secondary)]">
-        <Loader2 className="size-4 animate-spin" /> 正在读取估值模型台账…
+      <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+        无法加载估值模型分析：{valuationQuery.error.message}
       </div>
     );
   }
-  if (valuationQuery.isError || !data) {
+  if (!activeSeries) {
     return (
-      <div className="m-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-        无法读取估值模型台账：{valuationQuery.error?.message ?? "未知错误"}
-      </div>
+      <section className="rounded-xl border border-dashed border-[var(--pf-line-strong)] bg-[var(--pf-panel-raised)] p-10 text-center">
+        <FileSpreadsheet className="mx-auto size-8 text-[var(--pf-ink-muted)]" />
+        <h2 className="mt-3 text-sm font-semibold text-[var(--pf-ink)]">还没有可分析的估值模型</h2>
+        <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[var(--pf-ink-muted)]">
+          上传 Excel 估值模型后，系统会自动解析并启动五指标对比。其他文件只会成为辅助分析卡片。
+        </p>
+      </section>
     );
   }
 
-  const activeJob = data.jobs.find((job) => ["queued", "running"].includes(job.status));
-  const visibleAlerts = data.alerts.filter(
-    (alert) =>
-      alert.status !== "dismissed" && (!activeSeriesId || alert.seriesId === activeSeriesId),
-  );
-  const currentVersion = activeSeries?.currentVersion;
-  const currentAnalysis = currentVersion?.analysis;
-  const modelOverview = modelOverviewQuery.data;
-  const changes = comparisonQuery.data?.changes ?? [];
-  const agentAnalysis =
-    data.agentAnalyses.find(
-      (analysis) =>
-        analysis.seriesId === activeSeriesId && analysis.baseModelVersionId === activeToVersionId,
-    ) ?? data.agentAnalyses.find((analysis) => analysis.seriesId === activeSeriesId);
-  const derivedModel = data.derivedModels.find(
-    (model) => model.analysisId === agentAnalysis?.analysisId,
-  );
-  const agentJob = data.jobs.find(
-    (job) =>
-      job.jobType === "agent_analysis" &&
-      ["queued", "running"].includes(job.status) &&
-      (!agentAnalysis || job.sourceId === agentAnalysis.analysisId),
-  );
-
+  const marketData = metricAnalysis?.marketData;
   return (
-    <section aria-label="估值模型跟踪" className="min-h-0 flex-1 overflow-y-auto bg-[var(--pf-bg)]">
-      <div className="mx-auto max-w-[1500px] space-y-6 p-5 lg:p-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--pf-ink-muted)]">
-              Valuation model intelligence
-            </p>
-            <h1 className="mt-1 text-xl font-semibold text-[var(--pf-ink)]">估值模型变化跟踪</h1>
-            <p className="mt-1 text-xs leading-5 text-[var(--pf-ink-secondary)]">
-              独立记录模型系列、结构化快照与版本差异；原始 Excel 始终作为不可变证据保留。
-            </p>
+    <section
+      className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable] sm:p-5 lg:p-6"
+      aria-labelledby="valuation-five-metrics-title"
+    >
+      <header className="flex flex-col gap-4 border-b border-[var(--pf-line)] pb-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--pf-accent)]">
+            <Database className="size-3.5" /> Model vs actual
           </div>
+          <h1
+            id="valuation-five-metrics-title"
+            className="mt-2 text-xl font-semibold tracking-tight text-[var(--pf-ink)]"
+          >
+            估值模型五指标对比
+          </h1>
+          <p className="mt-1 text-xs text-[var(--pf-ink-muted)]">
+            只比较五项核心指标；偏差达到阈值时才生成预警。
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {data && data.series.length > 1 ? (
+            <label className="relative">
+              <span className="sr-only">选择估值模型</span>
+              <select
+                className="h-9 appearance-none rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-3 pr-8 text-xs font-medium text-[var(--pf-ink)] outline-none focus:border-[var(--pf-accent)]"
+                onChange={(event) => setSelectedSeriesId(event.target.value)}
+                value={activeSeriesId}
+              >
+                {data.series.map((series) => (
+                  <option key={series.seriesId} value={series.seriesId}>
+                    {series.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 size-4 text-[var(--pf-ink-muted)]" />
+            </label>
+          ) : (
+            <span className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-3 text-xs font-medium text-[var(--pf-ink)]">
+              <FileSpreadsheet className="size-3.5" /> {activeSeries.name}
+            </span>
+          )}
           <button
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-white disabled:opacity-50"
-            disabled={refreshMutation.isPending || Boolean(activeJob)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
+            disabled={refreshMutation.isPending || running}
             onClick={() => refreshMutation.mutate()}
             type="button"
           >
-            {refreshMutation.isPending || activeJob ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3.5" />
-            )}
-            {activeJob ? "分析中" : "扫描模型"}
+            <RefreshCw
+              className={cn("size-3.5", (refreshMutation.isPending || running) && "animate-spin")}
+            />
+            {refreshMutation.isPending || running ? "刷新中" : "刷新真实数据"}
           </button>
-        </header>
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { label: "模型系列", value: data.series.length, icon: FileSpreadsheet },
-            {
-              label: "当前版本",
-              value: activeSeries ? `v${activeSeries.currentVersionNo}` : "—",
-              icon: GitCompare,
-            },
-            { label: "结构化节点", value: currentVersion?.nodeCount ?? 0, icon: Calculator },
-            { label: "未读提醒", value: data.unreadAlertCount, icon: BellRing },
-          ].map((stat) => (
-            <article
-              className="rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] p-4"
-              key={stat.label}
-            >
-              <div className="flex items-center justify-between text-[var(--pf-ink-muted)]">
-                <span className="text-[10px] font-semibold uppercase tracking-wide">
-                  {stat.label}
-                </span>
-                <stat.icon className="size-3.5" />
-              </div>
-              <p className="mt-3 text-2xl font-semibold text-[var(--pf-ink)]">{stat.value}</p>
-            </article>
-          ))}
         </div>
+      </header>
 
-        {data.series.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[var(--pf-line-strong)] bg-[var(--pf-panel)] p-10 text-center">
-            <FileSpreadsheet className="mx-auto size-7 text-[var(--pf-ink-muted)]" />
-            <h2 className="mt-3 text-sm font-semibold text-[var(--pf-ink)]">尚未发现估值模型</h2>
-            <p className="mt-1 text-xs leading-5 text-[var(--pf-ink-muted)]">
-              上传 Excel 估值模型并运行资料 Pipeline，系统会自动建立独立版本链路。
-            </p>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-3 py-2 text-[10px] text-[var(--pf-ink-muted)]">
+        <span className="inline-flex items-center gap-1.5">
+          <Clock3 className="size-3" /> 模型 v{activeSeries.currentVersionNo} ·{" "}
+          {activeSeries.currentVersion?.originalFilename}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Database className="size-3" />
+          {marketData?.provider || "真实数据 API 未配置"} · {formatTime(marketData?.asOf)}
+        </span>
+      </div>
+
+      {marketData?.errorMessage ? (
+        <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[10px] leading-4 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+          <Info className="mt-0.5 size-3.5 shrink-0" /> {marketData.errorMessage}
+        </div>
+      ) : null}
+
+      {metricTimeline?.periods.length ? (
+        <MetricTimeline
+          onSelect={setSelectedPeriod}
+          selectedPeriod={effectiveSelectedPeriod}
+          timeline={metricTimeline}
+        />
+      ) : null}
+
+      <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] shadow-sm">
+        <div className="hidden grid-cols-[minmax(220px,1.35fr)_minmax(140px,0.75fr)_32px_minmax(140px,0.75fr)] items-center bg-[var(--pf-panel-subtle)] px-5 py-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--pf-ink-muted)] lg:grid">
+          <span>
+            指标与统一口径
+            {activeTimelinePeriod ? " · " + activeTimelinePeriod.label : ""}
+          </span>
+          <span>模型值</span>
+          <span />
+          <span>真实值</span>
+        </div>
+        {comparisons.length === 5 ? (
+          comparisons.map((metric) => <ComparisonRow key={metric.metricKey} metric={metric} />)
         ) : (
-          <div className="grid items-start gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="space-y-5">
-              <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-[var(--pf-ink)]">模型系列</h2>
-                  <span className="text-[10px] text-[var(--pf-ink-muted)]">
-                    {data.series.length} 个
-                  </span>
-                </div>
-                <ModelSelector
-                  onSelect={(seriesId) => {
-                    setSelectedSeriesId(seriesId);
-                    setFromVersionId("");
-                    setToVersionId("");
-                  }}
-                  selectedSeriesId={activeSeriesId}
-                  series={data.series}
-                />
-              </div>
+          <LoadingState />
+        )}
+      </div>
 
-              <div>
-                <h2 className="mb-3 text-sm font-semibold text-[var(--pf-ink)]">跟踪规则</h2>
-                <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
-                  {data.watchRules.map((rule, index) => (
-                    <label
+      {metricAnalysis?.valuationImpacts ? (
+        <ValuationImpactSection analysis={metricAnalysis.valuationImpacts} />
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+        <section
+          className="rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]"
+          aria-labelledby="valuation-alerts-title"
+        >
+          <div className="flex items-center justify-between border-b border-[var(--pf-line)] px-4 py-3">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="size-4 text-[var(--pf-accent)]" />
+              <h2
+                id="valuation-alerts-title"
+                className="text-xs font-semibold text-[var(--pf-ink)]"
+              >
+                所选期间差距预警
+              </h2>
+            </div>
+            <span className="font-mono text-[10px] text-[var(--pf-ink-muted)]">
+              {selectedGapAlerts.length}
+            </span>
+          </div>
+          {selectedGapAlerts.length ? (
+            <div className="divide-y divide-[var(--pf-line)]">
+              {selectedGapAlerts.map((metric) => (
+                <article className="p-4" key={metric.metricKey}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-[var(--pf-ink)]">{metric.label}</p>
+                      <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-secondary)]">
+                        {metric.label}：{metric.explanation}
+                      </p>
+                    </div>
+                    <span
                       className={cn(
-                        "flex cursor-pointer items-center gap-3 px-4 py-3",
-                        index > 0 && "border-t border-[var(--pf-line)]",
+                        "rounded-full border px-2 py-0.5 text-[9px] font-semibold",
+                        metric.severity === "critical"
+                          ? SEVERITY.critical.badge
+                          : SEVERITY.warning.badge,
                       )}
-                      key={rule.ruleId}
                     >
-                      <input
-                        aria-label={`启用估值规则 ${rule.name}`}
-                        checked={rule.active}
-                        className="size-3.5 accent-[var(--pf-accent)]"
-                        disabled={ruleMutation.isPending}
-                        onChange={(event) =>
-                          ruleMutation.mutate({ ruleId: rule.ruleId, active: event.target.checked })
-                        }
-                        type="checkbox"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-xs font-medium text-[var(--pf-ink)]">
-                          {rule.name}
-                        </span>
-                        <span className="mt-0.5 block text-[10px] text-[var(--pf-ink-muted)]">
-                          重大性 ≥ {MATERIALITY_LABELS[rule.minMateriality] ?? rule.minMateriality}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </aside>
-
-            <div className="min-w-0 space-y-6">
-              <section aria-label="估值模型总览">
-                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold text-[var(--pf-ink)]">模型总览</h2>
-                    <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
-                      自动提取三表、关键估值输出与连续期间走势；结构化 JSON 与此 HTML
-                      总览使用同一份可追溯数据。
-                    </p>
-                  </div>
-                  {modelOverview ? (
-                    <div className="flex flex-wrap gap-2 text-[9px] text-[var(--pf-ink-muted)]">
-                      <span className="rounded-full border border-[var(--pf-line)] px-2 py-1">
-                        三表 {modelOverview.overview.summary.statementCount}/3
-                      </span>
-                      <span className="rounded-full border border-[var(--pf-line)] px-2 py-1">
-                        趋势 {modelOverview.overview.summary.trendCount} 条
-                      </span>
-                      <span className="rounded-full border border-[var(--pf-line)] px-2 py-1">
-                        事实 {modelOverview.overview.summary.factCount} 条
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-                <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
-                  {modelOverviewQuery.isLoading ? (
-                    <div className="flex min-h-52 items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]">
-                      <Loader2 className="size-3.5 animate-spin" /> 正在生成估值模型总览…
-                    </div>
-                  ) : modelOverviewQuery.isError ? (
-                    <div className="p-5 text-xs text-red-700">
-                      无法生成模型总览：{modelOverviewQuery.error.message}
-                    </div>
-                  ) : modelOverview ? (
-                    <iframe
-                      className="h-[860px] w-full border-0 bg-[var(--pf-bg)]"
-                      sandbox=""
-                      srcDoc={modelOverview.html}
-                      title={`${activeSeries?.name ?? "估值模型"} v${modelOverview.overview.modelVersionNo} 总览`}
-                    />
-                  ) : (
-                    <div className="p-8 text-center text-xs text-[var(--pf-ink-muted)]">
-                      当前版本尚未生成总览。
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              <section>
-                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <h2 className="text-sm font-semibold text-[var(--pf-ink)]">版本对比</h2>
-                    <p className="mt-1 text-[10px] text-[var(--pf-ink-muted)]">
-                      {activeSeries?.name} · 节点按指标、期间、场景和业务范围稳定匹配
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="text-[10px] text-[var(--pf-ink-muted)]">
-                      原版本
-                      <select
-                        aria-label="估值原版本"
-                        className="ml-1.5 h-8 rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs text-[var(--pf-ink)]"
-                        onChange={(event) => setFromVersionId(event.target.value)}
-                        value={activeFromVersionId}
-                      >
-                        {versions.map((version) => (
-                          <option key={version.modelVersionId} value={version.modelVersionId}>
-                            v{version.documentVersionNo}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <span className="text-[var(--pf-ink-muted)]">→</span>
-                    <label className="text-[10px] text-[var(--pf-ink-muted)]">
-                      新版本
-                      <select
-                        aria-label="估值新版本"
-                        className="ml-1.5 h-8 rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs text-[var(--pf-ink)]"
-                        onChange={(event) => setToVersionId(event.target.value)}
-                        value={activeToVersionId}
-                      >
-                        {versions.map((version) => (
-                          <option key={version.modelVersionId} value={version.modelVersionId}>
-                            v{version.documentVersionNo}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
-                  {versions.length < 2 ? (
-                    <div className="p-8 text-center text-xs text-[var(--pf-ink-muted)]">
-                      当前只有一个基线版本；新模型版本入库后将在这里显示差异。
-                    </div>
-                  ) : activeFromVersionId === activeToVersionId ? (
-                    <div className="p-8 text-center text-xs text-[var(--pf-ink-muted)]">
-                      请选择两个不同版本进行对比。
-                    </div>
-                  ) : comparisonQuery.isLoading ? (
-                    <div className="flex min-h-32 items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]">
-                      <Loader2 className="size-3.5 animate-spin" /> 正在计算结构化差异…
-                    </div>
-                  ) : comparisonQuery.isError ? (
-                    <div className="p-5 text-xs text-red-700">
-                      无法读取版本差异：{comparisonQuery.error.message}
-                    </div>
-                  ) : changes.length ? (
-                    changes.map((change) => <ChangeRow change={change} key={change.canonicalKey} />)
-                  ) : (
-                    <div className="flex min-h-32 items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]">
-                      <Check className="size-3.5" /> 两个版本的结构化节点没有实质变化。
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              <section aria-label="估值 Agent 分析">
-                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Bot className="size-4 text-[var(--pf-accent)]" />
-                      <h2 className="text-sm font-semibold text-[var(--pf-ink)]">Agent 多维分析</h2>
-                    </div>
-                    <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
-                      基于模型节点、版本差异和研究资料生成分析、总结、证据链与可审计的调参建议。
-                    </p>
-                  </div>
-                  <button
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-white disabled:opacity-50"
-                    disabled={
-                      !activeSeriesId ||
-                      !activeToVersionId ||
-                      agentMutation.isPending ||
-                      Boolean(agentJob)
-                    }
-                    onClick={() => agentMutation.mutate()}
-                    type="button"
-                  >
-                    {agentMutation.isPending || agentJob ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Bot className="size-3.5" />
-                    )}
-                    {agentJob ? "Agent 分析中" : "运行 Agent 分析"}
-                  </button>
-                </div>
-
-                <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
-                  <div className="border-b border-[var(--pf-line)] p-4">
-                    <label className="text-[10px] font-medium text-[var(--pf-ink-secondary)]">
-                      本轮关注点（可选）
-                      <textarea
-                        aria-label="Agent 分析关注点"
-                        className="mt-2 min-h-16 w-full resize-y rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel)] px-3 py-2 text-xs leading-5 text-[var(--pf-ink)] outline-none focus:border-[var(--pf-accent)]"
-                        maxLength={2000}
-                        onChange={(event) => setAgentFocus(event.target.value)}
-                        placeholder="例如：重点分析不同模板下的收入预测、WACC、终值假设和目标价变化"
-                        value={agentFocus}
-                      />
-                    </label>
-                    {agentMutation.isError ? (
-                      <p className="mt-2 text-[10px] text-red-700">
-                        无法启动 Agent 分析：{agentMutation.error.message}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  {!agentAnalysis ? (
-                    <div className="p-8 text-center text-xs leading-5 text-[var(--pf-ink-muted)]">
-                      选择比较版本后运行
-                      Agent。系统会先选择证据，再生成可追溯结论；不会直接修改原模型。
-                    </div>
-                  ) : ["pending", "running"].includes(agentAnalysis.status) || agentJob ? (
-                    <div className="flex min-h-32 items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]">
-                      <Loader2 className="size-3.5 animate-spin" /> Agent 正在组织证据并分析模型…
-                    </div>
-                  ) : agentAnalysis.status === "failed" ? (
-                    <div className="p-5 text-xs text-red-700">
-                      Agent 分析失败：{agentAnalysis.errorMessage || "未知错误"}
-                    </div>
-                  ) : (
-                    <div className="space-y-5 p-4 lg:p-5">
-                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.6fr)]">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-full bg-[var(--pf-accent-soft)] px-2 py-1 text-[9px] font-semibold text-[var(--pf-accent-ink)]">
-                              {agentAnalysis.valuationMethod || "估值方法待识别"}
-                            </span>
-                            <span className="text-[9px] text-[var(--pf-ink-muted)]">
-                              {agentAnalysis.modelName || agentAnalysis.agentVersion} ·{" "}
-                              {agentAnalysis.evidenceIds.length} 条引用证据
-                            </span>
-                          </div>
-                          <h3 className="mt-3 text-xs font-semibold text-[var(--pf-ink)]">
-                            分析总结
-                          </h3>
-                          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[var(--pf-ink-secondary)]">
-                            {agentAnalysis.executiveSummary}
-                          </p>
-                          {agentAnalysis.investmentConclusion ? (
-                            <div className="mt-3 rounded-lg bg-[var(--pf-accent-soft)] px-3 py-2.5">
-                              <p className="text-[9px] font-semibold uppercase tracking-wide text-[var(--pf-accent-ink)]">
-                                投资结论
-                              </p>
-                              <p className="mt-1 text-xs leading-5 text-[var(--pf-ink)]">
-                                {agentAnalysis.investmentConclusion}
-                              </p>
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] p-3">
-                          <div className="flex items-center gap-2">
-                            <ShieldCheck className="size-3.5 text-[var(--pf-accent)]" />
-                            <h3 className="text-[10px] font-semibold text-[var(--pf-ink)]">
-                              一键输出安全边界
-                            </h3>
-                          </div>
-                          <p className="mt-2 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
-                            仅高置信度、可唯一定位且非公式的输入单元格会写入副本；公式、低置信度和不可定位建议只进入审计页。
-                          </p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {derivedModel ? (
-                              <button
-                                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--pf-accent)] px-2.5 text-[10px] font-semibold text-white disabled:opacity-50"
-                                disabled={downloadMutation.isPending}
-                                onClick={() =>
-                                  downloadMutation.mutate({
-                                    derivedModelId: derivedModel.derivedModelId,
-                                    filename: derivedModel.outputFilename,
-                                  })
-                                }
-                                type="button"
-                              >
-                                {downloadMutation.isPending ? (
-                                  <Loader2 className="size-3 animate-spin" />
-                                ) : (
-                                  <Download className="size-3" />
-                                )}
-                                下载 v{derivedModel.derivedVersionNo}
-                              </button>
-                            ) : (
-                              <button
-                                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--pf-accent)] px-2.5 text-[10px] font-semibold text-white disabled:opacity-50"
-                                disabled={deriveMutation.isPending}
-                                onClick={() => deriveMutation.mutate(agentAnalysis.analysisId)}
-                                type="button"
-                              >
-                                {deriveMutation.isPending ? (
-                                  <Loader2 className="size-3 animate-spin" />
-                                ) : (
-                                  <FilePlus2 className="size-3" />
-                                )}
-                                生成新模型版本
-                              </button>
-                            )}
-                            {derivedModel ? (
-                              <button
-                                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--pf-line-strong)] bg-[var(--pf-panel-raised)] px-2.5 text-[10px] font-semibold text-[var(--pf-ink)] disabled:opacity-60"
-                                disabled={
-                                  resourceMutation.isPending ||
-                                  ["queued", "running", "completed"].includes(
-                                    derivedModel.resourceStatus,
-                                  )
-                                }
-                                onClick={() => resourceMutation.mutate(derivedModel.derivedModelId)}
-                                type="button"
-                              >
-                                {resourceMutation.isPending ||
-                                ["queued", "running"].includes(derivedModel.resourceStatus) ? (
-                                  <Loader2 className="size-3 animate-spin" />
-                                ) : derivedModel.resourceStatus === "completed" ? (
-                                  <Check className="size-3 text-emerald-600" />
-                                ) : (
-                                  <UploadCloud className="size-3" />
-                                )}
-                                {resourceMutation.isPending ||
-                                ["queued", "running"].includes(derivedModel.resourceStatus)
-                                  ? "正在加入资源"
-                                  : derivedModel.resourceStatus === "completed"
-                                    ? "已加入资源"
-                                    : "一键加入资源"}
-                              </button>
-                            ) : null}
-                            {derivedModel ? (
-                              <span className="self-center text-[9px] text-[var(--pf-ink-muted)]">
-                                写入 {derivedModel.appliedChanges.length} 项 · 跳过{" "}
-                                {derivedModel.skippedChanges.length} 项
-                              </span>
-                            ) : null}
-                          </div>
-                          {derivedModel?.resourceStatus === "completed" ? (
-                            <p className="mt-2 text-[9px] text-emerald-700 dark:text-emerald-300">
-                              已作为 {derivedModel.resourceFileName || "估值模型"}
-                              的新版本加入当前项目资源。
-                            </p>
-                          ) : null}
-                          {deriveMutation.isError ||
-                          downloadMutation.isError ||
-                          resourceMutation.isError ||
-                          derivedModel?.resourceStatus === "failed" ? (
-                            <p className="mt-2 text-[9px] text-red-700">
-                              {deriveMutation.error?.message ||
-                                downloadMutation.error?.message ||
-                                resourceMutation.error?.message ||
-                                derivedModel?.resourceError}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {agentAnalysis.keyFindings.length ? (
-                        <div>
-                          <h3 className="mb-2 text-xs font-semibold text-[var(--pf-ink)]">
-                            关键发现
-                          </h3>
-                          <div className="grid gap-2 lg:grid-cols-2">
-                            {agentAnalysis.keyFindings.map((finding) => (
-                              <article
-                                className="rounded-lg border border-[var(--pf-line)] p-3"
-                                key={[finding.title, ...finding.evidenceIds].join("|")}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <p className="text-xs font-semibold text-[var(--pf-ink)]">
-                                    {finding.title}
-                                  </p>
-                                  <span className="shrink-0 text-[9px] text-[var(--pf-ink-muted)]">
-                                    置信度 {(finding.confidence * 100).toFixed(0)}%
-                                  </span>
-                                </div>
-                                <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-secondary)]">
-                                  {finding.detail}
-                                </p>
-                              </article>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {agentAnalysis.evidenceChain.length ? (
-                        <div>
-                          <div className="mb-2 flex items-center gap-2">
-                            <Link2 className="size-3.5 text-[var(--pf-accent)]" />
-                            <h3 className="text-xs font-semibold text-[var(--pf-ink)]">证据链</h3>
-                          </div>
-                          <div className="space-y-2">
-                            {agentAnalysis.evidenceChain.map((chain) => (
-                              <article
-                                className="rounded-lg bg-[var(--pf-panel-subtle)] px-3 py-2.5"
-                                key={[chain.title, ...chain.evidenceIds].join("|")}
-                              >
-                                <p className="text-xs font-semibold text-[var(--pf-ink)]">
-                                  {chain.title}
-                                </p>
-                                <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-secondary)]">
-                                  {chain.detail}
-                                </p>
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  {chain.evidenceIds.map((evidenceId) => (
-                                    <span
-                                      className="rounded bg-[var(--pf-panel-raised)] px-1.5 py-0.5 font-mono text-[8px] text-[var(--pf-ink-muted)]"
-                                      key={evidenceId}
-                                    >
-                                      {evidenceId}
-                                    </span>
-                                  ))}
-                                </div>
-                              </article>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {agentAnalysis.recommendedChanges.length ? (
-                        <div>
-                          <h3 className="mb-2 text-xs font-semibold text-[var(--pf-ink)]">
-                            建议变更
-                          </h3>
-                          <div className="overflow-hidden rounded-lg border border-[var(--pf-line)]">
-                            {agentAnalysis.recommendedChanges.map((change, index) => (
-                              <article
-                                className={cn(
-                                  "grid gap-2 px-3 py-3 lg:grid-cols-[minmax(160px,0.7fr)_minmax(160px,0.5fr)_minmax(0,1fr)]",
-                                  index > 0 && "border-t border-[var(--pf-line)]",
-                                )}
-                                key={change.nodeId}
-                              >
-                                <div>
-                                  <p className="text-xs font-semibold text-[var(--pf-ink)]">
-                                    {change.displayName}
-                                  </p>
-                                  <p className="mt-1 font-mono text-[9px] text-[var(--pf-ink-muted)]">
-                                    {change.sheetName}!{change.cellRef}
-                                  </p>
-                                </div>
-                                <div className="text-[10px] text-[var(--pf-ink-secondary)]">
-                                  {change.currentValueNumeric ?? change.currentValueText ?? "—"} →{" "}
-                                  <span className="font-semibold text-[var(--pf-ink)]">
-                                    {change.proposedValueNumeric ??
-                                      change.proposedValueText ??
-                                      "待人工确定"}
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      "mt-1 block w-fit rounded-full px-1.5 py-0.5 text-[8px] font-semibold",
-                                      change.writable &&
-                                        !derivedModel?.skippedChanges.some(
-                                          (item) =>
-                                            String(item.node_id ?? item.nodeId ?? "") ===
-                                            change.nodeId,
-                                        )
-                                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-                                        : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
-                                    )}
-                                  >
-                                    {derivedModel?.skippedChanges.some(
-                                      (item) =>
-                                        String(item.node_id ?? item.nodeId ?? "") === change.nodeId,
-                                    )
-                                      ? "派生时已跳过"
-                                      : change.writable
-                                        ? "可受控写入"
-                                        : "仅供人工复核"}
-                                  </span>
-                                </div>
-                                <p className="text-[10px] leading-4 text-[var(--pf-ink-secondary)]">
-                                  {change.rationale}
-                                </p>
-                              </article>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              <div className="grid items-start gap-6 lg:grid-cols-2">
-                <section>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-[var(--pf-ink)]">当前分析</h2>
-                    {currentVersion?.revertedToVersionId ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300">
-                        <RotateCcw className="size-3" /> 检测到历史版本回滚
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] p-4">
-                    {currentAnalysis ? (
-                      <>
-                        <p className="whitespace-pre-wrap text-xs leading-5 text-[var(--pf-ink-secondary)]">
-                          {plainAnalysis(currentAnalysis.summaryMarkdown)}
-                        </p>
-                        <p className="mt-3 border-t border-[var(--pf-line)] pt-2 text-[10px] text-[var(--pf-ink-muted)]">
-                          {currentAnalysis.analyzerVersion} ·{" "}
-                          {formatTime(currentAnalysis.createdAt)}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-xs text-[var(--pf-ink-muted)]">
-                        等待 Worker 完成当前模型分析。
-                      </p>
-                    )}
-                  </div>
-                </section>
-
-                <section>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-[var(--pf-ink)]">变化提醒</h2>
-                    <span className="text-[10px] text-[var(--pf-ink-muted)]">
-                      当前模型 {visibleAlerts.filter((alert) => alert.status === "new").length}{" "}
-                      条未读
+                      {metric.severity === "critical" ? "重大" : "关注"}
                     </span>
                   </div>
-                  {visibleAlerts.length ? (
-                    <div className="space-y-2.5">
-                      {visibleAlerts.slice(0, 10).map((alert) => (
-                        <article
-                          className={cn(
-                            "rounded-xl border p-4",
-                            MATERIALITY_STYLES[alert.priority] ?? MATERIALITY_STYLES.low,
-                            alert.status !== "new" && "opacity-60",
-                          )}
-                          key={alert.alertId}
-                        >
-                          <div className="flex items-start gap-3">
-                            <BellRing className="mt-0.5 size-4 shrink-0" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-semibold">{alert.title}</p>
-                              <p className="mt-1 text-[11px] leading-4">{alert.summary}</p>
-                              <p className="mt-2 flex items-center gap-1 text-[9px] opacity-65">
-                                <Clock3 className="size-2.5" /> {formatTime(alert.createdAt)} ·{" "}
-                                {alert.evidenceIds.length} 条证据
-                              </p>
-                            </div>
-                            {alert.status === "new" ? (
-                              <div className="flex shrink-0 gap-1">
-                                <button
-                                  aria-label={`确认估值提醒 ${alert.title}`}
-                                  className="flex size-7 items-center justify-center rounded-md border border-current/20"
-                                  disabled={alertMutation.isPending}
-                                  onClick={() =>
-                                    alertMutation.mutate({
-                                      alertId: alert.alertId,
-                                      status: "acknowledged",
-                                    })
-                                  }
-                                  type="button"
-                                >
-                                  <Check className="size-3" />
-                                </button>
-                                <button
-                                  aria-label={`忽略估值提醒 ${alert.title}`}
-                                  className="flex size-7 items-center justify-center rounded-md border border-current/20"
-                                  disabled={alertMutation.isPending}
-                                  onClick={() =>
-                                    alertMutation.mutate({
-                                      alertId: alert.alertId,
-                                      status: "dismissed",
-                                    })
-                                  }
-                                  type="button"
-                                >
-                                  <X className="size-3" />
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-[var(--pf-line)] p-5 text-xs text-[var(--pf-ink-muted)]">
-                      当前模型没有待处理的重大变化提醒。
-                    </div>
-                  )}
-                </section>
-              </div>
+                </article>
+              ))}
             </div>
+          ) : (
+            <div className="px-5 py-8 text-center">
+              <Check className="mx-auto size-5 text-emerald-600" />
+              <p className="mt-2 text-xs font-medium text-[var(--pf-ink)]">当前没有指标差距预警</p>
+              <p className="mt-1 text-[10px] text-[var(--pf-ink-muted)]">
+                缺失数据不会误触发预警。
+              </p>
+            </div>
+          )}
+        </section>
+
+        <section
+          className="rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]"
+          aria-labelledby="valuation-context-title"
+        >
+          <div className="flex items-center justify-between border-b border-[var(--pf-line)] px-4 py-3">
+            <div className="flex items-center gap-2">
+              <FileSearch className="size-4 text-[var(--pf-accent)]" />
+              <h2
+                id="valuation-context-title"
+                className="text-xs font-semibold text-[var(--pf-ink)]"
+              >
+                辅助分析卡片
+              </h2>
+            </div>
+            <span className="text-[9px] text-[var(--pf-ink-muted)]">不参与指标数值与预警</span>
           </div>
-        )}
+          {metricAnalysis?.contextCards.length ? (
+            <div className="grid gap-px bg-[var(--pf-line)] sm:grid-cols-2">
+              {metricAnalysis.contextCards.map((card) => (
+                <article className="bg-[var(--pf-panel-raised)] p-4" key={card.cardId}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="rounded-full bg-[var(--pf-accent-soft)] px-2 py-0.5 text-[9px] font-semibold text-[var(--pf-accent-ink)]">
+                      {card.cardType}
+                    </span>
+                    <time className="text-[9px] text-[var(--pf-ink-muted)]">
+                      {formatTime(card.documentDate)}
+                    </time>
+                  </div>
+                  <h3 className="mt-2 line-clamp-1 text-xs font-semibold text-[var(--pf-ink)]">
+                    {card.title}
+                  </h3>
+                  <p className="mt-1 line-clamp-3 text-[10px] leading-4 text-[var(--pf-ink-secondary)]">
+                    {card.summary}
+                  </p>
+                  <p className="mt-2 border-l-2 border-[var(--pf-accent)] pl-2 text-[9px] leading-4 text-[var(--pf-ink-muted)]">
+                    {card.insight}
+                  </p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="px-5 py-8 text-center text-[10px] leading-5 text-[var(--pf-ink-muted)]">
+              上传财报、调研纪要或研究报告后，会在这里形成辅助分析卡片。
+            </div>
+          )}
+        </section>
       </div>
     </section>
   );

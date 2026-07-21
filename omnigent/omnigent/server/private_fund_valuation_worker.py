@@ -9,9 +9,10 @@ import os
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from omnigent.server import private_fund_valuation_tracking
 
@@ -60,6 +61,32 @@ def _write_health(workspace: Path, payload: dict[str, Any]) -> None:
     temporary.replace(health_path)
 
 
+def _market_refresh_bucket(now: datetime | None = None) -> str:
+    """Return the current local interval bucket used for idempotent refreshes."""
+
+    timezone_name = os.environ.get("PRIVATE_FUND_MARKET_REFRESH_TIMEZONE", "Asia/Shanghai").strip()
+    try:
+        local_timezone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        _LOGGER.warning("unknown market refresh timezone=%s; using UTC", timezone_name)
+        local_timezone = timezone.utc
+    local_now = (now or datetime.now(timezone.utc)).astimezone(local_timezone)
+    try:
+        interval_minutes = int(
+            os.environ.get("PRIVATE_FUND_MARKET_REFRESH_INTERVAL_MINUTES", "60")
+        )
+        if not 1 <= interval_minutes <= 1_440:
+            raise ValueError
+    except ValueError:
+        _LOGGER.warning("invalid market refresh interval; using 60 minutes")
+        interval_minutes = 60
+    local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elapsed_minutes = local_now.hour * 60 + local_now.minute
+    bucket_minutes = (elapsed_minutes // interval_minutes) * interval_minutes
+    bucket_start = local_midnight + timedelta(minutes=bucket_minutes)
+    return bucket_start.isoformat(timespec="minutes")
+
+
 def _load_llm_client() -> Any | None:
     enabled = os.environ.get("PRIVATE_FUND_VALUATION_USE_LLM", "1").strip().lower()
     if enabled in {"0", "false", "no", "off"}:
@@ -89,11 +116,23 @@ def run_cycle(
             private_fund_valuation_tracking.recover_stale_jobs(collection_db, dataset_id)
             # This idempotent discovery also backfills historical model versions
             # and catches imports that bypass the HTTP pipeline.
-            private_fund_valuation_tracking.enqueue_model_documents(
+            model_jobs = private_fund_valuation_tracking.enqueue_model_documents(
                 collection_db,
                 dataset_id,
                 include_history=True,
             )
+            # The fingerprinted refresh catches auxiliary files and imports
+            # that bypass the HTTP upload route without repeatedly polling APIs.
+            if not any(job.get("status") in {"queued", "running"} for job in model_jobs):
+                private_fund_valuation_tracking.enqueue_context_refresh(
+                    collection_db,
+                    dataset_id,
+                )
+                private_fund_valuation_tracking.enqueue_market_data_refresh(
+                    collection_db,
+                    dataset_id,
+                    refresh_bucket=_market_refresh_bucket(),
+                )
             for _ in range(max_jobs_per_db):
                 result = private_fund_valuation_tracking.process_next_job(
                     collection_db, dataset_id, llm_client=llm_client

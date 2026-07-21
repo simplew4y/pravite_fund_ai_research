@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PrivateFundValuationImpactExtraction",
+  "type": "object",
+  "required": ["analysis_summary", "impacts", "warnings"],
+  "properties": {
+    "analysis_summary": {"type": "string", "maxLength": 500},
+    "impacts": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "direction",
+          "horizon",
+          "confidence",
+          "title",
+          "evidence_summary",
+          "valuation_impact",
+          "affected_inputs",
+          "watch_items",
+          "evidence_ids"
+        ],
+        "properties": {
+          "direction": {"enum": ["up", "down", "mixed"]},
+          "horizon": {"type": "string", "maxLength": 80},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "title": {"type": "string", "maxLength": 120},
+          "evidence_summary": {"type": "string", "maxLength": 800},
+          "valuation_impact": {"type": "string", "maxLength": 800},
+          "affected_inputs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+              "enum": [
+                "revenue_growth",
+                "gross_margin",
+                "operating_margin",
+                "unit_economics",
+                "r_and_d",
+                "capex",
+                "working_capital",
+                "free_cash_flow",
+                "wacc",
+                "terminal_growth",
+                "valuation_multiple",
+                "success_probability",
+                "timing_discount",
+                "overseas_revenue",
+                "order_conversion"
+              ]
+            }
+          },
+          "watch_items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {"type": "string", "maxLength": 180}
+          },
+          "evidence_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {"type": "string", "pattern": "^chunk:"}
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 500}
+    }
+  },
+  "additionalProperties": false
+}

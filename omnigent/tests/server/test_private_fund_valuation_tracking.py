@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -476,6 +477,39 @@ def test_standalone_valuation_worker_discovers_and_drains_models(tmp_path: Path)
     health = (workspace / ".valuation-tracking-worker.json").read_text(encoding="utf-8")
     assert '"status": "online"' in health
     assert '"dataset_count": 1' in health
+
+
+def test_market_refresh_bucket_is_hourly_and_uses_local_timezone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRIVATE_FUND_MARKET_REFRESH_TIMEZONE", "Asia/Shanghai")
+    monkeypatch.setenv("PRIVATE_FUND_MARKET_REFRESH_INTERVAL_MINUTES", "60")
+
+    first_hour = datetime(2026, 7, 20, 2, 34, tzinfo=timezone.utc)
+    next_hour = datetime(2026, 7, 20, 3, 1, tzinfo=timezone.utc)
+
+    assert valuation_worker._market_refresh_bucket(first_hour) == "2026-07-20T10:00+08:00"
+    assert valuation_worker._market_refresh_bucket(next_hour) == "2026-07-20T11:00+08:00"
+
+
+def test_market_refresh_job_is_idempotent_per_hourly_bucket(tmp_path: Path) -> None:
+    database = tmp_path / "collection.sqlite3"
+    _create_collection(database)
+
+    first = valuation.enqueue_market_data_refresh(
+        database, "demo", refresh_bucket="2026-07-20T11:00+08:00"
+    )
+    second = valuation.enqueue_market_data_refresh(
+        database, "demo", refresh_bucket="2026-07-20T11:00+08:00"
+    )
+
+    assert first["job_id"] == second["job_id"]
+    jobs = [
+        job
+        for job in valuation.list_jobs(database, "demo")
+        if job["job_type"] == "market_data_refresh"
+    ]
+    assert len(jobs) == 1
 
 
 def test_agent_analysis_and_one_click_derived_model_are_auditable(

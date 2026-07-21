@@ -61,6 +61,7 @@ def _qa_payload(demo: PdfResearchDemo, result: QaResult) -> dict[str, Any]:
         "needs_review": result.needs_review,
         "llm_used": result.llm_used,
         "llm_error": result.llm_error,
+        "citation_gate": result.citation_gate,
         "citations": _jsonable(citations),
         "traces": _trace_payload(demo, citations),
     }
@@ -75,6 +76,7 @@ def _memo_payload(demo: PdfResearchDemo, memo: MemoDraft) -> dict[str, Any]:
         "sections": _jsonable(memo.sections),
         "llm_used": memo.llm_used,
         "llm_error": memo.llm_error,
+        "citation_gates": [section.citation_gate for section in memo.sections],
         "citations": _jsonable(citations),
         "traces": _trace_payload(demo, citations),
     }

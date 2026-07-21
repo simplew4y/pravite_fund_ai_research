@@ -1,0 +1,114 @@
+filters:
+  and:
+    - 'file.hasTag("private-fund")'
+    - 'managed_by == "omnigent"'
+
+formulas:
+  age_days: 'if(updated_at, (today() - date(updated_at)).days, "")'
+  review_icon: 'if(review_state == "verified", "✅", if(review_state == "needs-review", "⚠️", "•"))'
+
+properties:
+  formula.review_icon:
+    displayName: ""
+  company:
+    displayName: "公司"
+  entity_type:
+    displayName: "对象"
+  node_type:
+    displayName: "类型"
+  status:
+    displayName: "状态"
+  review_state:
+    displayName: "复核"
+  evidence_state:
+    displayName: "证据"
+  confidence:
+    displayName: "置信度"
+  severity:
+    displayName: "影响"
+  time_horizon:
+    displayName: "时间窗口"
+  updated_at:
+    displayName: "更新时间"
+  formula.age_days:
+    displayName: "距今天数"
+
+views:
+  - type: table
+    name: "最近更新"
+    limit: 50
+    order:
+      - formula.review_icon
+      - file.name
+      - company
+      - entity_type
+      - status
+      - updated_at
+      - formula.age_days
+
+  - type: table
+    name: "待复核"
+    filters:
+      or:
+        - 'review_state == "needs-review"'
+        - 'evidence_state == "missing"'
+        - 'evidence_state == "partial"'
+    order:
+      - formula.review_icon
+      - file.name
+      - company
+      - entity_type
+      - evidence_state
+      - confidence
+      - updated_at
+
+  - type: table
+    name: "风险台账"
+    filters:
+      and:
+        - 'entity_type == "research-node"'
+        - 'node_type == "risk"'
+        - 'status != "archived"'
+    groupBy:
+      property: company
+      direction: ASC
+    order:
+      - file.name
+      - company
+      - severity
+      - confidence
+      - time_horizon
+      - status
+      - updated_at
+
+  - type: table
+    name: "催化剂"
+    filters:
+      and:
+        - 'entity_type == "research-node"'
+        - 'node_type == "catalyst"'
+        - 'status != "archived"'
+    groupBy:
+      property: company
+      direction: ASC
+    order:
+      - file.name
+      - company
+      - time_horizon
+      - confidence
+      - status
+      - updated_at
+
+  - type: table
+    name: "估值变化"
+    filters:
+      and:
+        - 'entity_type == "valuation-version"'
+        - 'status != "archived"'
+    order:
+      - file.name
+      - company
+      - diff_status
+      - review_state
+      - updated_at
+

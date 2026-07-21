@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from .citation_gate import EvidenceCard, generate_cited_answer
 from .models import Citation, Document, Evidence
 from .store import PdfEvidenceStore
 
@@ -30,6 +31,7 @@ class QaResult:
     needs_review: bool
     llm_used: bool = False
     llm_error: str = ""
+    citation_gate: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,7 @@ class MemoSection:
     needs_review: bool
     llm_used: bool = False
     llm_error: str = ""
+    citation_gate: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -103,10 +106,13 @@ class PdfResearchDemo:
         ]
         llm_used = False
         llm_error = ""
+        citation_gate: dict[str, object] = {}
         needs_review = any(c.needs_review for c in citations)
         if self.llm_client:
             try:
-                answer, citation_issue = self._llm_answer(question, evidence, citations)
+                answer, citation_issue, citation_gate = self._llm_answer(
+                    question, evidence, citations
+                )
                 llm_used = True
                 needs_review = needs_review or citation_issue
             except Exception as exc:  # noqa: BLE001 - surface LLM failures without breaking provenance fallback.
@@ -122,6 +128,7 @@ class PdfResearchDemo:
             needs_review=needs_review,
             llm_used=llm_used,
             llm_error=llm_error,
+            citation_gate=citation_gate,
         )
 
     def generate_memo(self, company_name: str, ticker: str) -> MemoDraft:
@@ -129,7 +136,11 @@ class PdfResearchDemo:
         section_specs = [
             ("overview", "Company Overview", f"{company_name} business products services"),
             ("thesis", "Core Thesis", "Robotaxi FSD energy storage growth strategy"),
-            ("financials", "Financial Performance", "revenue operating income cash flow capital expenditures"),
+            (
+                "financials",
+                "Financial Performance",
+                "revenue operating income cash flow capital expenditures",
+            ),
             ("risks", "Risks", "risk factors competition supply demand regulatory Robotaxi"),
         ]
 
@@ -148,19 +159,22 @@ class PdfResearchDemo:
             ]
             llm_used = False
             llm_error = ""
+            citation_gate: dict[str, object] = {}
             if evidence:
                 needs_review = any(citation.needs_review for citation in citations)
                 if self.llm_client:
                     try:
-                        content, citation_issue = self._llm_memo_section(title, evidence, citations)
+                        content, citation_issue, citation_gate = self._llm_memo_section(
+                            title, evidence, citations
+                        )
                         needs_review = needs_review or citation_issue
                         llm_used = True
                     except Exception as exc:  # noqa: BLE001
-                        content = self._memo_section_text(title, evidence, citations)
+                        content = self._memo_section_text(evidence, citations)
                         llm_error = str(exc)
                         needs_review = True
                 else:
-                    content = self._memo_section_text(title, evidence, citations)
+                    content = self._memo_section_text(evidence, citations)
             else:
                 content = "No supporting PDF evidence was found for this section."
                 needs_review = True
@@ -173,6 +187,7 @@ class PdfResearchDemo:
                     needs_review=needs_review,
                     llm_used=llm_used,
                     llm_error=llm_error,
+                    citation_gate=citation_gate,
                 )
             )
         llm_errors = [section.llm_error for section in sections if section.llm_error]
@@ -207,9 +222,13 @@ class PdfResearchDemo:
             f"{lead} {citation_marks}"
         )
 
-    def _memo_section_text(self, title: str, evidence: list[Evidence], citations: list[Citation]) -> str:
+    def _memo_section_text(
+        self,
+        evidence: list[Evidence],
+        citations: list[Citation],
+    ) -> str:
         lines = []
-        for item, citation in zip(evidence, citations):
+        for item, citation in zip(evidence, citations, strict=True):
             lines.append(f"- {self._sentence(item, max_chars=260)} [{citation.citation_id}]")
         return "\n".join(lines)
 
@@ -218,88 +237,50 @@ class PdfResearchDemo:
         question: str,
         evidence: list[Evidence],
         citations: list[Citation],
-    ) -> tuple[str, bool]:
+    ) -> tuple[str, bool, dict[str, object]]:
         if not self.llm_client:
-            return self._extractive_answer(evidence, citations), False
-        context = self._evidence_context(evidence, citations)
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an evidence-backed financial research assistant. "
-                    "Use only the supplied PDF evidence. Do not invent facts, files, page numbers, or citation ids. "
-                    "Every material claim must include one of the provided citation ids in square brackets. "
-                    "If the evidence is weak or incomplete, say what still needs review."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Question:\n{question}\n\n"
-                    f"PDF evidence:\n{context}\n\n"
-                    "Write a concise answer in the same language as the question. "
-                    "Use citation ids exactly as provided."
-                ),
-            },
-        ]
-        text = self.llm_client.chat(messages, max_tokens=700, temperature=0.1)
-        return self._finalize_cited_text(text, citations)
+            return self._extractive_answer(evidence, citations), False, {}
+        result = generate_cited_answer(
+            self.llm_client,
+            question=question,
+            evidence_cards=self._citation_gate_cards(evidence, citations),
+            max_tokens=512,
+            retry_once=True,
+            same_language=True,
+        )
+        return result.markdown, result.needs_review, result.safe_audit()
 
     def _llm_memo_section(
         self,
         title: str,
         evidence: list[Evidence],
         citations: list[Citation],
-    ) -> tuple[str, bool]:
+    ) -> tuple[str, bool, dict[str, object]]:
         if not self.llm_client:
-            return self._memo_section_text(title, evidence, citations), False
-        context = self._evidence_context(evidence, citations)
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You write private-fund investment memo sections from local PDF evidence. "
-                    "Use only the supplied evidence. Do not add unsupported outside knowledge. "
-                    "Each bullet must end with at least one provided citation id in square brackets."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Section title: {title}\n\n"
-                    f"PDF evidence:\n{context}\n\n"
-                    "Write 2 to 4 concise memo bullets. Use citation ids exactly as provided."
-                ),
-            },
-        ]
-        text = self.llm_client.chat(messages, max_tokens=650, temperature=0.2)
-        return self._finalize_cited_text(text, citations)
-
-    def _evidence_context(self, evidence: list[Evidence], citations: list[Citation], max_chars: int = 1100) -> str:
-        blocks = []
-        for index, (item, citation) in enumerate(zip(evidence, citations), start=1):
-            text = item.content_text.strip()
-            if len(text) > max_chars:
-                text = text[:max_chars].rstrip() + "..."
-            blocks.append(
-                "\n".join(
-                    [
-                        f"Evidence {index}",
-                        f"citation_id: {citation.citation_id}",
-                        f"location: {citation.display}",
-                        f"quote: {text}",
-                    ]
-                )
-            )
-        return "\n\n".join(blocks)
+            return self._memo_section_text(evidence, citations), False, {}
+        result = generate_cited_answer(
+            self.llm_client,
+            question=f"Section title: {title}. Write 2 to 4 concise memo claims.",
+            evidence_cards=self._citation_gate_cards(evidence, citations),
+            max_tokens=650,
+            retry_once=True,
+            same_language=False,
+        )
+        markdown = "\n".join(
+            f"- {line}" for line in result.markdown.splitlines() if line.strip()
+        )
+        return markdown, result.needs_review, result.safe_audit()
 
     @staticmethod
-    def _finalize_cited_text(text: str, citations: list[Citation]) -> tuple[str, bool]:
-        allowed = {citation.citation_id for citation in citations}
-        mentioned = set(re.findall(r"\bcit_[a-f0-9]{16}\b", text))
-        unknown = bool(mentioned - allowed)
-        missing_allowed = not bool(mentioned & allowed)
-        if missing_allowed and citations:
-            citation_marks = " ".join(f"[{citation.citation_id}]" for citation in citations)
-            text = f"{text.rstrip()} {citation_marks}"
-        return text.strip(), unknown or missing_allowed
+    def _citation_gate_cards(
+        evidence: list[Evidence], citations: list[Citation]
+    ) -> list[EvidenceCard]:
+        return [
+            EvidenceCard(
+                evidence_id=citation.citation_id,
+                excerpt=item.content_text,
+                markdown_citation=f"[{citation.citation_id}]",
+                source_label=citation.display,
+            )
+            for item, citation in zip(evidence, citations, strict=True)
+        ]

@@ -52,6 +52,8 @@ export interface PrivateFundPromptSuggestionContext {
 }
 
 type DocumentType =
+  | "financial_valuation_data"
+  | "meeting_third_party"
   | "financial_report"
   | "earnings_release"
   | "meeting_minutes"
@@ -70,6 +72,8 @@ type ScoredSuggestion = PrivateFundPromptSuggestion & {
 };
 
 const PRIMARY_DOCUMENT_TYPES = new Set<DocumentType>([
+  "financial_valuation_data",
+  "meeting_third_party",
   "financial_report",
   "earnings_release",
   "meeting_minutes",
@@ -135,12 +139,12 @@ function stripMarkdown(text: string): string {
 }
 
 function normalizeDocumentType(file: PrivateFundFile): DocumentType {
-  const rawType = String(file.docType || file.docSubtype || "").toLowerCase();
-  if (PRIMARY_DOCUMENT_TYPES.has(rawType as DocumentType)) return rawType as DocumentType;
-  if (DOCUMENT_TYPE_ALIASES[rawType]) return DOCUMENT_TYPE_ALIASES[rawType];
-
   const rawSubtype = String(file.docSubtype || "").toLowerCase();
   if (DOCUMENT_TYPE_ALIASES[rawSubtype]) return DOCUMENT_TYPE_ALIASES[rawSubtype];
+
+  const rawType = String(file.docType || "").toLowerCase();
+  if (DOCUMENT_TYPE_ALIASES[rawType]) return DOCUMENT_TYPE_ALIASES[rawType];
+  if (PRIMARY_DOCUMENT_TYPES.has(rawType as DocumentType)) return rawType as DocumentType;
 
   const name = normalizeText(file.name);
   if (/年度报告|年报|季度报告|季报|半年度报告|半年报|annualreport|10k|10q/.test(name)) {
@@ -176,8 +180,7 @@ function filesOfType(files: PrivateFundFile[], type: DocumentType): PrivateFundF
 function analysisAssets(assets: PrivateFundAsset[]): PrivateFundAsset[] {
   return assets.filter(
     (asset) =>
-      !["document", "memo", "report"].includes(asset.assetType) &&
-      asset.status !== "failed",
+      !["document", "memo", "report"].includes(asset.assetType) && asset.status !== "failed",
   );
 }
 
@@ -225,7 +228,9 @@ function openQuestionsFromAssistant(text: string): string[] {
       /^(?:[-*•]|\d+[.)、])\s*(?:待验证|待核实|待确认|下一步|需要|风险|疑问)?[：:]?\s*(.+)$/,
     );
     if (m?.[1]) {
-      const q = stripMarkdown(m[1]).replace(/[。；;]+$/, "").trim();
+      const q = stripMarkdown(m[1])
+        .replace(/[。；;]+$/, "")
+        .trim();
       if (q.length >= 6 && q.length <= 48) found.push(q);
     }
     if (found.length >= 3) break;
@@ -306,7 +311,8 @@ function buildDynamicSuggestions(
   }
 
   // --- Real document chips ---
-  const report = filesOfType(files, "financial_report")[0] ?? filesOfType(files, "earnings_release")[0];
+  const report =
+    filesOfType(files, "financial_report")[0] ?? filesOfType(files, "earnings_release")[0];
   const meeting = filesOfType(files, "meeting_minutes")[0];
   const model = filesOfType(files, "valuation_model")[0];
   const research = filesOfType(files, "research_report")[0];
@@ -467,7 +473,8 @@ function buildDynamicSuggestions(
   // --- Coverage gaps ---
   if (files.length > 0) {
     const missing: string[] = [];
-    if (!types.has("financial_report") && !types.has("earnings_release")) missing.push("最新财报/业绩");
+    if (!types.has("financial_report") && !types.has("earnings_release"))
+      missing.push("最新财报/业绩");
     if (!types.has("meeting_minutes")) missing.push("会议纪要");
     if (!types.has("valuation_model")) missing.push("估值模型");
     if (missing.length > 0 && missing.length < 3) {
@@ -729,7 +736,9 @@ function recentlyAskedTerms(terms: string[], messages: string[]): boolean {
 }
 
 function pickDiverse(candidates: ScoredSuggestion[], limit: number): ScoredSuggestion[] {
-  const sorted = [...candidates].sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
+  const sorted = [...candidates].sort(
+    (a, b) => b.priority - a.priority || a.id.localeCompare(b.id),
+  );
   const selected: ScoredSuggestion[] = [];
   const stages = new Set<string>();
   const ids = new Set<string>();

@@ -20,12 +20,20 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from omnigent.server import private_fund_valuation_overview
+from omnigent.server import private_fund_valuation_metrics, private_fund_valuation_overview
 
-VALUATION_TRACKING_SCHEMA_VERSION = 2
+VALUATION_TRACKING_SCHEMA_VERSION = 3
 VALUATION_ANALYZER_VERSION = "valuation-tracking-v1"
 ALERT_STATUSES = frozenset({"new", "acknowledged", "dismissed", "snoozed"})
 JOB_STATUSES = frozenset({"queued", "running", "completed", "failed"})
+VALUATION_MODEL_SUBTYPES = frozenset(
+    {
+        "dcf_model",
+        "comparable_company_model",
+        "financial_forecast_model",
+        "integrated_valuation_model",
+    }
+)
 MATERIALITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 _RETRY_DELAYS_SECONDS = (30, 120, 600)
 
@@ -407,8 +415,7 @@ def ensure_valuation_schema(conn: sqlite3.Connection, dataset_id: str | None = N
         """
     )
     derived_columns = {
-        str(row[1])
-        for row in conn.execute("PRAGMA table_info(valuation_derived_models)")
+        str(row[1]) for row in conn.execute("PRAGMA table_info(valuation_derived_models)")
     }
     for column_name, definition in (
         ("resource_file_name", "TEXT"),
@@ -422,6 +429,7 @@ def ensure_valuation_schema(conn: sqlite3.Connection, dataset_id: str | None = N
             conn.execute(
                 f"ALTER TABLE valuation_derived_models ADD COLUMN {column_name} {definition}"
             )
+    private_fund_valuation_metrics.ensure_metric_schema(conn)
     if dataset_id:
         _ensure_default_rule(conn, dataset_id)
 
@@ -449,7 +457,21 @@ def _model_documents(
 ) -> list[dict[str, Any]]:
     if "documents" not in _tables(conn):
         return []
-    predicates = ["dataset_id=?", "doc_type='valuation_model'", "status='indexed'"]
+    model_subtypes = ",".join(f"'{value}'" for value in sorted(VALUATION_MODEL_SUBTYPES))
+    model_predicates = [
+        "doc_type='valuation_model'",  # v1 compatibility
+        f"COALESCE(doc_subtype,'') IN ({model_subtypes})",
+    ]
+    if "excel_workbooks" in _tables(conn):
+        model_predicates.append(
+            "EXISTS (SELECT 1 FROM excel_workbooks ew "
+            "WHERE ew.doc_id=documents.doc_id AND ew.workbook_type='valuation_model')"
+        )
+    predicates = [
+        "dataset_id=?",
+        f"({' OR '.join(model_predicates)})",
+        "status='indexed'",
+    ]
     params: list[Any] = [dataset_id]
     if current_only:
         predicates.extend(
@@ -511,7 +533,11 @@ def _ensure_series(
             _clean_model_name(str(document.get("original_filename") or "估值模型")),
             str(document.get("company_name") or ""),
             str(document.get("company_ticker") or ""),
-            str(document.get("doc_subtype") or "valuation_model"),
+            (
+                str(document.get("doc_subtype"))
+                if str(document.get("doc_subtype") or "") in VALUATION_MODEL_SUBTYPES
+                else "integrated_valuation_model"
+            ),
             now,
             now,
         ),
@@ -1304,6 +1330,223 @@ def enqueue_model_documents(
     ]
 
 
+def _current_document_fingerprint(conn: sqlite3.Connection, dataset_id: str) -> str:
+    """Return a stable fingerprint for the current project evidence set."""
+
+    if "documents" not in _tables(conn):
+        return "empty"
+    rows = conn.execute(
+        """
+        SELECT doc_id, checksum, doc_type, version_no
+        FROM documents
+        WHERE dataset_id=? AND status='indexed' AND COALESCE(is_current,1)=1
+          AND COALESCE(lifecycle_state,'active')='active'
+        ORDER BY doc_id
+        """,
+        (dataset_id,),
+    ).fetchall()
+    return _digest(
+        *(
+            f"{row['doc_id']}:{row['checksum']}:{row['doc_type']}:{row['version_no']}"
+            for row in rows
+        ),
+        length=40,
+    )
+
+
+def enqueue_context_refresh(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    source_id: str = "",
+    requeue_failed: bool = False,
+) -> dict[str, Any]:
+    """Queue auxiliary cards plus a fresh model-versus-actual comparison.
+
+    A content fingerprint makes automatic discovery idempotent.  Callers may
+    supply an ingest job id to expose the upstream trigger in the job payload.
+    """
+
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn, dataset_id)
+        fingerprint = _current_document_fingerprint(conn, dataset_id)
+        conn.commit()
+    refresh_source = f"{fingerprint}:{source_id}" if source_id else fingerprint
+    return enqueue_job(
+        collection_db,
+        dataset_id,
+        job_type="valuation_context_refresh",
+        source_id=refresh_source,
+        payload={"document_fingerprint": fingerprint, "parent_ingest_job_id": source_id},
+        priority=70,
+        requeue_failed=requeue_failed,
+    )
+
+
+def enqueue_market_data_refresh(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    refresh_bucket: str,
+    requeue_failed: bool = False,
+) -> dict[str, Any]:
+    """Queue one idempotent market refresh for a scheduled time bucket."""
+
+    bucket = str(refresh_bucket or "").strip()
+    if not bucket:
+        raise ValueError("market refresh bucket is required")
+    return enqueue_job(
+        collection_db,
+        dataset_id,
+        job_type="market_data_refresh",
+        source_id=f"market-data:{bucket}",
+        payload={"refresh_bucket": bucket, "trigger": "scheduled_interval"},
+        priority=80,
+        max_attempts=4,
+        requeue_failed=requeue_failed,
+    )
+
+
+def refresh_current_market_data(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    provider: private_fund_valuation_metrics.MarketDataProvider | None = None,
+) -> dict[str, Any]:
+    """Refresh market snapshots without rerunning cards or LLM analysis."""
+
+    provider = provider or private_fund_valuation_metrics.default_market_data_provider()
+    refreshed: list[dict[str, Any]] = []
+    failed_series: list[str] = []
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn, dataset_id)
+        series_rows = conn.execute(
+            """
+            SELECT * FROM valuation_model_series
+            WHERE dataset_id=? AND current_model_version_id IS NOT NULL
+            ORDER BY updated_at DESC
+            """,
+            (dataset_id,),
+        ).fetchall()
+        for series_row in series_rows:
+            version_row = conn.execute(
+                """
+                SELECT * FROM valuation_model_versions
+                WHERE dataset_id=? AND model_version_id=?
+                """,
+                (dataset_id, series_row["current_model_version_id"]),
+            ).fetchone()
+            if version_row is None:
+                continue
+            comparison = private_fund_valuation_metrics.refresh_metric_comparison(
+                conn,
+                dataset_id=dataset_id,
+                series=dict(series_row),
+                version=dict(version_row),
+                provider=provider,
+            )
+            status = str(comparison.get("status") or "unknown")
+            if status == "failed":
+                failed_series.append(str(series_row["series_id"]))
+            refreshed.append(
+                {
+                    "series_id": series_row["series_id"],
+                    "model_version_id": version_row["model_version_id"],
+                    "snapshot_id": comparison.get("snapshot_id"),
+                    "provider": comparison.get("provider"),
+                    "status": status,
+                    "as_of": comparison.get("as_of"),
+                    "error_message": comparison.get("error_message"),
+                }
+            )
+        conn.commit()
+    if failed_series:
+        raise RuntimeError("market-data refresh failed for series: " + ", ".join(failed_series))
+    return {"series": refreshed, "series_count": len(refreshed)}
+
+
+def refresh_current_metric_analysis(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    provider: private_fund_valuation_metrics.MarketDataProvider | None = None,
+    llm_client: Any | None = None,
+) -> dict[str, Any]:
+    """Refresh the five comparisons and auxiliary cards for every current model."""
+
+    provider = provider or private_fund_valuation_metrics.default_market_data_provider()
+    refreshed: list[dict[str, Any]] = []
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn, dataset_id)
+        series_rows = conn.execute(
+            """
+            SELECT * FROM valuation_model_series
+            WHERE dataset_id=? AND current_model_version_id IS NOT NULL
+            ORDER BY updated_at DESC
+            """,
+            (dataset_id,),
+        ).fetchall()
+        for series_row in series_rows:
+            version_row = conn.execute(
+                """
+                SELECT * FROM valuation_model_versions
+                WHERE dataset_id=? AND model_version_id=?
+                """,
+                (dataset_id, series_row["current_model_version_id"]),
+            ).fetchone()
+            if version_row is None:
+                continue
+            comparison = private_fund_valuation_metrics.refresh_metric_comparison(
+                conn,
+                dataset_id=dataset_id,
+                series=dict(series_row),
+                version=dict(version_row),
+                provider=provider,
+                llm_client=llm_client,
+            )
+            cards = private_fund_valuation_metrics.refresh_context_cards(
+                conn,
+                dataset_id=dataset_id,
+                model_version_id=str(version_row["model_version_id"]),
+            )
+            valuation_impacts = private_fund_valuation_metrics.refresh_valuation_impacts(
+                conn,
+                dataset_id=dataset_id,
+                series_id=str(series_row["series_id"]),
+                model_version_id=str(version_row["model_version_id"]),
+                llm_client=llm_client,
+            )
+            refreshed.append(
+                {
+                    "series_id": series_row["series_id"],
+                    "model_version_id": version_row["model_version_id"],
+                    "market_data": {
+                        key: comparison.get(key)
+                        for key in ("snapshot_id", "provider", "status", "as_of", "error_message")
+                    },
+                    "skill_extraction": {
+                        key: (comparison.get("skill_extraction") or {}).get(key)
+                        for key in (
+                            "status",
+                            "extraction_id",
+                            "skill_name",
+                            "extractor_version",
+                            "applied_metric_keys",
+                            "conflict_metric_keys",
+                            "manual_metric_keys",
+                            "error_message",
+                        )
+                    },
+                    "comparison_count": len(comparison.get("comparisons") or []),
+                    "context_card_count": len(cards),
+                    "valuation_impact_status": valuation_impacts.get("status"),
+                    "valuation_impact_count": len(valuation_impacts.get("cards") or []),
+                }
+            )
+        conn.commit()
+    return {"series": refreshed, "series_count": len(refreshed)}
+
+
 def _claim_job(conn: sqlite3.Connection) -> sqlite3.Row | None:
     now = _now_iso()
     conn.execute("BEGIN IMMEDIATE")
@@ -1370,6 +1613,19 @@ def process_next_job(
     try:
         if job["job_type"] == "model_version_ingested":
             result = build_model_version(collection_db, dataset_id, str(job["source_id"]))
+            result["metric_analysis"] = refresh_current_metric_analysis(
+                collection_db,
+                dataset_id,
+                llm_client=llm_client,
+            )
+        elif job["job_type"] == "valuation_context_refresh":
+            result = refresh_current_metric_analysis(
+                collection_db,
+                dataset_id,
+                llm_client=llm_client,
+            )
+        elif job["job_type"] == "market_data_refresh":
+            result = refresh_current_market_data(collection_db, dataset_id)
         elif job["job_type"] == "agent_analysis":
             from omnigent.server import private_fund_valuation_agent
 
@@ -1481,6 +1737,30 @@ def list_series(collection_db: Path, dataset_id: str) -> list[dict[str, Any]]:
                 versions[0] if versions else None,
             )
             payload["current_version"] = latest
+            payload["metric_analysis"] = (
+                private_fund_valuation_metrics.latest_metric_payload(
+                    conn,
+                    dataset_id=dataset_id,
+                    series_id=str(row["series_id"]),
+                    model_version_id=str(latest["model_version_id"]),
+                )
+                if latest
+                else {
+                    "market_data": {
+                        "status": "pending",
+                        "provider": "",
+                        "as_of": "",
+                        "error_message": "等待估值模型版本。",
+                    },
+                    "metric_comparisons": [],
+                    "context_cards": [],
+                    "valuation_impacts": {
+                        "status": "pending",
+                        "cards": [],
+                        "error_message": "等待基于项目资料生成估值影响。",
+                    },
+                }
+            )
             payloads.append(payload)
         return payloads
 
@@ -1672,6 +1952,35 @@ def list_alerts(
         return payloads
 
 
+def list_metric_alerts(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    status: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Return only alerts caused by one of the five model-versus-actual gaps."""
+
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn, dataset_id)
+        sql = "SELECT * FROM valuation_alerts WHERE dataset_id=? AND alert_type='model_actual_gap'"
+        params: list[Any] = [dataset_id]
+        if status:
+            sql += " AND status=?"
+            params.append(status)
+        sql += (
+            " ORDER BY CASE priority WHEN 'critical' THEN 3 WHEN 'high' THEN 2 "
+            "WHEN 'medium' THEN 1 ELSE 0 END DESC, created_at DESC LIMIT ?"
+        )
+        params.append(max(1, min(limit, 500)))
+        payloads = []
+        for row in conn.execute(sql, params):
+            payload = dict(row)
+            payload["evidence_ids"] = _decode(payload.pop("evidence_ids_json"), [])
+            payloads.append(payload)
+        return payloads
+
+
 def update_alert_status(
     collection_db: Path,
     dataset_id: str,
@@ -1731,6 +2040,15 @@ def tracking_overview(collection_db: Path, dataset_id: str) -> dict[str, Any]:
                 (dataset_id,),
             ).fetchone()[0]
         )
+        unread_metric = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM valuation_alerts
+                WHERE dataset_id=? AND status='new' AND alert_type='model_actual_gap'
+                """,
+                (dataset_id,),
+            ).fetchone()[0]
+        )
         change_counts = {
             str(row["materiality"]): int(row["count"])
             for row in conn.execute(
@@ -1741,10 +2059,12 @@ def tracking_overview(collection_db: Path, dataset_id: str) -> dict[str, Any]:
                 (dataset_id,),
             )
         }
+    series = list_series(collection_db, dataset_id)
     return {
         "dataset_id": dataset_id,
-        "series": list_series(collection_db, dataset_id),
+        "series": series,
         "alerts": list_alerts(collection_db, dataset_id, limit=100),
+        "metric_alerts": list_metric_alerts(collection_db, dataset_id, limit=100),
         "watch_rules": list_rules(collection_db, dataset_id),
         "jobs": list_jobs(collection_db, dataset_id, limit=50),
         "agent_analyses": private_fund_valuation_agent.list_analyses(
@@ -1754,6 +2074,7 @@ def tracking_overview(collection_db: Path, dataset_id: str) -> dict[str, Any]:
             collection_db, dataset_id, limit=50
         ),
         "unread_alert_count": unread,
+        "unread_metric_alert_count": unread_metric,
         "change_counts": change_counts,
         "analyzer_version": VALUATION_ANALYZER_VERSION,
     }

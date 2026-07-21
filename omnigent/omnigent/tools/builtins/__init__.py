@@ -183,6 +183,11 @@ def _create_private_fund_dataset_status(config: dict[str, str]) -> Tool:
     return _create_private_fund_tool("private_fund_dataset_status")
 
 
+def _create_private_fund_knowledge_status(config: dict[str, str]) -> Tool:
+    """Build the private-fund Obsidian projection status tool."""
+    return _create_private_fund_tool("private_fund_knowledge_status")
+
+
 def _create_private_fund_dataset_search(config: dict[str, str]) -> Tool:
     """Build the private-fund evidence search tool for runner-local dispatch."""
     return _create_private_fund_tool("private_fund_dataset_search")
@@ -257,6 +262,7 @@ _BUILTIN_REGISTRY: dict[str, _BuiltinFactory | None] = {
     "search_conversations": _create_search_conversations,
     "export_agent": _create_export_agent,
     "private_fund_dataset_status": _create_private_fund_dataset_status,
+    "private_fund_knowledge_status": _create_private_fund_knowledge_status,
     "private_fund_dataset_search": _create_private_fund_dataset_search,
     "private_fund_source_detail": _create_private_fund_source_detail,
     "private_fund_dataset_memo": _create_private_fund_dataset_memo,
