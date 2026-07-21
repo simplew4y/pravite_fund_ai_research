@@ -98,6 +98,8 @@ dependencies = [
     "numpy>=1.26,<3",
     "pandas>=2.2,<3",
     "matplotlib>=3.8,<4",
+    # Free A/H-share market prices for valuation target-vs-close comparisons.
+    "akshare>=1.18.40,<2",
     # Private-fund directory ingestion parses XLSX/XLSM files via
     # FinSagent/data_pipeline/private_fund_directory_ingest.py.
     "openpyxl>=3.1,<4",

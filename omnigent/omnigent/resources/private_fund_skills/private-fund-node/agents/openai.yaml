@@ -1,4 +1,4 @@
 interface:
   display_name: "Private Fund Node"
   short_description: "Save selected research as a traceable node"
-  default_prompt: "Turn the selected evidence-backed information into a structured research node."
+  default_prompt: "Use $private-fund-node to turn selected evidence-backed information into a structured research node."

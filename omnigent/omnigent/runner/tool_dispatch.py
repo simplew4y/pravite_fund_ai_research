@@ -260,6 +260,7 @@ _WEB_SEARCH_TOOLS = frozenset({"web_search"})
 _PRIVATE_FUND_DATASET_TOOLS = frozenset(
     {
         "private_fund_dataset_status",
+        "private_fund_knowledge_status",
         "private_fund_dataset_search",
         "private_fund_source_detail",
         "private_fund_dataset_memo",

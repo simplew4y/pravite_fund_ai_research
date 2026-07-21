@@ -28,12 +28,15 @@ import {
   RotateCcwIcon,
   SearchIcon,
   Trash2Icon,
+  UploadCloudIcon,
   UploadIcon,
 } from "lucide-react";
 
 import { PrivateFundCreateProjectDialog } from "@/components/private-fund/PrivateFundCreateProjectDialog";
+import { PrivateFundGlobalUploadDialog } from "@/components/private-fund/PrivateFundGlobalUploadDialog";
 import { PrivateFundUploadDialog } from "@/components/private-fund/PrivateFundUploadDialog";
 import { usePrivateFundDocumentUpload } from "@/components/private-fund/usePrivateFundDocumentUpload";
+import { usePrivateFundGlobalUpload } from "@/components/private-fund/usePrivateFundGlobalUpload";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -415,6 +418,7 @@ export function PrivateFundCorpusSection({
   const project = projectQuery.data?.project;
   const files = projectQuery.data?.files ?? EMPTY_FILES;
   const upload = usePrivateFundDocumentUpload(selectedDatasetId);
+  const globalUpload = usePrivateFundGlobalUpload();
   const deleteProject = useDeletePrivateFundProject();
   const deleteFiles = useDeletePrivateFundFiles(selectedDatasetId);
   const createFolder = useCreatePrivateFundSourceFolder(selectedDatasetId);
@@ -755,37 +759,6 @@ export function PrivateFundCorpusSection({
     );
   }
 
-  // Empty workspace: still show a clear entry to create the first project.
-  // Previously we returned null here, which hid 新建研究项目 entirely after
-  // a clean install / wiped AppData.
-  if (!selectedDatasetId && projects.length === 0 && !projectsLoading) {
-    return (
-      <section className="mb-3" data-testid="private-fund-corpus-section">
-        <PrivateFundCreateProjectDialog
-          open={createProjectOpen}
-          onOpenChange={setCreateProjectOpen}
-          onCreated={(created) => switchProject(created.datasetId)}
-        />
-        <div className="rounded-lg border border-dashed border-border/80 bg-muted/20 px-3 py-4">
-          <p className="text-sm font-medium text-foreground">还没有研究项目</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            创建一个项目后即可上传资料、建立索引并开始研究对话。
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            className="mt-3"
-            data-testid="private-fund-create-project-empty"
-            onClick={() => setCreateProjectOpen(true)}
-          >
-            <PlusIcon className="size-3.5" />
-            新建研究项目
-          </Button>
-        </div>
-      </section>
-    );
-  }
-
   return (
     <section className="mb-3" data-testid="private-fund-corpus-section">
       <PrivateFundCreateProjectDialog
@@ -794,6 +767,21 @@ export function PrivateFundCorpusSection({
         onCreated={(created) => switchProject(created.datasetId)}
       />
       <PrivateFundUploadDialog {...upload.dialogProps} />
+      <PrivateFundGlobalUploadDialog
+        open={globalUpload.open}
+        batch={globalUpload.batch}
+        message={globalUpload.message}
+        projects={projects}
+        uploading={globalUpload.isUploading}
+        processing={globalUpload.isProcessing}
+        routing={globalUpload.isRouting}
+        progressPercent={globalUpload.progressPercent}
+        progressLabel={globalUpload.progressLabel}
+        onOpenChange={globalUpload.setOpen}
+        onSelectFiles={globalUpload.selectFiles}
+        onRoute={globalUpload.routeItem}
+        onStartAnotherBatch={globalUpload.startAnotherBatch}
+      />
       <Dialog
         open={projectDeleteOpen}
         onOpenChange={(open) => !deleteProject.isPending && setProjectDeleteOpen(open)}
@@ -888,6 +876,31 @@ export function PrivateFundCorpusSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Button
+        type="button"
+        variant="secondary"
+        data-testid="private-fund-global-upload-button"
+        className="mb-2 h-auto w-full justify-start gap-2 rounded-lg px-2.5 py-2 text-left"
+        onClick={globalUpload.openDialog}
+      >
+        {globalUpload.isUploading || globalUpload.isProcessing ? (
+          <Loader2Icon className="size-4 shrink-0 animate-spin text-primary" />
+        ) : (
+          <UploadCloudIcon className="size-4 shrink-0 text-primary" />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-semibold">统一上传资料</span>
+          <span className="block truncate text-[10px] font-normal text-muted-foreground">
+            {globalUpload.progressLabel}
+          </span>
+        </span>
+        {globalUpload.attentionCount > 0 ? (
+          <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">
+            {globalUpload.attentionCount} 待确认
+          </span>
+        ) : null}
+      </Button>
 
       <div className="flex min-h-9 items-center gap-1">
         <Popover open={projectPickerOpen} onOpenChange={setProjectPickerOpen}>

@@ -48,6 +48,8 @@ except ImportError:
 try:
     from .document_classifier import (  # type: ignore
         CLASSIFIER_VERSION,
+        LEGACY_DOCUMENT_TYPE_MAP,
+        TAXONOMY_VERSION,
         ClassificationChatClient,
         DocumentClassification,
         build_document_preview,
@@ -56,6 +58,8 @@ try:
 except ImportError:
     from document_classifier import (  # type: ignore
         CLASSIFIER_VERSION,
+        LEGACY_DOCUMENT_TYPE_MAP,
+        TAXONOMY_VERSION,
         ClassificationChatClient,
         DocumentClassification,
         build_document_preview,
@@ -191,7 +195,7 @@ class DocumentIngestResult:
     parser_version: str = ""
     parser_metadata: dict[str, Any] = field(default_factory=dict)
     lifecycle_state: str = "active"
-    doc_type: str = "unknown"
+    doc_type: str = "other"
     doc_subtype: str = ""
     doc_type_confidence: float = 0.0
     classification_status: str = "needs_review"
@@ -255,6 +259,46 @@ def ensure_global_schema(conn: sqlite3.Connection) -> None:
             active_dataset_id TEXT,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS private_fund_upload_batches (
+            batch_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            file_count INTEGER NOT NULL DEFAULT 0,
+            message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            finished_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS private_fund_upload_items (
+            item_id TEXT PRIMARY KEY,
+            batch_id TEXT NOT NULL,
+            original_filename TEXT NOT NULL,
+            staged_path TEXT NOT NULL,
+            file_type TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            checksum TEXT NOT NULL,
+            status TEXT NOT NULL,
+            company_name TEXT,
+            company_ticker TEXT,
+            company_confidence REAL NOT NULL DEFAULT 0,
+            company_detection_method TEXT,
+            matched_dataset_id TEXT,
+            project_match_confidence REAL NOT NULL DEFAULT 0,
+            project_match_method TEXT,
+            candidate_projects_json TEXT,
+            pipeline_job_id TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(batch_id) REFERENCES private_fund_upload_batches(batch_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_private_fund_upload_items_batch
+            ON private_fund_upload_items(batch_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_private_fund_upload_items_status
+            ON private_fund_upload_items(status, updated_at);
         """
     )
     conn.execute(
@@ -695,6 +739,8 @@ def _ensure_collection_schema_migrations(conn: sqlite3.Connection) -> None:
         },
     )
     _migrate_document_versions(conn)
+    _migrate_document_taxonomy(conn)
+    _repair_metric_fact_periods(conn)
     conn.executescript(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_logical_version
@@ -705,6 +751,55 @@ def _ensure_collection_schema_migrations(conn: sqlite3.Connection) -> None:
             ON documents(dataset_id, source_root, source_relpath);
         """
     )
+
+
+def _migrate_document_taxonomy(conn: sqlite3.Connection) -> None:
+    """Collapse legacy primary types into the three-category v2 taxonomy."""
+
+    rows = conn.execute(
+        """
+        SELECT doc_id, doc_type, classification_metadata_json
+        FROM documents
+        WHERE COALESCE(classification_taxonomy_version, '') <> ?
+           OR COALESCE(doc_type, '') NOT IN ('financial_valuation_data',
+                                             'meeting_third_party', 'other')
+        """,
+        (TAXONOMY_VERSION,),
+    ).fetchall()
+    changed_at = now_iso()
+    for row in rows:
+        legacy_type = str(row["doc_type"] or "unknown").strip().lower()
+        doc_type = LEGACY_DOCUMENT_TYPE_MAP.get(legacy_type, "other")
+        try:
+            metadata = json.loads(row["classification_metadata_json"] or "{}")
+            if not isinstance(metadata, dict):
+                metadata = {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            metadata = {}
+        metadata.update(
+            {
+                "doc_type": doc_type,
+                "legacy_doc_type": legacy_type,
+                "taxonomy_version": TAXONOMY_VERSION,
+                "classifier_version": CLASSIFIER_VERSION,
+            }
+        )
+        conn.execute(
+            """
+            UPDATE documents
+            SET doc_type=?, classification_taxonomy_version=?, classifier_version=?,
+                classification_metadata_json=?, updated_at=?
+            WHERE doc_id=?
+            """,
+            (
+                doc_type,
+                TAXONOMY_VERSION,
+                CLASSIFIER_VERSION,
+                dumps_json(metadata),
+                changed_at,
+                row["doc_id"],
+            ),
+        )
 
 
 def _location_id(chunk_id: str, loc_index: int, display: str) -> str:
@@ -1041,7 +1136,7 @@ def _document_result_from_row(conn: sqlite3.Connection, row: sqlite3.Row) -> Doc
         parser_version=str(row["parser_version"] or ""),
         parser_metadata=parser_metadata,
         lifecycle_state=str(row["lifecycle_state"] or "active"),
-        doc_type=str(row["doc_type"] or "unknown"),
+        doc_type=str(row["doc_type"] or "other"),
         doc_subtype=str(row["doc_subtype"] or ""),
         doc_type_confidence=float(row["doc_type_confidence"] or 0),
         classification_status=str(row["classification_status"] or "needs_review"),
@@ -1635,6 +1730,8 @@ def _period_from_label(label: str) -> str:
     patterns = [
         r"(?<![\d.])([1-4]Q\s*20\d{2})(?![\d.])",
         r"(?<![\d.])(20\d{2}\s*[1-4]Q)(?![\d.])",
+        r"(?<![\d.])(Q[1-4]\s*[-/. ]?\s*20\d{2})(?![\d.])",
+        r"(?<![\d.])(Q[1-4]\s*[-/. ]?\s*\d{2})(?![\d.])",
         r"(?<![\d.])(FY\s*20\d{2})(?![\d.])",
         r"(?<![\d.])([1-4]Q\s*\d{2})(?![\d.])",
         r"(?<![\d.])(FY\s*\d{2})(?![\d.])",
@@ -1643,8 +1740,70 @@ def _period_from_label(label: str) -> str:
     for pattern in patterns:
         match = re.search(pattern, label, flags=re.IGNORECASE)
         if match:
-            return normalize_text(match.group(1))
+            period = normalize_text(match.group(1))
+            year_match = re.search(r"(?<!\d)(20\d{2}|\d{2})(?!\d)", period)
+            if year_match:
+                year = int(year_match.group(1))
+                if year < 100:
+                    year = 1900 + year if year >= 70 else 2000 + year
+                if not 1990 <= year <= 2050:
+                    continue
+            return period
     return ""
+
+
+def _repair_metric_fact_periods(conn: sqlite3.Connection) -> None:
+    """Rebuild fact periods from column headers after period-parser upgrades."""
+
+    quarter_headers: dict[tuple[str, str, int], list[tuple[int, str]]] = {}
+    for cell in conn.execute(
+        """
+        SELECT doc_id, sheet_name, row_index, col_index, display_value
+        FROM excel_cells
+        WHERE display_value IS NOT NULL AND display_value <> ''
+        """
+    ):
+        display = str(cell["display_value"] or "")
+        period = _period_from_label(display)
+        if not period or not re.search(r"(?:[1-4]\s*Q|Q\s*[1-4])", period, re.IGNORECASE):
+            continue
+        key = (str(cell["doc_id"]), str(cell["sheet_name"]), int(cell["col_index"]))
+        quarter_headers.setdefault(key, []).append((int(cell["row_index"]), period))
+    for headers in quarter_headers.values():
+        headers.sort()
+
+    rows = conn.execute(
+        """
+        SELECT f.fact_id, f.doc_id, f.sheet_name, f.period AS fact_period,
+               c.cell_id, c.period AS cell_period, c.row_index, c.col_index, c.col_label
+        FROM metric_facts f
+        JOIN excel_cells c
+          ON c.doc_id=f.doc_id AND c.sheet_name=f.sheet_name AND c.cell_ref=f.cell_ref
+        """
+    ).fetchall()
+    for row in rows:
+        direct = _period_from_label(str(row["col_label"] or ""))
+        period = direct if re.search(r"(?:[1-4]\s*Q|Q\s*[1-4])", direct, re.IGNORECASE) else ""
+        if not period:
+            key = (str(row["doc_id"]), str(row["sheet_name"]), int(row["col_index"]))
+            preceding = [
+                value
+                for header_row, value in quarter_headers.get(key, [])
+                if header_row <= int(row["row_index"])
+            ]
+            period = preceding[-1] if preceding else ""
+        if not period:
+            period = direct or _period_from_label(str(row["fact_period"] or ""))
+        if str(row["fact_period"] or "") != period:
+            conn.execute(
+                "UPDATE metric_facts SET period=? WHERE fact_id=?",
+                (period or None, row["fact_id"]),
+            )
+        if str(row["cell_period"] or "") != period:
+            conn.execute(
+                "UPDATE excel_cells SET period=? WHERE cell_id=?",
+                (period or None, row["cell_id"]),
+            )
 
 
 def _looks_like_period_label(label: str) -> bool:
@@ -2317,7 +2476,7 @@ def _fallback_classification(
     error: str = "",
 ) -> DocumentClassification:
     classification = DocumentClassification(
-        doc_type="unknown",
+        doc_type="other",
         confidence=0.0,
         company_name=company_name,
         company_ticker=company_ticker,
@@ -2325,7 +2484,7 @@ def _fallback_classification(
         classification_status="needs_review",
         method="classifier_fallback",
         company_method="inherited_project" if company_name else "not_detected",
-        evidence=["文档分类器未能完成，保留为 unknown 等待复核"],
+        evidence=["文档分类器未能完成，归入其他并等待复核"],
     )
     classification.llm_error = error[:500]
     return classification

@@ -60,6 +60,9 @@ const typeLabels: Record<string, string> = {
 };
 
 const documentTypeLabels: Record<string, string> = {
+  financial_valuation_data: "财报与估值数据",
+  meeting_third_party: "会议与第三方信息",
+  other: "其他",
   financial_report: "财报",
   annual_report: "年报",
   interim_report: "中报",
@@ -97,16 +100,15 @@ const documentTypeLabels: Record<string, string> = {
   company_profile: "公司简介",
   product_material: "产品资料",
   strategy_material: "战略资料",
-  other: "其他资料",
   unknown: "待识别",
 };
 
 function documentType(asset: PrivateFundAsset): string {
   if (asset.assetType !== "document") return "";
-  const subtype = asset.metadata.doc_subtype;
-  if (typeof subtype === "string" && subtype) return subtype;
   const type = asset.metadata.doc_type;
-  return typeof type === "string" && type ? type : "unknown";
+  if (typeof type === "string" && type) return type;
+  const subtype = asset.metadata.doc_subtype;
+  return typeof subtype === "string" && subtype ? subtype : "other";
 }
 
 function assetTypeLabel(asset: PrivateFundAsset): string {

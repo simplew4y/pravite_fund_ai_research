@@ -236,7 +236,7 @@ PDF Memo 在资产详情中通过项目 Memo 文件接口直接嵌入浏览器 P
 
 ## 输出 Skills
 
-Claude Native 内置 Agent bundle 携带四个正式 Skill：
+📝 Claude Native 内置 Agent bundle 携带七个正式 Skill：
 
 | Skill | 触发场景 | 主要产物 |
 |---|---|---|
@@ -244,8 +244,11 @@ Claude Native 内置 Agent bundle 携带四个正式 Skill：
 | `private-fund-node` | 把用户勾选的信息生成可复用节点 | 不可变节点版本、证据关系、父节点关系 |
 | `private-fund-report` | 把勾选节点汇总为 FinRobot 对齐的长期研究基线 | Markdown、HTML、PDF、JSON、图表和证据索引 |
 | `private-fund-report-update` | 用新节点滚动更新已有长期报告 | 新报告版本、`revision_of`、变更日志 |
+| 📝 `private-fund-knowledge-base` | 维护版本语义、质量门和 Obsidian 投影状态 | 可读版本交接、证据覆盖和冲突状态 |
+| 📝 `private-fund-valuation-metrics` | 识别估值模型五指标与估值日 | 固定五指标、估值日、证据 ID、置信度和警告 JSON |
+| 📝 `private-fund-valuation-impacts` | 分析其他资料对当前估值的传导影响 | 方向、期间、置信度、受影响输入、待验证事项和证据 ID |
 
-Skills 存放在 `omnigent/omnigent/resources/private_fund_skills/`，服务启动时打包进 `claude-native-ui`。📝 当前 bundle 显式声明十三个 `private_fund_*` 业务工具；加上按 spec 自动注册的框架工具，`omnigent` MCP Server 在活动回合的完整工具面为 41 个。详细清单见 [`private_fund_skills_and_mcp_tools.md`](private_fund_skills_and_mcp_tools.md)。自定义第三方 API Agent 只有在自己的 spec 中声明对应 builtins 时才会得到相同业务工具面。
+Skills 存放在 `omnigent/omnigent/resources/private_fund_skills/`，服务启动时打包进 `claude-native-ui`。📝 当前 bundle 显式声明十四个 `private_fund_*` 业务工具；加上按 spec 自动注册的框架工具，`omnigent` MCP Server 在活动回合的完整工具面为 42 个。详细清单见 [`private_fund_skills_and_mcp_tools.md`](private_fund_skills_and_mcp_tools.md)。自定义第三方 API Agent 只有在自己的 spec 中声明对应 builtins 时才会得到相同业务工具面。
 
 ## SQLite
 
@@ -313,6 +316,53 @@ MVP 边界：原始 Excel 始终是不可变证据；不执行 VBA、不调用 E
 - 📝 API 为 `GET /private-fund/projects/{dataset_id}/valuation-models/{series_id}/versions/{model_version_id}/overview`；工作台在版本比较区上方展示三表覆盖、关键估值卡、核心走势和可横向滚动的报表。
 - 📝 真实 `300274 v44.xlsx` 回归识别 11 个 Sheet、11,160 条候选事实、三表 3/3、6 条走势和 6 个关键估值指标，期间为 2020–2029；原始文件未改写。
 
+### 📝 五指标模型—真实值分析（2026-07-20）
+
+估值跟踪的默认决策界面收敛为五项固定指标：单季净利润增速、单季毛利率环比变化、Forward PE、近 20 日日均成交额、单季营收增速环比。模型侧只读取 Pipeline 已持久化的 `metric_facts`；季度指标使用单季口径，其中“单季营收增速环比”定义为本季度营收同比增速减去上一季度营收同比增速。真实侧通过可配置 API 建立带 provider、期间、观察时间和来源的不可变快照。
+
+- 📝 项目文件上传接口在保存成功后由服务端直接排队增量 Pipeline；前端消费返回的 `job`，不再重复发起第二个 Pipeline。Pipeline 完成后同时排队模型快照和 `valuation_context_refresh`，独立 Valuation Worker 也用当前文档指纹发现旁路导入。
+- 📝 `TUSHARE_TOKEN` / `TUSHARE_API_TOKEN` 可提供 A 股利润表和日成交数据；`PRIVATE_FUND_MARKET_DATA_API_URL` 可接入返回五项统一口径的内部/第三方接口。Forward PE 必须来自显式 Forward/NTM 一致预期，未配置一致预期源时显示“暂不可用”，禁止用 PE TTM 或普通 Current PER 替代。
+- 📝 三项增长/毛利指标按百分点差距预警，Forward PE 和成交额按相对差距预警；缺少模型值或真实值时状态为 incomplete，不生成预警。默认关注/重大阈值分别为净利润增速 10/20pp、毛利率变化 1/2pp、Forward PE 15%/30%、成交额 20%/40%、营收增速环比 10/20pp。
+- 📝 财报、会议纪要和研究报告等非估值模型不会写入模型值或真实值，也不会直接触发估值预警；它们会生成带 `document:` evidence 的辅助分析卡片，并作为“其他资料对估值的综合影响”Agent 的证据输入，用于解释模型假设、差异和潜在估值传导。
+- 📝 新增 `valuation_metric_model_values`、`valuation_market_snapshots`、`valuation_metric_actual_values`、`valuation_metric_comparisons` 和 `valuation_context_cards`；API 在模型 series 的 `metric_analysis` 中按固定顺序返回五项比较、数据源状态和辅助卡片，并另行返回只含 `model_actual_gap` 的 `metric_alerts`。
+- 📝 “其他资料对估值的综合影响”已从阳光电源前端硬编码迁移为真实 Agent 链路：`private-fund-valuation-impacts` 从当前项目的非模型文档 chunks 生成方向、期间、置信度、估值传导、受影响输入和待验证事项，服务端只接受存在于证据包的 `chunk:` IDs。
+- 📝 新增 `valuation_impact_agent_runs` 与 `valuation_impact_cards`，按模型版本、资料指纹和提取器版本缓存；资料变化或版本升级后重新生成，失败和无证据状态可审计，不回退到模拟卡片。API 在 `metric_analysis.valuation_impacts` 返回运行状态与结构化卡片。
+- 📝 真实 `300274 v44.xlsx` 隔离回归完成：模型 Pipeline 产生 11,160 条候选事实，可直接衍生 2024Q2 的单季净利润增速、单季毛利率环比变化和单季营收增速环比；文件未包含可信的显式 Forward PE 与 20 日成交额时保持缺失，不从普通 Current PER 猜测。
+
+### 📝 Tushare 真实数据与自动更新机制（2026-07-21）
+
+生产比价采用 Python Provider，不使用 Claude Skill 直接拉行情。Skill 继续负责工作簿语义和证据识别；真实数据由后台代码负责鉴权、限流、缓存、重试、快照和审计，保证无人值守时仍具有确定性。
+
+- 📝 受管服务启动时读取项目根目录下被 Git 忽略的 `.env`；仓库只保存无密钥的 `.env.example`。当前兼容 Tushare endpoint 已通过 `stock_basic`、`income` 和 `daily` 真实调用，Token 不写入源码、日志、文档或数据库。
+- 📝 新文件完成入库后立即刷新；存量项目由 Valuation Worker 按 `Asia/Shanghai` 每 60 分钟投递一次 `market_data_refresh`。任务以本地小时为幂等键，不会在 5 秒轮询中重复请求行情。
+- 📝 账号上限为 150 次/分钟；进程级最小请求间隔默认 0.45 秒，同一公司结果缓存 300 秒。代理的 gzip 响应与 307 备用节点跳转已兼容，传输失败最多重试 3 次，任务层继续使用 30 秒、2 分钟、10 分钟退避。
+- 📝 `hybrid` 路由对 A 股使用 Tushare 财务和日线，对港股保留 AKShare 行情兜底；其他市场直接返回 unavailable，不向 A 股接口发送无效代码。Forward PE 仍必须由独立一致预期 Provider 提供。
+- 📝 三项季度指标只有模型期间与真实值期间完全一致时才计算差距。期间缺失或不一致时保留两边数值，状态为 `period_mismatch`，不生成预警；此前同指标的活动预警会自动关闭。
+- 📝 阳光电源正式项目已保存 Tushare 快照：真实财务期间为 2026Q1，成交额截至 2026-07-20。当前模型季度值为 2024Q2，因此界面会明确显示期间不一致，不再产生跨期伪预警。
+
+### 📝 三分类收敛与五指标识别修复（2026-07-21）
+
+资料库面向用户的业务分类收敛为三类：`财报与估值数据`、`会议与第三方信息`、`其他`。财报、业绩、估值模型和结构化经营/市场数据进入第一类；会议纪要、调研纪要、券商研报、演示材料、公告及公司资料进入第二类；无法可靠归入前两类的内容进入第三类。原有细分类继续保存在 `doc_subtype` 中，供模型发现、研究提示和兼容迁移使用，但不再扩张用户可见分类。
+
+- 📝 分类器 taxonomy 升级到 v2；旧 `doc_type` 会原位映射到三类，资料目录同步迁移，人工目录和人工移动保持不变。
+- 📝 估值模型发现不再只依赖旧的 `doc_type=valuation_model`，同时检查估值细分类和 Excel 工作簿结构标记，修复 NVIDIA 等模型因顶层分类变化而漏识别的问题。
+- 📝 Excel 期间识别补充 `Q1-23`、`4Q 23` 等格式，并将可接受年份限制在 1990–2050；事实优先继承同列最近季度表头，避免 `2083` 等数值片段成为伪期间。
+- 📝 五指标别名覆盖 Total/Group Revenue、Sales、Net Profit/Loss to Shareholder、Gross Margin、Total COGS/Cost 等常见写法；结合 `%` 单位区分毛利额与毛利率，并排除差异、校验和 variance 行。
+- 📝 六个现有项目均重新迁移并刷新：阳光电源识别 3 项模型指标，Horizon、Formula One、Porsche 各 2 项，Hermès 1 项，NVIDIA 3 项；缺少显式 Forward PE、模型成交额或可靠单季数据时继续返回 incomplete，不做替代推算。
+- 📝 AKShare 已为阳光电源和 Horizon Robotics 提供近 20 日日均成交额；当前适配器只覆盖 A/H 股，因此 `.OQ`、`.PA`、`.DE` 项目会保存明确的 Provider 失败原因，等待后续接入对应市场和一致预期源。
+
+### 📝 Skill 驱动的指标与估值日识别（2026-07-21）
+
+新增 `private-fund-valuation-metrics` Skill，把不同 Excel 模板中的语义映射交给 Agent，同时保留确定性安全边界。Valuation Worker 从当前模型版本选取季度 `metric_facts`、显式 Forward PE/成交额候选、估值日期单元格和文件元数据，读取 Skill 及其 JSON Schema 后调用现有 LiteLLM；模型不能直接读取文件系统或补充外部事实。
+
+- 📝 Agent 必须按固定顺序返回估值日、目标季度和五项指标；每项包含数值、单位、期间、状态、置信度、方法、来源、evidence IDs 和推导式。
+- 📝 服务端只接受 1990–2050 的 ISO 日期、有限且在业务范围内的数值、最低置信度和当前证据包内的 `fact:`/`cell:`/`document:` ID；衍生指标至少需要两个证据输入。
+- 📝 Agent 只负责选择指标语义和证据；同比、环比及毛利率由服务端使用所选 facts 重新计算，不信任模型心算。重算结果与确定性结果一致时采用 Agent 格式化输出；冲突时保留确定性值并标记 `agent_conflict_deterministic_fallback`。
+- 📝 每个模型版本、提取器版本和目标期间的结果写入 `valuation_metric_agent_extractions`，成功结果复用缓存，不重复调用模型；原始响应只保留在数据库审计字段，不通过 API 暴露。
+- 📝 估值跟踪 API 在 `metric_analysis.skill_extraction` 返回已校验的固定结构、实际采用的指标键、冲突键和错误状态；Agent 识别的估值日同时进入目标价与真实价格比较，并记录来源和证据。
+- 📝 六个正式项目首轮验证完成：阳光电源采用 Agent 选择的 3 项证据，Horizon 2 项，Formula One 1 项，NVIDIA 1 项；Hermès 和 Porsche 的 Agent 候选未通过固定公式或证据门，原有确定性指标保持不变。六个估值日分别为 `2022-10-26`、`2025-08-06`、`2025-06-11`、`2025-06-30`、`2025-07-15`、`2025-07-30`。
+- 📝 当 Agent 只引用文档级证据时，服务端会把输出日期与文件名中的完整年月日对账；Formula One 和 Porsche 的粗粒度 `document_date=2025-01-01` 已分别纠正为 `2025-06-11` 和 `2025-07-30`。显式工作簿日期单元格仍优先。
+
 ## 📝 Agent 估值分析与一键派生（2026-07-15）
 
 不同公司的估值模型可能采用 DCF、相对估值、SOTP 或自定义模板，单靠固定字段对齐无法覆盖方法变化与跨格式语义。当前实现因此采用“确定性版本底座 + Agent 解释层 + 受控 Excel 派生层”：结构化快照继续负责版本、公式和原始证据的可重复比较，Agent 负责跨格式理解、结论、风险、证据链和修改建议，二者不互相替代。
@@ -338,3 +388,66 @@ HTTP API 新增 Agent 分析创建/读取、派生模型创建和派生文件下
 - 📝 派生记录保存资源文件名、Pipeline job、处理状态、最终 `doc_id`、加入时间和错误信息；页面状态覆盖“未加入 / 排队 / 索引中 / 已加入 / 失败”。
 - 📝 重复点击会复用仍在执行的 Pipeline job；相同 checksum 已经入库时直接返回现有资源版本，不重复建档。
 - 📝 Pipeline 完成后自动刷新项目、资料来源、统一资产库和估值跟踪数据；失败时保留派生文件与错误，可从同一按钮重试。
+
+## 📝 全局资料上传与公司自动归类（2026-07-20）
+
+左侧项目选择器上方新增“统一上传资料”入口，允许一次选择来自不同公司的多个文件，不要求先进入某个研究项目。原项目标题行右侧的上传按钮、`POST /v1/private-fund/projects/{dataset_id}/files` 和项目级索引流程继续保留，适合用户已经明确资料归属时直接上传。
+
+全局入口使用独立的持久化批次：文件先分块写入数据集工作区的 `_inbox/<batch_id>/`，单文件限制 256 MiB、单批次限制 1 GiB，并记录 SHA-256。`datasets.sqlite3` 中的 `private_fund_upload_batches` 和 `private_fund_upload_items` 保存识别公司、股票代码、候选项目、匹配方法、置信度、Pipeline job 和错误，页面刷新后仍可恢复待确认或处理中的批次。
+
+公司路由先复用业务文档预览与受控分类器，再结合项目 `company_name`、`company_ticker`、项目名称、可选 `metadata_json.company_aliases` 以及文件名信号评分。只有第一候选不低于 0.92、且领先第二候选至少 0.12 时才自动归类；一家公司对应多个项目、识别不到项目或候选过于接近时进入 `needs_review`，由用户从全部项目中选择。该保守门槛避免把券商、审计机构或文档发布方误当成标的公司。
+
+自动或人工确定项目后，文件原子复制到既有 `_uploads/<dataset_id>/`，同一 checksum 直接标记重复；其他文件按目标项目合并运行现有非重置增量 Pipeline。Pipeline 仍执行第二次项目公司冲突检查，冲突文件保留但不进入检索索引。批次 API 包括：
+
+- 📝 `POST /v1/private-fund/uploads`：创建无项目上下文的全局上传批次。
+- 📝 `GET /v1/private-fund/upload-batches` 与 `GET /v1/private-fund/upload-batches/{batch_id}`：恢复最近批次和逐文件状态。
+- 📝 `GET /v1/private-fund/upload-items?status=needs_review`：读取待确认资料。
+- 📝 `POST /v1/private-fund/upload-items/{item_id}/route`：人工选择项目并继续索引。
+
+前端逐文件展示上传、公司识别、候选项目、人工确认、索引、重复、完成和失败状态；一个批次可以分别归入多个项目，完成后只刷新受影响项目，不强制切换当前研究上下文。
+
+### 📝 自动创建项目与后台进度（2026-07-21）
+
+📝 产品约定调整为“一家公司一个项目，用户只负责上传”。新批次不再要求公司预先存在于项目列表，也不因同公司历史项目重复而停下来让用户选择；系统先识别整批资料、按公司名称或股票代码聚合，再选择该公司的规范项目。已有多个同公司项目时使用最早创建的规范项目，并补齐公司别名；没有匹配项目时自动创建项目。只有无法得到高置信度公司身份的文件才进入 `needs_review`。
+
+📝 公司身份同时使用受控正文分类和结构化文件名。文件名可识别 `时间戳_公司_股票.市场_日期`、中文公司名加六位代码、中文公司名加报告日期，以及只有六位股票代码的模型文件；整批聚合允许“只有公司名”和“只有股票代码”的文件通过第三份同时包含二者的资料合并到同一项目。正文识别与文件名一致时保留更完整的公司法定名称；明显冲突时优先采用高置信度结构化文件名，避免免责声明中的券商或审计机构误建项目。
+
+📝 `POST /v1/private-fund/uploads` 完成文件落盘和批次持久化后立即返回 `202`，公司识别、项目创建、路由和增量索引在服务端后台继续。前端独立轮询批次 API，统一上传入口和弹窗同步显示已处理数量、总数、百分比及逐文件状态；关闭弹窗不会取消任务，页面重新加载后会从持久化批次列表恢复活动任务。上传入口在项目列表为空时仍然可见，因此第一次使用无需手工创建项目。
+
+📝 使用 `test_docs/` 的 8 份真实 PDF/Excel 在隔离工作区验证：系统创建 Formula One Group、Porsche AG、NVIDIA、Horizon Robotics、Hermès 与阳光电源共 6 个项目；阳光电源的 3 份资料全部进入同一个 `300274` 项目，其余公司各进入一个项目。
+
+### 📝 五指标人工核验覆盖层（2026-07-21）
+
+当模板差异导致规则与 Agent 都未采用可核验值时，允许研究员从已入库的 Excel 单元格或事实记录补充人工核验值。人工值单独写入 `valuation_metric_manual_overrides`，刷新顺序为“确定性规则 → Agent Skill → 人工核验”，因此后续自动刷新不会覆盖人工结论；原始工作簿始终不改写。
+
+- 📝 每条人工值必须包含模型版本、指标、数值、单位、期间、精确 evidence IDs、源 Sheet/单元格、推导式、复核人和备注；引用无法在当前模型版本解析或数值越过安全范围时拒绝保存。
+- 📝 API 返回 `manual_metric_keys`、人工核验明细、`model_method=manual_override:source_verified` 和质量状态；页面在数值旁显示“人工核验”，有口径或时点限制时保留 caveat。
+- 📝 首轮人工核验新增 5 项：阳光电源 2023E/FY1 Forward PE `24.37x`；Formula One 2025Q4 单季净利润同比 `-198.23%`；Hermès 2025E/FY1 Forward PE `55.86x`；Porsche 2027Q4 单季净利润同比 `5.48%` 与 2025E/FY1 Forward PE `24.24x`。
+- 📝 六个项目固定五指标由 13/30 提升到 18/30。剩余 12 项缺少可解析的原始证据，继续明确返回 unavailable；尤其模型侧近 20 日日均成交额不使用市场真实成交额反向填充。
+- 📝 阳光电源 PE 使用估值日之前的价格与 2023E EPS，Formula One 为“上年同期亏损、本期盈利”的标准同比公式，Porsche 净利润为预测季度；这三项均标记为“人工核验（有说明）”，不能忽略口径限制。
+
+## 📝 Memo Citation Gate（2026-07-21）
+
+- 📝 完成态 Memo 优先提交结构化 `memo_claims`：每条只包含 `section`、无引用语法的 `text`、`status` 和精确 `evidence_ids`。模型只负责选择证据，服务端负责生成可点击来源和 PDF 纯文本来源标签。
+- 📝 落盘前逐条校验 `chunk:`、`fact:`、`cell:`、`page:`；未知 ID、缺失 ID 以及合法与伪造 ID 混用都不能直接通过。旧 `memo_markdown` 仍兼容，但会按行经过相同门禁。
+- 📝 首轮失败时只允许一次“引用映射修复”，不允许借重试改写观点。仍无法找到直接证据的句子剥离非法引用并追加 `待复核`，同时把完整审计写入相邻的 `*.citation-gate.json`。
+- 📝 Tool 返回 `citation_gate.status`、`attempt_count`、`violations`、`valid_evidence_ids` 和 `needs_review`。Agent 必须读取门禁结果，不能把 `needs_review` 的产物描述为已完全核验。
+
+## 📝 阳光电源真实值统一走 API（2026-07-21）
+
+- 📝 删除估值跟踪前端的 `SUNGROW_TEMPORARY_ACTUALS`、阳光电源识别分支和临时差值重算逻辑；五项真实值统一读取 `metric_analysis.metric_comparisons`。
+- 📝 页面真实值标签统一为“真实值 · API”，不再展示“临时录入”，也不在浏览器端使用公司专属数字兜底。
+- 📝 当前阳光电源真实快照由 Tushare 提供，并按一小时刷新机制更新。单季净利润增速、单季毛利率环比变化、近 20 日日均成交额和单季营收增速环比使用接口结果；数据源未提供的 Forward PE 明确保持 unavailable，不用硬编码补齐。
+- 📝 组件回归测试、TypeScript 检查和 production build 均通过，服务重启后估值与后台 Worker 全部在线。
+
+## 📝 估值五指标历史时间轴（2026-07-21）
+
+- 📝 估值总览接口新增 `metric_analysis.metric_timeline`，每个季度节点都返回同一套五指标、模型值、对应时点 API 真实值、差距和该期预警；原有最新期字段继续兼容。
+- 📝 Tushare 刷新时一次拉取季度财务与日行情历史，将最多 20 个可用季度写入市场快照的 `raw_json.metric_history`；页面切换节点只读取已缓存结果，不会逐次调用上游接口。
+- 📝 时间轴最多展示模型与真实数据合并后的 24 个季度。默认定位最近一个可直接比较的季度，同时保留“跳到最新披露”入口；当前阳光电源默认是 `2024Q2`，最新 API 披露期是 `2026Q1`。
+- 📝 单季净利润增速、毛利率环比变化、近 20 日日均成交额和营收增速环比均按节点日期计算；20 日成交额使用该季度末最后一个完整交易日之前的 20 个交易日，避免把当前值错误复用到历史季度。
+- 📝 Forward PE 只在模型或一致预期数据明确属于该期间时展示；阳光电源 `2023E/FY1` 模型值映射到 `2023Q4`，API 无历史一致预期时保持不可用，不用普通历史 PE 代替。
+- 📝 估值跟踪主区域只渲染这五项数值对比和所选期间差距预警；目标价卡片已移出该界面，其他文件分析仍通过影响卡片与上下文卡片辅助判断。
+- 📝 自动刷新频率保持一小时一次；旧快照没有历史数组时接口仍能回退到最新值，因而无需数据库迁移。
+- 📝 页面优先锚定时间轴中最新的直接可比期；若没有直接可比期，再选择最新同时具备模型值与 API 值的期间，最后才回退到接口默认期或最新披露期。
+- 📝 默认只常显优先期前后各两个季度，较远历史与较新披露分别收进左右折叠区；展开使用轻量位移动效并尊重“减少动态效果”设置，折叠当前远端选中期时自动回到优先期。

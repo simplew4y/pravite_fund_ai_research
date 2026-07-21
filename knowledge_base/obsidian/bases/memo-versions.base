@@ -1,0 +1,79 @@
+filters:
+  and:
+    - 'file.hasTag("private-fund")'
+    - 'managed_by == "omnigent"'
+    - or:
+        - 'entity_type == "memo-series"'
+        - 'entity_type == "memo-version"'
+        - 'entity_type == "memo-change"'
+
+formulas:
+  entry: 'link(file.path, title)'
+
+properties:
+  formula.entry:
+    displayName: "条目"
+  company:
+    displayName: "公司"
+  version_no:
+    displayName: "版本"
+  change_level:
+    displayName: "变化级别"
+  review_state:
+    displayName: "复核"
+  updated_at:
+    displayName: "更新时间"
+  current_version_label:
+    displayName: "当前版本"
+  decision_status:
+    displayName: "阅读状态"
+  evidence_coverage:
+    displayName: "证据覆盖"
+  current_summary:
+    displayName: "当前结论"
+  change_summary:
+    displayName: "变化摘要"
+
+views:
+  - type: table
+    name: "当前 Memo"
+    filters:
+      and:
+        - 'entity_type == "memo-series"'
+    order:
+      - formula.entry
+      - company
+      - current_version_label
+      - decision_status
+      - evidence_coverage
+      - current_summary
+      - updated_at
+
+  - type: table
+    name: "历史版本"
+    filters:
+      and:
+        - 'entity_type == "memo-version"'
+    groupBy:
+      property: series_id
+      direction: ASC
+    order:
+      - formula.entry
+      - version_no
+      - as_of_date
+      - decision_status
+      - evidence_coverage
+      - current_summary
+
+  - type: table
+    name: "需要关注的变化"
+    filters:
+      and:
+        - 'entity_type == "memo-change"'
+        - 'change_level != "none"'
+    order:
+      - formula.entry
+      - company
+      - change_level
+      - change_summary
+      - review_state

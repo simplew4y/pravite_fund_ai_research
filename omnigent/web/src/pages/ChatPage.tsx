@@ -38,7 +38,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { userColor, userColorTint, userInitials } from "@/lib/userBadge";
-import { useNavigate, useParams } from "@/lib/routing";
+import { useNavigate, useParams, useSearchParams } from "@/lib/routing";
 import { isImeCompositionKeyEvent } from "@/lib/ime";
 import {
   Conversation,
@@ -630,6 +630,7 @@ const sessionDrafts = loadDraftsFromStorage();
 export function ChatPage() {
   const { conversationId: urlConvId } = useParams<{ conversationId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const privateFundShell = usePrivateFundShell();
   const { requireConfiguration } = useLlmConfiguration();
@@ -1070,6 +1071,14 @@ export function ChatPage() {
     activeSession?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
     activeConv?.labels?.[PRIVATE_FUND_DATASET_NAME_LABEL_KEY] ??
     privateFundDatasetId;
+  // A newly-created research project has no session labels yet. The project
+  // launcher carries its dataset in the URL until the first question creates
+  // a conversation, so keep that pre-session state inside the same workbench
+  // chrome as established conversations (top Research/Sources tabs + IDE
+  // activity rail) instead of dropping down to the bare landing composer.
+  const privateFundLandingDatasetId = !urlConvId
+    ? searchParams.get("private_fund_project")?.trim() || null
+    : null;
   const projectTokenUsage = useChatStore((state) => state.sessionTokenUsage);
   useEffect(() => {
     if (!privateFundDatasetId) return;
@@ -1286,11 +1295,24 @@ export function ChatPage() {
     />
   );
 
-  // On `/` (no conversation), the composer would let the user POST a
-  // first message and silently create a session — but sessions are
-  // bound 1:1 to a local runner that only the CLI can launch. Show
-  // the CLI instructions instead so users learn the right entry point.
-  if (!urlConvId) return <NewChatLandingScreen />;
+  // On plain `/` (no conversation), keep the normal new-session landing.
+  // A private-fund project URL is the exception: its composer creates the
+  // first research session, but now remains inside the complete workbench
+  // so the project chrome does not disappear while that session is absent.
+  if (!urlConvId) {
+    const landing = <NewChatLandingScreen />;
+    if (!privateFundLandingDatasetId) return landing;
+    return (
+      <PrivateFundResearchWorkbench
+        conversationId=""
+        datasetId={privateFundLandingDatasetId}
+        datasetName={privateFundLandingDatasetId}
+        chat={landing}
+        sidebarOpen={privateFundShell?.sidebarOpen ?? true}
+        onOpenSidebar={privateFundShell?.openSidebar}
+      />
+    );
+  }
 
   // Pick the reconnect dialog's state from liveness. The dialog only
   // opens for the two unreachable variants; `host_offline` carries
@@ -4043,11 +4065,7 @@ function SubagentComposerTray({ label }: { label: string }) {
   );
 }
 
-function PrivateFundContextTray({
-  actions,
-}: {
-  actions: WorkbenchActionContextValue;
-}) {
+function PrivateFundContextTray({ actions }: { actions: WorkbenchActionContextValue }) {
   if (actions.contextAssets.length === 0) return null;
   return (
     <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
@@ -4075,7 +4093,6 @@ function PrivateFundContextTray({
     </section>
   );
 }
-
 
 /**
  * The message-input composer: textarea, attachments, slash-command
@@ -4685,8 +4702,7 @@ export function Composer({
     // send a normal chat turn.
     if (privateFundDatasetId && workbenchActions && composeIntent) {
       if (disabled || hasPendingElicitation || isReadOnly) return;
-      const mode =
-        composeIntent === "memo" ? ("memo" as const) : composeNoteMode;
+      const mode = composeIntent === "memo" ? ("memo" as const) : composeNoteMode;
       workbenchActions.generateAsset(mode, trimmed);
       dirtyRef.current = true;
       setValue("");

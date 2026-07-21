@@ -163,6 +163,14 @@ Agent 检索时应先搜 summary chunk 定位 sheet/region，再查 `metric_fact
 - 📝 `Upload`、`Download`、`Raw Data`、`Bloomberg`、`__FDSCACHE__` 等 Sheet 优先标记为 `raw_upload`，不会因为内容里出现 DCF/WACC 字样而进入估值主表候选。
 - 📝 估值模型总览在入库后消费这些结构化事实，生成与模型版本绑定的三表、趋势、估值指标 JSON 和无脚本 HTML；该阶段不重开工作簿、不执行公式或宏。
 
+### 📝 三类业务资料与季度事实修复（2026-07-21）
+
+- 📝 用户可见 `doc_type` 固定为 `financial_valuation_data`、`meeting_third_party`、`other` 三类，分别展示为“财报与估值数据”“会议与第三方信息”“其他”。
+- 📝 财报、估值模型、会议纪要、研报等原有语义作为 `doc_subtype` 保留；旧数据库升级时原位映射，不要求重新复制或解析原文件。
+- 📝 Excel 估值模型可由 `doc_subtype` 或 `excel_workbooks.workbook_type=valuation_model` 识别，避免顶层三分类丢失模型路由能力。
+- 📝 季度期间支持 `1Q26`、`Q1-23`、`4Q 23` 等表头，并拒绝 1990–2050 以外的伪年份；迁移会依据同列最近季度表头修复既有 `metric_facts.period` 及其单元格位置。
+- 📝 五指标提取结合指标别名、单位和排除词判断；百分比形式的 Gross Profit 可作为毛利率，金额形式仍作为毛利额，Difference/Check/Variance 行不参与计算。
+
 ## 后端接口
 
 新增接口：

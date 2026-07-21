@@ -57,6 +57,9 @@ Browser chat + right-side PDF source panel
 
 | 文档 | 内容 |
 |---|---|
+| [📝 LLM 压力测试与质量回归手册](docs/llm_stress_testing.md) | 一键执行并发阶梯、指令遵循、真实证据溯源、请求隔离、工具准确性并生成本地分析包 |
+| [📝 系统模块机制与新手手册](docs/private_fund_system_modules_and_beginner_guide_20260720.md) | 从模块地图、内部机制到首次启动、完整研究流程、截图、故障排查和安全边界的统一使用指南 |
+| [📝 私募投研 AI 工作台需求文档 V0.1](docs/private_fund_ai_research_prd_v0.1.md) | 基于当前项目整理的产品定位、用户场景、功能需求、优先级、实现状态、验收标准与待评审问题 |
 | [Omnigent + Claude Code Haha 系统架构](docs/omnigent_cc_haha_system_architecture_20260706.md) | Omnigent、cc-haha、LiteLLM、DashScope、本地 PDF QA、Memo PDF、来源点击面板的完整运行链路 |
 | [Omnigent 本地服务运行手册](docs/omnigent_runtime_services.md) | LiteLLM、Server、Host 的统一 tmux 启停、状态检查和故障恢复 |
 | [私募研究工作流实现](docs/private_fund_research_workflow.md) | 真实研究节点、依赖、版本、假设、失效传播和长期报告快照 |
@@ -244,7 +247,7 @@ patches/omnigent_private_fund_integration_20260706.patch
 补丁内容包括：
 
 - `omnigent/CLAUDE.md` 私募研究系统提示词。
-- 内置 Claude Native bundle 中的 `private-fund-memo`、`private-fund-node`、`private-fund-report`、`private-fund-report-update` 四个投研 Skills（源码位于 `omnigent/omnigent/resources/private_fund_skills/`）。
+- 📝 内置 Claude Native bundle 中的 `private-fund-memo`、`private-fund-node`、`private-fund-report`、`private-fund-report-update`、`private-fund-knowledge-base`、`private-fund-valuation-metrics` 六个投研 Skills（源码位于 `omnigent/omnigent/resources/private_fund_skills/`）。
 - Claude Code 启动公告页 `Press Enter to continue` 自动处理。
 - `/v1/private-fund/*` 后端 API。
 - 回答中 `[p.113]` / `10-K p.113, para.1` 自动 linkify。
@@ -261,6 +264,28 @@ git -C omnigent apply ../patches/omnigent_private_fund_integration_20260706.patc
 ```bash
 git -C omnigent apply --reverse --check ../patches/omnigent_private_fund_integration_20260706.patch
 ```
+
+## 📝 LLM 压测与质量回归
+
+快速验证当前模型链路：
+
+```bash
+./scripts/run_llm_stress_test.sh --suite smoke
+```
+
+正式执行并发、内容质量、真实证据溯源和工具调用测试：
+
+```bash
+./scripts/run_llm_stress_test.sh \
+  --suite full \
+  --target proxy \
+  --concurrency 1,2,4,8,16 \
+  --requests-per-level 20
+```
+
+全部内容保存在 `output/llm_stress_runs/<run_id>/`，其中
+`analysis_bundle.zip` 可直接交给 Codex 做容量与失败分析。详情见
+[📝 LLM 压力测试与质量回归手册](docs/llm_stress_testing.md)。
 
 ## 测试
 
@@ -318,6 +343,7 @@ FinSagent/deploy/.memory/
 - FinSagent Research Chat fallback。
 - Omnigent 单聊天框触发私募研究。
 - 点击来源打开右侧 PDF source panel。
+- 📝 服务端 Memo Citation Gate：结构化 claims、证据 ID 白名单校验、服务端引用渲染、一次定向修复、失败后 `待复核` 与本地审计文件。
 
 尚未完成：
 
@@ -325,4 +351,3 @@ FinSagent/deploy/.memory/
 - 多文件、多格式 chunk / index pipeline。
 - Excel、PPT、Word 等格式的统一 Evidence adapter。
 - QA / Memo 全量写入 Personal Memory。
-- 生产级 Memo Citation Gate 和审计链。

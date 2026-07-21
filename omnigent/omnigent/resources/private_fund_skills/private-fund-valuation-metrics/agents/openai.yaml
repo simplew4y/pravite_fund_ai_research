@@ -1,0 +1,4 @@
+interface:
+  display_name: "估值指标识别"
+  short_description: "从估值模型证据识别五项指标、估值日并输出规范 JSON"
+  default_prompt: "Use $private-fund-valuation-metrics to identify valuation metrics and the valuation date from source-backed model evidence."

@@ -195,7 +195,8 @@ export type PrivateFundResearchWorkbenchProps = {
   hasConversationContext?: boolean;
   recentUserMessages?: string[];
   recentAssistantMessages?: string[];
-  onGenerateNode: (prompt: string) => void;
+  /** Available after the first research question creates a conversation. */
+  onGenerateNode?: (prompt: string) => void;
   sidebarOpen?: boolean;
   onOpenSidebar?: () => void;
 };
@@ -402,6 +403,7 @@ export function PrivateFundResearchWorkbench({
   const workflowQuery = usePrivateFundWorkflow(datasetId);
   const assetsQuery = usePrivateFundAssets(datasetId);
   const projectQuery = usePrivateFundProject(datasetId);
+  const resolvedDatasetName = projectQuery.data?.project.name || datasetName;
   const workflow = workflowQuery.data;
   const assetCatalog = assetsQuery.data;
   const [selectedAssetId, setSelectedAssetId] = useState("");
@@ -730,6 +732,10 @@ export function PrivateFundResearchWorkbench({
   const generateNode = useCallback(
     (modeOverride?: PrivateFundGenerationMode, instructionOverride?: string) => {
       if (!workflow) return;
+      if (!onGenerateNode) {
+        setNotice("请先在研究区输入问题并创建会话，再生成研究笔记");
+        return;
+      }
       const mode = modeOverride ?? presentationMode;
       const instruction =
         instructionOverride !== undefined ? instructionOverride : presentationInstruction;
@@ -1070,7 +1076,7 @@ export function PrivateFundResearchWorkbench({
             <div className="min-w-0">
               <p className="text-sm font-semibold">私募研究工作台</p>
               <p className="truncate text-xs text-[var(--pf-ink-secondary)]">
-                {datasetName} · 上下文 {contextAssetIds.length} 项
+                {resolvedDatasetName} · 上下文 {contextAssetIds.length} 项
               </p>
             </div>
           </div>

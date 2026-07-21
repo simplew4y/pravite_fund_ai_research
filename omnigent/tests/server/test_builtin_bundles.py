@@ -80,9 +80,12 @@ def test_claude_native_bundle_contains_private_fund_skills() -> None:
         f"skills/{name}/SKILL.md"
         for name in (
             "private-fund-memo",
+            "private-fund-knowledge-base",
             "private-fund-node",
             "private-fund-report",
             "private-fund-report-update",
+            "private-fund-valuation-impacts",
+            "private-fund-valuation-metrics",
         )
     }
     assert expected <= members
@@ -97,12 +100,16 @@ def test_claude_native_bundle_loads_private_fund_surface(tmp_path: Path) -> None
     )
     assert {skill.name for skill in spec.skills} == {
         "private-fund-memo",
+        "private-fund-knowledge-base",
         "private-fund-node",
         "private-fund-report",
         "private-fund-report-update",
+        "private-fund-valuation-impacts",
+        "private-fund-valuation-metrics",
     }
     assert {tool.name for tool in spec.tools.builtins} >= {
         "private_fund_dataset_status",
+        "private_fund_knowledge_status",
         "private_fund_dataset_search",
         "private_fund_source_detail",
         "private_fund_dataset_memo",

@@ -1171,6 +1171,7 @@ def test_private_fund_builtins_register_only_when_declared() -> None:
     """Generic SDK agents can opt into the structured project tool surface."""
     names = [
         "private_fund_dataset_status",
+        "private_fund_knowledge_status",
         "private_fund_dataset_search",
         "private_fund_source_detail",
         "private_fund_dataset_memo",

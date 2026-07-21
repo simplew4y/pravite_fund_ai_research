@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import unicodedata
 from datetime import datetime
 from html import escape
@@ -186,11 +187,16 @@ _MEMO_SCHEMA: dict[str, Any] = {
         },
         "instructions": {
             "type": "string",
-            "description": "Optional user instructions for this memo, including revision requests.",
+            "description": (
+                "Optional user instructions for this memo, including revision requests."
+            ),
         },
         "conversation_context": {
             "type": "string",
-            "description": "Optional concise summary of relevant chat context and key questions to incorporate.",
+            "description": (
+                "Optional concise summary of relevant chat context and key questions "
+                "to incorporate."
+            ),
         },
         "revision_of": {
             "type": "string",
@@ -199,9 +205,35 @@ _MEMO_SCHEMA: dict[str, Any] = {
         "memo_markdown": {
             "type": "string",
             "description": (
-                "Optional assistant-authored final memo Markdown to render to HTML/PDF. "
-                "Markdown links are flattened to plain source labels in the generated artifacts."
+                "Compatibility input for assistant-authored final Memo Markdown. Prefer "
+                "memo_claims for ordinary claim-based Memos; use Markdown only when the "
+                "requested layout cannot be represented by structured claims. All lines still "
+                "pass Citation Gate before persistence."
             ),
+        },
+        "memo_claims": {
+            "type": "array",
+            "description": (
+                "Preferred structured memo contract. The service validates evidence_ids and "
+                "renders source citations. Each item is one claim; do not put citation syntax "
+                "inside text."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "section": {"type": "string"},
+                    "text": {"type": "string"},
+                    "status": {
+                        "type": "string",
+                        "enum": ["supported", "not_covered", "needs_review"],
+                    },
+                    "evidence_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+                "required": ["section", "text", "status", "evidence_ids"],
+            },
         },
         "key_questions": {
             "type": "array",
@@ -646,7 +678,15 @@ def _project_source_detail_for_agent(
         metric = detail["metric"]
         payload["metric"] = {
             key: metric.get(key)
-            for key in ("name", "period", "value_text", "value_numeric", "unit", "formula", "confidence")
+            for key in (
+                "name",
+                "period",
+                "value_text",
+                "value_numeric",
+                "unit",
+                "formula",
+                "confidence",
+            )
             if metric.get(key) not in (None, "")
         }
 
@@ -681,7 +721,11 @@ def _project_source_detail_for_agent(
                 )
             payload["pdf_pages"] = pages
         if detail.get("cell") and resolved == "excel_window":
-            payload["cell"] = _compact_cell_dict(detail["cell"]) if isinstance(detail["cell"], dict) else detail["cell"]
+            payload["cell"] = (
+                _compact_cell_dict(detail["cell"])
+                if isinstance(detail["cell"], dict)
+                else detail["cell"]
+            )
         cells = detail.get("excel_cells") or []
         if cells and resolved in {"text", "excel_window"}:
             limited = cells[:max_cells]
@@ -745,7 +789,7 @@ def _enforce_payload_budget(payload: dict[str, Any], max_chars: int) -> dict[str
             working.pop(key, None)
             working["truncated"] = True
             working["truncated_fields"] = list(
-                set(list(working.get("truncated_fields") or []) + [key])
+                {*list(working.get("truncated_fields") or []), key}
             )
             encoded = _json(working)
             if len(encoded) <= max_chars:
@@ -772,8 +816,7 @@ def _enforce_payload_budget(payload: dict[str, Any], max_chars: int) -> dict[str
         "truncated": True,
         "hint": "Payload exceeded budget; re-query with smaller top_k or source_detail mode=meta.",
     }
-    minimal = {k: v for k, v in minimal.items() if v is not None}
-    return minimal
+    return {k: v for k, v in minimal.items() if v is not None}
 
 
 def _decode_json(value: str | None, fallback: Any = None) -> Any:
@@ -855,6 +898,38 @@ def _plain_markdown_links(markdown: str) -> str:
     return re.sub(r"\[([^\]\n]+)\]\([^)]+\)", r"\1", markdown)
 
 
+def _memo_claims_to_markdown(raw_claims: list[dict[str, Any]]) -> str:
+    """Render the model's structured claims into gateable Markdown."""
+
+    grouped: dict[str, list[str]] = {}
+    for raw in raw_claims:
+        if not isinstance(raw, dict):
+            continue
+        section = _normalize(raw.get("section")) or "研究结论"
+        text = _normalize(raw.get("text"))
+        if not text:
+            continue
+        status = _normalize(raw.get("status")).lower() or "supported"
+        raw_ids = raw.get("evidence_ids") or []
+        evidence_ids = [
+            _normalize(item)
+            for item in raw_ids
+            if isinstance(item, str) and _normalize(item)
+        ] if isinstance(raw_ids, list) else []
+        if status == "not_covered":
+            line = f"- 资料未覆盖：{text}"
+        elif status == "needs_review":
+            line = f"- {text} **（待复核）**"
+        else:
+            citations = " ".join(f"[{item}]" for item in dict.fromkeys(evidence_ids))
+            line = f"- {text}{f' {citations}' if citations else ''}"
+        grouped.setdefault(section, []).append(line)
+    lines: list[str] = []
+    for section, claims in grouped.items():
+        lines.extend([f"## {section}", "", *claims, ""])
+    return "\n".join(lines).strip()
+
+
 def _markdown_body_to_html(markdown: str) -> str:
     clean = _plain_markdown_links(markdown.strip())
     if not clean:
@@ -863,7 +938,7 @@ def _markdown_body_to_html(markdown: str) -> str:
         from markdown_it import MarkdownIt
 
         return MarkdownIt("commonmark").render(clean)
-    except Exception:  # noqa: BLE001 - fallback keeps artifact generation available.
+    except Exception:
         blocks = []
         for raw in clean.splitlines():
             line = raw.strip()
@@ -1018,7 +1093,7 @@ def _query_terms(query: str) -> list[str]:
         terms.append(seq)
         if len(seq) > 4:
             for size in (2, 3, 4):
-                terms.extend(seq[i : i + size] for i in range(0, len(seq) - size + 1))
+                terms.extend(seq[i : i + size] for i in range(len(seq) - size + 1))
     for cn, synonyms in _TERM_SYNONYMS.items():
         if cn in query_norm:
             terms.extend([cn, *synonyms])
@@ -1291,8 +1366,14 @@ class _DatasetStore:
             "latest_ingest_job": dict(latest_job) if latest_job else None,
             "source_contract": {
                 "pdf": "documents + chunks + chunk_locations + pdf_pages",
-                "excel": "documents + excel_sheets + excel_regions + excel_cells + metric_facts + summary chunks",
-                "evidence_id": "Use chunk:<id>, fact:<id>, or cell:<id> with private_fund_source_detail.",
+                "excel": (
+                    "documents + excel_sheets + excel_regions + excel_cells + "
+                    "metric_facts + summary chunks"
+                ),
+                "evidence_id": (
+                    "Use chunk:<id>, fact:<id>, or cell:<id> with "
+                    "private_fund_source_detail."
+                ),
                 "source_links": "Use markdown_citation when producing clickable source citations.",
             },
         }
@@ -2144,6 +2225,7 @@ class _DatasetStore:
         conversation_context: str = "",
         revision_of: str = "",
         memo_markdown: str = "",
+        memo_claims: list[dict[str, Any]] | None = None,
         key_questions: list[str] | None = None,
         top_k_per_section: int = 5,
     ) -> dict[str, Any]:
@@ -2190,11 +2272,33 @@ class _DatasetStore:
         markdown_path = memo_dir / f"{stem}.md"
         html_path = memo_dir / f"{stem}.html"
         pdf_path = memo_dir / f"{stem}.pdf"
-        if memo_markdown.strip():
+        citation_gate_path = memo_dir / f"{stem}.citation-gate.json"
+        structured_markdown = _memo_claims_to_markdown(memo_claims or [])
+        supplied_markdown = structured_markdown or memo_markdown.strip()
+        citation_gate: dict[str, Any] = {
+            "status": "not_applicable",
+            "attempt_count": 0,
+            "repaired": False,
+            "needs_review": False,
+            "valid_evidence_ids": [],
+            "violations": [],
+        }
+        if supplied_markdown:
+            supplied_markdown, citation_gate, citation_gate_audit = self._gate_memo_markdown(
+                supplied_markdown,
+                info=info,
+                section_payloads=section_payloads,
+            )
+            citation_gate_path.write_text(
+                json.dumps(citation_gate_audit, ensure_ascii=False, indent=2, default=str)
+                + "\n",
+                encoding="utf-8",
+            )
+            citation_gate_path.chmod(0o600)
             markdown_content = self._render_supplied_memo_markdown(
                 info,
                 topic,
-                memo_markdown,
+                supplied_markdown,
                 instructions=instructions,
                 conversation_context=conversation_context,
                 revision_of=revision_of,
@@ -2203,13 +2307,17 @@ class _DatasetStore:
             html = self._render_supplied_memo_html(
                 info,
                 topic,
-                memo_markdown,
+                supplied_markdown,
                 instructions=instructions,
                 conversation_context=conversation_context,
                 revision_of=revision_of,
                 key_questions=clean_key_questions,
             )
-            render_mode = "assistant_supplied_memo_markdown"
+            render_mode = (
+                "assistant_supplied_structured_claims"
+                if structured_markdown
+                else "assistant_supplied_memo_markdown"
+            )
         else:
             markdown_content = self._render_memo_markdown(
                 info,
@@ -2250,7 +2358,9 @@ class _DatasetStore:
                 "revision_of": revision_of,
                 "key_questions": clean_key_questions,
                 "has_memo_markdown": bool(memo_markdown.strip()),
+                "has_memo_claims": bool(structured_markdown),
                 "render_mode": render_mode,
+                "citation_gate": citation_gate,
             },
             section_evidence=section_payloads,
         )
@@ -2272,6 +2382,10 @@ class _DatasetStore:
             "memo_version_no": memo_version["version_no"],
             "revision_of_version_id": memo_version["revision_of_version_id"],
             "tracking_job": memo_version.get("tracking_job"),
+            "citation_gate": citation_gate,
+            "citation_gate_audit_path": (
+                str(citation_gate_path) if supplied_markdown else None
+            ),
             "sections": section_payloads,
             "inputs": {
                 "instructions": instructions,
@@ -2279,15 +2393,123 @@ class _DatasetStore:
                 "revision_of": revision_of,
                 "key_questions": clean_key_questions,
                 "has_memo_markdown": bool(memo_markdown.strip()),
+                "has_memo_claims": bool(structured_markdown),
             },
             "render_mode": render_mode,
             "memo_contract": (
                 "This memo is generated from the structured dataset. The PDF is the user-facing "
                 "artifact and uses plain source labels like file name + page or sheet/range, "
                 "because PDF citations are not expected to be clickable. The assistant may refine "
-                "wording in chat, but should keep source labels intact."
+                "wording in chat, but should keep source labels intact. Retrieved-evidence drafts "
+                "are technical groundwork, not a finished investment memo; a finished memo should "
+                "prefer assistant-authored memo_claims with exact evidence ids."
             ),
         }
+
+    def _gate_memo_markdown(
+        self,
+        markdown: str,
+        *,
+        info: dict[str, Any],
+        section_payloads: list[dict[str, Any]],
+    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        """Run the shared gate before an assistant-authored memo is persisted."""
+
+        src_path = self.project_root / "src"
+        if str(src_path) not in sys.path:
+            sys.path.insert(0, str(src_path))
+        from pdf_research_demo.citation_gate import EvidenceCard, gate_markdown
+
+        cards: dict[str, EvidenceCard] = {}
+        for section in section_payloads:
+            for item in section.get("evidence") or []:
+                evidence_id = str(item.get("evidence_id") or "").strip()
+                if not evidence_id:
+                    continue
+                source = item.get("source") or {}
+                cards[evidence_id] = EvidenceCard(
+                    evidence_id=evidence_id,
+                    excerpt=str(item.get("excerpt") or item.get("summary") or ""),
+                    markdown_citation=str(
+                        item.get("markdown_citation")
+                        or source.get("markdown_citation")
+                        or f"[{evidence_id}]"
+                    ),
+                    source_label=str(
+                        item.get("citation") or source.get("citation") or evidence_id
+                    ),
+                    dataset_id=str(info["dataset_id"]),
+                    company_name=str(info.get("company_name") or ""),
+                )
+
+        def resolve(evidence_id: str) -> EvidenceCard | None:
+            if not re.fullmatch(r"(?:chunk|fact|cell|page):.+", evidence_id):
+                return None
+            try:
+                detail = self.source_detail(
+                    evidence_id=evidence_id,
+                    dataset_id=str(info["dataset_id"]),
+                    context_radius=1,
+                    mode="full",
+                )
+            except Exception:
+                return None
+            source = detail.get("source") or {}
+            excerpt = str(
+                detail.get("content")
+                or (detail.get("cell") or {}).get("display_value")
+                or (detail.get("metric") or {}).get("value_text")
+                or detail.get("citation")
+                or ""
+            )
+            return EvidenceCard(
+                evidence_id=evidence_id,
+                excerpt=excerpt,
+                markdown_citation=str(
+                    detail.get("markdown_citation")
+                    or source.get("markdown_citation")
+                    or f"[{evidence_id}]"
+                ),
+                source_label=str(
+                    detail.get("citation") or source.get("citation") or evidence_id
+                ),
+                dataset_id=str(info["dataset_id"]),
+                company_name=str(info.get("company_name") or ""),
+            )
+
+        repair_client = self._citation_repair_client()
+        result = gate_markdown(
+            markdown,
+            evidence_cards=list(cards.values()),
+            resolver=resolve,
+            repair_client=repair_client,
+            retry_once=repair_client is not None,
+        )
+        safe_audit = result.safe_audit(include_raw=False)
+        full_audit = {
+            **result.safe_audit(include_raw=True),
+            "dataset_id": info["dataset_id"],
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "repair_enabled": repair_client is not None,
+        }
+        return result.markdown, safe_audit, full_audit
+
+    def _citation_repair_client(self) -> Any | None:
+        enabled = os.environ.get("PRIVATE_FUND_CITATION_GATE_RETRY", "").strip().lower()
+        if enabled not in {"1", "true", "yes", "on"}:
+            return None
+        try:
+            src_path = self.project_root / "src"
+            if str(src_path) not in sys.path:
+                sys.path.insert(0, str(src_path))
+            from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+
+            config = load_llm_config(
+                self.project_root / "FinSagent" / "config" / "production.yaml"
+            )
+            return OpenAICompatibleChatClient(config) if config else None
+        except Exception:
+            return None
 
     def _render_memo_markdown(
         self,
@@ -2310,7 +2532,11 @@ class _DatasetStore:
             f"- 生成时间: {datetime.now().isoformat(timespec='seconds')}",
             f"- 证据库: {info['collection_db_path']}",
             "",
-            "> 本 memo 基于最新 private_fund_directory_ingest pipeline 写入的结构化数据库生成。正式 PDF 中的引用使用文件名、页码、Sheet、单元格等纯文本来源标签。",
+            (
+                "> 本 memo 基于最新 private_fund_directory_ingest pipeline 写入的"
+                "结构化数据库生成。正式 PDF 中的引用使用文件名、页码、Sheet、"
+                "单元格等纯文本来源标签。"
+            ),
             "",
         ]
         if revision_of:
@@ -2366,7 +2592,10 @@ class _DatasetStore:
             f"- 生成时间: {datetime.now().isoformat(timespec='seconds')}",
             f"- 证据库: {info['collection_db_path']}",
             "",
-            "> 本 memo 正文由对话上下文和结构化数据集证据综合生成。文件中的引用已转为纯文本来源标签。",
+            (
+                "> 本 memo 正文由对话上下文和结构化数据集证据综合生成。"
+                "文件中的引用已转为纯文本来源标签。"
+            ),
             "",
         ]
         if revision_of:
@@ -2471,7 +2700,10 @@ class _DatasetStore:
                 '<section class="boundary">',
                 "<h2>资料边界</h2>",
                 "<ul>",
-                "<li>PDF 中的来源为纯文本标签；需要交互式跳转时，请回到 Omnigent 聊天中的引用链接。</li>",
+                (
+                    "<li>PDF 中的来源为纯文本标签；需要交互式跳转时，"
+                    "请回到 Omnigent 聊天中的引用链接。</li>"
+                ),
                 "<li>缺少直接证据的判断应视为待复核假设。</li>",
                 "</ul>",
                 "</section>",
@@ -2580,7 +2812,10 @@ class _DatasetStore:
                 "<h2>资料边界</h2>",
                 "<ul>",
                 "<li>当前 memo 只使用本地结构化数据集，不使用旧版直接 PDF QA / memo 链路。</li>",
-                "<li>PDF 中的来源为纯文本标签；需要交互式跳转时，请回到 Omnigent 聊天中的引用链接。</li>",
+                (
+                    "<li>PDF 中的来源为纯文本标签；需要交互式跳转时，"
+                    "请回到 Omnigent 聊天中的引用链接。</li>"
+                ),
                 "<li>缺少直接证据的判断应视为待复核假设。</li>",
                 "</ul>",
                 "</section>",
@@ -2597,7 +2832,8 @@ body {
   margin: 0;
   color: #18202f;
   background: #ffffff;
-  font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC",
+    "Microsoft YaHei", sans-serif;
   font-size: 13px;
   line-height: 1.62;
 }
@@ -2723,13 +2959,13 @@ li {
     def _render_memo_pdf_from_html(self, html: str, pdf_path: Path) -> None:
         try:
             import fitz  # type: ignore[import-not-found]
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise RuntimeError("PyMuPDF is required to render private-fund memo PDFs") from exc
 
         def rectfn(page_num: int, rect_num: int) -> tuple[Any, Any, None]:
             del page_num, rect_num
             mediabox = fitz.paper_rect("a4")
-            content_rect = mediabox + (46, 44, -46, -50)
+            content_rect = mediabox + (46, 44, -46, -50)  # noqa: RUF005
             return mediabox, content_rect, None
 
         writer = fitz.DocumentWriter(str(pdf_path))
@@ -2754,7 +2990,7 @@ class _PrivateFundDatasetBaseTool(Tool):
             payload = _parse_arguments(arguments)
             result = self._invoke(payload, ctx)
             return _json(result)
-        except Exception as exc:  # noqa: BLE001 - tools must return structured errors.
+        except Exception as exc:
             return _json({"error": str(exc), "tool": self.name()})
 
     def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -2770,7 +3006,10 @@ class PrivateFundDatasetStatusTool(_PrivateFundDatasetBaseTool):
 
     @classmethod
     def description(cls) -> str:
-        return "Inspect the active private-fund research dataset stored by the latest SQLite pipeline."
+        return (
+            "Inspect the active private-fund research dataset stored by the latest "
+            "SQLite pipeline."
+        )
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -2785,6 +3024,55 @@ class PrivateFundDatasetStatusTool(_PrivateFundDatasetBaseTool):
     def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
         dataset_id = payload.get("dataset_id")
         return self._store(ctx).status(dataset_id if isinstance(dataset_id, str) else None)
+
+
+class PrivateFundKnowledgeStatusTool(_PrivateFundDatasetBaseTool):
+    """Return the durable Obsidian projection state for one dataset."""
+
+    @classmethod
+    def name(cls) -> str:
+        return "private_fund_knowledge_status"
+
+    @classmethod
+    def description(cls) -> str:
+        return (
+            "Inspect Obsidian projection events, note registry state, conflicts, "
+            "worker health, and configured Vault availability for a private-fund dataset."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": _STATUS_SCHEMA,
+            },
+        }
+
+    def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        from omnigent.server import private_fund_obsidian
+
+        dataset_id = payload.get("dataset_id")
+        store = self._store(ctx)
+        info = store.dataset_info(dataset_id if isinstance(dataset_id, str) else None)
+        health_path = Path(info["workspace_root"]) / ".obsidian-projection-worker.json"
+        worker_health: dict[str, Any] | None = None
+        if health_path.is_file():
+            worker_health = _decode_json(health_path.read_text(encoding="utf-8"), None)
+        vault_path = os.environ.get("PRIVATE_FUND_OBSIDIAN_VAULT_PATH", "").strip()
+        return {
+            "projection": private_fund_obsidian.projection_status(
+                Path(info["collection_db_path"]),
+                str(info["dataset_id"]),
+            ),
+            "worker_health": worker_health,
+            "vault": {
+                "configured": bool(vault_path),
+                "available": bool(vault_path and Path(vault_path).expanduser().is_dir()),
+                "path": str(Path(vault_path).expanduser()) if vault_path else None,
+            },
+        }
 
 
 class PrivateFundDatasetSearchTool(_PrivateFundDatasetBaseTool):
@@ -2872,7 +3160,11 @@ class PrivateFundSourceDetailTool(_PrivateFundDatasetBaseTool):
         return self._store(ctx).source_detail(
             evidence_id=evidence_id,
             dataset_id=dataset_id if isinstance(dataset_id, str) else None,
-            context_radius=int(payload.get("context_radius") if payload.get("context_radius") is not None else 1),
+            context_radius=int(
+                payload.get("context_radius")
+                if payload.get("context_radius") is not None
+                else 1
+            ),
             mode=str(mode),
             max_chars=int(max_chars) if max_chars is not None else _MAX_DETAIL_CONTENT_CHARS,
             max_cells=int(max_cells) if max_cells is not None else _MAX_CELL_ROWS,
@@ -2918,6 +3210,12 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
         conversation_context = payload.get("conversation_context")
         revision_of = payload.get("revision_of")
         memo_markdown = payload.get("memo_markdown")
+        raw_memo_claims = payload.get("memo_claims")
+        memo_claims = (
+            [item for item in raw_memo_claims if isinstance(item, dict)]
+            if isinstance(raw_memo_claims, list)
+            else None
+        )
         return self._store(ctx).memo(
             topic=topic if isinstance(topic, str) else "",
             dataset_id=dataset_id if isinstance(dataset_id, str) else None,
@@ -2928,6 +3226,7 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
             ),
             revision_of=revision_of if isinstance(revision_of, str) else "",
             memo_markdown=memo_markdown if isinstance(memo_markdown, str) else "",
+            memo_claims=memo_claims,
             key_questions=key_questions,
             top_k_per_section=_coerce_top_k(payload.get("top_k_per_section"), default=5),
         )
@@ -3084,8 +3383,9 @@ class PrivateFundResearchContextTool(_PrivateFundDatasetBaseTool):
                     "private_fund_source_detail before its factual claims are repeated."
                 ),
                 "required_output": (
-                    "Use each evidence source's complete markdown_citation inline. Never copy bare "
-                    "footnote markers such as [^1] from node text, and never claim that source links "
+                    "Use each evidence source's complete markdown_citation inline. "
+                    "Never copy bare footnote markers such as [^1] from node text, "
+                    "and never claim that source links "
                     "are unavailable when dataset search/source detail tools are available."
                 ),
             },
@@ -3337,6 +3637,7 @@ def build_private_fund_dataset_tools(workspace: Path | None) -> list[Tool]:
     """Build local private-fund dataset tools for the Claude Native MCP bridge."""
     return [
         PrivateFundDatasetStatusTool(workspace),
+        PrivateFundKnowledgeStatusTool(workspace),
         PrivateFundDatasetSearchTool(workspace),
         PrivateFundSourceDetailTool(workspace),
         PrivateFundDatasetMemoTool(workspace),

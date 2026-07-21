@@ -52,6 +52,7 @@ def test_private_fund_tools_are_runner_local_and_native_relayable() -> None:
     """SDK and declared native agents share the structured research surface."""
     for name in (
         "private_fund_dataset_status",
+        "private_fund_knowledge_status",
         "private_fund_dataset_search",
         "private_fund_source_detail",
         "private_fund_dataset_memo",

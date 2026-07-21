@@ -44,7 +44,15 @@ function renderFixture() {
 describe("usePrivateFundDocumentUpload", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(uploadPrivateFundFiles).mockResolvedValue({ project: {} as never, files: [] });
+    vi.mocked(uploadPrivateFundFiles).mockResolvedValue({
+      project: {} as never,
+      files: [],
+      job: {
+        jobId: "job-upload",
+        datasetId: "阳光电源",
+        status: "queued",
+      },
+    });
     vi.mocked(runPrivateFundPipeline).mockResolvedValue({
       jobId: "job-upload",
       datasetId: "阳光电源",
@@ -68,6 +76,7 @@ describe("usePrivateFundDocumentUpload", () => {
     });
 
     await waitFor(() => expect(uploadPrivateFundFiles).toHaveBeenCalledWith("阳光电源", [pdf]));
+    expect(runPrivateFundPipeline).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "索引完成后可关闭" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
 

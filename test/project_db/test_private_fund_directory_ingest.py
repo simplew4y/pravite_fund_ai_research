@@ -26,6 +26,9 @@ def test_period_parser_rejects_year_like_fragments_inside_financial_values() -> 
     assert ingest._period_from_label("2026E") == "2026E"
     assert ingest._period_from_label("FY 2027") == "FY 2027"
     assert ingest._period_from_label("1Q26") == "1Q26"
+    assert ingest._period_from_label("Q1-23") == "Q1-23"
+    assert ingest._period_from_label("4Q 23") == "4Q 23"
+    assert ingest._period_from_label("2083") == ""
     assert ingest._period_from_label("12068.32666") == ""
     assert ingest._period_from_label("0.207812345") == ""
 
@@ -155,22 +158,22 @@ def test_ingest_persists_controlled_business_type_and_company_detection(tmp_path
     result = _run(source, workspace)
 
     assert result.status == "completed"
-    assert result.documents[0].doc_type == "financial_report"
+    assert result.documents[0].doc_type == "financial_valuation_data"
     assert result.documents[0].doc_subtype == "annual_report"
     assert result.documents[0].classification_status == "accepted"
     with _connect(result) as connection:
         document = _only_document(connection)
-        assert document["doc_type"] == "financial_report"
+        assert document["doc_type"] == "financial_valuation_data"
         assert document["doc_subtype"] == "annual_report"
         assert document["doc_type_confidence"] >= 0.9
         assert document["classification_status"] == "accepted"
         assert document["classification_taxonomy_version"] == (
-            "private_fund_document_taxonomy_v1"
+            "private_fund_document_taxonomy_v2"
         )
-        assert document["classifier_version"] == "hybrid_rules_llm_v1"
+        assert document["classifier_version"] == "hybrid_rules_llm_v2"
         assert document["company_name"] == "Tesla Inc"
         metadata = json.loads(document["classification_metadata_json"])
-        assert metadata["doc_type"] == "financial_report"
+        assert metadata["doc_type"] == "financial_valuation_data"
         assert metadata["evidence"]
 
 
