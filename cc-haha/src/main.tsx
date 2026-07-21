@@ -2763,12 +2763,11 @@ async function run(): Promise<CommanderCommand> {
       // doesn't help. SDK init message and turn-1 tool list should include
       // configured MCP tools when running plain `claude -p`.
       //
-      // Desktop/bridge sessions (`--sdk-url`) are different: the user is
-      // waiting on the first visible assistant token, not a fully populated
-      // MCP inventory. Blocking startup on slow or failing MCP servers (for
-      // example a local `chatlog` HTTP endpoint timing out) makes the whole
-      // chat feel frozen before the first word appears. In that mode we still
-      // kick off the connections immediately, but let them settle in the
+      // Desktop/bridge sessions (`--sdk-url`) and embedded headless callers
+      // can opt into a bounded startup wait through
+      // CC_HAHA_DESKTOP_AWAIT_MCP. The user is waiting on the first visible
+      // assistant token, not a fully populated MCP inventory. We still kick
+      // off connections immediately, but let slow servers settle in the
       // background so headlessStore picks them up after the session starts.
       //
       // Zero-server case is free via the early return in connectMcpBatch.
@@ -2778,11 +2777,9 @@ async function run(): Promise<CommanderCommand> {
       // here. --bare skips claude.ai entirely for perf-sensitive scripts.
       profileCheckpoint('before_connectMcp');
       const regularMcpConnect = connectMcpBatch(regularMcpConfigs, 'regular');
-      if (sdkUrl) {
-        if (process.env.CC_HAHA_DESKTOP_AWAIT_MCP === '1') {
-          await waitForDesktopMcpStartup(regularMcpConnect, 'regular MCP');
-        }
-      } else {
+      if (process.env.CC_HAHA_DESKTOP_AWAIT_MCP === '1') {
+        await waitForDesktopMcpStartup(regularMcpConnect, 'regular MCP');
+      } else if (!sdkUrl) {
         await regularMcpConnect;
       }
       profileCheckpoint('after_connectMcp');

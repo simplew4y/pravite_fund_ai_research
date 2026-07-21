@@ -454,6 +454,26 @@ def test_parse_skill(agent_dir: Path) -> None:
     assert skill.user_invocable is True
 
 
+def test_parse_utf8_skill_with_chinese_content(agent_dir: Path) -> None:
+    """UTF-8 skills parse independently of the Windows process code page."""
+    skill_dir = agent_dir / "skills" / "private-fund-research"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: private-fund-research\n"
+        "description: 私募投研资料分析。\n"
+        "---\n"
+        "必须基于当前项目资料回答。",
+        encoding="utf-8",
+    )
+
+    spec = parse(agent_dir)
+
+    skill = next(s for s in spec.skills if s.name == "private-fund-research")
+    assert skill.description == "私募投研资料分析。"
+    assert skill.content == "必须基于当前项目资料回答。"
+
+
 def test_parse_skill_user_invocable_false(agent_dir: Path) -> None:
     """``user-invocable: false`` frontmatter parses to ``user_invocable=False``."""
     skill_dir = agent_dir / "skills" / "internal-hook"

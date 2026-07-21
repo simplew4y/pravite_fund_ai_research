@@ -249,16 +249,8 @@ function detectStrategy() {
 function nativeChildEnv(env, root, project) {
   const pyHome = path.join(root, "python");
   const sitePackages = path.join(pyHome, "Lib", "site-packages");
-  // claude-agent-sdk ships a Windows claude.exe under _bundled — host
-  // harness readiness (claude-native) requires `claude` on PATH.
-  const claudeBundled = path.join(
-    sitePackages,
-    "claude_agent_sdk",
-    "_bundled",
-  );
   const pathParts = [
     path.join(root, "bin"),
-    claudeBundled,
     pyHome,
     path.join(pyHome, "Scripts"),
     env.PATH || "",
@@ -277,6 +269,16 @@ function nativeChildEnv(env, root, project) {
   const litellmHost = env.LITELLM_HOST || "127.0.0.1";
   const litellmPort = env.LITELLM_PORT || "4000";
   const litellmUrl = `http://${litellmHost}:${litellmPort}`;
+  const noProxyEntries = String(env.NO_PROXY || env.no_proxy || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  for (const loopback of ["127.0.0.1", "localhost", "::1"]) {
+    if (!noProxyEntries.some((entry) => entry.toLowerCase() === loopback)) {
+      noProxyEntries.push(loopback);
+    }
+  }
+  const noProxy = noProxyEntries.join(",");
 
   return {
     ...env,
@@ -285,6 +287,8 @@ function nativeChildEnv(env, root, project) {
     PATH: pathParts.join(path.delimiter),
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8",
+    NO_PROXY: noProxy,
+    no_proxy: noProxy,
     // Prevent children from trying to open a browser
     BROWSER: "none",
     // Claude Code / claude-native → LiteLLM (no Anthropic login required)
@@ -303,6 +307,12 @@ function nativeChildEnv(env, root, project) {
     DISABLE_TELEMETRY: env.DISABLE_TELEMETRY || "1",
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:
       env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC || "1",
+    CLAUDE_CONFIG_DIR:
+      env.CLAUDE_CONFIG_DIR || path.join(env.OMNIGENT_CONFIG_HOME || project, "cc-haha"),
+    HARNESS_CC_HAHA_PATH:
+      env.HARNESS_CC_HAHA_PATH || path.join(root, "bin", "claude-haha.exe"),
+    HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE:
+      env.HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE || path.join(project, "omnigent", "CLAUDE.md"),
     OMNIGENT_CLAUDE_NATIVE_AUTO_APPROVE:
       env.OMNIGENT_CLAUDE_NATIVE_AUTO_APPROVE || "1",
   };
@@ -332,6 +342,7 @@ async function startNative(env, endpoints) {
     }
     if (env2.OMNIGENT_DATA_DIR) fs.mkdirSync(env2.OMNIGENT_DATA_DIR, { recursive: true });
     if (env2.OMNIGENT_CONFIG_HOME) fs.mkdirSync(env2.OMNIGENT_CONFIG_HOME, { recursive: true });
+    if (env2.CLAUDE_CONFIG_DIR) fs.mkdirSync(env2.CLAUDE_CONFIG_DIR, { recursive: true });
   } catch {
     // ignore
   }

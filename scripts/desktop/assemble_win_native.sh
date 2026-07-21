@@ -120,7 +120,7 @@ if [[ "$REQ_RC" -ne 0 ]]; then
 fi
 
 # Best-effort extras that often fail on Windows under wine
-for extra in "claude-agent-sdk>=0.1.62" "cel-expr-python>=0.1"; do
+for extra in "cel-expr-python>=0.1"; do
   "$WINE" "$WIN_PY" -m pip install --no-warn-script-location "$extra" 2>&1 | tail -5 || true
 done
 
@@ -202,6 +202,21 @@ rsync -a \
   "$ROOT_DIR/omnigent/" \
   "$PROJECT/omnigent/"
 
+# resources/examples contains repository-relative symlinks. The top-level
+# examples tree is intentionally excluded above, so materialize the linked
+# packages to keep Windows packagers from seeing dangling entries.
+PROJECT_EXAMPLES="$PROJECT/omnigent/omnigent/resources/examples"
+mkdir -p "$PROJECT_EXAMPLES"
+for name in polly debby; do
+  rm -rf "$PROJECT_EXAMPLES/$name"
+  if [[ -d "$ROOT_DIR/omnigent/examples/$name" ]]; then
+    cp -a "$ROOT_DIR/omnigent/examples/$name" "$PROJECT_EXAMPLES/$name"
+  fi
+done
+find "$PROJECT/omnigent" -type l 2>/dev/null | while read -r link; do
+  [[ -e "$link" ]] || rm -f "$link"
+done
+
 if [[ ! -f "$PROJECT/omnigent/omnigent/server/static/web-ui/index.html" ]]; then
   echo "WARN: web-ui static missing — run: (cd omnigent/web && npm run build)" >&2
 else
@@ -211,7 +226,41 @@ fi
 touch "$PROJECT/output/private_fund_datasets/.keep"
 
 # ---------------------------------------------------------------------------
-# 5) desktop.env + litellm.yaml (build-time keys)
+# 5) Compile the cc-haha Windows sidecar
+# ---------------------------------------------------------------------------
+BUN_BIN="${BUN:-$(command -v bun 2>/dev/null || true)}"
+if [[ -z "$BUN_BIN" && -x "$HOME/.bun/bin/bun" ]]; then
+  BUN_BIN="$HOME/.bun/bin/bun"
+fi
+if [[ -z "$BUN_BIN" ]]; then
+  echo "ERROR: bun is required to compile the cc-haha Windows sidecar." >&2
+  exit 1
+fi
+echo "==> Building cc-haha Windows x64 sidecar"
+(
+  cd "$ROOT_DIR/cc-haha/desktop"
+  export PATH="$(dirname "$BUN_BIN"):$PATH"
+  if [[ ! -d "$ROOT_DIR/cc-haha/adapters/node_modules" ]]; then
+    echo "==> Installing cc-haha adapter dependencies required by the compiler"
+    (cd "$ROOT_DIR/cc-haha/adapters" && "$BUN_BIN" install --frozen-lockfile)
+  fi
+  SIDECAR_TARGET_TRIPLE=x86_64-pc-windows-msvc "$BUN_BIN" run build:sidecars
+)
+CC_HAHA_BASE="$ROOT_DIR/cc-haha/desktop/src-tauri/binaries/claude-sidecar-x86_64-pc-windows-msvc"
+if [[ -f "${CC_HAHA_BASE}.exe" ]]; then
+  CC_HAHA_BUILD="${CC_HAHA_BASE}.exe"
+elif [[ -f "$CC_HAHA_BASE" ]]; then
+  CC_HAHA_BUILD="$CC_HAHA_BASE"
+else
+  echo "ERROR: cc-haha sidecar output was not found under $(dirname "$CC_HAHA_BASE")" >&2
+  exit 1
+fi
+cp -f "$CC_HAHA_BUILD" "$RUNTIME_DIR/bin/claude-haha.exe"
+chmod +x "$RUNTIME_DIR/bin/claude-haha.exe" 2>/dev/null || true
+echo "==> cc-haha sidecar: $RUNTIME_DIR/bin/claude-haha.exe"
+
+# ---------------------------------------------------------------------------
+# 6) desktop.env + litellm.yaml (build-time keys)
 # ---------------------------------------------------------------------------
 read_yaml_value() {
   local key="$1"
@@ -292,7 +341,7 @@ path.write_text("\n".join(lines), encoding="utf-8")
 PY
 
 # ---------------------------------------------------------------------------
-# 6) Windows launchers (.cmd)
+# 7) Windows launchers (.cmd)
 # ---------------------------------------------------------------------------
 # PYTHONPATH includes project so private_fund + pdf_research_demo resolve.
 # %~dp0 is runtime/bin/
@@ -343,26 +392,7 @@ exec "$DIR/../python/python.exe" -m omnigent "$@"
 EOF
 chmod +x "$RUNTIME_DIR/bin/omnigent" 2>/dev/null || true
 
-# Claude Code CLI shim for host harness readiness (claude-native)
-CLAUDE_BUNDLED="$PY_HOME/Lib/site-packages/claude_agent_sdk/_bundled/claude.exe"
-if [[ -f "$CLAUDE_BUNDLED" ]]; then
-  cat > "$RUNTIME_DIR/bin/claude.cmd" <<'EOF'
-@echo off
-setlocal
-set "CLAUDE_BIN=%~dp0..\python\Lib\site-packages\claude_agent_sdk\_bundled\claude.exe"
-"%CLAUDE_BIN%" %*
-EOF
-  # Windows shutil.which('claude') prefers .exe — hardlink when possible
-  if command -v cmd.exe >/dev/null 2>&1; then
-    cmd.exe /c "mklink /H \"$(wslpath -w "$RUNTIME_DIR/bin/claude.exe" 2>/dev/null || echo "")\" \"$(wslpath -w "$CLAUDE_BUNDLED" 2>/dev/null || echo "")\"" 2>/dev/null || \
-      ln -f "$CLAUDE_BUNDLED" "$RUNTIME_DIR/bin/claude.exe" 2>/dev/null || \
-      cp -f "$CLAUDE_BUNDLED" "$RUNTIME_DIR/bin/claude.exe" 2>/dev/null || true
-  else
-    ln -f "$CLAUDE_BUNDLED" "$RUNTIME_DIR/bin/claude.exe" 2>/dev/null || \
-      cp -f "$CLAUDE_BUNDLED" "$RUNTIME_DIR/bin/claude.exe" 2>/dev/null || true
-  fi
-fi
-
+# cc-haha.exe was installed above; the harness resolves it from runtime/bin.
 # Marker so supervisor detects native strategy
 bash "$ROOT_DIR/scripts/desktop/apply_runtime_fixes.sh" "$RUNTIME_DIR"
 

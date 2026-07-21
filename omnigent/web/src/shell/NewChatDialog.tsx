@@ -128,6 +128,7 @@ function hostSupportsPrivateFundResearch(host: Host): boolean {
   return (
     configured["openai-agents"] === true ||
     configured["openai-agents-sdk"] === true ||
+    configured["cc-haha"] === true ||
     configured["claude-native"] === true ||
     configured["native-claude"] === true ||
     configured.claude === true
@@ -149,6 +150,10 @@ function pickPrivateFundResearchHost(hosts: Host[], thisMachineHostId: string | 
 
 function findPrivateFundResearchAgent(agents: AvailableAgent[]): AvailableAgent | null {
   return (
+    agents.find(
+      (agent) => agent.name === PRIVATE_FUND_NATIVE_AGENT_NAME && agent.harness === "cc-haha",
+    ) ??
+    agents.find((agent) => agent.harness === "cc-haha") ??
     agents.find(
       (agent) => agent.name === PRIVATE_FUND_NATIVE_AGENT_NAME && agent.harness === "claude-native",
     ) ??

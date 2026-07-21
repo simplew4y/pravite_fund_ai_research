@@ -29,6 +29,7 @@ from omnigent.runner._entry import (
     _runner_workspace_from_env,
     _RunnerDatabricksAuth,
     _server_url_from_env,
+    _trust_env_for_server_url,
     main,
 )
 from omnigent.runner.transports.ws_tunnel.serve import RUNNER_TUNNEL_REJECTION_PREFIX
@@ -116,6 +117,22 @@ def test_server_url_from_env_strips_configured_value(
     monkeypatch.setenv("RUNNER_SERVER_URL", " http://127.0.0.1:8123 ")
 
     assert _server_url_from_env() == "http://127.0.0.1:8123"
+
+
+@pytest.mark.parametrize(
+    "server_url",
+    [
+        "http://127.0.0.1:6767",
+        "http://localhost:6767",
+        "http://[::1]:6767",
+    ],
+)
+def test_loopback_server_urls_ignore_system_proxy(server_url: str) -> None:
+    assert _trust_env_for_server_url(server_url) is False
+
+
+def test_remote_server_urls_keep_proxy_support() -> None:
+    assert _trust_env_for_server_url("https://omnigent.example.com") is True
 
 
 def test_make_auth_token_factory_returns_factory_when_databricks_creds_available(

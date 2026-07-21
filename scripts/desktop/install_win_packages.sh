@@ -65,7 +65,6 @@ install_batch "llm" "${BATCH3[@]}"
 install_batch "otel" "${BATCH4[@]}"
 
 # Best-effort
-wpip install --no-warn-script-location --only-binary=:all: "claude-agent-sdk>=0.1.62" 2>&1 | tail -10 || true
 wpip install --no-warn-script-location --only-binary=:all: "cel-expr-python>=0.1" 2>&1 | tail -10 || true
 
 # ---------------------------------------------------------------------------
@@ -143,7 +142,9 @@ for name, ver in [("omnigent", "0.3.0"), ("omnigent_client", "0.3.0"), ("omnigen
 PY
 
 echo "==> Smoke imports"
-"$WINE" "$WIN_PY" - <<'PY'
+set +e
+timeout --foreground 120s env WINEDLLOVERRIDES="winedbg.exe=d" \
+  "$WINE" "$WIN_PY" - <<'PY'
 import sys
 print("python", sys.version)
 for m in ["fastapi", "uvicorn", "httpx", "pydantic", "yaml", "litellm", "pymupdf", "pandas", "omnigent", "omnigent.server"]:
@@ -153,5 +154,11 @@ for m in ["fastapi", "uvicorn", "httpx", "pydantic", "yaml", "litellm", "pymupdf
     except Exception as e:
         print("FAIL", m, type(e).__name__, e)
 PY
+SMOKE_RC=$?
+set -e
+if [[ "$SMOKE_RC" -ne 0 ]]; then
+  echo "WARN: Windows Python smoke imports did not finish cleanly under Wine (rc=$SMOKE_RC)." >&2
+  echo "      Packaging continues; final imports are checked from the unpacked runtime." >&2
+fi
 
 echo "==> install_win_packages: done"

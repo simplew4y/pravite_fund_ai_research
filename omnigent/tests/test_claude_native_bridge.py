@@ -304,6 +304,19 @@ def test_prepare_bridge_dir_restricts_filesystem_permissions(
     )
 
 
+def test_prepare_bridge_dir_without_posix_uid_uses_windows_temp_acl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Platforms without ``os.getuid`` can use their per-user temp tree."""
+    monkeypatch.delattr(claude_native_bridge.os, "getuid", raising=False)
+
+    bridge_dir = prepare_bridge_dir("conv_windows", workspace=tmp_path)
+
+    assert bridge_dir.is_dir()
+    assert (bridge_dir / "bridge.json").is_file()
+
+
 def test_prepare_bridge_dir_refuses_symlinked_ancestor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

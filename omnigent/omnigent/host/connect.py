@@ -218,6 +218,10 @@ _RUNNER_ENV_ALLOWLIST: frozenset[str] = frozenset(
         "REQUESTS_CA_BUNDLE",
         "CURL_CA_BUNDLE",
         "NODE_EXTRA_CA_CERTS",
+        # Keep native desktop loopback traffic away from Windows system
+        # proxies. Both spellings are used by Python and Node clients.
+        "NO_PROXY",
+        "no_proxy",
         # Environment descriptor baked into the sandbox host image
         # (deploy/docker/Dockerfile `host` target), never set on
         # laptops. Claude Code refuses --dangerously-skip-permissions
@@ -245,6 +249,16 @@ _RUNNER_ENV_ALLOWLIST: frozenset[str] = frozenset(
         # cli._ensure_host_daemon), never to a (possibly hosted) runner.
         "OMNIGENT_CONFIG_HOME",
         "OMNIGENT_DATA_DIR",
+        # Keep the bundled cc-haha runtime isolated from a user's global
+        # Claude Code profile. Desktop sets this to its app-data directory;
+        # dropping it here lets ~/.claude/settings.json override the bundled
+        # LiteLLM endpoint with unrelated or stale provider configuration.
+        "CLAUDE_CONFIG_DIR",
+        # Desktop-selected cc-haha paths are non-secret filesystem paths.
+        # Forward them so host-spawned runners use the bundled sidecar and
+        # private-fund prompt rather than ambient machine configuration.
+        "HARNESS_CC_HAHA_PATH",
+        "HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE",
         # Auth provider selection. The env-unset default was flipped
         # to "accounts", so the whole CLI → daemon → local-server chain has
         # to agree on the mode. Without this, the daemon strips

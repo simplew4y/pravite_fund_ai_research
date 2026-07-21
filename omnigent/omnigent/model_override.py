@@ -27,6 +27,7 @@ _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]*$")
 # in sync with ``_HARNESS_MODEL_ENV_KEY`` in ``omnigent/runner/app.py``.
 _SDK_MODEL_OVERRIDE_HARNESSES: frozenset[str] = frozenset(
     {
+        "cc-haha",
         "claude-sdk",
         "codex",
         "pi",

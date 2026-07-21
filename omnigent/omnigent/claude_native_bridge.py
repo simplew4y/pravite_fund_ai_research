@@ -671,7 +671,8 @@ def _ensure_secure_dir(target: Path) -> None:
     if cur != trusted_parent:
         raise RuntimeError(f"bridge dir {target!s} is not under trusted parent {trusted_parent!s}")
     ancestors.reverse()
-    my_uid = getattr(os, "getuid", lambda: -1)()
+    getuid = getattr(os, "getuid", None)
+    my_uid = getuid() if callable(getuid) else None
     for ancestor in ancestors:
         try:
             os.mkdir(ancestor, mode=0o700)
@@ -683,12 +684,18 @@ def _ensure_secure_dir(target: Path) -> None:
             raise RuntimeError(f"refusing to use bridge ancestor {ancestor!s}: is a symlink")
         if not stat.S_ISDIR(st.st_mode):
             raise RuntimeError(f"refusing to use bridge ancestor {ancestor!s}: not a directory")
-        if st.st_uid != my_uid:
+        # Windows has no POSIX uid. ``stat().st_uid`` is commonly reported as
+        # 0 while ``os.getuid`` is absent, so comparing it with a sentinel
+        # rejects the current user's own %TEMP% directory. The trusted temp
+        # root is already protected by that user's Windows ACL; retain the
+        # symlink and directory checks above, and apply uid/mode enforcement
+        # only on platforms that expose a real uid.
+        if my_uid is not None and st.st_uid != my_uid:
             raise RuntimeError(
                 f"refusing to use bridge ancestor {ancestor!s}: owned by uid "
                 f"{st.st_uid}, not current user ({my_uid})"
             )
-        if (st.st_mode & 0o077) != 0:
+        if my_uid is not None and (st.st_mode & 0o077) != 0:
             os.chmod(ancestor, 0o700)
 
 

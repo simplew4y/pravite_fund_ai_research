@@ -32,6 +32,9 @@ from __future__ import annotations
 # suite injects fixture entries at test time (via direct dict
 # mutation in conftest fixtures).
 _HARNESS_MODULES: dict[str, str] = {
+    # Headless cc-haha CLI. This is the portable Claude Code-compatible
+    # harness used by the private-fund desktop build (including Windows).
+    "cc-haha": "omnigent.inner.cc_haha_harness",
     # Step 4b: claude-sdk harness wrap. See
     # omnigent/inner/claude_sdk_harness.py.
     "claude-sdk": "omnigent.inner.claude_sdk_harness",

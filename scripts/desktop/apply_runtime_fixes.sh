@@ -70,17 +70,28 @@ if [[ -f "$SRC_PDF" && -f "$DST_PDF" ]]; then
   fi
 fi
 
-# 5) Claude CLI shim for host harness readiness
-mkdir -p "$RUNTIME_DIR/bin"
-cp -f "$TPL/claude.cmd" "$RUNTIME_DIR/bin/claude.cmd"
-CLAUDE_BUNDLED="$SITE/claude_agent_sdk/_bundled/claude.exe"
-if [[ -f "$CLAUDE_BUNDLED" ]]; then
-  # Prefer hardlink to avoid 250MB duplicate; fall back to nothing (cmd shim works)
-  ln -f "$CLAUDE_BUNDLED" "$RUNTIME_DIR/bin/claude.exe" 2>/dev/null || true
-  echo "  claude.cmd (+ claude.exe link if possible)"
-fi
+# 5) Desktop connection fixes must exist in both import roots. The packaged
+# runner can import from either the slim project tree or site-packages,
+# depending on how the embedded Python path is initialized.
+for relative_path in \
+  runner/_entry.py \
+  inner/cc_haha_executor.py \
+  host/connect.py
+do
+  source_file="$ROOT_DIR/omnigent/omnigent/$relative_path"
+  for package_root in \
+    "$RUNTIME_DIR/project/omnigent/omnigent" \
+    "$SITE/omnigent"
+  do
+    target_file="$package_root/$relative_path"
+    if [[ -f "$source_file" && -d "$(dirname "$target_file")" ]]; then
+      cp -f "$source_file" "$target_file"
+    fi
+  done
+  echo "  synced omnigent/$relative_path"
+done
 
-# 6) NATIVE_STACK marker
+# 6) NATIVE_STACK marker. cc-haha.exe is compiled by assemble_win_native.sh.
 echo "native-windows" > "$RUNTIME_DIR/NATIVE_STACK"
 
 echo "==> apply_runtime_fixes: done"

@@ -68,6 +68,19 @@ describe("nativeCodingAgentForHarness", () => {
 });
 
 describe("nativeWrapperLabelsForAgent", () => {
+  it("does not stamp native labels when a legacy native name declares cc-haha", () => {
+    expect(
+      nativeWrapperLabelsForAgent({ name: "claude-native-ui", harness: "cc-haha" }),
+    ).toBeUndefined();
+  });
+
+  it("keeps the legacy name fallback when no harness is declared", () => {
+    expect(nativeWrapperLabelsForAgent({ name: "claude-native-ui", harness: null })).toEqual({
+      [UI_MODE_LABEL_KEY]: UI_MODE_TERMINAL_VALUE,
+      [WRAPPER_LABEL_KEY]: "claude-code-native-ui",
+    });
+  });
+
   it("stamps terminal-first labels for a native-pi agent", () => {
     expect(nativeWrapperLabelsForAgent({ name: "my-pi", harness: "native-pi" })).toEqual({
       [UI_MODE_LABEL_KEY]: UI_MODE_TERMINAL_VALUE,

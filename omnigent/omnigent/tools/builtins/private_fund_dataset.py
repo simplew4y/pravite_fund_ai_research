@@ -1124,10 +1124,32 @@ class _DatasetStore:
     def __init__(self, workspace: Path | None) -> None:
         self.project_root = _resolve_project_root(workspace)
         workspace_override = os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
-        self.workspace_root = (
-            Path(workspace_override).expanduser().resolve()
-            if workspace_override
-            else self.project_root / "output" / "private_fund_datasets"
+        if workspace_override:
+            self.workspace_root = Path(workspace_override).expanduser().resolve()
+            return
+
+        candidates: list[Path] = []
+        data_dir = os.environ.get("OMNIGENT_DATA_DIR")
+        if data_dir:
+            candidates.append(Path(data_dir).expanduser() / "private_fund_datasets")
+        if workspace is not None:
+            resolved_workspace = workspace.expanduser().resolve()
+            candidates.extend(
+                [resolved_workspace, resolved_workspace.parent, resolved_workspace.parent.parent]
+            )
+        candidates.append(self.project_root / "output" / "private_fund_datasets")
+
+        # Desktop runners intentionally receive OMNIGENT_DATA_DIR but may not
+        # inherit PRIVATE_FUND_DATASET_WORKSPACE. Prefer the first directory
+        # that contains the global registry instead of treating the selected
+        # dataset folder as a source-repository root.
+        self.workspace_root = next(
+            (
+                candidate.resolve()
+                for candidate in candidates
+                if (candidate / "datasets.sqlite3").is_file()
+            ),
+            candidates[0].resolve(),
         )
 
     def _connect(self, path: Path) -> sqlite3.Connection:

@@ -81,6 +81,7 @@ OMNIGENT_HARNESSES = frozenset(
     {
         "antigravity",
         "antigravity-native",
+        "cc-haha",
         "claude-native",
         "claude-sdk",
         "codex",

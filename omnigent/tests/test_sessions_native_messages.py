@@ -152,6 +152,30 @@ def test_unknown_wrapper_session_does_not_use_native_bypass() -> None:
     assert sessions_routes._is_native_terminal_session(conv) is False
 
 
+def test_resolved_cc_haha_harness_overrides_stale_native_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A packaged headless session must not be routed through tmux on Windows."""
+    from omnigent.server.routes import sessions as sessions_routes
+
+    conv = _conversation_with_wrapper("claude-code-native-ui")
+    monkeypatch.setattr(sessions_routes, "_resolve_harness", lambda _conv: "cc-haha")
+
+    assert sessions_routes._is_native_terminal_session(conv) is False
+
+
+def test_resolved_native_harness_keeps_native_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicitly resolved native harness remains terminal-owned."""
+    from omnigent.server.routes import sessions as sessions_routes
+
+    conv = _conversation_with_wrapper("claude-code-native-ui")
+    monkeypatch.setattr(sessions_routes, "_resolve_harness", lambda _conv: "claude-native")
+
+    assert sessions_routes._is_native_terminal_session(conv) is True
+
+
 @pytest.mark.parametrize(
     "response,expected",
     [

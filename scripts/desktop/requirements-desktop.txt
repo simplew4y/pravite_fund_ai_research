@@ -37,7 +37,7 @@ orjson>=3.9
 # --- Model / harness (private-fund path) ---
 litellm[proxy]>=1.50
 openai-agents>=0.0.17
-# claude-agent-sdk may lack win wheel; install best-effort in script
+# cc-haha is shipped as a compiled sidecar; no Claude Agent SDK is required.
 
 # --- Private fund PDF / tables / charts ---
 pymupdf>=1.24,<2
