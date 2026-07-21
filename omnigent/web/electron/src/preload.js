@@ -137,3 +137,16 @@ contextBridge.exposeInMainWorld("omnigentSetup", {
    */
   startLocalServer: () => ipcRenderer.invoke("omnigent:start-local-server"),
 });
+
+// Boot splash (bundled zero-config mode only). Starts the local stack and
+// streams status lines while the main process brings services up.
+contextBridge.exposeInMainWorld("omnigentDesktopBoot", {
+  startStack: () => ipcRenderer.invoke("omnigent:boot-start-stack"),
+  onStatus: (callback) => {
+    const listener = (_event, msg) => {
+      if (typeof msg === "string") callback(msg);
+    };
+    ipcRenderer.on("omnigent:boot-status", listener);
+    return () => ipcRenderer.removeListener("omnigent:boot-status", listener);
+  },
+});

@@ -9,6 +9,7 @@ from __future__ import annotations
 from omnigent.server.routes._workspace_validation import (
     _is_relative_cwd,
     _is_subpath_of,
+    is_absolute_workspace_path,
 )
 
 
@@ -58,3 +59,27 @@ class TestIsSubpathOf:
 
     def test_trailing_slash_boundary(self) -> None:
         assert _is_subpath_of("/a/b/c", "/a/b/") is True
+
+    def test_windows_child_path(self) -> None:
+        assert _is_subpath_of(r"C:\\a\\b\\c", r"C:\\a\\b") is True
+
+
+
+class TestIsAbsoluteWorkspacePath:
+    def test_posix(self) -> None:
+        assert is_absolute_workspace_path("/Users/a/b") is True
+        assert is_absolute_workspace_path("/") is True
+
+    def test_windows_drive(self) -> None:
+        assert is_absolute_workspace_path(r"C:\Users\a") is True
+        assert is_absolute_workspace_path("c:/Users/a") is True
+
+    def test_windows_unc(self) -> None:
+        assert is_absolute_workspace_path(r"\\server\share\repo") is True
+
+    def test_rejects_relative_and_tilde(self) -> None:
+        assert is_absolute_workspace_path("") is False
+        assert is_absolute_workspace_path("   ") is False
+        assert is_absolute_workspace_path("~/proj") is False
+        assert is_absolute_workspace_path("proj/a") is False
+        assert is_absolute_workspace_path("./a") is False

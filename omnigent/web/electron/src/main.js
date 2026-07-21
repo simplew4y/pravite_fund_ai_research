@@ -35,9 +35,14 @@ const { normalizeUrl, expandDatabricksWorkspaceUrl } = require("./url");
 const { registerWorkspaceChromeHide } = require("./workspace-chrome");
 const omnigentCli = require("./omnigent_cli");
 const serverManager = require("./server_manager");
+const desktopMode = require("./desktop_mode");
+const processSupervisor = require("./process_supervisor");
 
 /** Absolute path to the bundled setup page (the "connect to server" form). */
 const SETUP_PAGE = path.join(__dirname, "..", "setup", "index.html");
+
+/** Absolute path to the zero-config boot splash (bundled desktop mode). */
+const BOOT_PAGE = path.join(__dirname, "..", "boot", "index.html");
 
 /** The setup page's file:// URL, for verifying IPC sender frames. */
 const SETUP_PAGE_URL = pathToFileURL(SETUP_PAGE);
@@ -851,7 +856,7 @@ function createWindow(targetUrl, opts = {}) {
     // Tall enough that the bundled setup page (logo, Start-locally, divider,
     // URL field, Connect, and a few recents) fits without overflowing.
     minHeight: 600,
-    title: "Omnigent",
+    title: desktopMode.isBundledMode() ? "私募研究工作台" : "Omnigent",
     backgroundColor: "#0b0b0c",
     // macOS: hide the native title bar but keep the traffic lights, inset
     // into the content. The web layer provides the drag surface + clearance
@@ -874,7 +879,11 @@ function createWindow(targetUrl, opts = {}) {
   });
   const explicit =
     typeof targetUrl === "string" && /^https?:\/\//i.test(targetUrl) ? targetUrl : undefined;
-  const saved = loadSettings().server_url;
+  // Bundled zero-config: never ask for a server URL; always boot the local stack.
+  const saved = desktopMode.isBundledMode()
+    ? desktopMode.stackEndpoints().serverUrl + "/"
+    : loadSettings().server_url;
+  const forceBootSplash = desktopMode.isBundledMode() && !explicit && !opts.skipBoot;
   // An explicit target (New Window cloning a sibling) always wins. Otherwise
   // ephemeral windows start on the setup page so the user can enter the
   // alternate server, and normal windows fall back to the saved server.
@@ -893,7 +902,17 @@ function createWindow(targetUrl, opts = {}) {
     ephemeral,
     badgeCount: 0,
   });
-  if (destination) {
+  if (forceBootSplash) {
+    // Show splash first; boot IPC starts the stack then navigates to the SPA.
+    windows.set(win, {
+      origin: null,
+      serverUrl: null,
+      ephemeral,
+      badgeCount: 0,
+      bootPending: true,
+    });
+    void win.loadFile(BOOT_PAGE);
+  } else if (destination) {
     void win.loadURL(destination);
   } else {
     // ?ephemeral=1 only changes the setup page's copy (the window's
@@ -1927,6 +1946,42 @@ function registerIpc() {
   // Push a status ping when a host child connects or exits on its own (no
   // polling) — the server-management module owns the subprocess and reports
   // lifecycle changes here.
+
+  // Bundled boot splash → start local stack, then navigate to the SPA.
+  ipcMain.handle("omnigent:boot-start-stack", async (event) => {
+    const senderUrl = event.sender.getURL() || "";
+    if (!senderUrl.startsWith("file:") || !senderUrl.includes("/boot/")) {
+      // Also allow boot/index.html path variants (Windows file URLs).
+      if (!senderUrl.includes("boot") || !senderUrl.endsWith("index.html")) {
+        console.warn("[omnigent] boot-start-stack from untrusted sender dropped");
+        return { ok: false, error: "boot-start-stack is only available from the boot page" };
+      }
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    processSupervisor.onStatus((msg) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("omnigent:boot-status", msg);
+      }
+    });
+    const result = await processSupervisor.ensureStackRunning();
+    if (result.ok && result.serverUrl && win && !win.isDestroyed()) {
+      const url = result.serverUrl.endsWith("/") ? result.serverUrl : result.serverUrl + "/";
+      setWindowServerUrl(win, url);
+      const state = windows.get(win);
+      if (state) {
+        state.origin = originOf(url);
+        state.bootPending = false;
+      }
+      // Persist so thin-mode tools still see a saved URL if user toggles.
+      const settings = loadSettings();
+      settings.server_url = url;
+      rememberRecentServer(settings, url);
+      saveSettings(settings);
+      void win.loadURL(url);
+    }
+    return result;
+  });
+
   serverManager.onChange(broadcastHostStatus);
 }
 
@@ -1935,7 +1990,7 @@ function registerIpc() {
 // ---------------------------------------------------------------------------
 
 // Name drives the macOS app menu title and the notification source name.
-app.setName("Omnigent");
+app.setName(desktopMode.isBundledMode() ? "私募研究工作台" : "Omnigent");
 
 // Single-instance: focus the existing window instead of opening a second.
 const gotLock = app.requestSingleInstanceLock();
@@ -1990,12 +2045,12 @@ if (!gotLock) {
     event.preventDefault();
     if (quitCleanupStarted) return;
     quitCleanupStarted = true;
-    serverManager
-      .shutdown(resolvedCliPath())
-      .catch(() => {})
-      .finally(() => {
-        quitCleanupDone = true;
-        app.quit();
-      });
+    Promise.all([
+      serverManager.shutdown(resolvedCliPath()).catch(() => {}),
+      processSupervisor.shutdownStack().catch(() => {}),
+    ]).finally(() => {
+      quitCleanupDone = true;
+      app.quit();
+    });
   });
 }

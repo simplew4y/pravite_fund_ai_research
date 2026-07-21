@@ -358,19 +358,28 @@ export function ConnectHostInstructions({
 /**
  * Return true when ``workspace`` is acceptable to send to the backend.
  *
- * Per designs/SESSION_WORKSPACE_SELECTION.md: only fully-absolute
- * paths (starting with ``/``) are accepted. Tilde-prefixed and
- * relative paths are rejected because the server never expands ``~``
- * — that's the host's job, and the workspace request body must be
- * an unambiguous absolute path. Empty / whitespace-only input is
- * also rejected so the submit button is disabled until the user
- * has typed something usable.
+ * Accept absolute host paths only:
+ * - POSIX: starts with ``/``
+ * - Windows drive: ``C:\...`` or ``C:/...``
+ * - Windows UNC: ``\\server\share\...``
+ *
+ * Tilde-prefixed and relative paths are rejected because the server never
+ * expands ``~`` — the workspace body must be an unambiguous absolute path.
+ * Empty / whitespace-only input is also rejected.
  *
  * @param workspace Value the user typed in the workspace input.
- * @returns true when ``workspace.trim()`` starts with ``/``.
+ * @returns true when the trimmed path is absolute on POSIX or Windows.
  */
 export function isValidWorkspace(workspace: string): boolean {
-  return workspace.trim().startsWith("/");
+  const trimmed = workspace.trim();
+  if (!trimmed) return false;
+  // POSIX absolute (and also the root "/")
+  if (trimmed.startsWith("/")) return true;
+  // Windows UNC \\server\share
+  if (trimmed.startsWith("\\") || trimmed.startsWith("//")) return true;
+  // Windows drive letter: C:\ or C:/
+  if (/^[A-Za-z]:[\\/]/.test(trimmed)) return true;
+  return false;
 }
 
 /**
@@ -388,9 +397,12 @@ export function isValidWorkspace(workspace: string): boolean {
 export function normalizeWorkspacePath(path: string): string | null {
   const trimmed = path.trim();
   if (trimmed === "") return null;
-  const stripped = trimmed.replace(/\/+$/, "");
-  // All-slashes input (e.g. "///") collapses to the root.
-  return stripped === "" ? "/" : stripped;
+  // Strip trailing slashes / backslashes but keep drive root "C:\" and POSIX "/".
+  const stripped = trimmed.replace(/[\\/]+$/, "");
+  if (stripped === "") return "/";
+  // "C:" alone after stripping "C:\" — restore drive root
+  if (/^[A-Za-z]:$/.test(stripped)) return stripped + "\\";
+  return stripped;
 }
 
 /**

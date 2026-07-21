@@ -881,7 +881,8 @@ def create_hosts_router(
             )
         # Absolute or tilde-prefixed only — the host needs a path it can
         # resolve on its own; a relative path has no stable meaning here.
-        if not path.startswith(("/", "~")):
+        from omnigent.server.routes._workspace_validation import is_absolute_workspace_path
+        if not (path.startswith(("/", "~")) or is_absolute_workspace_path(path)):
             raise HTTPException(
                 status_code=400,
                 detail="path must be absolute or tilde-prefixed",

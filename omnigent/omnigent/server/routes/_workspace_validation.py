@@ -128,6 +128,34 @@ async def _ask_host_stat(
     return result
 
 
+def is_absolute_workspace_path(workspace: str) -> bool:
+    """Return True when *workspace* is an absolute host filesystem path.
+
+    Accepts POSIX absolute paths (``/home/me/repo``), Windows drive paths
+    (``C:/data`` or drive-letter + backslash), and Windows UNC paths.
+
+    Rejects empty, relative, and tilde-prefixed paths. The server never
+    expands ``~``; the host must receive an unambiguous absolute path.
+    """
+    trimmed = workspace.strip()
+    if not trimmed:
+        return False
+    if trimmed.startswith("/"):
+        return True
+    # UNC: two leading backslashes, or //server/share
+    if trimmed.startswith("\\\\") or trimmed.startswith("//"):
+        return True
+    # Drive letter: C:\ or C:/
+    if (
+        len(trimmed) >= 3
+        and trimmed[0].isalpha()
+        and trimmed[1] == ":"
+        and trimmed[2] in ("\\", "/")
+    ):
+        return True
+    return False
+
+
 def _is_relative_cwd(spec_cwd: str | None) -> bool:
     """
     Return ``True`` for spec cwd values that don't pin a directory.
@@ -168,14 +196,13 @@ def _is_subpath_of(canonical_workspace: str, canonical_boundary: str) -> bool:
     """
     if canonical_workspace == canonical_boundary:
         return True
-    # Add a trailing separator so ``/a/foo`` is not treated as a
-    # subpath of ``/a/fo`` (prefix collision). ``/`` is the only
-    # separator the host stat returns since ``canonical_path`` is
-    # always absolute.
-    boundary_with_sep = (
-        canonical_boundary if canonical_boundary.endswith("/") else canonical_boundary + "/"
-    )
-    return canonical_workspace.startswith(boundary_with_sep)
+    # Normalize separators so Windows drive paths and POSIX paths compare
+    # consistently. Add a trailing separator so ``/a/foo`` is not treated as a
+    # subpath of ``/a/fo`` (prefix collision).
+    ws = canonical_workspace.replace("\\", "/")
+    bd = canonical_boundary.replace("\\", "/")
+    boundary_with_sep = bd if bd.endswith("/") else bd + "/"
+    return ws.startswith(boundary_with_sep)
 
 
 async def validate_workspace(
@@ -214,11 +241,13 @@ async def validate_workspace(
         The exception message is suitable for surfacing to the
         API caller verbatim.
     """
-    if not workspace.startswith("/"):
-        # Belt-and-suspenders. The Pydantic schema layer also
-        # rejects this; pin it here so direct callers (tests,
-        # other server-internal paths) can't bypass.
-        raise WorkspaceValidationError("workspace must be an absolute path starting with /")
+    if not is_absolute_workspace_path(workspace):
+        # Belt-and-suspenders. Pin it here so direct callers (tests,
+        # other server-internal paths) can't bypass frontend checks.
+        raise WorkspaceValidationError(
+            "workspace must be an absolute path "
+            "(POSIX /path or Windows drive/UNC path)"
+        )
 
     display_host = host_name_for_errors or host_id
 
@@ -293,7 +322,15 @@ async def validate_workspace(
         # Build under the canonical workspace so any symlinks in the
         # picked path are already resolved — without that, a user
         # whose workspace is a symlink could fool the existence check.
-        subdir_path = canonical_workspace.rstrip("/") + "/" + subdir
+        # Join with the host's path separator (Windows drive paths use \).
+        if "\\" in canonical_workspace or (
+            len(canonical_workspace) >= 2 and canonical_workspace[1] == ":"
+        ):
+            subdir_path = (
+                canonical_workspace.rstrip("\\/") + "\\" + subdir.replace("/", "\\")
+            )
+        else:
+            subdir_path = canonical_workspace.rstrip("/") + "/" + subdir
         subdir_stat = await _ask_host_stat(
             host_registry=host_registry,
             host_conn=host_conn,

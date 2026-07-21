@@ -5782,9 +5782,12 @@ async def _validate_session_workspace(
             "workspace required when host_id is set",
             code=ErrorCode.INVALID_INPUT,
         )
-    if not workspace.startswith("/"):
+    from omnigent.server.routes._workspace_validation import is_absolute_workspace_path
+
+    if not is_absolute_workspace_path(workspace):
         raise OmnigentError(
-            "workspace must be an absolute path starting with /",
+            "workspace must be an absolute path "
+            "(POSIX /path or Windows drive/UNC path)",
             code=ErrorCode.INVALID_INPUT,
         )
     if agent_cache is None:

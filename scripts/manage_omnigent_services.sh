@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="${HOME}/.bun/bin:${HOME}/.local/bin:${PATH}"
 OMNIGENT_DIR="$ROOT_DIR/omnigent"
 OMNIGENT_CLI="$OMNIGENT_DIR/.venv/bin/omnigent"
 STACK_SESSION="${OMNIGENT_STACK_TMUX_SESSION:-omnigent-stack}"
@@ -47,6 +48,8 @@ require_runtime() {
 
 configure_agent_runtime() {
   export OMNIGENT_AUTH_ENABLED="${OMNIGENT_AUTH_ENABLED:-0}"
+  export OMNIGENT_LOCAL_SINGLE_USER="${OMNIGENT_LOCAL_SINGLE_USER:-1}"
+  export OMNIGENT_WS_ALLOWED_ORIGINS="${OMNIGENT_WS_ALLOWED_ORIGINS:-http://127.0.0.1:6767,http://localhost:6767,http://127.0.0.1:6768,http://localhost:6768}"
   export OMNIGENT_NO_UPDATE_CHECK="${OMNIGENT_NO_UPDATE_CHECK:-1}"
   # Claude Native is the primary private-fund agent. Route it through the
   # managed LiteLLM proxy by default so Claude Code can use the configured
@@ -75,9 +78,10 @@ server_healthy() {
 }
 
 host_online() {
-  "$OMNIGENT_CLI" host status --server "$SERVER_URL" 2>/dev/null \
-    | tr -d '\r' \
-    | grep -q 'process=online.*host=online'
+  local status
+  status="$("$OMNIGENT_CLI" host status --server "$SERVER_URL" 2>/dev/null | tr -d '\r')" \
+    || return 1
+  grep -q 'process=online.*host=online' <<<"$status"
 }
 
 tracking_worker_online() {

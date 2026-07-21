@@ -25,6 +25,33 @@ const yaml = require("js-yaml");
 
 const url = require("./url");
 
+/**
+ * Path to a CLI shipped inside the Electron app resources (zero-config build).
+ * @returns {string | null}
+ */
+function bundledRuntimeCliPath() {
+  try {
+    const { app } = require("electron");
+    const pathMod = require("path");
+    const fsMod = require("fs");
+    const root = app.isPackaged
+      ? pathMod.join(process.resourcesPath, "runtime", "bin")
+      : pathMod.join(__dirname, "..", "resources", "runtime", "bin");
+    const names =
+      process.platform === "win32"
+        ? ["omnigent.exe", "omnigent.cmd", "omnigent.bat", "omnigent"]
+        : ["omnigent"];
+    for (const name of names) {
+      const candidate = pathMod.join(root, name);
+      if (fsMod.existsSync(candidate)) return candidate;
+    }
+  } catch {
+    // electron app module may be unavailable in pure unit tests
+  }
+  return null;
+}
+
+
 /** Default timeout for the short status commands. */
 const DEFAULT_TIMEOUT_MS = 10000;
 
@@ -356,6 +383,14 @@ function resolveCliPath(configuredPath, deps = {}) {
 
   if (configuredPath && isExec(configuredPath)) {
     return { path: configuredPath, source: "configured" };
+  }
+  // Packaged private-fund builds ship the CLI under resources/runtime/bin.
+  const bundled =
+    typeof deps.bundledRuntimeCliPath === "function"
+      ? deps.bundledRuntimeCliPath()
+      : bundledRuntimeCliPath();
+  if (bundled && isExec(bundled)) {
+    return { path: bundled, source: "candidate" };
   }
   const onPath = which();
   if (onPath && isExec(onPath)) {
