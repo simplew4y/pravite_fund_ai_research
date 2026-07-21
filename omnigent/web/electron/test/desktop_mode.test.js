@@ -57,4 +57,26 @@ describe("desktop_mode", () => {
     const env = desktop.buildStackEnv({ PYTHONPYCACHEPREFIX: custom });
     assert.equal(env.PYTHONPYCACHEPREFIX, custom);
   });
+
+  it("describes the Windows native runtime layout", () => {
+    const root = path.join("C:\\", "runtime");
+    const layout = desktop.nativeRuntimeLayout("win32", root);
+    assert.equal(layout.python, path.join(root, "python", "python.exe"));
+    assert.equal(
+      layout.sitePackages,
+      path.join(root, "python", "Lib", "site-packages"),
+    );
+    assert.equal(layout.sidecar, path.join(root, "bin", "claude-haha.exe"));
+  });
+
+  it("describes the Apple Silicon macOS native runtime layout", () => {
+    const root = "/Applications/PrivateFundWorkbench.app/Contents/Resources/runtime";
+    const layout = desktop.nativeRuntimeLayout("darwin", root);
+    assert.equal(layout.python, path.join(root, "python", "bin", "python3"));
+    assert.equal(
+      layout.sitePackages,
+      path.join(root, "python", "lib", "python3.12", "site-packages"),
+    );
+    assert.equal(layout.sidecar, path.join(root, "bin", "claude-haha"));
+  });
 });

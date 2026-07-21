@@ -10,8 +10,18 @@ from pathlib import Path
 
 
 def _bootstrap() -> None:
-    # .../runtime/python/Lib/site-packages/sitecustomize.py
-    python_home = Path(__file__).resolve().parents[2]  # .../python
+    current = Path(__file__).resolve()
+    python_home = next(
+        (
+            parent
+            for parent in current.parents
+            if (parent / "python.exe").is_file()
+            or (parent / "bin" / "python3").is_file()
+        ),
+        None,
+    )
+    if python_home is None:
+        return
     runtime = python_home.parent
     for p in (
         runtime / "project",

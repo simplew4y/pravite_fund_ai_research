@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # Apply portable-runtime fixes to an assembled resources/runtime tree.
-# Safe to re-run. Used by assemble_win_native.sh and for syncing WSL build tree.
+# Safe to re-run. DESKTOP_RUNTIME_TARGET is "windows" (default) or "macos".
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUNTIME_DIR="${1:-$ROOT_DIR/omnigent/web/electron/resources/runtime}"
 TPL="$ROOT_DIR/scripts/desktop/templates"
 PY_HOME="$RUNTIME_DIR/python"
-SITE="$PY_HOME/Lib/site-packages"
+TARGET="${DESKTOP_RUNTIME_TARGET:-windows}"
+if [[ "$TARGET" == "macos" ]]; then
+  SITE="$PY_HOME/lib/python3.12/site-packages"
+else
+  SITE="$PY_HOME/Lib/site-packages"
+fi
 
 if [[ ! -d "$RUNTIME_DIR" ]]; then
   echo "runtime missing: $RUNTIME_DIR" >&2
@@ -91,7 +96,11 @@ do
   echo "  synced omnigent/$relative_path"
 done
 
-# 6) NATIVE_STACK marker. cc-haha.exe is compiled by assemble_win_native.sh.
-echo "native-windows" > "$RUNTIME_DIR/NATIVE_STACK"
+# 6) NATIVE_STACK marker. The platform assembler installs the cc-haha binary.
+if [[ "$TARGET" == "macos" ]]; then
+  echo "native-macos-arm64" > "$RUNTIME_DIR/NATIVE_STACK"
+else
+  echo "native-windows" > "$RUNTIME_DIR/NATIVE_STACK"
+fi
 
 echo "==> apply_runtime_fixes: done"

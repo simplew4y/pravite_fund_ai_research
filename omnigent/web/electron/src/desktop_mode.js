@@ -226,16 +226,62 @@ function stackEndpoints() {
  * @returns {string | null}
  */
 function bundledCliPath() {
-  const root = runtimeRoot();
-  const names =
-    process.platform === "win32"
-      ? ["omnigent.exe", "omnigent.cmd", "omnigent.bat", "omnigent"]
-      : ["omnigent"];
+  const layout = nativeRuntimeLayout();
+  const names = process.platform === "win32"
+    ? ["omnigent.exe", "omnigent.cmd", "omnigent.bat", "omnigent"]
+    : ["omnigent"];
   for (const name of names) {
-    const p = path.join(root, "bin", name);
+    const p = path.join(layout.binDir, name);
     if (fs.existsSync(p)) return p;
   }
   return null;
+}
+
+/**
+ * Describe the bundled native runtime without probing the filesystem. Keeping
+ * platform-specific paths here prevents the supervisor from growing Windows
+ * assumptions as new desktop targets are added.
+ *
+ * @param {NodeJS.Platform} [platform]
+ * @param {string} [root]
+ */
+function nativeRuntimeLayout(platform = process.platform, root = runtimeRoot()) {
+  const pythonHome = path.join(root, "python");
+  const binDir = path.join(root, "bin");
+  if (platform === "win32") {
+    return {
+      platform,
+      root,
+      binDir,
+      pythonHome,
+      python: path.join(pythonHome, "python.exe"),
+      pythonBinDir: path.join(pythonHome, "Scripts"),
+      sitePackages: path.join(pythonHome, "Lib", "site-packages"),
+      sidecar: path.join(binDir, "claude-haha.exe"),
+    };
+  }
+  if (platform === "darwin") {
+    return {
+      platform,
+      root,
+      binDir,
+      pythonHome,
+      python: path.join(pythonHome, "bin", "python3"),
+      pythonBinDir: path.join(pythonHome, "bin"),
+      sitePackages: path.join(pythonHome, "lib", "python3.12", "site-packages"),
+      sidecar: path.join(binDir, "claude-haha"),
+    };
+  }
+  return {
+    platform,
+    root,
+    binDir,
+    pythonHome,
+    python: path.join(pythonHome, "bin", "python3"),
+    pythonBinDir: path.join(pythonHome, "bin"),
+    sitePackages: path.join(pythonHome, "lib", "python3.12", "site-packages"),
+    sidecar: path.join(binDir, "claude-haha"),
+  };
 }
 
 /**
@@ -243,16 +289,19 @@ function bundledCliPath() {
  * @returns {string | null}
  */
 function bundledPythonPath() {
-  const root = runtimeRoot();
-  const names =
-    process.platform === "win32"
-      ? ["python.exe", "python"]
-      : ["python3", "python"];
-  for (const name of names) {
-    const p = path.join(root, "python", name);
-    if (fs.existsSync(p)) return p;
-  }
+  const layout = nativeRuntimeLayout();
+  if (fs.existsSync(layout.python)) return layout.python;
   return null;
+}
+
+/** @returns {string} */
+function bundledSitePackagesPath() {
+  return nativeRuntimeLayout().sitePackages;
+}
+
+/** @returns {string} */
+function bundledSidecarPath() {
+  return nativeRuntimeLayout().sidecar;
 }
 
 /**
@@ -281,7 +330,10 @@ module.exports = {
   loadDesktopEnv,
   buildStackEnv,
   stackEndpoints,
+  nativeRuntimeLayout,
   bundledCliPath,
   bundledPythonPath,
+  bundledSitePackagesPath,
+  bundledSidecarPath,
   hasBundledRuntime,
 };

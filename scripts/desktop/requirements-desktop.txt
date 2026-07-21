@@ -1,5 +1,6 @@
-# Minimal Windows desktop runtime for private-fund workbench.
-# Installed into embeddable CPython via wine (or pip --platform win_amd64).
+# Native desktop runtime for the private-fund workbench (Windows and macOS).
+# Windows installs into embeddable CPython via Wine; macOS uses a bundled
+# python-build-standalone distribution.
 # Keep this list lean; do NOT pull full FinSagent/vllm/eval stacks.
 
 # --- HTTP / server ---
@@ -33,6 +34,8 @@ ftfy>=6.0
 python-multipart>=0.0.9
 aiofiles>=23.0
 orjson>=3.9
+pexpect>=4.9,<5; platform_system != "Windows"
+pyte>=0.8,<1; platform_system != "Windows"
 
 # --- Model / harness (private-fund path) ---
 litellm[proxy]>=1.50

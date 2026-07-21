@@ -148,7 +148,12 @@ const LNA_PERMISSIONS = new Set(["local-network-access", "loopback-network"]);
  * app at launch. Details in signing/entitlements.mac.plist.
  * @type {string | null}
  */
-const WEBAUTHN_KEYCHAIN_ACCESS_GROUP = "8RMX4WU6F8.ai.omnigent.desktop";
+const packageMetadata = require("../package.json");
+const WEBAUTHN_KEYCHAIN_ACCESS_GROUP =
+  process.env.OMNIGENT_WEBAUTHN_KEYCHAIN_ACCESS_GROUP ||
+  (packageMetadata.omnigentInternalAdhocBuild
+    ? null
+    : "8RMX4WU6F8.ai.omnigent.desktop");
 
 /**
  * Enable the macOS WebAuthn platform authenticator so passkey

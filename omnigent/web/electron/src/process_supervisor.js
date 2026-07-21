@@ -1,8 +1,8 @@
 // Process supervisor for zero-config desktop: starts/stops the private-fund
 // local stack (LiteLLM, Omnigent server, host, tracking/valuation workers).
 //
-// Product path is ALWAYS native bundled runtime under resources/runtime
-// (Windows embeddable Python + project). No WSL / system Python required.
+// Product path is ALWAYS a native bundled runtime under resources/runtime
+// (Windows or macOS Python + project). No system Python is required.
 //
 // Optional dev fallback: DESKTOP_ALLOW_WSL_FALLBACK=1 enables the old WSL bridge.
 
@@ -318,7 +318,7 @@ async function waitUntil(label, check, timeoutMs) {
 }
 
 /**
- * True when resources/runtime has Windows native stack.
+ * True when resources/runtime has a complete native stack.
  * @returns {boolean}
  */
 function hasNativeRuntime() {
@@ -329,7 +329,7 @@ function hasNativeRuntime() {
   const hasProject =
     fs.existsSync(path.join(project, "FinSagent", "data_pipeline")) ||
     fs.existsSync(path.join(project, "omnigent"));
-  return Boolean(py && hasProject && (fs.existsSync(marker) || true));
+  return Boolean(py && hasProject && fs.existsSync(marker));
 }
 
 /**
@@ -355,19 +355,18 @@ function detectStrategy() {
  * @param {string} project
  */
 function nativeChildEnv(env, root, project) {
-  const pyHome = path.join(root, "python");
-  const sitePackages = path.join(pyHome, "Lib", "site-packages");
+  const layout = desktop.nativeRuntimeLayout(process.platform, root);
   const pathParts = [
-    path.join(root, "bin"),
-    pyHome,
-    path.join(pyHome, "Scripts"),
+    layout.binDir,
+    layout.pythonHome,
+    layout.pythonBinDir,
     env.PATH || "",
   ];
   const pythonPath = [
     project,
     path.join(project, "src"),
     path.join(project, "omnigent"),
-    sitePackages,
+    layout.sitePackages,
     env.PYTHONPATH || "",
   ]
     .filter(Boolean)
@@ -429,7 +428,7 @@ function nativeChildEnv(env, root, project) {
     CLAUDE_CONFIG_DIR:
       env.CLAUDE_CONFIG_DIR || path.join(env.OMNIGENT_CONFIG_HOME || project, "cc-haha"),
     HARNESS_CC_HAHA_PATH:
-      env.HARNESS_CC_HAHA_PATH || path.join(root, "bin", "claude-haha.exe"),
+      env.HARNESS_CC_HAHA_PATH || layout.sidecar,
     HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE:
       env.HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE || path.join(project, "omnigent", "CLAUDE.md"),
     OMNIGENT_CLAUDE_NATIVE_AUTO_APPROVE:
@@ -535,7 +534,7 @@ async function startNative(env, endpoints) {
     return {
       ok: false,
       error:
-        "Bundled Python runtime missing. Rebuild with scripts/desktop/assemble_win_native.sh",
+        "Bundled Python runtime missing. Rebuild the native desktop runtime for this platform.",
     };
   }
 
@@ -701,9 +700,8 @@ async function ensureStackRunning(llmConfig = null) {
     return {
       ok: false,
       error:
-        "No bundled native runtime found (python.exe + project). " +
-        "This package must be built with scripts/desktop/assemble_win_native.sh. " +
-        "A clean PC does not need WSL/Python — rebuild the installer with the native stack.",
+        "No bundled native runtime found (Python + project + runtime marker). " +
+        "Rebuild the desktop package with the native runtime assembly script for this platform.",
     };
   }
 

@@ -61,6 +61,13 @@ describe("process_supervisor LLM configuration", () => {
     assert.equal(env.PDF_RESEARCH_LLM_MODEL, "private-fund-default");
   });
 
+  it("uses the platform sidecar selected by the runtime layout", () => {
+    const root = path.join(os.tmpdir(), "runtime");
+    const env = supervisor.nativeChildEnv({}, root, path.join(root, "project"));
+    const expected = process.platform === "win32" ? "claude-haha.exe" : "claude-haha";
+    assert.equal(env.HARNESS_CC_HAHA_PATH, path.join(root, "bin", expected));
+  });
+
   it("restores the previous gateway when the replacement cannot start", async () => {
     const calls = [];
     const result = await supervisor._swapWithRollback(

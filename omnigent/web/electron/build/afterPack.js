@@ -8,6 +8,18 @@
 // the signature.
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
+
+function ensureArm64Executable(filePath) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Required macOS runtime executable is missing: ${filePath}`);
+  }
+  fs.chmodSync(filePath, 0o755);
+  const description = execFileSync("file", ["-L", filePath], { encoding: "utf8" });
+  if (!description.includes("Mach-O") || !description.includes("arm64")) {
+    throw new Error(`Expected an arm64 Mach-O executable: ${description.trim()}`);
+  }
+}
 
 module.exports = async function afterPack(context) {
   if (context.electronPlatformName !== "darwin") return;
@@ -17,4 +29,12 @@ module.exports = async function afterPack(context) {
     path.join(__dirname, "..", "icons", "Assets.car"),
     path.join(resourcesDir, "Assets.car"),
   );
+
+  const runtime = path.join(resourcesDir, "runtime");
+  const python = path.join(runtime, "python", "bin", "python3");
+  const sidecar = path.join(runtime, "bin", "claude-haha");
+  const cli = path.join(runtime, "bin", "omnigent");
+  ensureArm64Executable(python);
+  ensureArm64Executable(sidecar);
+  if (fs.existsSync(cli)) fs.chmodSync(cli, 0o755);
 };

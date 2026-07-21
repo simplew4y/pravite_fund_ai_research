@@ -12,11 +12,13 @@
     "test": "node --test test/*.test.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
+    "build:mac:internal": "electron-builder --config electron-builder.mac-internal.js --mac --arm64 --publish never",
     "build:mac:release": "electron-builder --mac -c.mac.notarize=true",
     "build:linux": "electron-builder --linux",
     "build:win": "electron-builder --win",
     "build:win:pf": "electron-builder --win --x64",
-    "assemble:runtime": "bash ../../../scripts/desktop/assemble_runtime.sh"
+    "assemble:runtime": "bash ../../../scripts/desktop/assemble_runtime.sh",
+    "assemble:mac": "bash ../../../scripts/desktop/assemble_mac_native.sh"
   },
   "devDependencies": {
     "electron": "^42.3.2",
