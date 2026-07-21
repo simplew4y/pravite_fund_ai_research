@@ -287,6 +287,9 @@ function nativeChildEnv(env, root, project) {
     PATH: pathParts.join(path.delimiter),
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8",
+    PYTHONPYCACHEPREFIX:
+      env.PYTHONPYCACHEPREFIX ||
+      path.join(env.OMNIGENT_CONFIG_HOME || project, "pycache", "python312"),
     NO_PROXY: noProxy,
     no_proxy: noProxy,
     // Prevent children from trying to open a browser
@@ -342,6 +345,9 @@ async function startNative(env, endpoints) {
     }
     if (env2.OMNIGENT_DATA_DIR) fs.mkdirSync(env2.OMNIGENT_DATA_DIR, { recursive: true });
     if (env2.OMNIGENT_CONFIG_HOME) fs.mkdirSync(env2.OMNIGENT_CONFIG_HOME, { recursive: true });
+    if (env2.PYTHONPYCACHEPREFIX) {
+      fs.mkdirSync(env2.PYTHONPYCACHEPREFIX, { recursive: true });
+    }
     if (env2.CLAUDE_CONFIG_DIR) fs.mkdirSync(env2.CLAUDE_CONFIG_DIR, { recursive: true });
   } catch {
     // ignore
@@ -510,6 +516,9 @@ async function ensureStackRunning() {
   try {
     if (env.OMNIGENT_DATA_DIR) fs.mkdirSync(env.OMNIGENT_DATA_DIR, { recursive: true });
     if (env.OMNIGENT_CONFIG_HOME) fs.mkdirSync(env.OMNIGENT_CONFIG_HOME, { recursive: true });
+    if (env.PYTHONPYCACHEPREFIX) {
+      fs.mkdirSync(env.PYTHONPYCACHEPREFIX, { recursive: true });
+    }
     if (env.PRIVATE_FUND_DATASET_WORKSPACE) {
       fs.mkdirSync(env.PRIVATE_FUND_DATASET_WORKSPACE, { recursive: true });
     }

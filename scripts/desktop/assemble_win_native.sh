@@ -362,6 +362,14 @@ if exist "%RUNTIME_ROOT%\config\desktop.env" (
 if "%PRIVATE_FUND_PROJECT_ROOT%"=="" set "PRIVATE_FUND_PROJECT_ROOT=%PROJECT_ROOT%"
 if "%OMNIGENT_AUTH_ENABLED%"=="" set "OMNIGENT_AUTH_ENABLED=0"
 if "%OMNIGENT_LOCAL_SINGLE_USER%"=="" set "OMNIGENT_LOCAL_SINGLE_USER=1"
+if "%PYTHONPYCACHEPREFIX%"=="" (
+  if not "%OMNIGENT_CONFIG_HOME%"=="" (
+    set "PYTHONPYCACHEPREFIX=%OMNIGENT_CONFIG_HOME%\pycache\python312"
+  ) else (
+    set "PYTHONPYCACHEPREFIX=%LOCALAPPDATA%\PrivateFundWorkbench\pycache\python312"
+  )
+)
+if not exist "%PYTHONPYCACHEPREFIX%" mkdir "%PYTHONPYCACHEPREFIX%" >nul 2>&1
 EOF
 
 cat > "$RUNTIME_DIR/bin/omnigent.cmd" <<'EOF'
@@ -395,6 +403,15 @@ chmod +x "$RUNTIME_DIR/bin/omnigent" 2>/dev/null || true
 # cc-haha.exe was installed above; the harness resolves it from runtime/bin.
 # Marker so supervisor detects native strategy
 bash "$ROOT_DIR/scripts/desktop/apply_runtime_fixes.sh" "$RUNTIME_DIR"
+
+# Bytecode generated while installing and smoke-testing dependencies nearly
+# doubles the Python file count. Ship sources only and let the desktop write
+# cache files on demand under its writable per-user PYTHONPYCACHEPREFIX.
+echo "==> Removing packaged Python bytecode caches"
+PYCACHE_FILES_BEFORE="$(find "$RUNTIME_DIR" -type f \( -name '*.pyc' -o -name '*.pyo' \) | wc -l)"
+find "$RUNTIME_DIR" -type d -name '__pycache__' -prune -exec rm -rf {} +
+find "$RUNTIME_DIR" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+echo "    removed $PYCACHE_FILES_BEFORE bytecode files"
 
 echo "native-windows" > "$RUNTIME_DIR/NATIVE_STACK"
 {

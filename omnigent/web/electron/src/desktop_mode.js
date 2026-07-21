@@ -142,6 +142,7 @@ function buildStackEnv(extra = {}) {
   }
   const dataDir = path.join(userData, "data");
   const configHome = path.join(userData, "config");
+  const pythonCache = path.join(userData, "pycache", "python312");
   const projectRoot = path.join(runtimeRoot(), "project");
   const datasetWorkspace = path.join(dataDir, "private_fund_datasets");
 
@@ -169,6 +170,11 @@ function buildStackEnv(extra = {}) {
       `${serverUrl},http://localhost:${serverPort},http://127.0.0.1:${serverPort}`,
     OMNIGENT_CONFIG_HOME: fileEnv.OMNIGENT_CONFIG_HOME || configHome,
     OMNIGENT_DATA_DIR: fileEnv.OMNIGENT_DATA_DIR || dataDir,
+    PYTHONPYCACHEPREFIX:
+      extra.PYTHONPYCACHEPREFIX ||
+      fileEnv.PYTHONPYCACHEPREFIX ||
+      process.env.PYTHONPYCACHEPREFIX ||
+      pythonCache,
     PRIVATE_FUND_PROJECT_ROOT: fileEnv.PRIVATE_FUND_PROJECT_ROOT || projectRoot,
     PRIVATE_FUND_DATASET_WORKSPACE:
       fileEnv.PRIVATE_FUND_DATASET_WORKSPACE || datasetWorkspace,

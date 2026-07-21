@@ -1059,6 +1059,7 @@ def test_build_runner_env_allowlists_host_env_and_strips_secrets() -> None:
         "KUBECONFIG": "/home/alice/.kube/config",
         "CLAUDE_CODE_SKIP_BEDROCK_AUTH": "1",
         "CLAUDE_CONFIG_DIR": "/home/alice/.omnigent/cc-haha",
+        "PYTHONPYCACHEPREFIX": "/home/alice/.omnigent/pycache/python312",
         "HARNESS_CC_HAHA_PATH": "/opt/omnigent/bin/claude-haha",
         "HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE": "/opt/omnigent/CLAUDE.md",
     }
@@ -1103,6 +1104,7 @@ def test_build_runner_env_allowlists_host_env_and_strips_secrets() -> None:
     # The desktop cc-haha process must remain isolated from ~/.claude, whose
     # settings may point ANTHROPIC_BASE_URL at an unrelated local gateway.
     assert env["CLAUDE_CONFIG_DIR"] == "/home/alice/.omnigent/cc-haha"
+    assert env["PYTHONPYCACHEPREFIX"] == "/home/alice/.omnigent/pycache/python312"
     assert env["HARNESS_CC_HAHA_PATH"] == "/opt/omnigent/bin/claude-haha"
     assert env["HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE"] == "/opt/omnigent/CLAUDE.md"
     # Non-harness secrets are stripped — the point of the allowlist.

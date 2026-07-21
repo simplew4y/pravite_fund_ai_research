@@ -40,4 +40,21 @@ describe("desktop_mode", () => {
     assert.equal(desktop.isBundledMode(), false);
     if (prev !== undefined) process.env.DESKTOP_MODE = prev;
   });
+
+  it("buildStackEnv keeps Python bytecode outside the packaged runtime", () => {
+    const prev = process.env.PYTHONPYCACHEPREFIX;
+    delete process.env.PYTHONPYCACHEPREFIX;
+    const env = desktop.buildStackEnv();
+    assert.equal(
+      env.PYTHONPYCACHEPREFIX,
+      path.join(desktop.runtimeRoot(), "userData", "pycache", "python312"),
+    );
+    if (prev !== undefined) process.env.PYTHONPYCACHEPREFIX = prev;
+  });
+
+  it("buildStackEnv preserves an explicit Python bytecode cache path", () => {
+    const custom = path.join(os.tmpdir(), "custom-python-cache");
+    const env = desktop.buildStackEnv({ PYTHONPYCACHEPREFIX: custom });
+    assert.equal(env.PYTHONPYCACHEPREFIX, custom);
+  });
 });
