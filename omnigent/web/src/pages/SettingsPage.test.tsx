@@ -17,6 +17,20 @@ const mocks = vi.hoisted(() => ({
   accountsEnabled: true,
   me: { id: "alice", is_admin: false } as { id: string; is_admin: boolean } | null,
   conversations: [] as Conversation[],
+  testLlmConfig: vi.fn(),
+  saveLlmConfig: vi.fn(),
+  getLlmApplyStatus: vi.fn(),
+  refreshLlmConfig: vi.fn(),
+  llmConfig: null as null | {
+    preset: "dashscope" | "deepseek" | "openai" | "anthropic" | "custom";
+    provider: string;
+    baseUrl: string;
+    model: string;
+    hasApiKey: boolean;
+    maskedApiKey: string;
+    configured: boolean;
+  },
+  llmApplyStatus: { busy: false, applying: false, detail: undefined as string | undefined },
 }));
 
 vi.mock("next-themes", () => ({
@@ -38,6 +52,24 @@ vi.mock("@/hooks/useConversations", () => ({
   }),
   useArchiveConversation: () => ({ mutate: mocks.archiveMutate, isPending: false }),
   useStopAndDeleteConversation: () => ({ mutate: mocks.deleteMutate, isPending: false }),
+}));
+vi.mock("@/lib/nativeBridge", () => ({
+  isElectronShell: () => true,
+  supportsDesktopLlmConfiguration: () => true,
+  getCliStatus: vi.fn().mockResolvedValue(null),
+  resetCliPath: vi.fn().mockResolvedValue(null),
+  testLlmConfig: mocks.testLlmConfig,
+  saveLlmConfig: mocks.saveLlmConfig,
+  getLlmApplyStatus: mocks.getLlmApplyStatus,
+}));
+vi.mock("@/lib/LlmConfigContext", () => ({
+  useLlmConfiguration: () => ({
+    config: mocks.llmConfig,
+    applyStatus: mocks.llmApplyStatus,
+    loading: false,
+    requireConfiguration: () => true,
+    refresh: mocks.refreshLlmConfig,
+  }),
 }));
 
 import { SettingsPage } from "./SettingsPage";
@@ -69,6 +101,13 @@ beforeEach(() => {
   mocks.setTheme.mockReset();
   mocks.archiveMutate.mockReset();
   mocks.deleteMutate.mockReset();
+  mocks.testLlmConfig.mockReset();
+  mocks.saveLlmConfig.mockReset();
+  mocks.getLlmApplyStatus.mockReset();
+  mocks.getLlmApplyStatus.mockResolvedValue({ busy: false, applying: false });
+  mocks.refreshLlmConfig.mockReset();
+  mocks.llmConfig = null;
+  mocks.llmApplyStatus = { busy: false, applying: false, detail: undefined };
   mocks.theme = "system";
   mocks.accountsEnabled = true;
   mocks.me = { id: "alice", is_admin: false };
@@ -77,6 +116,59 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SettingsPage", () => {
+  it("tests a desktop model configuration without exposing it outside the native bridge", async () => {
+    mocks.testLlmConfig.mockResolvedValue({ ok: true });
+    renderPage("/settings/llm");
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "test-key" } });
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() =>
+      expect(mocks.testLlmConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ preset: "dashscope", model: "qwen3-max", apiKey: "test-key" }),
+      ),
+    );
+    expect(screen.getByText("连接成功，模型服务可以正常使用。")).toBeInTheDocument();
+  });
+
+  it("shows the masked API key as a solid value and replaces it as a whole", () => {
+    mocks.llmConfig = {
+      preset: "dashscope",
+      provider: "dashscope",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      model: "qwen3-max",
+      hasApiKey: true,
+      maskedApiKey: "sk-bab*****************d2",
+      configured: true,
+    };
+    renderPage("/settings/llm");
+
+    const maskedInput = screen.getByLabelText("API Key");
+    expect(maskedInput).toHaveValue("sk-bab*****************d2");
+    expect(maskedInput).toHaveAttribute("readonly");
+
+    fireEvent.click(maskedInput);
+    const replacementInput = screen.getByLabelText("API Key");
+    expect(replacementInput).toHaveValue("");
+    expect(replacementInput).toHaveAttribute("type", "password");
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+
+    fireEvent.change(replacementInput, { target: { value: "sk-new-secret" } });
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByLabelText("API Key")).toHaveValue("sk-bab*****************d2");
+  });
+
+  it("disables model changes while a response is running", () => {
+    mocks.llmApplyStatus = {
+      busy: true,
+      applying: false,
+      detail: "当前有回答正在生成，请等待完成后修改。",
+    };
+    renderPage("/settings/llm");
+
+    expect(screen.getByText("当前有回答正在生成，请等待完成后修改。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
+  });
+
   it("renders the Appearance section and applies a theme on card click", () => {
     renderPage("/settings/appearance");
     expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();

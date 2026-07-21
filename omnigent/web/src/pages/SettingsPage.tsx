@@ -21,8 +21,11 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertCircleIcon,
   ArchiveRestoreIcon,
+  CheckCircle2Icon,
   KeyRoundIcon,
+  Loader2Icon,
   LogOutIcon,
   ShieldCheckIcon,
   Trash2Icon,
@@ -35,6 +38,14 @@ import { Link } from "@/lib/routing";
 import { PageScroll } from "@/components/PageScroll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -57,8 +68,21 @@ import { absoluteTime } from "@/lib/relativeTime";
 import { useSettingsRoute } from "@/shell/settingsNav";
 import { type ThemeMode, normalizeThemeMode } from "@/components/theme/themeMode";
 import { useIsEmbedded } from "@/lib/embedded";
-import { type CliStatus, getCliStatus, isElectronShell, resetCliPath } from "@/lib/nativeBridge";
+import {
+  type CliStatus,
+  type LlmConnectionTestResult,
+  type LlmApplyStatus,
+  type LlmProviderInput,
+  type LlmProviderPreset,
+  getCliStatus,
+  getLlmApplyStatus,
+  isElectronShell,
+  resetCliPath,
+  saveLlmConfig,
+  testLlmConfig,
+} from "@/lib/nativeBridge";
 import { cn } from "@/lib/utils";
+import { useLlmConfiguration } from "@/lib/LlmConfigContext";
 
 /**
  * Settings content panel. The section nav lives in the sidebar card
@@ -79,7 +103,236 @@ export function SettingsPage() {
       {section === "account" && accountsEnabled && <AccountSection />}
       {section === "archived" && <ArchivedSection />}
       {section === "cli" && isElectronShell() && <LocalCliSection />}
+      {section === "llm" && isElectronShell() && <LlmProviderSection />}
     </PageScroll>
+  );
+}
+
+const LLM_PRESETS: Record<
+  LlmProviderPreset,
+  { label: string; baseUrl: string; defaultModel: string }
+> = {
+  dashscope: {
+    label: "通义千问（DashScope）",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    defaultModel: "qwen3-max",
+  },
+  deepseek: {
+    label: "DeepSeek",
+    baseUrl: "https://api.deepseek.com/v1",
+    defaultModel: "deepseek-chat",
+  },
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", defaultModel: "" },
+  anthropic: { label: "Anthropic", baseUrl: "https://api.anthropic.com", defaultModel: "" },
+  custom: { label: "自定义 OpenAI-compatible", baseUrl: "", defaultModel: "" },
+};
+
+function llmResultMessage(result: LlmConnectionTestResult): string {
+  if (result.ok) return "连接成功，模型服务可以正常使用。";
+  const prefix: Record<string, string> = {
+    authentication: "API Key 验证失败",
+    connection: "无法连接模型服务",
+    model: "模型名称不可用",
+    timeout: "连接测试超时",
+    validation: "配置不完整",
+    busy: "当前不能修改模型配置",
+    apply: "模型配置应用失败",
+  };
+  return `${prefix[result.error ?? ""] ?? "模型服务请求失败"}${result.detail ? `：${result.detail}` : ""}`;
+}
+
+function LlmProviderSection() {
+  const { config, applyStatus, loading, refresh } = useLlmConfiguration();
+  const [form, setForm] = useState<LlmProviderInput>({
+    preset: "dashscope",
+    baseUrl: LLM_PRESETS.dashscope.baseUrl,
+    model: LLM_PRESETS.dashscope.defaultModel,
+    apiKey: "",
+  });
+  const [busy, setBusy] = useState<"test" | "save" | null>(null);
+  const [result, setResult] = useState<LlmConnectionTestResult | null>(null);
+  const [editingApiKey, setEditingApiKey] = useState(false);
+  const [activity, setActivity] = useState<LlmApplyStatus>(applyStatus);
+
+  useEffect(() => {
+    if (!config) return;
+    setForm({
+      preset: config.preset,
+      baseUrl: config.baseUrl,
+      model: config.model,
+      apiKey: "",
+    });
+    setEditingApiKey(!config.hasApiKey);
+  }, [config]);
+
+  useEffect(() => {
+    setActivity(applyStatus);
+  }, [applyStatus]);
+
+  useEffect(() => {
+    let active = true;
+    const refreshActivity = async () => {
+      const next = await getLlmApplyStatus();
+      if (active) setActivity(next);
+    };
+    void refreshActivity();
+    const timer = window.setInterval(() => void refreshActivity(), 2_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const runTest = async () => {
+    setBusy("test");
+    const next = await testLlmConfig(form);
+    setResult(next);
+    setBusy(null);
+  };
+
+  const save = async () => {
+    setBusy("save");
+    const next = await saveLlmConfig(form);
+    setBusy(null);
+    setResult(next);
+    if (!next.ok) return;
+    await refresh();
+    setForm((current) => ({ ...current, apiKey: "" }));
+    setEditingApiKey(false);
+  };
+
+  const apiKeyRequired = (!config?.hasApiKey || editingApiKey) && !(form.apiKey ?? "").trim();
+
+  return (
+    <Section title="模型服务" description="配置工作台用于投研问答和内容生成的模型 API。">
+      <div className="flex max-w-2xl flex-col gap-5">
+        {activity.busy && (
+          <Alert>
+            <AlertCircleIcon />
+            <AlertTitle>{activity.applying ? "正在应用模型配置" : "暂时不能保存"}</AlertTitle>
+            <AlertDescription>
+              {activity.detail || "当前有回答正在生成，请等待完成后修改。"}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          模型供应商
+          <Select
+            value={form.preset}
+            onValueChange={(value) => {
+              const preset = value as LlmProviderPreset;
+              const definition = LLM_PRESETS[preset];
+              setForm((current) => ({
+                ...current,
+                preset,
+                baseUrl: definition.baseUrl,
+                model: definition.defaultModel,
+              }));
+              setResult(null);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(LLM_PRESETS).map(([value, definition]) => (
+                <SelectItem key={value} value={value}>
+                  {definition.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          Base URL
+          <Input
+            value={form.baseUrl}
+            placeholder="https://api.example.com/v1"
+            onChange={(event) =>
+              setForm((current) => ({ ...current, baseUrl: event.target.value }))
+            }
+          />
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          模型名称
+          <Input
+            value={form.model}
+            placeholder="例如 qwen3-max"
+            onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
+          />
+        </label>
+
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          API Key
+          <div className="flex items-center gap-2">
+            {config?.hasApiKey && !editingApiKey ? (
+              <Input
+                type="text"
+                readOnly
+                value={config.maskedApiKey}
+                className="cursor-text bg-background text-foreground"
+                onClick={() => {
+                  setEditingApiKey(true);
+                  setForm((current) => ({ ...current, apiKey: "" }));
+                }}
+              />
+            ) : (
+              <Input
+                autoFocus={Boolean(config?.hasApiKey)}
+                type="password"
+                autoComplete="new-password"
+                value={form.apiKey ?? ""}
+                placeholder="请输入完整的新 API Key"
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, apiKey: event.target.value }))
+                }
+              />
+            )}
+            {config?.hasApiKey && editingApiKey && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setEditingApiKey(false);
+                  setForm((current) => ({ ...current, apiKey: "" }));
+                }}
+              >
+                取消
+              </Button>
+            )}
+          </div>
+        </label>
+
+        {result && (
+          <Alert variant={result.ok ? "default" : "destructive"}>
+            {result.ok ? <CheckCircle2Icon /> : <AlertCircleIcon />}
+            <AlertTitle>{result.ok ? "成功" : "未完成"}</AlertTitle>
+            <AlertDescription>{llmResultMessage(result)}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={busy !== null || loading || apiKeyRequired}
+            onClick={() => void runTest()}
+          >
+            {busy === "test" && <Loader2Icon className="size-4 animate-spin" />}
+            测试连接
+          </Button>
+          <Button
+            disabled={busy !== null || loading || activity.busy || apiKeyRequired}
+            onClick={() => void save()}
+          >
+            {busy === "save" && <Loader2Icon className="size-4 animate-spin" />}
+            保存配置
+          </Button>
+        </div>
+      </div>
+    </Section>
   );
 }
 

@@ -154,9 +154,11 @@ function buildStackEnv(extra = {}) {
   const serverUrl = `http://${serverHost}:${serverPort}`;
 
   const model =
+    extra.LITELLM_TARGET_MODEL_NAME ||
     fileEnv.LITELLM_TARGET_MODEL_NAME ||
     fileEnv.ANTHROPIC_MODEL ||
     "qwen3-max";
+  const managedLlm = Object.prototype.hasOwnProperty.call(extra, "LLM_PROVIDER_CONFIGURED");
 
   return {
     ...process.env,
@@ -178,11 +180,13 @@ function buildStackEnv(extra = {}) {
     PRIVATE_FUND_PROJECT_ROOT: fileEnv.PRIVATE_FUND_PROJECT_ROOT || projectRoot,
     PRIVATE_FUND_DATASET_WORKSPACE:
       fileEnv.PRIVATE_FUND_DATASET_WORKSPACE || datasetWorkspace,
-    ANTHROPIC_BASE_URL: fileEnv.ANTHROPIC_BASE_URL || litellmUrl,
+    ANTHROPIC_BASE_URL: managedLlm ? litellmUrl : fileEnv.ANTHROPIC_BASE_URL || litellmUrl,
     ANTHROPIC_AUTH_TOKEN:
-      fileEnv.ANTHROPIC_AUTH_TOKEN ||
-      fileEnv.OMNIGENT_CLAUDE_API_TOKEN ||
-      "sk-local-cc-haha",
+      managedLlm
+        ? "sk-local-cc-haha"
+        : fileEnv.ANTHROPIC_AUTH_TOKEN ||
+          fileEnv.OMNIGENT_CLAUDE_API_TOKEN ||
+          "sk-local-cc-haha",
     ANTHROPIC_MODEL: model,
     ANTHROPIC_DEFAULT_SONNET_MODEL: model,
     ANTHROPIC_DEFAULT_HAIKU_MODEL: model,

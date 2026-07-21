@@ -17,6 +17,8 @@ const desktop = require("./desktop_mode");
 const KILL_GRACE_MS = 4000;
 const HEALTH_POLL_MS = 1000;
 const DEFAULT_START_TIMEOUT_MS = 180000;
+const LLM_TEST_TIMEOUT_MS = 45000;
+const LOCAL_MODEL_ALIAS = "private-fund-default";
 
 /** @type {Map<string, import("child_process").ChildProcess>} */
 const children = new Map();
@@ -92,6 +94,112 @@ async function litellmHealthy(url) {
  */
 async function serverHealthy(url) {
   return httpOk(`${url}/health`);
+}
+
+function llmRuntimeEnv(config) {
+  if (!config) return {};
+  return {
+    LITELLM_TARGET_PROVIDER: config.provider || "openai",
+    LITELLM_TARGET_API_BASE: config.baseUrl || "http://127.0.0.1:9",
+    LITELLM_TARGET_API_KEY: config.apiKey || "",
+    LITELLM_TARGET_MODEL_NAME: config.model || "not-configured",
+    LLM_PROVIDER_CONFIGURED: config.configured ? "1" : "0",
+  };
+}
+
+function yamlString(value) {
+  return JSON.stringify(String(value));
+}
+
+function writeGeneratedLiteLlmConfig(env) {
+  const configHome = env.OMNIGENT_CONFIG_HOME || path.join(desktop.runtimeRoot(), "userData");
+  const targetModel = `${env.LITELLM_TARGET_PROVIDER || "openai"}/${env.LITELLM_TARGET_MODEL_NAME || "not-configured"}`;
+  const exposedNames = [
+    LOCAL_MODEL_ALIAS,
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-5",
+    "claude-opus-4-6",
+    "claude-haiku-4-5",
+  ];
+  const lines = ["model_list:"];
+  for (const name of [...new Set(exposedNames)]) {
+    lines.push(
+      `  - model_name: ${yamlString(name)}`,
+      "    litellm_params:",
+      `      model: ${yamlString(targetModel)}`,
+      "      api_base: os.environ/LITELLM_TARGET_API_BASE",
+      "      api_key: os.environ/LITELLM_TARGET_API_KEY",
+    );
+  }
+  lines.push("", "litellm_settings:", "  drop_params: true", "  request_timeout: 600", "");
+  fs.mkdirSync(configHome, { recursive: true });
+  const target = path.join(configHome, "litellm.generated.yaml");
+  fs.writeFileSync(target, lines.join("\n"), "utf8");
+  return target;
+}
+
+function testLlmConfig(config) {
+  const python = desktop.bundledPythonPath();
+  if (!python || !fs.existsSync(python)) {
+    return Promise.resolve({ ok: false, error: "runtime", detail: "Bundled Python runtime is unavailable." });
+  }
+  const script = [
+    "import json, sys",
+    "from litellm import completion",
+    "data = json.load(sys.stdin)",
+    "try:",
+    "    completion(model=f\"{data['provider']}/{data['model']}\", api_base=data['baseUrl'], api_key=data['apiKey'], messages=[{'role':'user','content':'Reply with OK.'}], max_tokens=1, timeout=30, drop_params=True)",
+    "    print(json.dumps({'ok': True}))",
+    "except Exception as exc:",
+    "    status = getattr(exc, 'status_code', None)",
+    "    message = str(exc)",
+    "    low = message.lower()",
+    "    kind = 'connection' if any(x in low for x in ('connect', 'network', 'dns', 'refused')) else 'provider'",
+    "    if status in (401, 403) or any(x in low for x in ('unauthorized', 'authentication', 'invalid api key')): kind = 'authentication'",
+    "    elif status == 404 or ('model' in low and any(x in low for x in ('not found', 'does not exist', 'invalid'))): kind = 'model'",
+    "    elif 'timeout' in low: kind = 'timeout'",
+    "    print(json.dumps({'ok': False, 'error': kind, 'detail': message[:600]}))",
+  ].join("\n");
+  return new Promise((resolve) => {
+    const child = spawn(python, ["-c", script], {
+      cwd: desktop.runtimeRoot(),
+      env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8", LITELLM_LOG: "ERROR" },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch { /* ignore */ }
+      finish({ ok: false, error: "timeout", detail: "The provider did not respond within 45 seconds." });
+    }, LLM_TEST_TIMEOUT_MS);
+    child.stdout.on("data", (chunk) => { stdout = (stdout + chunk.toString("utf8")).slice(-8000); });
+    child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString("utf8")).slice(-2000); });
+    child.on("error", (error) => finish({ ok: false, error: "runtime", detail: error.message }));
+    child.on("exit", () => {
+      const lines = stdout.trim().split(/\r?\n/).reverse();
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line);
+          const key = config.apiKey || "";
+          if (parsed.detail && key) parsed.detail = String(parsed.detail).split(key).join("***");
+          finish(parsed);
+          return;
+        } catch { /* LiteLLM may emit non-JSON diagnostics before our result. */ }
+      }
+      const key = config.apiKey || "";
+      const detail = key ? stderr.trim().split(key).join("***") : stderr.trim();
+      finish({ ok: false, error: "runtime", detail: detail || "Model connection test failed." });
+    });
+    child.stdin.end(JSON.stringify(config));
+  });
 }
 
 /**
@@ -279,6 +387,9 @@ function nativeChildEnv(env, root, project) {
     }
   }
   const noProxy = noProxyEntries.join(",");
+  const localOpenAiUrl = `${litellmUrl}/v1`;
+  const localGatewayKey = "sk-local-cc-haha";
+  const model = LOCAL_MODEL_ALIAS;
 
   return {
     ...env,
@@ -297,15 +408,20 @@ function nativeChildEnv(env, root, project) {
     // Claude Code / claude-native → LiteLLM (no Anthropic login required)
     ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL || litellmUrl,
     ANTHROPIC_AUTH_TOKEN:
-      env.ANTHROPIC_AUTH_TOKEN || env.OMNIGENT_CLAUDE_API_TOKEN || "sk-local-cc-haha",
+      env.ANTHROPIC_AUTH_TOKEN || env.OMNIGENT_CLAUDE_API_TOKEN || localGatewayKey,
     ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY || "", // prefer AUTH_TOKEN; unset real key
-    ANTHROPIC_MODEL: env.ANTHROPIC_MODEL || env.LITELLM_TARGET_MODEL_NAME || "qwen3-max",
-    ANTHROPIC_DEFAULT_SONNET_MODEL:
-      env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL || "qwen3-max",
-    ANTHROPIC_DEFAULT_HAIKU_MODEL:
-      env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL || "qwen3-max",
-    ANTHROPIC_DEFAULT_OPUS_MODEL:
-      env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL || "qwen3-max",
+    ANTHROPIC_MODEL: model,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: model,
+    OPENAI_BASE_URL: localOpenAiUrl,
+    OPENAI_API_KEY: localGatewayKey,
+    LLM_BASE_URL: localOpenAiUrl,
+    LLM_API_KEY: localGatewayKey,
+    LLM_MODEL_NAME: model,
+    PDF_RESEARCH_LLM_BASE_URL: localOpenAiUrl,
+    PDF_RESEARCH_LLM_API_KEY: localGatewayKey,
+    PDF_RESEARCH_LLM_MODEL: model,
     CLAUDE_CODE_USE_BEDROCK: env.CLAUDE_CODE_USE_BEDROCK || "0",
     DISABLE_TELEMETRY: env.DISABLE_TELEMETRY || "1",
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:
@@ -325,6 +441,92 @@ function nativeChildEnv(env, root, project) {
  * @param {NodeJS.ProcessEnv} env
  * @param {{ serverUrl: string, litellmUrl: string }} endpoints
  */
+async function startLiteLlm(env2, endpoints, root, project) {
+  const python = desktop.bundledPythonPath();
+  if (!python || !fs.existsSync(python)) {
+    return { ok: false, error: "Bundled Python runtime is unavailable." };
+  }
+  const litellmConfig = writeGeneratedLiteLlmConfig(env2);
+  if (!fs.existsSync(litellmConfig)) {
+    return { ok: false, error: `LiteLLM config missing: ${litellmConfig}` };
+  }
+  const host = env2.LITELLM_HOST || "127.0.0.1";
+  const port = env2.LITELLM_PORT || "4000";
+  emitStatus("Starting LiteLLM…");
+  spawnTracked(
+    "litellm",
+    python,
+    [
+      "-m",
+      "litellm.proxy.proxy_cli",
+      "--config",
+      litellmConfig,
+      "--host",
+      host,
+      "--port",
+      String(port),
+    ],
+    env2,
+    project || root,
+  );
+  if (!(await waitUntil("LiteLLM", () => litellmHealthy(endpoints.litellmUrl), DEFAULT_START_TIMEOUT_MS))) {
+    return { ok: false, error: "LiteLLM did not become healthy. Check logs in app data folder." };
+  }
+  return { ok: true };
+}
+
+function nativeRuntimeContext(llmConfig) {
+  const root = desktop.runtimeRoot();
+  const project = path.join(root, "project");
+  const env = desktop.buildStackEnv(llmRuntimeEnv(llmConfig));
+  return {
+    root,
+    project,
+    env: nativeChildEnv(env, root, project),
+    endpoints: desktop.stackEndpoints(),
+  };
+}
+
+async function swapWithRollback(stopCurrent, startNext, startPrevious) {
+  await stopCurrent();
+  if (await startNext()) return { ok: true };
+  await stopCurrent();
+  const rolledBack = await startPrevious();
+  return {
+    ok: false,
+    rolledBack,
+    error: rolledBack
+      ? "The new model gateway failed to start; the previous configuration was restored."
+      : "The new model gateway failed to start and the previous configuration could not be restored.",
+  };
+}
+
+async function reloadLiteLlm(nextConfig, previousConfig) {
+  if (strategy !== "native") {
+    return { ok: false, error: "LiteLLM hot switching is only available for the bundled native stack." };
+  }
+  const next = nativeRuntimeContext(nextConfig);
+  const previous = nativeRuntimeContext(previousConfig);
+  const stopCurrent = async () => {
+    const current = children.get("litellm");
+    if (current) await stopChild(current);
+  };
+  const start = async (context) => {
+    const result = await startLiteLlm(
+      context.env,
+      context.endpoints,
+      context.root,
+      context.project,
+    );
+    return result.ok;
+  };
+  return swapWithRollback(
+    stopCurrent,
+    () => start(next),
+    () => start(previous),
+  );
+}
+
 async function startNative(env, endpoints) {
   const root = desktop.runtimeRoot();
   const project = path.join(root, "project");
@@ -353,46 +555,14 @@ async function startNative(env, endpoints) {
     // ignore
   }
 
-  const litellmConfig = path.join(root, "config", "litellm.yaml");
-  const host = env2.LITELLM_HOST || "127.0.0.1";
-  const litellmPort = env2.LITELLM_PORT || "4000";
   const serverHost = env2.OMNIGENT_SERVER_HOST || "127.0.0.1";
   const serverPort = env2.OMNIGENT_SERVER_PORT || "6767";
   const omnigentCwd = fs.existsSync(path.join(project, "omnigent"))
     ? path.join(project, "omnigent")
     : project;
 
-  emitStatus("Starting LiteLLM…");
-  if (fs.existsSync(litellmConfig)) {
-    // Portable embeddable Python: `python -m litellm` has no __main__.
-    // `Scripts/litellm.exe` often fails under embeddable layouts.
-    // Use proxy_cli (verified on Windows: /health/liveliness → "I'm alive!").
-    spawnTracked(
-      "litellm",
-      python,
-      [
-        "-m",
-        "litellm.proxy.proxy_cli",
-        "--config",
-        litellmConfig,
-        "--host",
-        host,
-        "--port",
-        String(litellmPort),
-      ],
-      env2,
-      project,
-    );
-  } else {
-    return { ok: false, error: `LiteLLM config missing: ${litellmConfig}` };
-  }
-
-  if (!(await waitUntil("LiteLLM", () => litellmHealthy(endpoints.litellmUrl), DEFAULT_START_TIMEOUT_MS))) {
-    return {
-      ok: false,
-      error: "LiteLLM did not become healthy. Check logs in app data folder.",
-    };
-  }
+  const litellmResult = await startLiteLlm(env2, endpoints, root, project);
+  if (!litellmResult.ok) return litellmResult;
 
   emitStatus("Starting Omnigent server…");
   spawnTracked(
@@ -494,7 +664,7 @@ async function startWsl(env, endpoints) {
  * Ensure the local stack is up. Idempotent if already healthy.
  * @returns {Promise<{ ok: boolean, serverUrl?: string, error?: string, strategy?: string }>}
  */
-async function ensureStackRunning() {
+async function ensureStackRunning(llmConfig = null) {
   const endpoints = desktop.stackEndpoints();
   // Only reuse an already-running server if WE started it (or user opts in).
   // Otherwise a leftover WSL/dev stack on :6767 would show foreign data and
@@ -512,7 +682,7 @@ async function ensureStackRunning() {
     );
   }
 
-  const env = desktop.buildStackEnv();
+  const env = desktop.buildStackEnv(llmRuntimeEnv(llmConfig));
   try {
     if (env.OMNIGENT_DATA_DIR) fs.mkdirSync(env.OMNIGENT_DATA_DIR, { recursive: true });
     if (env.OMNIGENT_CONFIG_HOME) fs.mkdirSync(env.OMNIGENT_CONFIG_HOME, { recursive: true });
@@ -556,9 +726,20 @@ async function shutdownStack() {
   strategy = null;
 }
 
+async function restartStack(llmConfig = null) {
+  await shutdownStack();
+  return ensureStackRunning(llmConfig);
+}
+
 module.exports = {
   ensureStackRunning,
+  restartStack,
+  reloadLiteLlm,
   shutdownStack,
+  testLlmConfig,
+  llmRuntimeEnv,
+  nativeChildEnv,
+  writeGeneratedLiteLlmConfig,
   onStatus,
   httpOk,
   litellmHealthy,
@@ -566,4 +747,6 @@ module.exports = {
   detectStrategy,
   hasNativeRuntime,
   _children: children,
+  _swapWithRollback: swapWithRollback,
+  LOCAL_MODEL_ALIAS,
 };

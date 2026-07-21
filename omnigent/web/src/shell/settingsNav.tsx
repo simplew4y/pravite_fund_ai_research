@@ -9,6 +9,7 @@
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  BotIcon,
   KeyboardIcon,
   PaletteIcon,
   PanelRightOpenIcon,
@@ -22,7 +23,7 @@ import { useServerInfo } from "@/lib/CapabilitiesContext";
 import { isElectronShell } from "@/lib/nativeBridge";
 import { cn } from "@/lib/utils";
 
-export type SettingsSectionId = "appearance" | "shortcuts" | "account" | "archived" | "cli";
+export type SettingsSectionId = "appearance" | "shortcuts" | "account" | "archived" | "cli" | "llm";
 
 const SECTION_IDS: readonly SettingsSectionId[] = [
   "appearance",
@@ -30,6 +31,7 @@ const SECTION_IDS: readonly SettingsSectionId[] = [
   "account",
   "archived",
   "cli",
+  "llm",
 ];
 
 interface SettingsNavItem {
@@ -68,7 +70,10 @@ export function settingsNavGroups(
   if (isDesktop) {
     groups.push({
       title: "Desktop",
-      items: [{ id: "cli", label: "Local CLI", icon: TerminalIcon }],
+      items: [
+        { id: "llm", label: "模型服务", icon: BotIcon },
+        { id: "cli", label: "Local CLI", icon: TerminalIcon },
+      ],
     });
   }
   groups.push(

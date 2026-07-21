@@ -60,13 +60,16 @@ describe("settingsNavGroups", () => {
     expect(withAccounts[0]).toBe("account");
   });
 
-  it("includes the Local CLI section only in the desktop shell", () => {
+  it("includes desktop model settings and Local CLI only in the desktop shell", () => {
     const ids = (isDesktop: boolean) =>
       settingsNavGroups(false, isDesktop)
         .flatMap((g) => g.items)
         .map((i) => i.id);
     expect(ids(false)).not.toContain("cli");
+    expect(ids(false)).not.toContain("llm");
     expect(ids(true)).toContain("cli");
+    expect(ids(true)).toContain("llm");
+    expect(ids(true).indexOf("llm")).toBeLessThan(ids(true).indexOf("cli"));
   });
 });
 
