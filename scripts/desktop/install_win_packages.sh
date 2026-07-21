@@ -61,6 +61,14 @@ install_batch() {
 
 install_batch "server" "${BATCH1[@]}"
 install_batch "data" "${BATCH2[@]}"
+
+# AkShare has one source-only pure-Python dependency (jsonpath), so it cannot
+# share the binary-only data batch. Keep it mandatory and isolated: a failure
+# here must stop packaging instead of producing a desktop build whose default
+# market-data provider is missing at runtime.
+echo "==> Batch market-data"
+wpip install --no-warn-script-location "akshare>=1.18.40,<2"
+
 install_batch "llm" "${BATCH3[@]}"
 install_batch "otel" "${BATCH4[@]}"
 
