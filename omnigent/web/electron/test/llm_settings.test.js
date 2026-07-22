@@ -20,6 +20,19 @@ describe("llm_settings", () => {
       baseUrl: "https://api.deepseek.com/v1",
       model: "deepseek-chat",
     });
+    assert.deepEqual(
+      llm.validateInput({
+        preset: "custom",
+        baseUrl: "https://example.test/v1/",
+        model: "reasoning-model",
+      }),
+      {
+        preset: "custom",
+        provider: "custom_openai",
+        baseUrl: "https://example.test/v1",
+        model: "reasoning-model",
+      },
+    );
     assert.throws(
       () => llm.validateInput({ preset: "custom", baseUrl: "file:///tmp/model", model: "x" }),
       /HTTP or HTTPS/,

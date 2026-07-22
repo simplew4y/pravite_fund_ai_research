@@ -17,7 +17,10 @@ const PRESETS = Object.freeze({
     provider: "anthropic",
     baseUrl: "https://api.anthropic.com",
   }),
-  custom: Object.freeze({ provider: "openai", baseUrl: "" }),
+  // Keep generic OpenAI-compatible services on Chat Completions. Using the
+  // native `openai` provider makes LiteLLM auto-route thinking turns to the
+  // Responses API, which many compatible gateways do not implement.
+  custom: Object.freeze({ provider: "custom_openai", baseUrl: "" }),
 });
 
 function cleanText(value) {

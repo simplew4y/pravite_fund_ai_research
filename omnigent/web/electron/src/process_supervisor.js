@@ -17,7 +17,7 @@ const desktop = require("./desktop_mode");
 const KILL_GRACE_MS = 4000;
 const HEALTH_POLL_MS = 1000;
 const DEFAULT_START_TIMEOUT_MS = 180000;
-const LLM_TEST_TIMEOUT_MS = 45000;
+const LLM_TEST_TIMEOUT_MS = 75000;
 const LOCAL_MODEL_ALIAS = "private-fund-default";
 
 /** @type {Map<string, import("child_process").ChildProcess>} */
@@ -146,9 +146,26 @@ function testLlmConfig(config) {
   const script = [
     "import json, sys",
     "from litellm import completion",
+    "from litellm.anthropic_interface.messages import create as anthropic_create",
     "data = json.load(sys.stdin)",
     "try:",
-    "    completion(model=f\"{data['provider']}/{data['model']}\", api_base=data['baseUrl'], api_key=data['apiKey'], messages=[{'role':'user','content':'Reply with OK.'}], max_tokens=1, timeout=30, drop_params=True)",
+    "    model = f\"{data['provider']}/{data['model']}\"",
+    "    if data.get('preset') == 'custom':",
+    "        tools = [{'name':'connection_check','description':'Return the supplied value. Use this tool before answering.','input_schema':{'type':'object','properties':{'value':{'type':'string'}},'required':['value']}}]",
+    "        messages = [{'role':'user','content':'Call connection_check with value OK, then answer with its result.'}]",
+    "        first = anthropic_create(model=model, api_base=data['baseUrl'], api_key=data['apiKey'], messages=messages, tools=tools, thinking={'type':'enabled','budget_tokens':128}, max_tokens=256, timeout=30, drop_params=True)",
+    "        first = first if isinstance(first, dict) else first.model_dump()",
+    "        blocks = first.get('content') or []",
+    "        tool = next((block for block in blocks if block.get('type') == 'tool_use'), None)",
+    "        if not tool: raise RuntimeError('Model did not complete the Agent tool-call compatibility check.')",
+    "        messages.extend([{'role':'assistant','content':blocks},{'role':'user','content':[{'type':'tool_result','tool_use_id':tool['id'],'content':'OK'}]}])",
+    "        second = anthropic_create(model=model, api_base=data['baseUrl'], api_key=data['apiKey'], messages=messages, tools=tools, thinking={'type':'enabled','budget_tokens':128}, max_tokens=256, timeout=30, drop_params=True)",
+    "        second = second if isinstance(second, dict) else second.model_dump()",
+    "        content = ''.join(block.get('text', '') for block in (second.get('content') or []) if block.get('type') == 'text')",
+    "    else:",
+    "        response = completion(model=model, api_base=data['baseUrl'], api_key=data['apiKey'], messages=[{'role':'user','content':'Reply with OK only. Do not explain or reason.'}], max_tokens=128, timeout=30, drop_params=True)",
+    "        content = response.choices[0].message.content if response.choices else None",
+    "    if not isinstance(content, str) or not content.strip(): raise RuntimeError('Model returned no visible text.')",
     "    print(json.dumps({'ok': True}))",
     "except Exception as exc:",
     "    status = getattr(exc, 'status_code', None)",
@@ -178,7 +195,11 @@ function testLlmConfig(config) {
     };
     const timer = setTimeout(() => {
       try { child.kill(); } catch { /* ignore */ }
-      finish({ ok: false, error: "timeout", detail: "The provider did not respond within 45 seconds." });
+      finish({
+        ok: false,
+        error: "timeout",
+        detail: `The provider did not complete the compatibility check within ${LLM_TEST_TIMEOUT_MS / 1000} seconds.`,
+      });
     }, LLM_TEST_TIMEOUT_MS);
     child.stdout.on("data", (chunk) => { stdout = (stdout + chunk.toString("utf8")).slice(-8000); });
     child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString("utf8")).slice(-2000); });
