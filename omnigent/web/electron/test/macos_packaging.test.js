@@ -9,6 +9,15 @@ const electronDir = path.join(__dirname, "..");
 const config = require("../electron-builder.mac-internal");
 
 describe("macOS internal packaging", () => {
+  it("builds on the supported Apple Silicon GitHub runner", () => {
+    const workflow = fs.readFileSync(
+      path.join(electronDir, "..", "..", "..", ".github", "workflows", "build-macos-arm64.yml"),
+      "utf8",
+    );
+    assert.match(workflow, /runs-on:\s*macos-15\b/);
+    assert.doesNotMatch(workflow, /runs-on:\s*macos-14\b/);
+  });
+
   it("uses ad-hoc signing without a provisioning profile or notarization", () => {
     assert.equal(config.mac.identity, "-");
     assert.equal(config.mac.provisioningProfile, undefined);

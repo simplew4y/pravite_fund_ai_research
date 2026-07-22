@@ -15,7 +15,7 @@ permissions:
 jobs:
   build:
     name: macOS arm64 internal build
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     env:
       DESKTOP_MAC_SIGN_MODE: adhoc
