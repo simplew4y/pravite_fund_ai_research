@@ -18,6 +18,14 @@ describe("macOS internal packaging", () => {
     assert.doesNotMatch(workflow, /runs-on:\s*macos-14\b/);
   });
 
+  it("can be triggered from a build tag without living on the default branch", () => {
+    const workflow = fs.readFileSync(
+      path.join(electronDir, "..", "..", "..", ".github", "workflows", "build-macos-arm64.yml"),
+      "utf8",
+    );
+    assert.match(workflow, /push:\s*\n\s+tags:\s*\n\s+- ['"]macos-build-\*['"]/);
+  });
+
   it("uses ad-hoc signing without a provisioning profile or notarization", () => {
     assert.equal(config.mac.identity, "-");
     assert.equal(config.mac.provisioningProfile, undefined);

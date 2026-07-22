@@ -8,6 +8,9 @@ on:
         required: false
         type: boolean
         default: false
+  push:
+    tags:
+      - 'macos-build-*'
 
 permissions:
   contents: read
@@ -19,7 +22,7 @@ jobs:
     timeout-minutes: 120
     env:
       DESKTOP_MAC_SIGN_MODE: adhoc
-      SKIP_MAC_PACKAGE_SMOKE: ${{ inputs.skip_package_smoke && '1' || '0' }}
+      SKIP_MAC_PACKAGE_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_package_smoke && '1' || '0' }}
       DESKTOP_CACHE_DIR: ${{ github.workspace }}/.desktop-build-cache
 
     steps:
