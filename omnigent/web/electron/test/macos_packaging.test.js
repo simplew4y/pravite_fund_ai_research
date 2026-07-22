@@ -26,6 +26,17 @@ describe("macOS internal packaging", () => {
     assert.match(workflow, /push:\s*\n\s+tags:\s*\n\s+- ['"]macos-build-\*['"]/);
   });
 
+  it("pins a compatible LiteLLM agent dependency set", () => {
+    const requirements = fs.readFileSync(
+      path.join(electronDir, "..", "..", "..", "scripts", "desktop", "requirements-desktop.txt"),
+      "utf8",
+    );
+    assert.match(requirements, /^litellm\[proxy\]==1\.91\.4$/m);
+    assert.match(requirements, /^openai-agents==0\.18\.3$/m);
+    assert.match(requirements, /^websockets>=15\.0\.1,<16$/m);
+    assert.match(requirements, /^rich>=13\.9\.4,<14$/m);
+  });
+
   it("uses ad-hoc signing without a provisioning profile or notarization", () => {
     assert.equal(config.mac.identity, "-");
     assert.equal(config.mac.provisioningProfile, undefined);

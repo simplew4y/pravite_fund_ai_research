@@ -27,10 +27,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22.22.1'
           cache: npm
@@ -44,7 +44,7 @@ jobs:
           bun-version: '1.3.10'
 
       - name: Cache native runtime downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .desktop-build-cache
@@ -58,7 +58,7 @@ jobs:
         run: bash scripts/desktop/build_macos_package.sh
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PrivateFundWorkbench-macos-arm64-${{ github.run_number }}
           path: |

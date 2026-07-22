@@ -8,7 +8,7 @@ fastapi>=0.100,<1
 uvicorn[standard]>=0.30,<1
 starlette>=1.0.1,<2
 httpx>=0.27,<1
-websockets>=10.4,<15
+websockets>=15.0.1,<16
 anyio>=4.0,<5
 pydantic>=2.0,<3
 pydantic-settings>=2.0,<3
@@ -16,7 +16,7 @@ pydantic-settings>=2.0,<3
 # --- Omnigent core runtime ---
 pyyaml>=6.0,<7
 openai>=1.0,<3
-rich>=14,<15
+rich>=13.9.4,<14
 prompt_toolkit>=3.0,<4
 mcp>=1.0,<2
 psutil>=5.9,<8
@@ -38,8 +38,8 @@ pexpect>=4.9,<5; platform_system != "Windows"
 pyte>=0.8,<1; platform_system != "Windows"
 
 # --- Model / harness (private-fund path) ---
-litellm[proxy]>=1.50
-openai-agents>=0.0.17
+litellm[proxy]==1.91.4
+openai-agents==0.18.3
 # cc-haha is shipped as a compiled sidecar; no Claude Agent SDK is required.
 
 # --- Private fund PDF / tables / charts ---
