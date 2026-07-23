@@ -9,6 +9,7 @@
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  BotIcon,
   KeyboardIcon,
   PaletteIcon,
   PanelRightOpenIcon,
@@ -19,10 +20,16 @@ import { Link, useLocation } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
-import { isElectronShell } from "@/lib/nativeBridge";
+import { isElectronShell, supportsDesktopLlmConfiguration } from "@/lib/nativeBridge";
 import { cn } from "@/lib/utils";
 
-export type SettingsSectionId = "appearance" | "shortcuts" | "account" | "archived" | "cli";
+export type SettingsSectionId =
+  | "appearance"
+  | "shortcuts"
+  | "account"
+  | "archived"
+  | "cli"
+  | "llm";
 
 const SECTION_IDS: readonly SettingsSectionId[] = [
   "appearance",
@@ -30,6 +37,7 @@ const SECTION_IDS: readonly SettingsSectionId[] = [
   "account",
   "archived",
   "cli",
+  "llm",
 ];
 
 interface SettingsNavItem {
@@ -52,6 +60,7 @@ interface SettingsNavGroup {
 export function settingsNavGroups(
   accountsEnabled: boolean,
   isDesktop: boolean,
+  llmEnabled = false,
 ): SettingsNavGroup[] {
   const general: SettingsNavItem[] = [
     { id: "appearance", label: "Appearance", icon: PaletteIcon },
@@ -65,10 +74,13 @@ export function settingsNavGroups(
   const groups: SettingsNavGroup[] = [];
   // Desktop (Local CLI) leads when present — it's the shell-specific section a
   // desktop user is most likely here to change.
-  if (isDesktop) {
+  if (isDesktop || llmEnabled) {
+    const desktopItems: SettingsNavItem[] = [];
+    if (llmEnabled) desktopItems.push({ id: "llm", label: "模型服务", icon: BotIcon });
+    if (isDesktop) desktopItems.push({ id: "cli", label: "Local CLI", icon: TerminalIcon });
     groups.push({
       title: "Desktop",
-      items: [{ id: "cli", label: "Local CLI", icon: TerminalIcon }],
+      items: desktopItems,
     });
   }
   groups.push(
@@ -118,8 +130,11 @@ export function SettingsSidebarBody({
 }) {
   const info = useServerInfo();
   const accountsEnabled = info !== "loading" && info.accounts_enabled;
+  const llmEnabled =
+    supportsDesktopLlmConfiguration() ||
+    (info !== "loading" && info.llm_configuration_enabled);
   const { section } = useSettingsRoute();
-  const groups = settingsNavGroups(accountsEnabled, isElectronShell());
+  const groups = settingsNavGroups(accountsEnabled, isElectronShell(), llmEnabled);
 
   return (
     <>

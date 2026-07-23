@@ -61,6 +61,9 @@ from omnigent.server.routes.builtin_agents import create_builtin_agents_router
 from omnigent.server.routes.comments import create_comments_router
 from omnigent.server.routes.default_policies import create_default_policies_router
 from omnigent.server.routes.policy_registry import create_policy_registry_router
+from omnigent.server.routes.private_fund_llm_config import (
+    create_private_fund_llm_config_router,
+)
 from omnigent.server.routes.private_fund_pdf import create_private_fund_pdf_router
 from omnigent.server.routes.runner_tunnel import create_runner_tunnel_router
 from omnigent.server.routes.session_mcp_servers import create_session_mcp_servers_router
@@ -68,6 +71,7 @@ from omnigent.server.routes.session_policies import create_session_policies_rout
 from omnigent.server.routes.sessions import (
     SessionLiveness,
     create_sessions_router,
+    has_running_sessions,
     set_server_runner_router,
 )
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
@@ -1858,6 +1862,7 @@ def create_app(
             "sandbox_provider": sandbox_provider,
             "server_version": _server_version(),
             "smart_routing_enabled": smart_routing_enabled,
+            "llm_configuration_enabled": True,
         }
 
     @app.get("/v1/me", response_model=None)  # Union return type (dict | JSONResponse)
@@ -1986,6 +1991,14 @@ def create_app(
         create_policy_registry_router(auth_provider=auth_provider),
         prefix="/v1",
         tags=["policy_registry"],
+    )
+    app.include_router(
+        create_private_fund_llm_config_router(
+            auth_provider=auth_provider,
+            has_running_sessions=has_running_sessions,
+        ),
+        prefix="/v1",
+        tags=["private_fund_llm_config"],
     )
     app.include_router(
         create_private_fund_pdf_router(

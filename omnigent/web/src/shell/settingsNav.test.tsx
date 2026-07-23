@@ -68,6 +68,14 @@ describe("settingsNavGroups", () => {
     expect(ids(false)).not.toContain("cli");
     expect(ids(true)).toContain("cli");
   });
+
+  it("shows model service independently of the Electron-only CLI section", () => {
+    const browserIds = settingsNavGroups(false, false, true)
+      .flatMap((group) => group.items)
+      .map((item) => item.id);
+    expect(browserIds).toContain("llm");
+    expect(browserIds).not.toContain("cli");
+  });
 });
 
 describe("SettingsSidebarBody", () => {

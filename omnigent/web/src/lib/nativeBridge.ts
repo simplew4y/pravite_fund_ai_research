@@ -130,6 +130,56 @@ interface ElectronDesktopApi extends NativeShellApi {
   getCliStatus?: () => Promise<CliStatus | null>;
   /** Clear the CLI-path override (revert to auto-detection); resolves status. */
   resetCliPath?: () => Promise<CliStatus | null>;
+  getLlmConfig?: () => Promise<LlmProviderConfig | null>;
+  testLlmConfig?: (config: LlmProviderInput) => Promise<LlmConnectionTestResult>;
+  saveLlmConfig?: (config: LlmProviderInput) => Promise<LlmSaveResult>;
+  getLlmApplyStatus?: () => Promise<LlmApplyStatus>;
+  onLlmApplyStatusChanged?: (callback: (status: LlmApplyStatus) => void) => () => void;
+}
+
+export type LlmProviderPreset = "dashscope" | "deepseek" | "openai" | "anthropic" | "custom";
+
+export interface LlmProviderConfig {
+  preset: LlmProviderPreset;
+  provider: string;
+  baseUrl: string;
+  model: string;
+  hasApiKey: boolean;
+  maskedApiKey: string;
+  configured: boolean;
+}
+
+export interface LlmProviderInput {
+  preset: LlmProviderPreset;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+}
+
+export interface LlmApplyStatus {
+  busy: boolean;
+  applying: boolean;
+  detail?: string;
+}
+
+export interface LlmConnectionTestResult {
+  ok: boolean;
+  error?:
+    | "permission"
+    | "validation"
+    | "authentication"
+    | "connection"
+    | "model"
+    | "timeout"
+    | "provider"
+    | "runtime"
+    | "busy"
+    | "apply";
+  detail?: string;
+}
+
+export interface LlmSaveResult extends LlmConnectionTestResult {
+  config?: LlmProviderConfig;
 }
 
 /** A lifecycle action for the host daemon. */
@@ -191,6 +241,17 @@ function nativeApi(): NativeShellApi | undefined {
 /** True when running inside the Electron desktop shell. */
 export function isElectronShell(): boolean {
   return electronApi() !== undefined;
+}
+
+/** True only when the installed Electron shell supports secure BYOK settings. */
+export function supportsDesktopLlmConfiguration(): boolean {
+  const electron = electronApi();
+  return Boolean(
+    electron?.getLlmConfig &&
+      electron.testLlmConfig &&
+      electron.saveLlmConfig &&
+      electron.getLlmApplyStatus,
+  );
 }
 
 /**
@@ -541,4 +602,55 @@ export async function resetCliPath(): Promise<CliStatus | null> {
     console.warn("[nativeBridge] electron resetCliPath failed:", err);
     return null;
   }
+}
+
+export async function getLlmConfig(): Promise<LlmProviderConfig | null> {
+  const electron = electronApi();
+  if (!electron?.getLlmConfig) return null;
+  try {
+    return await electron.getLlmConfig();
+  } catch (err) {
+    console.warn("[nativeBridge] electron getLlmConfig failed:", err);
+    return null;
+  }
+}
+
+export async function testLlmConfig(
+  config: LlmProviderInput,
+): Promise<LlmConnectionTestResult> {
+  const electron = electronApi();
+  if (!electron?.testLlmConfig)
+    return { ok: false, error: "runtime", detail: "Desktop bridge unavailable." };
+  try {
+    return await electron.testLlmConfig(config);
+  } catch (err) {
+    return { ok: false, error: "runtime", detail: String(err) };
+  }
+}
+
+export async function saveLlmConfig(config: LlmProviderInput): Promise<LlmSaveResult> {
+  const electron = electronApi();
+  if (!electron?.saveLlmConfig)
+    return { ok: false, error: "runtime", detail: "Desktop bridge unavailable." };
+  try {
+    return await electron.saveLlmConfig(config);
+  } catch (err) {
+    return { ok: false, error: "runtime", detail: String(err) };
+  }
+}
+
+export async function getLlmApplyStatus(): Promise<LlmApplyStatus> {
+  const electron = electronApi();
+  if (!electron?.getLlmApplyStatus) return { busy: false, applying: false };
+  try {
+    return await electron.getLlmApplyStatus();
+  } catch (err) {
+    return { busy: true, applying: false, detail: String(err) };
+  }
+}
+
+export function onLlmApplyStatusChanged(
+  callback: (status: LlmApplyStatus) => void,
+): () => void {
+  return electronApi()?.onLlmApplyStatusChanged?.(callback) ?? (() => {});
 }

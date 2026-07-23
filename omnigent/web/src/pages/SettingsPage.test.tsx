@@ -17,6 +17,19 @@ const mocks = vi.hoisted(() => ({
   accountsEnabled: true,
   me: { id: "alice", is_admin: false } as { id: string; is_admin: boolean } | null,
   conversations: [] as Conversation[],
+  llmConfig: {
+    preset: "dashscope",
+    provider: "dashscope",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model: "qwen3-max",
+    hasApiKey: true,
+    maskedApiKey: "sk-bab*****************d2",
+    configured: true,
+  },
+  llmApplyStatus: { busy: false, applying: false },
+  refreshLlm: vi.fn(),
+  testLlm: vi.fn(),
+  saveLlm: vi.fn(),
 }));
 
 vi.mock("next-themes", () => ({
@@ -38,6 +51,21 @@ vi.mock("@/hooks/useConversations", () => ({
   }),
   useArchiveConversation: () => ({ mutate: mocks.archiveMutate, isPending: false }),
   useStopAndDeleteConversation: () => ({ mutate: mocks.deleteMutate, isPending: false }),
+}));
+vi.mock("@/lib/LlmConfigContext", () => ({
+  useLlmConfiguration: () => ({
+    enabled: true,
+    config: mocks.llmConfig,
+    applyStatus: mocks.llmApplyStatus,
+    loading: false,
+    requireConfiguration: () => true,
+    refresh: mocks.refreshLlm,
+  }),
+}));
+vi.mock("@/lib/llmConfigApi", () => ({
+  getLlmApplyStatus: () => Promise.resolve({ busy: false, applying: false }),
+  testLlmConfig: mocks.testLlm,
+  saveLlmConfig: mocks.saveLlm,
 }));
 
 import { SettingsPage } from "./SettingsPage";
@@ -73,6 +101,11 @@ beforeEach(() => {
   mocks.accountsEnabled = true;
   mocks.me = { id: "alice", is_admin: false };
   mocks.conversations = [];
+  mocks.refreshLlm.mockReset();
+  mocks.testLlm.mockReset();
+  mocks.saveLlm.mockReset();
+  mocks.testLlm.mockResolvedValue({ ok: true });
+  mocks.saveLlm.mockResolvedValue({ ok: true, config: mocks.llmConfig });
 });
 afterEach(cleanup);
 
@@ -135,5 +168,64 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByTestId("delete-archived"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(mocks.deleteMutate).toHaveBeenCalledWith({ id: "conv_archived" });
+  });
+
+  it("shows a masked API key and supports whole-value edit cancellation", async () => {
+    renderPage("/settings/llm");
+
+    const masked = await screen.findByDisplayValue("sk-bab*****************d2");
+    expect(masked).not.toBeDisabled();
+    fireEvent.click(masked);
+    expect(screen.getByPlaceholderText("请输入完整的新 API Key")).toHaveValue("");
+
+    fireEvent.change(screen.getByPlaceholderText("请输入完整的新 API Key"), {
+      target: { value: "sk-replacement" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(screen.getByDisplayValue("sk-bab*****************d2")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("sk-replacement")).toBeNull();
+  });
+
+  it("keeps credentials scoped to the saved provider when switching presets", async () => {
+    renderPage("/settings/llm");
+    await screen.findByDisplayValue("sk-bab*****************d2");
+
+    fireEvent.keyDown(screen.getByTestId("llm-provider-select"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "DeepSeek" }));
+
+    expect(screen.getByDisplayValue("https://api.deepseek.com/v1")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("例如 qwen3-max")).toHaveValue("");
+    expect(screen.getByPlaceholderText("请输入完整的新 API Key")).toHaveValue("");
+    expect(screen.queryByDisplayValue("sk-bab*****************d2")).toBeNull();
+
+    fireEvent.keyDown(screen.getByTestId("llm-provider-select"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "通义千问（DashScope）" }));
+
+    expect(
+      screen.getByDisplayValue("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("qwen3-max")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("sk-bab*****************d2")).toBeInTheDocument();
+  });
+
+  it("tests and saves without resending an unchanged masked key", async () => {
+    renderPage("/settings/llm");
+    await screen.findByDisplayValue("sk-bab*****************d2");
+
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() =>
+      expect(mocks.testLlm).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "qwen3-max", apiKey: "" }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() =>
+      expect(mocks.saveLlm).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "qwen3-max", apiKey: "" }),
+      ),
+    );
+    expect(mocks.refreshLlm).toHaveBeenCalled();
   });
 });

@@ -835,6 +835,13 @@ _WATCHER_TASKS: set[asyncio.Task[None]] = set()
 # Used by _get_session_snapshot.
 _session_status_cache: dict[str, str] = {}
 
+
+def has_running_sessions() -> bool:
+    """Return whether any session currently has an active turn."""
+
+    return any(status in {"running", "waiting"} for status in _session_status_cache.values())
+
+
 # Sessions whose current turn was Stopped: the relay drops the turn's trailing
 # response.* output (no forward, no persist). The fence lifts on the next
 # turn's "running" status or on any terminal response.* event.

@@ -5,6 +5,7 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { PrivateFundWorkbenchRedirect } from "@/pages/PrivateFundWorkbenchRedirect";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
 import { AppShell } from "@/shell/AppShell";
+import { LlmConfigProvider } from "@/lib/LlmConfigContext";
 
 // Lazy-load the three accounts pages so the bundle a header / OIDC
 // deploy ships (where accounts is off) doesn't include them in the
@@ -120,7 +121,13 @@ function App({ basename }: AppProps = {}) {
           </>
         )}
         <Route path={`${prefix}/approve/:sessionId/:elicitationId`} element={<ApprovePage />} />
-        <Route element={<AppShell />}>
+        <Route
+          element={
+            <LlmConfigProvider>
+              <AppShell />
+            </LlmConfigProvider>
+          }
+        >
           <Route path={prefix || "/"} element={<ChatPage />} />
           <Route path={`${prefix}/c/:conversationId`} element={<ChatPage />} />
           <Route path={`${prefix}/inbox`} element={<InboxPage />} />

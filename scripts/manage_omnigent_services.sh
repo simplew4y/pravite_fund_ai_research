@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="${HOME}/.bun/bin:${HOME}/.local/bin:${PATH}"
 OMNIGENT_DIR="$ROOT_DIR/omnigent"
 OMNIGENT_CLI="$OMNIGENT_DIR/.venv/bin/omnigent"
 STACK_SESSION="${OMNIGENT_STACK_TMUX_SESSION:-omnigent-stack}"
@@ -13,6 +14,8 @@ SERVER_URL="${OMNIGENT_SERVER_URL:-http://$SERVER_HOST:$SERVER_PORT}"
 LITELLM_HOST="${LITELLM_HOST:-127.0.0.1}"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_URL="http://$LITELLM_HOST:$LITELLM_PORT"
+LITELLM_MODEL="${PRIVATE_FUND_LITELLM_MODEL:-private-fund-default}"
+LITELLM_KEY="${PRIVATE_FUND_LITELLM_KEY:-sk-local-cc-haha}"
 WAIT_SECONDS="${OMNIGENT_STACK_WAIT_SECONDS:-180}"
 SCRIPT_PATH="$ROOT_DIR/scripts/manage_omnigent_services.sh"
 
@@ -47,19 +50,26 @@ require_runtime() {
 
 configure_agent_runtime() {
   export OMNIGENT_AUTH_ENABLED="${OMNIGENT_AUTH_ENABLED:-0}"
+  export OMNIGENT_LOCAL_SINGLE_USER="${OMNIGENT_LOCAL_SINGLE_USER:-1}"
+  export OMNIGENT_WS_ALLOWED_ORIGINS="${OMNIGENT_WS_ALLOWED_ORIGINS:-http://127.0.0.1:6767,http://localhost:6767,http://127.0.0.1:6768,http://localhost:6768}"
   export OMNIGENT_NO_UPDATE_CHECK="${OMNIGENT_NO_UPDATE_CHECK:-1}"
-  # Claude Native is the primary private-fund agent. Route it through the
-  # managed LiteLLM proxy by default so Claude Code can use the configured
-  # third-party Anthropic-compatible model instead of requiring an Anthropic
-  # login. Dedicated OMNIGENT_* overrides remain available for operators, but
-  # inherited ANTHROPIC_* values cannot accidentally bypass this stack.
-  export ANTHROPIC_AUTH_TOKEN="${OMNIGENT_CLAUDE_API_TOKEN:-sk-local-cc-haha}"
+  # Every model consumer uses a stable local alias. LiteLLM hot-reloads the
+  # user-selected upstream provider without restarting Omnigent or workers.
+  export ANTHROPIC_AUTH_TOKEN="$LITELLM_KEY"
   unset ANTHROPIC_API_KEY || true
-  export ANTHROPIC_BASE_URL="${OMNIGENT_CLAUDE_API_BASE_URL:-$LITELLM_URL}"
-  export ANTHROPIC_MODEL="${OMNIGENT_CLAUDE_MODEL:-qwen3-max}"
-  export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-$ANTHROPIC_MODEL}"
-  export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-$ANTHROPIC_MODEL}"
-  export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-$ANTHROPIC_MODEL}"
+  export ANTHROPIC_BASE_URL="$LITELLM_URL"
+  export ANTHROPIC_MODEL="$LITELLM_MODEL"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$LITELLM_MODEL"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LITELLM_MODEL"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$LITELLM_MODEL"
+  export OPENAI_BASE_URL="$LITELLM_URL/v1"
+  export OPENAI_API_KEY="$LITELLM_KEY"
+  export LLM_BASE_URL="$OPENAI_BASE_URL"
+  export LLM_API_KEY="$LITELLM_KEY"
+  export LLM_MODEL_NAME="$LITELLM_MODEL"
+  export PDF_RESEARCH_LLM_BASE_URL="$OPENAI_BASE_URL"
+  export PDF_RESEARCH_LLM_API_KEY="$LITELLM_KEY"
+  export PDF_RESEARCH_LLM_MODEL="$LITELLM_MODEL"
   export API_TIMEOUT_MS="${API_TIMEOUT_MS:-3000000}"
   export DISABLE_TELEMETRY="${DISABLE_TELEMETRY:-1}"
   export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
@@ -75,9 +85,10 @@ server_healthy() {
 }
 
 host_online() {
-  "$OMNIGENT_CLI" host status --server "$SERVER_URL" 2>/dev/null \
-    | tr -d '\r' \
-    | grep -q 'process=online.*host=online'
+  local status
+  status="$("$OMNIGENT_CLI" host status --server "$SERVER_URL" 2>/dev/null | tr -d '\r')" \
+    || return 1
+  grep -q 'process=online.*host=online' <<<"$status"
 }
 
 tracking_worker_online() {
@@ -136,7 +147,6 @@ run_tracking_worker() {
 run_valuation_worker() {
   configure_agent_runtime
   until litellm_healthy; do sleep 1; done
-  export PDF_RESEARCH_LLM_BASE_URL="${PRIVATE_FUND_VALUATION_LLM_BASE_URL:-$LITELLM_URL/v1}"
   cd "$OMNIGENT_DIR"
   exec uv run --offline python -m omnigent.server.private_fund_valuation_worker
 }

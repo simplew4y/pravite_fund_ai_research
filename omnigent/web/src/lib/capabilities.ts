@@ -68,6 +68,8 @@ export interface ServerInfo {
    * (``OMNIGENT_SMART_ROUTING=1`` + ``llm:`` config). Hidden by default.
    */
   smart_routing_enabled: boolean;
+  /** The server exposes user-manageable private-fund model settings. */
+  llm_configuration_enabled: boolean;
 }
 
 /** Sentinel used when the probe fails — accounts is off, no login URL. */
@@ -80,6 +82,7 @@ const _OFF: ServerInfo = {
   sandbox_provider: null,
   server_version: null,
   smart_routing_enabled: false,
+  llm_configuration_enabled: false,
 };
 
 let _cached: ServerInfo | null = null;
@@ -114,6 +117,7 @@ export async function resolveServerInfo(): Promise<ServerInfo> {
             typeof data.sandbox_provider === "string" ? data.sandbox_provider : null,
           server_version: typeof data.server_version === "string" ? data.server_version : null,
           smart_routing_enabled: data.smart_routing_enabled === true,
+          llm_configuration_enabled: data.llm_configuration_enabled === true,
         };
         return _cached;
       }

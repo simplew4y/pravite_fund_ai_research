@@ -615,6 +615,7 @@ function renderLanding(infoOverrides: Partial<ServerInfo> = {}, route = "/") {
     sandbox_provider: null,
     server_version: null,
     smart_routing_enabled: false,
+    llm_configuration_enabled: false,
     ...infoOverrides,
   };
   return render(

@@ -220,6 +220,7 @@ import {
 import { usePrivateFundShell } from "@/shell/PrivateFundShellContext";
 import { privateFundProjectsQueryKey } from "@/hooks/usePrivateFundProjects";
 import { cachedTokenCount, formatTokenCount, summarizeModelTokenUsage } from "@/lib/tokenUsage";
+import { useLlmConfiguration } from "@/lib/LlmConfigContext";
 
 // Matches both wordings the native executors emit: "[Attached: <path>]"
 // (claude/pi/cursor) and "[Attached file: <path>]" (codex). Capturing group
@@ -631,6 +632,7 @@ export function ChatPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const privateFundShell = usePrivateFundShell();
+  const { requireConfiguration } = useLlmConfiguration();
   // Optional first message handed off by the landing composer through the
   // shared chatStore (keyed by conversation id), not router state — router state
   // doesn't survive the embed's host-provided routing. Consumed read-once
@@ -894,10 +896,11 @@ export function ChatPage() {
     // re-check to narrow the types for send()/the template literal. The
     // predicate already guarantees these, so this never fires at runtime.
     if (initialPrompt === null || !agentId || !urlConvId) return;
+    if (!requireConfiguration()) return;
     initialPromptSentForConvRef.current = urlConvId;
     const { send, sendSlashCommand } = useChatStore.getState();
     dispatchInitialPrompt(initialPrompt.prompt, agentId, send, sendSlashCommand);
-  }, [initialPrompt, urlConvId, loadingConversation, agentId]);
+  }, [initialPrompt, urlConvId, loadingConversation, agentId, requireConfiguration]);
 
   // Open state owned here (not inside MainAgentSurface) so the dialog
   // survives a re-mount of the chat surface. Declared BEFORE the
@@ -1145,6 +1148,7 @@ export function ChatPage() {
     !sandboxLaunching && (liveness.kind === "host_offline" || liveness.kind === "local_stranded");
 
   function onSend(text: string, files?: File[]) {
+    if (!requireConfiguration()) return;
     if (!agentId) return;
     // An unbound coding clone (fork-source label) needs a directory before
     // it can run: open the picker and stash this message to replay after
@@ -1175,6 +1179,7 @@ export function ChatPage() {
   }
 
   function onSendSlashCommand(name: string, args: string) {
+    if (!requireConfiguration()) return;
     if (!agentId) return;
     // Slash commands aren't replayed (an edge), but still route an unbound
     // coding clone to the directory picker so it isn't a dead end.
