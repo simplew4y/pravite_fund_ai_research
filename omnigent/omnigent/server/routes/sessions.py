@@ -26,14 +26,17 @@ import contextlib
 import json
 import logging
 import mimetypes
+import os
 import re
 import secrets
+import sqlite3
 import time
 import urllib.parse
 import weakref
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
 import cachetools
@@ -111,7 +114,9 @@ from omnigent.reasoning_effort import (
     validate_effort,
 )
 from omnigent.runner.identity import (
+    RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
     RUNNER_TUNNEL_TOKEN_HEADER,
+    RUNNER_USER_LLM_GATEWAY_ENV_VAR,
     token_bound_runner_id,
 )
 from omnigent.runner.routing import RunnerRouter
@@ -165,6 +170,7 @@ from omnigent.server.managed_hosts import (
 )
 from omnigent.server.mcp_pool import ServerMcpPool
 from omnigent.server.permissions import check_session_access
+from omnigent.server.private_fund_tenant import build_tenant_context
 from omnigent.server.routes._auth_helpers import (
     attribution_user as _attribution_user,
 )
@@ -251,6 +257,7 @@ from omnigent.server.schemas import (
     SkillSummary,
     UpdateSessionRequest,
 )
+from omnigent.server.user_llm_gateway import issue_user_llm_token
 from omnigent.session_lifecycle import (
     is_session_closed,
     labels_with_closed_status,
@@ -5893,6 +5900,7 @@ async def _launch_runner_on_host(
     conversation_store: ConversationStore,
     host_registry: HostRegistry,
     host_conn: HostConnection,
+    runtime_env: dict[str, str] | None = None,
 ) -> _HostLaunchAttempt:
     """
     Ask a host to spawn a runner for a session and capture the result.
@@ -5952,6 +5960,7 @@ async def _launch_runner_on_host(
             # same configuration check it does at create-time launch. None
             # (agent not resolvable) skips the host-side check — fail open.
             harness=_resolve_harness(conv),
+            runtime_env=runtime_env,
         )
     )
     try:
@@ -11924,8 +11933,13 @@ async def _create_session_from_existing_agent(
     # repo; the worktree it produces becomes the stored workspace.
     canonical_workspace: str | None = body.workspace
     if body.host_id is not None:
+        is_private_fund_service_session = bool(
+            body.labels
+            and body.labels.get("private_fund.dataset_id")
+            and body.host_id == os.environ.get("OMNIGENT_SHARED_HOST_ID")
+        )
         canonical_workspace = await _validate_session_workspace(
-            user_id=user_id,
+            user_id=None if is_private_fund_service_session else user_id,
             host_id=body.host_id,
             workspace=body.workspace,
             agent=agent,
@@ -13310,6 +13324,7 @@ def create_sessions_router(
     comment_store: CommentStore | None = None,
     runner_tunnel_tokens: frozenset[str] | None = None,
     runner_exit_reports: RunnerExitReports | None = None,
+    account_store: Any | None = None,
 ) -> APIRouter:
     """
     Factory that builds the sessions router.
@@ -13369,6 +13384,41 @@ def create_sessions_router(
         ``/sessions`` endpoints.
     """
     router = APIRouter()
+
+    def private_fund_runtime_env(
+        user_id: str | None,
+        session_id: str,
+    ) -> dict[str, str] | None:
+        if user_id is None:
+            return None
+        gateway = os.environ.get(
+            "OMNIGENT_INTERNAL_LLM_GATEWAY_URL",
+            "http://127.0.0.1:6767/internal/private-fund/llm",
+        ).rstrip("/")
+        token = issue_user_llm_token(user_id, session_id)
+        alias = "private-fund-default"
+        runtime_env = {
+            RUNNER_USER_LLM_GATEWAY_ENV_VAR: "1",
+            "ANTHROPIC_AUTH_TOKEN": token,
+            "ANTHROPIC_BASE_URL": gateway,
+            "ANTHROPIC_MODEL": alias,
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": alias,
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL": alias,
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": alias,
+            "OPENAI_BASE_URL": f"{gateway}/v1",
+            "OPENAI_API_KEY": token,
+            "LLM_BASE_URL": f"{gateway}/v1",
+            "LLM_API_KEY": token,
+            "LLM_MODEL_NAME": alias,
+            "PDF_RESEARCH_LLM_BASE_URL": f"{gateway}/v1",
+            "PDF_RESEARCH_LLM_API_KEY": token,
+            "PDF_RESEARCH_LLM_MODEL": alias,
+        }
+        if auth_provider is not None:
+            server_token = auth_provider.mint_internal_bearer_token(user_id)
+            if server_token:
+                runtime_env[RUNNER_SERVER_AUTH_TOKEN_ENV_VAR] = server_token
+        return runtime_env
 
     # ── POST /sessions ───────────────────────────────────────────
 
@@ -13446,6 +13496,48 @@ def create_sessions_router(
             # on this route 500'd as internal_error. The human-readable
             # message survives in each entry's `msg`.
             raise HTTPException(status_code=422, detail=exc.errors(include_context=False)) from exc
+
+        dataset_id = str((body.labels or {}).get("private_fund.dataset_id") or "").strip()
+        if dataset_id and user_id is not None:
+            if account_store is None:
+                raise HTTPException(status_code=503, detail="tenant storage is unavailable")
+            tenant = build_tenant_context(user_id, account_store)
+            dataset_path = (tenant.dataset_root / dataset_id).resolve()
+            try:
+                dataset_path.relative_to(tenant.dataset_root)
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail="project not found") from exc
+            registry_path = tenant.dataset_root / "datasets.sqlite3"
+            registered_path: str | None = None
+            if registry_path.is_file() and dataset_path.name == dataset_id:
+                try:
+                    with sqlite3.connect(str(registry_path), timeout=5) as conn:
+                        row = conn.execute(
+                            "SELECT dataset_root FROM datasets WHERE dataset_id = ?",
+                            (dataset_id,),
+                        ).fetchone()
+                    registered_path = str(row[0]) if row and row[0] else None
+                except sqlite3.Error:
+                    registered_path = None
+            if (
+                not dataset_path.is_dir()
+                or registered_path is None
+                or Path(registered_path).expanduser().resolve() != dataset_path
+            ):
+                raise HTTPException(status_code=404, detail="project not found")
+            shared_host_id = os.environ.get("OMNIGENT_SHARED_HOST_ID", "").strip()
+            if not shared_host_id:
+                raise HTTPException(
+                    status_code=503,
+                    detail="private-fund service host is not configured",
+                )
+            body = body.model_copy(
+                update={
+                    "host_id": shared_host_id,
+                    "workspace": str(dataset_path),
+                    "git": None,
+                }
+            )
 
         resp = await _create_session_from_existing_agent(
             conversation_store,
@@ -13608,6 +13700,7 @@ def create_sessions_router(
                     host_registry=host_registry,
                     conversation_store=conversation_store,
                     permission_store=permission_store,
+                    allow_shared_host=bool(dataset_id),
                 )
                 conn = target.conn
                 binding_token = secrets.token_urlsafe(32)
@@ -13648,6 +13741,11 @@ def create_sessions_router(
                         # spawning. None (agent not resolvable) skips the
                         # host-side check.
                         harness=resp.harness,
+                        runtime_env=(
+                            private_fund_runtime_env(user_id, resp.id)
+                            if dataset_id
+                            else None
+                        ),
                     )
                 )
                 host_registry.send_text(conn, launch_frame)
@@ -18635,6 +18733,11 @@ def create_sessions_router(
                         conversation_store,
                         _host_reg,
                         _host_conn,
+                        runtime_env=(
+                            private_fund_runtime_env(user_id, session_id)
+                            if (conv.labels or {}).get("private_fund.dataset_id")
+                            else None
+                        ),
                     )
                     if launch_attempt.error_code == _HARNESS_NOT_CONFIGURED_ERROR_CODE:
                         # The host refused: the agent's harness isn't
@@ -19215,6 +19318,15 @@ def create_sessions_router(
         await _require_access(
             user_id, session_id, LEVEL_MANAGE, permission_store, conversation_store
         )
+        conversation = await asyncio.to_thread(
+            conversation_store.get_conversation,
+            session_id,
+        )
+        if conversation and (conversation.labels or {}).get("private_fund.dataset_id"):
+            raise OmnigentError(
+                "Private-fund research sessions cannot be shared",
+                code=ErrorCode.FORBIDDEN,
+            )
         if permission_store is None:
             raise OmnigentError(
                 "Permissions not enabled",

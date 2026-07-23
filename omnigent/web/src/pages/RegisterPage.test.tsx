@@ -12,7 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RegisterPage } from "./RegisterPage";
 import * as accountsApi from "@/lib/accountsApi";
 
-vi.mock("@/lib/accountsApi", () => ({ register: vi.fn() }));
+vi.mock("@/lib/accountsApi", () => ({
+  clearUserScopedBrowserState: vi.fn(),
+  register: vi.fn(),
+}));
 
 const ORIGIN = "https://app.example.com";
 let hrefWrites: string[];
@@ -64,7 +67,7 @@ afterEach(() => {
 describe("RegisterPage", () => {
   it("shows an invite-required alert and no form when the invite token is missing", () => {
     renderRegisterAt("");
-    expect(screen.getByRole("alert")).toHaveTextContent(/invite token/i);
+    expect(screen.getByRole("alert", { name: /invite token/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/username/i)).not.toBeInTheDocument();
   });
 
@@ -91,7 +94,7 @@ describe("RegisterPage", () => {
     fillForm("alice", "longenough", "different1");
     fireEvent.click(screen.getByRole("button", { name: /create account/i }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Passwords don't match.");
+    expect(screen.getByRole("alert")).toHaveTextContent("两次输入的密码不一致。");
     expect(accountsApi.register).not.toHaveBeenCalled();
   });
 

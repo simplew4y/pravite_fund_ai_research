@@ -28,7 +28,7 @@ def _workspace_root() -> Path:
     return (
         Path(
             os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
-            or _PROJECT_ROOT / "output" / "private_fund_datasets"
+            or _PROJECT_ROOT / "output" / "users"
         )
         .expanduser()
         .resolve()
@@ -44,16 +44,16 @@ def _vault_root() -> Path:
     return Path(configured).expanduser().resolve()
 
 
-def _collection_dbs(workspace: Path) -> list[tuple[str, Path]]:
+def _collection_dbs(workspace: Path) -> list[tuple[str, str, Path]]:
     if not workspace.is_dir():
         return []
     return sorted(
         (
-            (path.parent.parent.name, path)
-            for path in workspace.glob("*/meta/collection.sqlite3")
+            (path.parents[3].name, path.parent.parent.name, path)
+            for path in workspace.glob("*/private_fund_datasets/*/meta/collection.sqlite3")
             if not path.parent.parent.name.startswith("_")
         ),
-        key=lambda item: item[0],
+        key=lambda item: (item[0], item[1]),
     )
 
 
@@ -75,13 +75,15 @@ def run_cycle(
     errors: list[dict[str, str]] = []
     conflicts = 0
     databases = _collection_dbs(workspace)
-    for dataset_id, collection_db in databases:
+    for data_namespace, dataset_id, collection_db in databases:
         try:
+            tenant_vault_root = vault_root / "users" / data_namespace
+            tenant_vault_root.mkdir(parents=True, exist_ok=True)
             private_fund_obsidian.recover_stale_events(collection_db, dataset_id)
             result = private_fund_obsidian.sync_dataset(
                 collection_db,
                 dataset_id,
-                vault_root,
+                tenant_vault_root,
                 max_events=max_events_per_db,
             )
             processed += int(result["events_processed"])

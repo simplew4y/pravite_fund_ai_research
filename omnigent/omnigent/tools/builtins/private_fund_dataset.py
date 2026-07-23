@@ -1198,12 +1198,23 @@ class _DatasetStore:
 
     def __init__(self, workspace: Path | None) -> None:
         self.project_root = _resolve_project_root(workspace)
-        workspace_override = os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
-        self.workspace_root = (
-            Path(workspace_override).expanduser().resolve()
-            if workspace_override
-            else self.project_root / "output" / "private_fund_datasets"
-        )
+        bound_workspace = workspace.expanduser().resolve() if workspace else None
+        if bound_workspace is not None and (
+            bound_workspace / "meta" / "collection.sqlite3"
+        ).exists():
+            registry = bound_workspace.parent / "datasets.sqlite3"
+            if not registry.exists():
+                raise RuntimeError(
+                    "the bound private-fund workspace has no tenant dataset registry"
+                )
+            self.workspace_root = bound_workspace.parent
+        else:
+            workspace_override = os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
+            self.workspace_root = (
+                Path(workspace_override).expanduser().resolve()
+                if workspace_override
+                else self.project_root / "output" / "private_fund_datasets"
+            )
 
     def _connect(self, path: Path) -> sqlite3.Connection:
         conn = sqlite3.connect(str(path), timeout=10)
@@ -1232,9 +1243,13 @@ class _DatasetStore:
             raise RuntimeError(f"dataset not found: {active_id}")
         metadata = _decode_json(row["metadata_json"], {}) or {}
         dataset_root = Path(row["dataset_root"]).expanduser().resolve()
+        if not dataset_root.is_relative_to(self.workspace_root.resolve()):
+            raise RuntimeError("dataset path escapes the current user's workspace")
         collection_db = Path(
             metadata.get("collection_db_path") or dataset_root / "meta" / "collection.sqlite3"
-        )
+        ).expanduser().resolve()
+        if not collection_db.is_relative_to(dataset_root):
+            raise RuntimeError("collection path escapes the selected dataset")
         if not collection_db.exists():
             raise FileNotFoundError(f"collection db does not exist: {collection_db}")
         return {

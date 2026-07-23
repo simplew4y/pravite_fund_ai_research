@@ -9,6 +9,7 @@ import * as accountsApi from "@/lib/accountsApi";
 // account makes the mount effect assign sanitizeReturnTo(return_to) straight
 // to window.location.href.
 vi.mock("@/lib/accountsApi", () => ({
+  clearUserScopedBrowserState: vi.fn(),
   getMe: vi.fn(),
   login: vi.fn(),
 }));

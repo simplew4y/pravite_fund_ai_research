@@ -73,6 +73,7 @@ class AccountsConfig:
     init_admin_password: str | None
     invite_ttl_seconds: int
     magic_ttl_seconds: int
+    registration_mode: str = "invite"
 
     @property
     def secure_cookies(self) -> bool:
@@ -140,6 +141,13 @@ class AccountsConfig:
         # unset for the same reason as the OIDC SCOPES fix
         # — docker compose ${VAR:-} pattern forwards the var as set-to-"".
         init_admin = os.environ.get("OMNIGENT_ACCOUNTS_INIT_ADMIN_PASSWORD") or None
+        registration_mode = (
+            os.environ.get("OMNIGENT_ACCOUNTS_REGISTRATION_MODE", "invite").strip().lower()
+        )
+        if registration_mode not in {"invite", "open"}:
+            raise RuntimeError(
+                "OMNIGENT_ACCOUNTS_REGISTRATION_MODE must be 'invite' or 'open'"
+            )
 
         return AccountsConfig(
             cookie_secret=cookie_secret,
@@ -148,4 +156,5 @@ class AccountsConfig:
             init_admin_password=init_admin,
             invite_ttl_seconds=invite_ttl_seconds,
             magic_ttl_seconds=magic_ttl_seconds,
+            registration_mode=registration_mode,
         )

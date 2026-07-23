@@ -880,6 +880,9 @@ def _maybe_prompt_first_admin(account_store: Any, auth_provider: Any, *, auto_op
     """
     if account_store is None:
         return
+    accounts_config = getattr(auth_provider, "_accounts_config", None)
+    if getattr(accounts_config, "registration_mode", "invite") == "open":
+        return
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return
     if any(u.has_password for u in account_store.list_users()):

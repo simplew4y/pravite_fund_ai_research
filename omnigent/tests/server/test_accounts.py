@@ -350,6 +350,18 @@ def test_accounts_source_accepts_bearer_token_for_cli() -> None:
     assert provider.get_user_id(request) == "admin"
 
 
+def test_accounts_source_mints_internal_runner_bearer() -> None:
+    """A runner bearer authenticates as the user it was minted for."""
+    cfg = _make_accounts_config()
+    provider = UnifiedAuthProvider(source="accounts", accounts_config=cfg)
+
+    token = provider.mint_internal_bearer_token("researcher@example.com")
+
+    assert token is not None
+    request = _FakeReq(headers={"Authorization": f"Bearer {token}"})
+    assert provider.get_user_id(request) == "researcher@example.com"
+
+
 def test_accounts_source_login_url_points_at_spa() -> None:
     """In accounts mode, login_url is the SPA route, not the API route.
 
@@ -1640,6 +1652,110 @@ def test_change_own_password_rejects_wrong_old_password(
         "/auth/login", json={"username": "admin", "password": "admin-pw-12345"}
     )
     assert good.status_code == 200
+
+
+def test_open_registration_is_email_based_and_private_fund_data_is_tenant_scoped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OMNIGENT_ACCOUNTS_REGISTRATION_MODE", "open")
+    monkeypatch.setenv("OMNIGENT_USER_SECRETS_KEY", secrets.token_hex(32))
+    monkeypatch.setattr(
+        "omnigent.server.private_fund_tenant.project_root",
+        lambda: tmp_path,
+    )
+
+    async def model_connection_ok(_config: object) -> dict[str, object]:
+        return {"ok": True, "detail": "connected"}
+
+    monkeypatch.setattr(
+        "omnigent.server.private_fund_llm_config.test_upstream_config",
+        model_connection_ok,
+    )
+    clients = _build_accounts_app(tmp_path, monkeypatch, init_admin_password=None)
+    client = next(clients)
+    try:
+        info = client.get("/v1/info")
+        assert info.status_code == 200
+        assert info.json()["registration_mode"] == "open"
+        assert info.json()["needs_setup"] is False
+        assert client.post(
+            "/auth/setup",
+            json={"username": "admin", "password": "password123"},
+        ).status_code == 404
+
+        alice = client.post(
+            "/auth/register",
+            json={"email": "Alice@Example.COM", "password": "password123"},
+        )
+        assert alice.status_code == 200
+        assert alice.json()["user"]["id"] == "alice@example.com"
+        assert client.post(
+            "/v1/private-fund/projects",
+            json={"name": "共同项目", "dataset_id": "shared"},
+        ).status_code == 200
+        assert client.post(
+            "/v1/private-fund/projects",
+            json={"name": "Alice 私有", "dataset_id": "alice-only"},
+        ).status_code == 200
+        alice_model = client.put(
+            "/v1/private-fund/llm-config",
+            json={
+                "preset": "custom",
+                "baseUrl": "https://alice-model.example/v1",
+                "model": "alice-model",
+                "apiKey": "sk-alice-secret",
+            },
+        )
+        assert alice_model.status_code == 200
+        assert alice_model.json()["ok"] is True
+        assert client.post("/auth/logout").status_code == 204
+
+        bob = client.post(
+            "/auth/register",
+            json={"email": "bob@example.com", "password": "password123"},
+        )
+        assert bob.status_code == 200
+        bob_model_before = client.get("/v1/private-fund/llm-config")
+        assert bob_model_before.status_code == 200
+        assert bob_model_before.json()["configured"] is False
+        assert client.post(
+            "/v1/private-fund/projects",
+            json={"name": "共同项目", "dataset_id": "shared"},
+        ).status_code == 200
+
+        projects = client.get("/v1/private-fund/projects")
+        assert projects.status_code == 200
+        assert {item["dataset_id"] for item in projects.json()["projects"]} == {"shared"}
+        assert client.get("/v1/private-fund/projects/alice-only").status_code == 404
+        assert client.put(
+            "/v1/private-fund/llm-config",
+            json={
+                "preset": "custom",
+                "baseUrl": "https://bob-model.example/v1",
+                "model": "bob-model",
+                "apiKey": "sk-bob-secret",
+            },
+        ).json()["ok"] is True
+
+        assert client.post("/auth/logout").status_code == 204
+        assert client.post(
+            "/auth/login",
+            json={"username": "alice@example.com", "password": "password123"},
+        ).status_code == 200
+        alice_model_after = client.get("/v1/private-fund/llm-config").json()
+        assert alice_model_after["model"] == "alice-model"
+        assert alice_model_after["baseUrl"] == "https://alice-model.example/v1"
+        assert "sk-alice-secret" not in str(alice_model_after)
+
+        user_roots = sorted((tmp_path / "output" / "users").iterdir())
+        assert len(user_roots) == 2
+        assert all(
+            (root / "private_fund_datasets" / "shared").is_dir()
+            for root in user_roots
+        )
+    finally:
+        clients.close()
 
 
 def test_purge_expired_tokens_drops_only_expired(

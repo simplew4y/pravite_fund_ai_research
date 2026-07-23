@@ -352,9 +352,42 @@ describe("Composer status line (branch + context ring)", () => {
     expect(screen.queryByTestId("composer-token-usage")).toBeNull();
 
     fireEvent.focus(indicator);
-    await waitFor(() => expect(screen.getAllByText("本会话 Token 消耗").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText("上下文与 Token 用量").length).toBeGreaterThan(0));
     expect(screen.getAllByText(/累计 31,000 tokens/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/当前上下文 25,000 \/ 100,000 · 25%/).length).toBeGreaterThan(0);
+  });
+
+  it("shows current context tokens when cumulative usage is unavailable", async () => {
+    useChatStore.setState({
+      contextWindow: 262_144,
+      tokensUsed: 12_345,
+      sessionTokenUsage: null,
+      sessionUsageByModel: {
+        "qwen3-max": {
+          inputTokens: null,
+          outputTokens: null,
+          totalTokens: null,
+          cacheReadInputTokens: null,
+          cacheCreationInputTokens: null,
+          totalCostUsd: 0,
+        },
+      },
+    });
+    renderComposer({
+      privateFundProjectLabel: "阳光电源",
+      privateFundDatasetId: "sungrow",
+    });
+
+    const indicator = screen.getByTestId("private-fund-conversation-token-usage");
+    expect(indicator).toHaveTextContent("上下文 12.3K");
+    const contextBar = screen.getByTestId("private-fund-context-token-bar");
+    expect(contextBar.firstElementChild).toHaveStyle({ width: "4.7092437744140625%" });
+
+    fireEvent.focus(indicator);
+    await waitFor(() =>
+      expect(screen.getAllByText(/当前上下文 12,345 \/ 262,144 · 5%/).length).toBeGreaterThan(0),
+    );
+    expect(screen.queryByText(/完成首次模型调用后/)).toBeNull();
   });
 
   it("hides research mode outside private-fund sessions", () => {

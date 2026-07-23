@@ -110,6 +110,7 @@ class HostLaunchRunnerFrame:
     binding_token: str
     workspace: str
     harness: str | None = None
+    runtime_env: dict[str, str] | None = None
 
 
 @dataclass
@@ -523,6 +524,7 @@ def encode_host_frame(frame: HostFrame) -> str:
                 "binding_token": frame.binding_token,
                 "workspace": frame.workspace,
                 "harness": frame.harness,
+                "runtime_env": frame.runtime_env,
             }
         )
     if isinstance(frame, HostLaunchRunnerResultFrame):
@@ -786,11 +788,21 @@ def _decode_launch_runner(msg: dict[str, Any]) -> HostLaunchRunnerFrame:
     :param msg: Decoded frame object.
     :returns: Typed launch-runner frame.
     """
+    runtime_env = msg.get("runtime_env")
+    if runtime_env is not None and (
+        not isinstance(runtime_env, dict)
+        or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in runtime_env.items()
+        )
+    ):
+        raise ValueError("runtime_env must be an object containing only string values")
     return HostLaunchRunnerFrame(
         request_id=_required_str(msg, "request_id"),
         binding_token=_required_str(msg, "binding_token"),
         workspace=_required_str(msg, "workspace"),
         harness=_optional_nullable_str(msg, "harness"),
+        runtime_env=runtime_env,
     )
 
 

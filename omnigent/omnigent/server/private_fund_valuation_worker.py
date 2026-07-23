@@ -33,23 +33,23 @@ def _workspace_root() -> Path:
     return (
         Path(
             os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
-            or _PROJECT_ROOT / "output" / "private_fund_datasets"
+            or _PROJECT_ROOT / "output" / "users"
         )
         .expanduser()
         .resolve()
     )
 
 
-def _collection_dbs(workspace: Path) -> list[tuple[str, Path]]:
+def _collection_dbs(workspace: Path) -> list[tuple[str, str, Path]]:
     if not workspace.is_dir():
         return []
     return sorted(
         (
-            (path.parent.parent.name, path)
-            for path in workspace.glob("*/meta/collection.sqlite3")
+            (path.parents[3].name, path.parent.parent.name, path)
+            for path in workspace.glob("*/private_fund_datasets/*/meta/collection.sqlite3")
             if not path.parent.parent.name.startswith("_")
         ),
-        key=lambda item: item[0],
+        key=lambda item: (item[0], item[1]),
     )
 
 
@@ -87,16 +87,33 @@ def _market_refresh_bucket(now: datetime | None = None) -> str:
     return bucket_start.isoformat(timespec="minutes")
 
 
-def _load_llm_client() -> Any | None:
+def _load_llm_client(data_namespace: str, dataset_id: str) -> Any | None:
     enabled = os.environ.get("PRIVATE_FUND_VALUATION_USE_LLM", "1").strip().lower()
     if enabled in {"0", "false", "no", "off"}:
         return None
     try:
-        from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+        from pdf_research_demo.llm import LLMConfig, OpenAICompatibleChatClient
 
-        config_path = os.environ.get("PRIVATE_FUND_LLM_CONFIG") or None
-        config = load_llm_config(config_path)
-        return OpenAICompatibleChatClient(config) if config else None
+        from omnigent.server.accounts_store import SqlAlchemyAccountStore
+        from omnigent.server.user_llm_gateway import issue_user_llm_token
+
+        data_dir = Path(os.environ.get("OMNIGENT_DATA_DIR") or Path.home() / ".omnigent")
+        store = SqlAlchemyAccountStore(f"sqlite:///{data_dir / 'chat.db'}")
+        user_id = store.get_user_id_by_data_namespace(data_namespace)
+        if not user_id:
+            return None
+        gateway = os.environ.get(
+            "OMNIGENT_INTERNAL_LLM_GATEWAY_URL",
+            "http://127.0.0.1:6767/internal/private-fund/llm",
+        ).rstrip("/")
+        config = LLMConfig(
+            model_name="private-fund-default",
+            base_url=f"{gateway}/v1",
+            api_key=issue_user_llm_token(user_id, f"valuation:{dataset_id}"),
+            timeout_seconds=600,
+            source="user-scoped local gateway",
+        )
+        return OpenAICompatibleChatClient(config)
     except Exception:  # noqa: BLE001
         _LOGGER.warning("valuation Agent LLM is unavailable", exc_info=True)
         return None
@@ -111,8 +128,9 @@ def run_cycle(
     processed = 0
     errors: list[dict[str, str]] = []
     databases = _collection_dbs(workspace)
-    for dataset_id, collection_db in databases:
+    for data_namespace, dataset_id, collection_db in databases:
         try:
+            dataset_llm_client = llm_client or _load_llm_client(data_namespace, dataset_id)
             private_fund_valuation_tracking.recover_stale_jobs(collection_db, dataset_id)
             # This idempotent discovery also backfills historical model versions
             # and catches imports that bypass the HTTP pipeline.
@@ -135,7 +153,7 @@ def run_cycle(
                 )
             for _ in range(max_jobs_per_db):
                 result = private_fund_valuation_tracking.process_next_job(
-                    collection_db, dataset_id, llm_client=llm_client
+                    collection_db, dataset_id, llm_client=dataset_llm_client
                 )
                 if result is None:
                     break
@@ -188,7 +206,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     workspace = _workspace_root()
-    llm_client = _load_llm_client()
+    llm_client = None
     while not _STOP:
         processed = run_cycle(
             workspace,

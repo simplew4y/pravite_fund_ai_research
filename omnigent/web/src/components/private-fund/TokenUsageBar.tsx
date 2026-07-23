@@ -4,10 +4,12 @@ import { cn } from "@/lib/utils";
 
 export function TokenUsageBar({
   usage,
+  capacityTokens,
   className,
   testId,
 }: {
   usage: TokenUsageBreakdown;
+  capacityTokens?: number | null;
   className?: string;
   testId?: string;
 }) {
@@ -16,7 +18,7 @@ export function TokenUsageBar({
   const cached = cachedTokenCount(usage) ?? 0;
   const known = input + output + cached;
   const total = usage.totalTokens ?? (known > 0 ? known : 0);
-  const visualTotal = Math.max(total, known, 1);
+  const visualTotal = Math.max(total, known, capacityTokens ?? 0, 1);
   const other = Math.max(0, total - known);
   const segments = [
     { key: "input", value: input, color: "bg-[var(--pf-accent)]" },

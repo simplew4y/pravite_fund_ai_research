@@ -320,6 +320,7 @@ def get_model_context_window(model: str) -> int:
     if registered is not None:
         return registered
     try:
+        os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
         import litellm
     except ImportError:
         return _fetch_context_window_from_mlflow(model) or _DEFAULT_CONTEXT_WINDOW

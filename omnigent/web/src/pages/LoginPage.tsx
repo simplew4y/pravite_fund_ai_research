@@ -26,10 +26,15 @@
  */
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useSearchParams } from "@/lib/routing";
+import { Link, useSearchParams } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getMe, login as loginRequest } from "@/lib/accountsApi";
+import {
+  clearUserScopedBrowserState,
+  getMe,
+  login as loginRequest,
+} from "@/lib/accountsApi";
+import { useServerInfo } from "@/lib/CapabilitiesContext";
 
 const DEFAULT_RETURN_TO = "/";
 const LAST_USERNAME_KEY = "omnigent.lastLoginUsername";
@@ -52,6 +57,8 @@ function rememberUsername(value: string): void {
 }
 
 export function LoginPage() {
+  const info = useServerInfo();
+  const openRegistration = info !== "loading" && info.registration_mode === "open";
   const [params] = useSearchParams();
   // `return_to` is set by both identity.ts (on 401 redirect) and the
   // server-side magic-redeem 302 fallback. Trust only same-origin
@@ -107,6 +114,7 @@ export function LoginPage() {
 
     const result = await loginRequest({ username, password });
     if (result.ok) {
+      clearUserScopedBrowserState();
       rememberUsername(username);
       // Hard-navigate so identity.ts re-runs and every cached
       // query is rebuilt against the new session.
@@ -129,36 +137,38 @@ export function LoginPage() {
     >
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-          <p className="text-sm text-muted-foreground">Welcome to Omnigent.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">登录</h1>
+          <p className="text-sm text-muted-foreground">进入私募投研工作台</p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="login-username" className="text-sm font-medium leading-none">
-              Username
+              {openRegistration ? "邮箱" : "用户名"}
             </label>
             <Input
               id="login-username"
-              type="text"
-              autoComplete="username"
+              aria-label={openRegistration ? "Email" : "Username"}
+              type={openRegistration ? "email" : "text"}
+              autoComplete={openRegistration ? "email" : "username"}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={submitting}
               required
             />
-            <p className="text-xs text-muted-foreground">
+            {!openRegistration && <p className="text-xs text-muted-foreground">
               On a fresh install your username is your machine login (the output of{" "}
               <code className="font-mono">whoami</code>), unless an admin set a different one.
-            </p>
+            </p>}
           </div>
 
           <div className="space-y-1.5">
             <label htmlFor="login-password" className="text-sm font-medium leading-none">
-              Password
+              密码
             </label>
             <Input
               id="login-password"
+              aria-label="Password"
               type="password"
               autoComplete="current-password"
               value={password}
@@ -177,19 +187,31 @@ export function LoginPage() {
             </div>
           )}
 
-          <Button type="submit" className="w-full" disabled={submitting || password.length === 0}>
-            {submitting ? "Signing in…" : "Sign in"}
+          <Button
+            type="submit"
+            aria-label="Sign in"
+            className="w-full"
+            disabled={submitting || password.length === 0}
+          >
+            {submitting ? "正在登录..." : "登录"}
           </Button>
         </form>
 
-        <p className="text-center text-xs text-muted-foreground">
+        {openRegistration ? (
+          <p className="text-center text-sm text-muted-foreground">
+            还没有账户？{" "}
+            <Link to="/register" className="font-medium text-foreground hover:underline">
+              注册
+            </Link>
+          </p>
+        ) : <p className="text-center text-xs text-muted-foreground">
           On a fresh install the initial admin password was printed to the server's stderr and saved
           to{" "}
           <code className="rounded bg-muted px-1 py-0.5 font-mono">
             ~/.omnigent/admin-credentials
           </code>
           .
-        </p>
+        </p>}
       </div>
     </div>
   );

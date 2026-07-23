@@ -301,6 +301,12 @@ def _make_auth_token_factory(
     :returns: A sync callable returning a bearer token string, or
         ``None`` when no refresh mechanism is available.
     """
+    from omnigent.runner.identity import RUNNER_SERVER_AUTH_TOKEN_ENV_VAR
+
+    internal_token = os.environ.get(RUNNER_SERVER_AUTH_TOKEN_ENV_VAR, "").strip()
+    if internal_token:
+        return lambda: internal_token
+
     from omnigent.inner.databricks_executor import (
         DatabricksAuthError,
         _DatabricksBearerAuth,

@@ -3697,11 +3697,21 @@ function PrivateFundConversationTokenUsageIndicator({
     contextWindow != null && contextWindow > 0 && contextTokens != null
       ? Math.round(Math.min(Math.max(contextTokens / contextWindow, 0), 1) * 100)
       : null;
+  const hasContextUsage = contextTokens != null && contextTokens > 0;
+  const barUsage = hasContextUsage
+    ? {
+        inputTokens: null,
+        outputTokens: null,
+        totalTokens: contextTokens,
+        cacheReadInputTokens: null,
+        cacheCreationInputTokens: null,
+      }
+    : totals;
   const visibleLabel =
     totals.totalTokens != null
       ? `${formatTokenCount(totals.totalTokens)} tokens`
-      : contextPct != null
-        ? `上下文 ${contextPct}%`
+      : hasContextUsage
+        ? `上下文 ${formatTokenCount(contextTokens)}`
         : "等待用量";
 
   return (
@@ -3712,23 +3722,34 @@ function PrivateFundConversationTokenUsageIndicator({
           role="status"
           tabIndex={0}
           aria-label={
-            totals.totalTokens != null
+            contextPct != null
+              ? `Current context usage is ${contextPct}%`
+              : totals.totalTokens != null
               ? `This conversation has used ${totals.totalTokens.toLocaleString()} tokens`
               : "No token usage recorded for this conversation yet"
           }
           className="flex items-center gap-1.5 rounded-md text-[11px] font-medium text-[var(--pf-accent-ink)] tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <TokenUsageBar usage={totals} className="w-8" />
+          <TokenUsageBar
+            usage={barUsage}
+            capacityTokens={hasContextUsage ? contextWindow : null}
+            className="w-8"
+            testId="private-fund-context-token-bar"
+          />
           <span>{visibleLabel}</span>
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-80 text-xs">
-        <p className="font-semibold text-foreground">本会话 Token 消耗</p>
-        <p className="mt-1 tabular-nums text-muted-foreground">
-          {totals.totalTokens != null
-            ? `累计 ${totals.totalTokens.toLocaleString()} tokens`
-            : "完成首次模型调用后显示真实用量"}
-        </p>
+        <p className="font-semibold text-foreground">上下文与 Token 用量</p>
+        {totals.totalTokens != null ? (
+          <p className="mt-1 tabular-nums text-muted-foreground">
+            累计 {totals.totalTokens.toLocaleString()} tokens
+          </p>
+        ) : !hasContextUsage ? (
+          <p className="mt-1 tabular-nums text-muted-foreground">
+            完成首次模型调用后显示真实用量
+          </p>
+        ) : null}
         {totals.totalTokens != null ? (
           <p className="mt-1 tabular-nums text-muted-foreground">
             输入 {formatTokenCount(totals.inputTokens)} · 缓存 {formatTokenCount(cached)} · 输出{" "}

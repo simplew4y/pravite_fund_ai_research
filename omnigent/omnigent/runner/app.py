@@ -5395,6 +5395,7 @@ async def _auto_create_claude_terminal(
         ClaudeNativeUcodeConfig,
         augment_claude_args,
         build_native_claude_terminal_env,
+        native_claude_config_from_runner_gateway_env,
         resolve_native_claude_config,
     )
 
@@ -5648,9 +5649,12 @@ async def _auto_create_claude_terminal(
     # Claude's own login — so a host-spawned native-claude session honors the
     # provider selection just like the in-process claude-sdk harness and the
     # CLI path.
-    claude_config: ClaudeNativeUcodeConfig | None = None
+    claude_config: ClaudeNativeUcodeConfig | None = (
+        native_claude_config_from_runner_gateway_env()
+    )
     try:
-        claude_config = resolve_native_claude_config(spec=None)
+        if claude_config is None:
+            claude_config = resolve_native_claude_config(spec=None)
     except Exception:  # noqa: BLE001 — best-effort; fall back to native auth
         _logger.warning(
             "native-claude: could not derive a provider/ucode launch config "

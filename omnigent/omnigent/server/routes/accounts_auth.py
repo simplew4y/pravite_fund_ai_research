@@ -28,7 +28,9 @@ import contextlib
 import logging
 import re
 import secrets
+import threading
 import time
+from collections import defaultdict, deque
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
@@ -61,6 +63,8 @@ _MIN_PASSWORD_LENGTH = 8
 # email-impersonation tricks. Real emails are also accepted (the
 # @ + dot pattern matches the regex).
 _USERNAME_RE = r"^[a-z0-9][a-z0-9._-]{0,63}(@[a-z0-9.-]+\.[a-z]{2,})?$"
+def _request_ip(request: Request) -> str:
+    return request.client.host if request.client is not None else "unknown"
 
 
 class LoginRequest(BaseModel):
@@ -84,8 +88,9 @@ class RegisterRequest(BaseModel):
     :param password: The user's chosen password.
     """
 
-    invite: str = Field(min_length=1, max_length=128)
-    username: str = Field(min_length=1, max_length=64, pattern=_USERNAME_RE)
+    invite: str | None = Field(default=None, min_length=1, max_length=128)
+    username: str | None = Field(default=None, min_length=1, max_length=128)
+    email: str | None = Field(default=None, min_length=3, max_length=128)
     password: str = Field(min_length=_MIN_PASSWORD_LENGTH, max_length=1024)
 
 
@@ -238,11 +243,24 @@ def create_accounts_auth_router(
     _secure = config.secure_cookies
     _session_cookie = config.session_cookie_name
     _session_max_age = config.session_ttl_hours * 3600
+    auth_attempts: dict[str, deque[float]] = defaultdict(deque)
+    auth_attempts_lock = threading.Lock()
+
+    def rate_limited(key: str, *, limit: int, window_seconds: int) -> bool:
+        now = time.monotonic()
+        with auth_attempts_lock:
+            attempts = auth_attempts[key]
+            while attempts and attempts[0] <= now - window_seconds:
+                attempts.popleft()
+            if len(attempts) >= limit:
+                return True
+            attempts.append(now)
+            return False
 
     # ── Login / logout / me ───────────────────────────────────────
 
     @router.post("/login")
-    async def login(body: LoginRequest) -> Response:
+    async def login(body: LoginRequest, request: Request) -> Response:
         """Verify password and mint a session cookie.
 
         Returns 401 on any failure (unknown user, wrong password,
@@ -254,6 +272,16 @@ def create_accounts_auth_router(
         OWASP authentication cheat-sheet guidance.
         """
         username = body.username.strip().lower()
+        if rate_limited(
+            f"login:ip:{_request_ip(request)}",
+            limit=30,
+            window_seconds=60,
+        ) or rate_limited(f"login:user:{username}", limit=10, window_seconds=60):
+            return JSONResponse(
+                status_code=429,
+                headers={"Retry-After": "60"},
+                content={"error": "too many login attempts; try again later"},
+            )
         password_hash = account_store.get_password_hash(username)
         # Always run a verify even on missing user — keeps the
         # response time roughly constant regardless of whether
@@ -389,7 +417,7 @@ def create_accounts_auth_router(
         )
 
     @router.post("/register")
-    async def register(body: RegisterRequest) -> Response:
+    async def register(body: RegisterRequest, request: Request) -> Response:
         """Consume an invite, create the user, sign them in.
 
         Ordering: validate format → check name availability → THEN
@@ -405,19 +433,50 @@ def create_accounts_auth_router(
         is consumed in that case — the user was genuinely racing
         another registrant for the same token, which is fine.
         """
-        err = _validate_username(body.username)
+        open_registration = config.registration_mode == "open"
+        identity = (body.email if open_registration else body.username) or ""
+        username = identity.strip().lower()
+        if rate_limited(
+            f"register:ip:{_request_ip(request)}",
+            limit=5,
+            window_seconds=600,
+        ) or rate_limited(f"register:user:{username}", limit=3, window_seconds=600):
+            return JSONResponse(
+                status_code=429,
+                headers={"Retry-After": "600"},
+                content={"error": "too many registration attempts; try again later"},
+            )
+        if open_registration and not re.fullmatch(
+            r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+            r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+",
+            username,
+        ):
+            return JSONResponse(status_code=400, content={"error": "valid email is required"})
+        err = _validate_username(username)
         if err is not None:
             return JSONResponse(status_code=400, content={"error": err})
 
-        username = body.username.strip().lower()
         if account_store.get_user(username) is not None:
             # Don't burn the invite — the user can retry with a
             # different name on the same URL.
-            return JSONResponse(status_code=409, content={"error": "username already taken"})
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "error": "email already registered"
+                    if open_registration
+                    else "username already taken"
+                },
+            )
 
         now = int(time.time())
-        token = account_store.redeem_token(body.invite, kind="invite", now_epoch_seconds=now)
-        if token is None:
+        token = None
+        if not open_registration and body.invite:
+            token = account_store.redeem_token(
+                body.invite,
+                kind="invite",
+                now_epoch_seconds=now,
+            )
+        if not open_registration and token is None:
             # Don't distinguish missing / expired / already-redeemed
             # — keeps the route opaque to brute-force token guessing.
             return JSONResponse(status_code=400, content={"error": "invite invalid or expired"})
@@ -426,18 +485,25 @@ def create_accounts_auth_router(
             user = account_store.create_user_with_password(
                 username,
                 hash_password(body.password),
-                is_admin=token.invited_is_admin,
+                is_admin=token.invited_is_admin if token is not None else False,
             )
         except ValueError:
             # Genuine race against another registrant using the same
             # invite — invite is now consumed, no recovery here.
-            return JSONResponse(status_code=409, content={"error": "username already taken"})
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "error": "email already registered"
+                    if open_registration
+                    else "username already taken"
+                },
+            )
 
         account_store.mark_logged_in(username, now)
         # Admin list applies to invite-registered users too (additive).
         # Re-fetch so the response reflects a promotion; the invite's
         # own ``invited_is_admin`` still applies independently.
-        if promote_if_listed(admin_list, account_store, username):
+        if not open_registration and promote_if_listed(admin_list, account_store, username):
             user = account_store.get_user(username) or user
         session_jwt = mint_session_cookie(
             user_id=username,
@@ -461,9 +527,10 @@ def create_accounts_auth_router(
             max_age_seconds=_session_max_age,
         )
         _logger.info(
-            "auth/register: %s created via invite (admin=%s)",
+            "auth/register: %s created via %s (admin=%s)",
             _redact_for_log(username),
-            token.invited_is_admin,
+            "open registration" if open_registration else "invite",
+            token.invited_is_admin if token is not None else False,
         )
         return resp
 
@@ -489,6 +556,8 @@ def create_accounts_auth_router(
         # Gate: only while no account has been claimed yet. Checked
         # against the same "any password-having user" predicate the
         # bootstrap uses, so the two agree on what "set up" means.
+        if config.registration_mode == "open":
+            return JSONResponse(status_code=404, content={"error": "setup is disabled"})
         if any(u.has_password for u in account_store.list_users()):
             return JSONResponse(status_code=409, content={"error": "setup already completed"})
 

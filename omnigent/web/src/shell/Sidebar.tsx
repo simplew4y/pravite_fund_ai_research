@@ -27,6 +27,7 @@ import {
   InboxIcon,
   ListChecksIcon,
   Loader2Icon,
+  LogOutIcon,
   Maximize2Icon,
   Minimize2Icon,
   MoreHorizontalIcon,
@@ -37,6 +38,7 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  UserRoundIcon,
   ShareIcon,
   SquareIcon,
   SquareCheckIcon,
@@ -119,6 +121,13 @@ import { isOwnerLevel } from "@/lib/permissionsApi";
 import { getSessionState, type SessionState } from "@/hooks/useSessionState";
 import { isConversationUnseen } from "@/hooks/useUnseenConversations";
 import { cn } from "@/lib/utils";
+import { useServerInfo } from "@/lib/CapabilitiesContext";
+import {
+  clearUserScopedBrowserState,
+  getMe,
+  logout,
+  type CurrentAccount,
+} from "@/lib/accountsApi";
 import { useResizableSidebar } from "@/hooks/useResizableSidebar";
 import { useSessionSwitchHotkey } from "@/hooks/useSessionSwitchHotkey";
 import { usePinnedSessionHotkeys } from "@/hooks/usePinnedSessionHotkeys";
@@ -237,6 +246,12 @@ function showArchivedToast() {
   showToast(<ArchivedToast />);
 }
 
+function maskedAccountId(value: string): string {
+  const [name, domain] = value.split("@");
+  if (!domain) return value.length > 3 ? `${value.slice(0, 2)}***` : value;
+  return `${name.slice(0, 1)}***@${domain}`;
+}
+
 export function Sidebar({
   open,
   onClose,
@@ -244,11 +259,25 @@ export function Sidebar({
   activePrivateFundDatasetId = null,
   dragProgress = null,
 }: SidebarProps) {
+  const serverInfo = useServerInfo();
+  const [account, setAccount] = useState<CurrentAccount | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [pinnedConversationIds, setPinnedConversationIds] = useState(readPinnedConversationIds);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (serverInfo !== "loading" && serverInfo.accounts_enabled) {
+      void getMe().then(setAccount);
+    }
+  }, [serverInfo]);
+
+  const signOut = useCallback(async () => {
+    await logout();
+    clearUserScopedBrowserState();
+    window.location.href = "/login";
+  }, []);
 
   const lastSelectedIdRef = useRef<string | null>(null);
   const visibleIdsRef = useRef<string[]>([]);
@@ -703,6 +732,52 @@ export function Sidebar({
           the conversation list as a compact icon instead of stealing a row's
           height from the scroll area. */}
           <div className="md:shrink-0 md:px-3 md:pb-3 max-md:absolute max-md:bottom-3 max-md:left-3 max-md:z-10">
+            {account ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="h-11 w-full justify-start gap-2 px-2 max-md:size-9 max-md:justify-center max-md:rounded-full max-md:border max-md:bg-card-solid max-md:p-0 max-md:shadow-sm"
+                    aria-label="用户菜单"
+                  >
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
+                      {account.id.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-left text-sm max-md:hidden">
+                      {maskedAccountId(account.id)}
+                    </span>
+                    <ChevronRightIcon className="size-3.5 text-muted-foreground max-md:hidden" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="start" className="w-56">
+                  <div className="px-2 py-1.5">
+                    <p className="truncate text-sm font-medium">{maskedAccountId(account.id)}</p>
+                    <p className="text-xs text-muted-foreground">个人投研空间</p>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings/account">
+                      <UserRoundIcon className="size-4" />
+                      账户设置
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings">
+                      <SettingsIcon className="size-4" />
+                      通用设置
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={() => void signOut()}
+                  >
+                    <LogOutIcon className="size-4" />
+                    退出登录
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
             <Button
               asChild
               variant="ghost"
@@ -729,6 +804,7 @@ export function Sidebar({
                 <span className="max-md:hidden">{privateFundWorkspace ? "设置" : "Settings"}</span>
               </Link>
             </Button>
+            )}
           </div>
         </>
       )}

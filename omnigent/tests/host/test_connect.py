@@ -40,7 +40,9 @@ from omnigent.host.identity import HostIdentity
 from omnigent.runner.identity import (
     RUNNER_ID_ENV_VAR,
     RUNNER_PARENT_PID_ENV_VAR,
+    RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
     RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR,
+    RUNNER_USER_LLM_GATEWAY_ENV_VAR,
     RUNNER_WORKSPACE_ENV_VAR,
     token_bound_runner_id,
 )
@@ -1108,6 +1110,29 @@ def test_build_runner_env_allowlists_host_env_and_strips_secrets() -> None:
     assert env[RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR] == "tok"
     assert env[RUNNER_WORKSPACE_ENV_VAR] == "/ws"
     assert env[RUNNER_PARENT_PID_ENV_VAR] == "42"
+
+
+def test_build_runner_env_forwards_only_allowed_runtime_env() -> None:
+    """Session-scoped auth reaches the runner without forwarding extras."""
+    env = _build_runner_env(
+        {"PATH": "/usr/bin"},
+        server_url="http://server",
+        runner_id="runner_abc",
+        binding_token="tok",
+        workspace="/ws",
+        parent_pid=42,
+        runtime_env={
+            RUNNER_SERVER_AUTH_TOKEN_ENV_VAR: "internal-user-token",
+            RUNNER_USER_LLM_GATEWAY_ENV_VAR: "1",
+            "ANTHROPIC_AUTH_TOKEN": "gateway-token",
+            "UNSAFE_ARBITRARY_VALUE": "must-not-pass",
+        },
+    )
+
+    assert env[RUNNER_SERVER_AUTH_TOKEN_ENV_VAR] == "internal-user-token"
+    assert env[RUNNER_USER_LLM_GATEWAY_ENV_VAR] == "1"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "gateway-token"
+    assert "UNSAFE_ARBITRARY_VALUE" not in env
 
 
 def test_build_runner_env_forwards_harness_credentials_and_endpoints() -> None:

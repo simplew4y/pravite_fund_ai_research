@@ -28,7 +28,7 @@ import uuid
 if sys.platform != "win32":
     import termios
     import tty
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -286,6 +286,30 @@ class ClaudeNativeUcodeConfig:
     env: dict[str, str]
     api_key_helper: str | None = None
     model: str | None = None
+
+
+def native_claude_config_from_runner_gateway_env(
+    env: Mapping[str, str] | None = None,
+) -> ClaudeNativeUcodeConfig | None:
+    """Build a private-fund runner's user-scoped Claude gateway config."""
+    from omnigent.runner.identity import RUNNER_USER_LLM_GATEWAY_ENV_VAR
+
+    source = os.environ if env is None else env
+    if source.get(RUNNER_USER_LLM_GATEWAY_ENV_VAR) != "1":
+        return None
+    base_url = source.get("ANTHROPIC_BASE_URL", "").strip()
+    auth_token = source.get("ANTHROPIC_AUTH_TOKEN", "").strip()
+    model = source.get("ANTHROPIC_MODEL", "").strip()
+    if not base_url or not auth_token or not model:
+        return None
+    return ClaudeNativeUcodeConfig(
+        env={
+            _UCODE_CLAUDE_BASE_URL_ENV: base_url,
+            _CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS_ENV: "1",
+        },
+        api_key_helper=f"printf %s {shlex.quote(auth_token)}",
+        model=model,
+    )
 
 
 def build_native_claude_terminal_env(

@@ -25,6 +25,8 @@ LITELLM_MODEL="${PRIVATE_FUND_LITELLM_MODEL:-private-fund-default}"
 LITELLM_KEY="${PRIVATE_FUND_LITELLM_KEY:-sk-local-cc-haha}"
 WAIT_SECONDS="${OMNIGENT_STACK_WAIT_SECONDS:-180}"
 SCRIPT_PATH="$ROOT_DIR/scripts/manage_omnigent_services.sh"
+AUTH_RUNTIME_DIR="$ROOT_DIR/tmp/multi-user-auth"
+AUTH_SECRETS_FILE="$AUTH_RUNTIME_DIR/secrets.env"
 
 usage() {
   cat <<EOF
@@ -55,11 +57,42 @@ require_runtime() {
   fi
 }
 
+ensure_runtime_secrets() {
+  mkdir -p "$AUTH_RUNTIME_DIR"
+  chmod 700 "$AUTH_RUNTIME_DIR"
+  if [[ ! -f "$AUTH_SECRETS_FILE" ]]; then
+    local cookie_secret user_secret shared_host_token
+    cookie_secret="$(openssl rand -hex 32)"
+    user_secret="$(openssl rand -hex 32)"
+    shared_host_token="$(openssl rand -hex 32)"
+    umask 077
+    cat >"$AUTH_SECRETS_FILE" <<EOF
+OMNIGENT_ACCOUNTS_COOKIE_SECRET=$cookie_secret
+OMNIGENT_USER_SECRETS_KEY=$user_secret
+OMNIGENT_SHARED_HOST_TOKEN=$shared_host_token
+EOF
+  fi
+  chmod 600 "$AUTH_SECRETS_FILE"
+}
+
 configure_agent_runtime() {
-  export OMNIGENT_AUTH_ENABLED="${OMNIGENT_AUTH_ENABLED:-0}"
-  export OMNIGENT_LOCAL_SINGLE_USER="${OMNIGENT_LOCAL_SINGLE_USER:-1}"
+  ensure_runtime_secrets
+  set -a
+  # shellcheck disable=SC1090
+  source "$AUTH_SECRETS_FILE"
+  set +a
+  export OMNIGENT_AUTH_ENABLED="${OMNIGENT_AUTH_ENABLED:-1}"
+  export OMNIGENT_AUTH_PROVIDER="${OMNIGENT_AUTH_PROVIDER:-accounts}"
+  export OMNIGENT_ACCOUNTS_ENABLED="${OMNIGENT_ACCOUNTS_ENABLED:-1}"
+  export OMNIGENT_ACCOUNTS_REGISTRATION_MODE="${OMNIGENT_ACCOUNTS_REGISTRATION_MODE:-open}"
+  export OMNIGENT_ACCOUNTS_BASE_URL="${OMNIGENT_ACCOUNTS_BASE_URL:-http://127.0.0.1:6768}"
+  export OMNIGENT_LOCAL_SINGLE_USER="${OMNIGENT_LOCAL_SINGLE_USER:-0}"
+  export OMNIGENT_SHARED_HOST_ID="${OMNIGENT_SHARED_HOST_ID:-host_private_fund_service}"
+  export OMNIGENT_SHARED_HOST_NAME="${OMNIGENT_SHARED_HOST_NAME:-private-fund-service}"
+  export OMNIGENT_INTERNAL_LLM_GATEWAY_URL="${OMNIGENT_INTERNAL_LLM_GATEWAY_URL:-$SERVER_URL/internal/private-fund/llm}"
   export OMNIGENT_WS_ALLOWED_ORIGINS="${OMNIGENT_WS_ALLOWED_ORIGINS:-http://127.0.0.1:6767,http://localhost:6767,http://127.0.0.1:6768,http://localhost:6768}"
   export OMNIGENT_NO_UPDATE_CHECK="${OMNIGENT_NO_UPDATE_CHECK:-1}"
+  export LITELLM_LOCAL_MODEL_COST_MAP="${LITELLM_LOCAL_MODEL_COST_MAP:-True}"
   # Citation repair is bounded to one targeted pass. Tests and ad-hoc library
   # use remain deterministic unless this managed runtime explicitly enables it.
   export PRIVATE_FUND_CITATION_GATE_RETRY="${PRIVATE_FUND_CITATION_GATE_RETRY:-1}"
@@ -95,10 +128,11 @@ server_healthy() {
 }
 
 host_online() {
-  local status
-  status="$("$OMNIGENT_CLI" host status --server "$SERVER_URL" 2>/dev/null | tr -d '\r')" \
-    || return 1
-  grep -q 'process=online.*host=online' <<<"$status"
+  tmux has-session -t "$STACK_SESSION" 2>/dev/null \
+    && tmux list-windows -t "$STACK_SESSION" -F '#{window_name}' 2>/dev/null \
+      | grep -qx 'host' \
+    && tmux capture-pane -p -t "$STACK_SESSION:host" -S -80 2>/dev/null \
+      | grep -q 'Connected'
 }
 
 tracking_worker_online() {
@@ -136,6 +170,7 @@ wait_until() {
 }
 
 run_litellm() {
+  export LITELLM_LOCAL_MODEL_COST_MAP="${LITELLM_LOCAL_MODEL_COST_MAP:-True}"
   exec "$ROOT_DIR/scripts/start_litellm_dashscope.sh"
 }
 
@@ -149,6 +184,9 @@ run_server() {
 run_host() {
   configure_agent_runtime
   until server_healthy; do sleep 1; done
+  export OMNIGENT_HOST_ID="$OMNIGENT_SHARED_HOST_ID"
+  export OMNIGENT_HOST_NAME="$OMNIGENT_SHARED_HOST_NAME"
+  export OMNIGENT_HOST_TOKEN="$OMNIGENT_SHARED_HOST_TOKEN"
   cd "$OMNIGENT_DIR"
   exec "$OMNIGENT_CLI" host --server "$SERVER_URL" --non-interactive
 }

@@ -31,6 +31,7 @@ from omnigent.runner._entry import (
     _server_url_from_env,
     main,
 )
+from omnigent.runner.identity import RUNNER_SERVER_AUTH_TOKEN_ENV_VAR
 from omnigent.runner.transports.ws_tunnel.serve import RUNNER_TUNNEL_REJECTION_PREFIX
 
 # Force-load the MCP streamable-http client before any test monkeypatches
@@ -156,6 +157,22 @@ def test_make_auth_token_factory_returns_factory_when_databricks_creds_available
     assert factory() == "fresh-token"
 
 
+def test_make_auth_token_factory_prefers_internal_runner_bearer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server-minted user bearer takes precedence over ambient auth."""
+    monkeypatch.setenv(RUNNER_SERVER_AUTH_TOKEN_ENV_VAR, "internal-user-token")
+    monkeypatch.setattr(
+        "omnigent.inner.databricks_executor._resolve_databricks_auth",
+        lambda profile=None: pytest.fail("ambient auth should not be resolved"),
+    )
+
+    factory = _make_auth_token_factory()
+
+    assert factory is not None
+    assert factory() == "internal-user-token"
+
+
 def test_make_auth_token_factory_returns_none_without_databricks_creds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -176,6 +193,7 @@ def test_make_auth_token_factory_returns_none_without_databricks_creds(
     # No stored OIDC token and SDK resolution fails → factory is None, so the
     # runner connects to a local unauthenticated server without a bearer.
     monkeypatch.delenv("RUNNER_SERVER_URL", raising=False)  # skip OIDC branch
+    monkeypatch.delenv(RUNNER_SERVER_AUTH_TOKEN_ENV_VAR, raising=False)
     monkeypatch.setattr(
         "omnigent.inner.databricks_executor._resolve_databricks_auth",
         _no_creds,
