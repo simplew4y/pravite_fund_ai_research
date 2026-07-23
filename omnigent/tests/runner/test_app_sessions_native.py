@@ -12856,6 +12856,10 @@ async def test_auto_create_claude_terminal_registers_permission_hook(
     """
     monkeypatch.setattr(claude_native_bridge, "_TRUSTED_PARENT", tmp_path)
     monkeypatch.setattr(claude_native_bridge, "_BRIDGE_ROOT", tmp_path / "root")
+    monkeypatch.setattr(
+        "omnigent.runner.app._default_claude_native_command",
+        lambda: "claude",
+    )
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:8000")
     monkeypatch.setenv("OMNIGENT_CLAUDE_NATIVE_AUTO_APPROVE", "1")
 
@@ -13530,6 +13534,10 @@ async def test_auto_create_claude_terminal_injects_ucode_gateway_config(
 
     monkeypatch.setattr(claude_native_bridge, "_TRUSTED_PARENT", tmp_path)
     monkeypatch.setattr(claude_native_bridge, "_BRIDGE_ROOT", tmp_path / "root")
+    monkeypatch.setattr(
+        "omnigent.runner.app._default_claude_native_command",
+        lambda: "claude",
+    )
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:8000")
     # The supported credential source for a host-spawned runner: the
     # global config's ``auth:`` block (written by ``omnigent setup``),

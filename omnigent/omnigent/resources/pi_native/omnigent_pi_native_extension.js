@@ -820,7 +820,7 @@ function startInboxPoller(pi, config, handleInterrupt, handleCompact) {
   // re-read+re-throw the same file forever (the turn is already reported done).
   const deliverAttempts = new Map();
   const MAX_DELIVER_ATTEMPTS = 5;
-  pi.__omnigentInboxPoller = setInterval(() => {
+  const poller = setInterval(() => {
     let files = [];
     try {
       files = fs
@@ -930,6 +930,13 @@ function startInboxPoller(pi, config, handleInterrupt, handleCompact) {
       } catch (_err) {}
     }
   }, 250);
+  pi.__omnigentInboxPoller = poller;
+  // The interactive TUI has its own live stdin/UI handles, so an unreferenced
+  // timer continues polling for the full resident session.  In print/JSON
+  // automation, however, this interval would otherwise be the only remaining
+  // event-loop handle after agent_end and keep the completed Pi process alive
+  // forever.  Do not make the inbox poller own process lifetime.
+  if (poller && typeof poller.unref === "function") poller.unref();
 }
 
 module.exports = function (pi) {
@@ -1014,7 +1021,19 @@ module.exports = function (pi) {
           promptSnippet: description ? description.slice(0, 120) : name,
           parameters,
           async execute(_toolCallId, params) {
-            return callOmnigentTool(config, name, params || {});
+            const result = await callOmnigentTool(config, name, params || {});
+            // Pi 0.75+ marks extension tool failures only when execute throws;
+            // returning ``{isError: true}`` is treated as a successful result
+            // and rewrites the event/message flag to false. Throwing here is
+            // caught by Pi's agent loop, keeps the turn alive, and presents
+            // the readable relay error to the model with the correct
+            // ``isError: true`` contract.
+            if (result && result.isError === true) {
+              const message =
+                textFromContent(result.content) || "Omnigent tool call failed";
+              throw new Error(message);
+            }
+            return result;
           },
         });
       }

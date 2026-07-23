@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import stat
 from pathlib import Path
 
 from omnigent.pi_native_memory import (
     OMNIGENT_PI_MEMORY_DIR_ENV_VAR,
+    PI_CLI_VERSION,
     PI_MEMORY_DIR_ENV_VAR,
+    PI_MEMORY_PACKAGE_VERSION,
     PI_MEMORY_SNAPSHOT_ENV_VAR,
     pi_memory_dir_for_workspace,
     prepare_pi_memory_env,
+    prepare_pi_memory_package_manifest,
 )
 
 
@@ -55,6 +59,36 @@ def test_non_git_workspaces_are_isolated(tmp_path: Path) -> None:
 
     first_dir = pi_memory_dir_for_workspace(first, env={}, memory_root=tmp_path / "memory")
     second_dir = pi_memory_dir_for_workspace(second, env={}, memory_root=tmp_path / "memory")
+
+    assert first_dir != second_dir
+
+
+def test_distinct_git_repositories_with_same_name_are_isolated(tmp_path: Path) -> None:
+    """Repository identity includes the common Git directory, not only its name."""
+    first = tmp_path / "owner-a" / "fund-research"
+    second = tmp_path / "owner-b" / "fund-research"
+    (first / ".git").mkdir(parents=True)
+    (second / ".git").mkdir(parents=True)
+
+    memory_root = tmp_path / "memory"
+    first_dir = pi_memory_dir_for_workspace(first, env={}, memory_root=memory_root)
+    second_dir = pi_memory_dir_for_workspace(second, env={}, memory_root=memory_root)
+
+    assert first_dir != second_dir
+    assert first_dir.name.startswith("fund-research-")
+    assert second_dir.name.startswith("fund-research-")
+
+
+def test_same_named_non_git_workspaces_are_isolated(tmp_path: Path) -> None:
+    """Non-Git identity includes the absolute path, preventing name collisions."""
+    first = tmp_path / "owner-a" / "fund-research"
+    second = tmp_path / "owner-b" / "fund-research"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+
+    memory_root = tmp_path / "memory"
+    first_dir = pi_memory_dir_for_workspace(first, env={}, memory_root=memory_root)
+    second_dir = pi_memory_dir_for_workspace(second, env={}, memory_root=memory_root)
 
     assert first_dir != second_dir
 
@@ -119,3 +153,41 @@ def test_prepare_memory_env_respects_valid_snapshot_mode(tmp_path: Path) -> None
     )
 
     assert launch_env[PI_MEMORY_SNAPSHOT_ENV_VAR] == "per-turn"
+
+
+def test_prepare_package_manifest_aliases_deprecated_peers_to_patched_pi(
+    tmp_path: Path,
+) -> None:
+    """pi-memory imports old package names but resolves maintained code."""
+    agent_dir = tmp_path / "pi-agent"
+    npm_dir = agent_dir / "npm"
+    npm_dir.mkdir(parents=True)
+    (npm_dir / "package.json").write_text(
+        '{"dependencies":{"operator-tool":"1.2.3"},"overrides":{"safe":"4.5.6"}}',
+        encoding="utf-8",
+    )
+
+    manifest_path = prepare_pi_memory_package_manifest(agent_dir)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["dependencies"] == {
+        "operator-tool": "1.2.3",
+        "pi-memory": PI_MEMORY_PACKAGE_VERSION,
+        "@mariozechner/pi-ai": f"npm:@earendil-works/pi-ai@{PI_CLI_VERSION}",
+        "@mariozechner/pi-coding-agent": "file:shims/pi-coding-agent",
+    }
+    assert manifest["overrides"] == {
+        "safe": "4.5.6",
+        "protobufjs": "7.6.5",
+        "@google/genai": {"protobufjs": "7.6.5"},
+    }
+    assert stat.S_IMODE(npm_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(manifest_path.stat().st_mode) == 0o600
+    assert (npm_dir / ".npmrc").read_text(encoding="utf-8") == "save-exact=true\n"
+    assert stat.S_IMODE((npm_dir / ".npmrc").stat().st_mode) == 0o600
+    shim_dir = npm_dir / "shims" / "pi-coding-agent"
+    shim_package = json.loads((shim_dir / "package.json").read_text(encoding="utf-8"))
+    assert shim_package["version"] == PI_CLI_VERSION
+    shim_source = (shim_dir / "index.js").read_text(encoding="utf-8")
+    assert "export function convertToLlm" in shim_source
+    assert "export function serializeConversation" in shim_source

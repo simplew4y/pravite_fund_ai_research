@@ -2028,6 +2028,12 @@ async def _auto_create_pi_terminal(
             isolate_resources=True,
         )
         pi_env[PI_CODING_AGENT_DIR_ENV_VAR] = str(managed_pi_agent_dir)
+    # pi-memory still imports deprecated @mariozechner peer names. Preseed the
+    # isolated npm tree with the maintained pi-ai alias and the narrow,
+    # reviewed coding-agent compatibility shim before Pi resolves packages.
+    from omnigent.pi_native_memory import prepare_pi_memory_package_manifest
+
+    prepare_pi_memory_package_manifest(managed_pi_agent_dir)
     # Inherit the agent's os_env so its sandbox (e.g. ``type: none``),
     # egress_rules and env_passthrough are honoured. Without ``sandbox`` here
     # and ``parent_os_env`` below, launch_required_terminal falls back to

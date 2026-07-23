@@ -31,6 +31,11 @@ Pi TUI
 ## 📝 记忆模型
 
 - 📝 接入固定版本 `npm:pi-memory@0.4.0`，核心记忆以 Markdown 保存；`qmd` 仅用于可选的关键词/语义检索，缺少 `qmd` 不影响基本读写。
+- 📝 Pi CLI 固定升级到安全版本 `@earendil-works/pi-coding-agent@0.81.1`；
+  `pi-memory` 保留的旧 `pi-ai` import 名通过 npm alias 指向同版本
+  `@earendil-works/pi-ai`，旧 coding-agent import 名由只暴露
+  `convertToLlm` 与 `serializeConversation` 的本地兼容层承接，避免安装没有安全补丁的
+  `0.73.1` 完整 coding-agent peer。
 - 📝 默认目录为 `~/.omnigent/pi-memory/<项目名>-<仓库身份哈希>/`，权限为 `0700`。
 - 📝 同一 Git 仓库的主工作区和所有 worktree 使用 Git common dir 作为身份，因此跨分支、跨 Pi 会话共享一份项目记忆。
 - 📝 非 Git 工作区按规范化绝对路径隔离；不同项目默认不共享记忆，避免公司、策略或用户偏好串库。
@@ -43,6 +48,10 @@ Pi TUI
 - 📝 新增 package 时 `npm/` 与 `git/` 安装树保持会话隔离，不通过 symlink 把自动安装写入用户的 `~/.pi/agent`。
 - 📝 用户已有 `auth.json` 和 `models.json` 只复制到权限 `0700` 的受管目录，目标已存在时不覆盖；Omnigent Provider 随后只改写受管 `models.json`。
 - 📝 第三方 Pi package 拥有 Pi 进程权限，因此版本固定，不使用浮动 latest；升级前必须单独复核源代码、许可证和回归测试。
+- 📝 受管 npm 清单固定 `protobufjs@7.6.5`，并在真实安装后检查 lockfile
+  中的 peer 与传递依赖版本，防止 npm 自动解析回已知漏洞版本。
+- 📝 受管 npm 使用 `save-exact=true`，防止 Pi 的 package 安装器把
+  `pi-memory@0.4.0` 改写为可漂移的 semver 范围。
 
 ## 📝 事实与记忆边界
 
@@ -53,7 +62,9 @@ Pi TUI
 
 ## 📝 验证
 
-- 📝 137 项 Pi Native、记忆、受管设置、bundle、扩展、工具中继、模型配置、私募本地分发和真实终端启动测试通过。
-- 📝 Ruff 检查通过；新增记忆与受管设置核心模块通过 MyPy。
-- 📝 较大的 native-session 回归共 379 项，其中 377 项通过；2 项 Claude Native 断言因本仓库存在 `cc-haha/bin/claude-haha` 包装器而期望 `claude` 命令失败，与本次 Pi 改动无关。
-- 📝 尚未完成真实 Pi 二进制 + 模型凭据的交互式端到端验收；首次启动仍需要网络安装固定的 `pi-memory` package，语义检索另需安装 `qmd`。
+- 📝 真实 Pi 全量为 39/39 PASS，覆盖 package、长期/daily/scratchpad/forget/restore、stable/per-turn、qmd、隔离、并发、子会话、异步、定时器、策略、证据和故障恢复。
+- 📝 Pi/私募定向回归 191/191、Native session 大回归 390/390 通过；Ruff、核心 MyPy、Node syntax 与兼容层官方行为对比通过。
+- 📝 Pi 隔离长稳实际运行 1800 秒，70/70 轮跨新会话写入/读取成功，无持续延迟恶化。
+- 📝 模型全阶梯并发 `1/2/4/8/16` 为 100/100 成功；隔离并发 2 长稳 1800 秒为 1016/1016 成功。
+- 📝 持续并发 8 与 Pi soak 叠加会稳定触发 429，说明当前代理的默认持续并发预算应为 2；更高持续并发需要排队、退避或扩容。
+- 📝 完整用例、量化结果、安全审计和复现路径见 `docs/pi_global_agent_memory_test_report_20260723.md`。

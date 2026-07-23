@@ -205,6 +205,20 @@ async def test_auto_create_pi_terminal_threads_spec_model_into_models_json(
     assert models["providers"]["omnigent"]["models"] == [{"id": "claude-opus-4-7"}]
     settings = json.loads((agent_dir / "settings.json").read_text(encoding="utf-8"))
     assert "npm:pi-memory@0.4.0" in settings["packages"]
+    npm_manifest = json.loads((agent_dir / "npm" / "package.json").read_text(encoding="utf-8"))
+    assert (
+        npm_manifest["dependencies"]["@mariozechner/pi-coding-agent"]
+        == "file:shims/pi-coding-agent"
+    )
+    assert (
+        json.loads(
+            (agent_dir / "npm" / "shims" / "pi-coding-agent" / "package.json").read_text(
+                encoding="utf-8"
+            )
+        )["version"]
+        == "0.81.1"
+    )
+    assert npm_manifest["overrides"]["protobufjs"] == "7.6.5"
     assert launched["env"]["PI_MEMORY_DIR"] == str((tmp_path / "memory").resolve())
     assert launched["env"]["PI_MEMORY_SNAPSHOT"] == "stable"
     bridge_config = json.loads(
