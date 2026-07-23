@@ -906,6 +906,75 @@ require(extensionPath)(pi);
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_appends_orchestrator_contract_to_pi_system_prompt(tmp_path: Path) -> None:
+    """The bridge injects AgentSpec instructions without replacing Pi context."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for the pi-native extension e2e test")
+
+    extension_path = (
+        Path(__file__).resolve().parents[1]
+        / "omnigent"
+        / "resources"
+        / "pi_native"
+        / "omnigent_pi_native_extension.js"
+    )
+
+    script = r"""
+const assert = require("assert").strict;
+const fs = require("fs");
+const path = require("path");
+
+const extensionPath = process.argv[1];
+const tmpDir = process.argv[2];
+const configPath = path.join(tmpDir, "config.json");
+fs.writeFileSync(
+  configPath,
+  JSON.stringify({
+    serverUrl: "http://omnigent.test",
+    sessionId: "conv_abc",
+    systemPrompt: "Use durable memory, but keep evidence canonical.",
+  }),
+);
+process.env.OMNIGENT_PI_NATIVE_CONFIG = configPath;
+
+const handlers = {};
+const pi = {
+  registerCommand() {},
+  registerTool() {},
+  on(eventName, handler) {
+    handlers[eventName] = handler;
+  },
+};
+require(extensionPath)(pi);
+
+(async () => {
+  assert.equal(typeof handlers.before_agent_start, "function");
+  const result = await handlers.before_agent_start({
+    systemPrompt: "Pi base prompt and project AGENTS.md",
+  });
+  assert.equal(
+    result.systemPrompt,
+    "Pi base prompt and project AGENTS.md\n\n" +
+      "Use durable memory, but keep evidence canonical.",
+  );
+})().catch((error) => {
+  console.error(error && error.stack ? error.stack : error);
+  process.exit(1);
+});
+"""
+
+    result = subprocess.run(
+        [node, "-e", script, str(extension_path), str(tmp_path)],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_bridged_tool_call_skips_hook_policy_eval(tmp_path: Path) -> None:
     """The tool_call hook must NOT re-evaluate policy for bridged Omnigent tools.
 

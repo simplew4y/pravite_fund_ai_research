@@ -1021,6 +1021,25 @@ module.exports = function (pi) {
     }
   }
 
+  // AgentSpec instructions do not automatically enter the resident Pi TUI's
+  // system prompt. Append the Omnigent-owned orchestrator contract through
+  // Pi's supported lifecycle hook so every terminal and Web-UI turn sees the
+  // same authority, memory, evidence, and delegation boundaries. Chaining from
+  // event.systemPrompt preserves user/project instructions and other
+  // extensions (including pi-memory).
+  pi.on("before_agent_start", async (event) => {
+    const extra =
+      config && typeof config.systemPrompt === "string"
+        ? config.systemPrompt.trim()
+        : "";
+    if (!extra) return;
+    const current =
+      event && typeof event.systemPrompt === "string" ? event.systemPrompt : "";
+    return {
+      systemPrompt: current ? `${current}\n\n${extra}` : extra,
+    };
+  });
+
   // Cumulative session token usage. Pi reports PER-MESSAGE counts (one
   // assistant message per LLM call); session billing is their SUM — each call
   // is billed for the full context it re-sent, so summing per-message inputs is

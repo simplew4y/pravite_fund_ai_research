@@ -112,6 +112,7 @@ async def test_auto_create_pi_terminal_threads_spec_model_into_models_json(
     monkeypatch.setattr(pi_bridge, "_BRIDGE_ROOT", tmp_path / "pi-native")
     monkeypatch.setenv("OMNIGENT_RUNNER_WORKSPACE", str(workspace))
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://ap.example")
+    monkeypatch.setenv("OMNIGENT_PI_MEMORY_DIR", str(tmp_path / "memory"))
     monkeypatch.setattr("omnigent.runner._entry._make_auth_token_factory", lambda: None)
     # Resolve a Pi executable without requiring the real binary on PATH.
     monkeypatch.setattr("omnigent.pi_native.resolve_pi_executable", lambda: "/usr/bin/pi")
@@ -173,6 +174,7 @@ async def test_auto_create_pi_terminal_threads_spec_model_into_models_json(
     spec = AgentSpec(
         spec_version=1,
         name="pi-model-e2e",
+        instructions="Custom portfolio mandate.",
         executor=ExecutorSpec(
             type="omnigent",
             config={"harness": "pi-native"},
@@ -201,6 +203,15 @@ async def test_auto_create_pi_terminal_threads_spec_model_into_models_json(
     agent_dir = Path(launched["env"]["PI_CODING_AGENT_DIR"])
     models = json.loads((agent_dir / "models.json").read_text(encoding="utf-8"))
     assert models["providers"]["omnigent"]["models"] == [{"id": "claude-opus-4-7"}]
+    settings = json.loads((agent_dir / "settings.json").read_text(encoding="utf-8"))
+    assert "npm:pi-memory@0.4.0" in settings["packages"]
+    assert launched["env"]["PI_MEMORY_DIR"] == str((tmp_path / "memory").resolve())
+    assert launched["env"]["PI_MEMORY_SNAPSHOT"] == "stable"
+    bridge_config = json.loads(
+        Path(launched["env"]["OMNIGENT_PI_NATIVE_CONFIG"]).read_text(encoding="utf-8")
+    )
+    assert bridge_config["systemPrompt"].startswith("Custom portfolio mandate.")
+    assert "top-level Pi orchestrator" in bridge_config["systemPrompt"]
 
 
 @pytest.mark.asyncio
@@ -227,6 +238,7 @@ async def test_auto_create_pi_terminal_no_spec_model_uses_provider_default(
     monkeypatch.setattr(pi_bridge, "_BRIDGE_ROOT", tmp_path / "pi-native")
     monkeypatch.setenv("OMNIGENT_RUNNER_WORKSPACE", str(workspace))
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://ap.example")
+    monkeypatch.setenv("OMNIGENT_PI_MEMORY_DIR", str(tmp_path / "memory"))
     monkeypatch.setattr("omnigent.runner._entry._make_auth_token_factory", lambda: None)
     monkeypatch.setattr("omnigent.pi_native.resolve_pi_executable", lambda: "/usr/bin/pi")
 
