@@ -2,15 +2,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { authenticatedFetch } from "./identity";
 import {
   PRIVATE_FUND_RESEARCH_MODE_STORAGE_KEY,
+  addPrivateFundValuationDerivedModelToResources,
   createPrivateFundSourceFolder,
   deletePrivateFundAssets,
   deletePrivateFundFiles,
   deletePrivateFundProject,
+  derivePrivateFundValuationModel,
+  fetchPrivateFundValuationDerivedModelFile,
   comparePrivateFundMemoVersions,
+  comparePrivateFundValuationModelVersions,
+  getPrivateFundValuationAgentAnalysis,
   getPrivateFundProject,
   getPrivateFundSourceFolders,
   getPrivateFundResearchItemTimeline,
   getPrivateFundTrackingOverview,
+  getPrivateFundValuationModelOverview,
+  getPrivateFundValuationTrackingOverview,
   getPrivateFundWorkflow,
   privateFundTokenUsageFromWire,
   privateFundProjectPreamble,
@@ -18,9 +25,13 @@ import {
   readPrivateFundResearchMode,
   runPrivateFundPipeline,
   runPrivateFundTracking,
+  runPrivateFundValuationAgentAnalysis,
+  runPrivateFundValuationTracking,
   movePrivateFundSourceFile,
   renamePrivateFundSourceFolder,
   updatePrivateFundAlert,
+  updatePrivateFundValuationAlert,
+  updatePrivateFundValuationWatchRule,
   writePrivateFundResearchMode,
 } from "./privateFundApi";
 
@@ -362,6 +373,572 @@ describe("private-fund research tracking requests", () => {
     expect(JSON.parse(String(vi.mocked(authenticatedFetch).mock.calls[2][1]?.body))).toEqual({
       status: "acknowledged",
     });
+  });
+});
+
+describe("private-fund valuation tracking requests", () => {
+  const version = (id: string, versionNo: number) => ({
+    model_version_id: id,
+    document_version_no: versionNo,
+    original_filename: `model-v${versionNo}.xlsx`,
+    node_count: 24,
+    formula_node_count: 8,
+    review_required_count: 1,
+    created_at: `2026-07-${String(versionNo).padStart(2, "0")}T00:00:00Z`,
+    analysis: {
+      analysis_version_id: `analysis-${versionNo}`,
+      status: "completed",
+      summary_markdown: `v${versionNo} 分析`,
+      analysis: { change_counts: { high: 1 } },
+      analyzer_version: "valuation-tracking-v1",
+      created_at: `2026-07-${String(versionNo).padStart(2, "0")}T00:00:00Z`,
+    },
+  });
+
+  it("maps model series, versions, analysis, jobs, rules, and alerts", async () => {
+    vi.mocked(authenticatedFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          dataset_id: "sungrow",
+          series: [
+            {
+              series_id: "series-1",
+              series_key: "logical:model",
+              name: "阳光电源 DCF",
+              company_name: "阳光电源",
+              company_ticker: "300274.SZ",
+              model_type: "dcf",
+              current_model_version_id: "vmv-2",
+              current_version_no: 2,
+              version_count: 2,
+              status: "active",
+              updated_at: "2026-07-02T00:00:00Z",
+              current_version: version("vmv-2", 2),
+              versions: [version("vmv-2", 2), version("vmv-1", 1)],
+            },
+          ],
+          alerts: [
+            {
+              alert_id: "val-1",
+              series_id: "series-1",
+              change_id: "change-1",
+              alert_type: "value_changed",
+              priority: "high",
+              title: "目标价",
+              summary: "目标价：100 → 120",
+              evidence_ids: ["fact:target-price"],
+              status: "new",
+              created_at: "2026-07-02T00:00:00Z",
+              updated_at: "2026-07-02T00:00:00Z",
+            },
+          ],
+          watch_rules: [
+            {
+              rule_id: "rule-1",
+              name: "自动追踪重大估值变化",
+              min_materiality: "medium",
+              change_types: [],
+              active: 1,
+            },
+          ],
+          jobs: [
+            {
+              job_id: "vtj-1",
+              job_type: "model_version_ingested",
+              source_id: "doc-2",
+              status: "completed",
+              attempt_count: 1,
+              max_attempts: 4,
+              created_at: "2026-07-02T00:00:00Z",
+            },
+          ],
+          agent_analyses: [
+            {
+              analysis_id: "vaa-1",
+              dataset_id: "sungrow",
+              series_id: "series-1",
+              base_model_version_id: "vmv-2",
+              comparison_model_version_id: "vmv-1",
+              status: "completed",
+              focus: "WACC 与目标价",
+              valuation_method: "DCF",
+              executive_summary: "折现率下调推动估值上修。",
+              investment_conclusion: "建议复核后采用新假设。",
+              analysis: {
+                key_findings: [
+                  {
+                    title: "WACC 下调",
+                    detail: "下降 100bp",
+                    impact: "high",
+                    confidence: 0.92,
+                    evidence_ids: ["fact:wacc"],
+                  },
+                ],
+                evidence_chain: [
+                  {
+                    claim: "折现率下降",
+                    reasoning: "输入假设从 10% 调整至 9%",
+                    confidence: 0.9,
+                    evidence_ids: ["fact:wacc"],
+                  },
+                ],
+                recommended_changes: [
+                  {
+                    node_id: "node-wacc",
+                    display_name: "WACC",
+                    metric_key: "wacc",
+                    current_value_numeric: 0.1,
+                    proposed_value_numeric: 0.09,
+                    rationale: "行业风险溢价下降",
+                    confidence: 0.92,
+                    evidence_ids: ["fact:wacc"],
+                    writable: true,
+                    sheet_name: "DCF",
+                    cell_ref: "E5",
+                  },
+                ],
+                selected_evidence: [
+                  {
+                    evidence_id: "fact:wacc",
+                    kind: "model_node",
+                    label: "WACC",
+                    source: "DCF!E5",
+                    detail: "value=0.1",
+                    writable: true,
+                  },
+                ],
+              },
+              planner: { analysis_dimensions: ["折现率"] },
+              evidence_ids: ["fact:wacc"],
+              model_name: "qwen3",
+              agent_version: "valuation-agent-v1",
+              created_at: "2026-07-02T01:00:00Z",
+              updated_at: "2026-07-02T01:01:00Z",
+              completed_at: "2026-07-02T01:01:00Z",
+            },
+          ],
+          derived_models: [
+            {
+              derived_model_id: "vdm-1",
+              dataset_id: "sungrow",
+              series_id: "series-1",
+              analysis_id: "vaa-1",
+              base_model_version_id: "vmv-2",
+              derived_version_no: 3,
+              output_filename: "model-agent-v3.xlsx",
+              output_path: "/tmp/model-agent-v3.xlsx",
+              checksum: "abc",
+              applied_changes: [{ node_id: "node-wacc" }],
+              skipped_changes: [],
+              created_at: "2026-07-02T01:02:00Z",
+            },
+          ],
+          unread_alert_count: 1,
+          change_counts: { high: 1 },
+          analyzer_version: "valuation-tracking-v1",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const overview = await getPrivateFundValuationTrackingOverview("sungrow");
+
+    expect(overview.series[0]).toMatchObject({
+      seriesId: "series-1",
+      currentVersionNo: 2,
+      versionCount: 2,
+    });
+    expect(overview.series[0].currentVersion?.analysis).toMatchObject({
+      analysisVersionId: "analysis-2",
+      analyzerVersion: "valuation-tracking-v1",
+    });
+    expect(overview.alerts[0]).toMatchObject({
+      alertId: "val-1",
+      evidenceIds: ["fact:target-price"],
+    });
+    expect(overview.watchRules[0]).toMatchObject({ ruleId: "rule-1", active: true });
+    expect(overview.jobs[0]).toMatchObject({ jobId: "vtj-1", status: "completed" });
+    expect(overview.agentAnalyses[0]).toMatchObject({
+      analysisId: "vaa-1",
+      valuationMethod: "DCF",
+      evidenceIds: ["fact:wacc"],
+    });
+    expect(overview.agentAnalyses[0].recommendedChanges[0]).toMatchObject({
+      nodeId: "node-wacc",
+      writable: true,
+      proposedValueNumeric: 0.09,
+    });
+    expect(overview.derivedModels[0]).toMatchObject({
+      derivedModelId: "vdm-1",
+      derivedVersionNo: 3,
+    });
+  });
+
+  it("maps structured valuation overview data and self-contained HTML", async () => {
+    vi.mocked(authenticatedFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          overview_id: "overview-2",
+          dataset_id: "sungrow",
+          series_id: "series-1",
+          model_version_id: "vmv-2",
+          doc_id: "doc-2",
+          status: "completed",
+          overview_version: "valuation-overview-v1",
+          created_at: "2026-07-02T00:00:00Z",
+          html: "<!DOCTYPE html><html><body>总览</body></html>",
+          overview: {
+            schema_version: 1,
+            model_name: "阳光电源 DCF",
+            company_name: "阳光电源",
+            company_ticker: "300274.SZ",
+            model_version_no: 2,
+            model_type: "dcf_model",
+            original_filename: "model-v2.xlsx",
+            generated_at: "2026-07-02T00:00:00Z",
+            summary: {
+              detected_statements: ["income_statement", "balance_sheet", "cash_flow"],
+              missing_statements: [],
+              statement_count: 3,
+              trend_count: 1,
+              key_metric_count: 2,
+              period_start: "2024A",
+              period_end: "2026E",
+              periods: ["2024A", "2025E", "2026E"],
+              fact_count: 30,
+              review_required_count: 1,
+              quality_flags: ["facts_require_review"],
+            },
+            key_metrics: [
+              {
+                metric_key: "target_price",
+                label: "Target Price",
+                period: "2026E",
+                value_numeric: 120,
+                unit: "CNY/share",
+                evidence_id: "fact:target-price",
+                source: "DCF!D20",
+              },
+            ],
+            trends: [
+              {
+                metric_key: "revenue",
+                label: "Revenue",
+                statement_type: "income_statement",
+                unit: "CNYm",
+                sheet_name: "PL_BS_CFS",
+                values: [
+                  {
+                    period: "2024A",
+                    value: 100,
+                    evidence_id: "fact:revenue-2024",
+                    source: "PL_BS_CFS!B3",
+                  },
+                  {
+                    period: "2025E",
+                    value: 120,
+                    evidence_id: "fact:revenue-2025",
+                    source: "PL_BS_CFS!C3",
+                  },
+                ],
+              },
+            ],
+            statements: [
+              {
+                statement_type: "income_statement",
+                title: "利润表",
+                sheet_name: "PL_BS_CFS",
+                periods: ["2024A", "2025E"],
+                rows: [
+                  {
+                    metric_key: "revenue",
+                    metric_name: "Revenue",
+                    unit: "CNYm",
+                    row_index: 3,
+                    values: [
+                      {
+                        period: "2024A",
+                        value: 100,
+                        evidence_id: "fact:revenue-2024",
+                        source: "PL_BS_CFS!B3",
+                      },
+                      null,
+                    ],
+                  },
+                ],
+                source_refs: ["PL_BS_CFS!B3"],
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const modelOverview = await getPrivateFundValuationModelOverview(
+      "sungrow",
+      "series-1",
+      "vmv-2",
+    );
+
+    expect(modelOverview.overview.summary).toMatchObject({
+      statementCount: 3,
+      trendCount: 1,
+      factCount: 30,
+    });
+    expect(modelOverview.overview.trends[0]).toMatchObject({
+      metricKey: "revenue",
+      sheetName: "PL_BS_CFS",
+    });
+    expect(modelOverview.overview.keyMetrics[0]).toMatchObject({
+      metricKey: "target_price",
+      valueNumeric: 120,
+      evidenceId: "fact:target-price",
+    });
+    expect(modelOverview.overview.statements[0].rows[0].values[1]).toBeNull();
+    expect(modelOverview.html).toContain("<!DOCTYPE html>");
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      "/v1/private-fund/projects/sungrow/valuation-models/series-1/versions/vmv-2/overview",
+    );
+  });
+
+  it("compares versions and calls valuation mutations", async () => {
+    vi.mocked(authenticatedFetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            series: {
+              series_id: "series-1",
+              series_key: "logical:model",
+              name: "阳光电源 DCF",
+              current_version_no: 2,
+              status: "active",
+              updated_at: "2026-07-02T00:00:00Z",
+            },
+            from_version: version("vmv-1", 1),
+            to_version: version("vmv-2", 2),
+            changes: [
+              {
+                canonical_key: "output:target-price:2027",
+                display_name: "目标价",
+                metric_key: "target_price",
+                change_type: "value_changed",
+                materiality: "high",
+                summary: "目标价：100 → 120",
+                old_value: { value_numeric: 100 },
+                new_value: { value_numeric: 120 },
+                relative_change: 0.2,
+                evidence_ids: ["fact:old", "fact:new"],
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            jobs: [
+              {
+                job_id: "vtj-1",
+                job_type: "model_version_ingested",
+                source_id: "doc-2",
+                status: "queued",
+                attempt_count: 0,
+                max_attempts: 4,
+                created_at: "2026-07-02T00:00:00Z",
+              },
+            ],
+          }),
+          { status: 202, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            alert: {
+              alert_id: "val-1",
+              series_id: "series-1",
+              change_id: "change-1",
+              alert_type: "value_changed",
+              priority: "high",
+              title: "目标价",
+              summary: "目标价变化",
+              status: "acknowledged",
+              created_at: "2026-07-02T00:00:00Z",
+              updated_at: "2026-07-02T00:00:00Z",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            watch_rule: {
+              rule_id: "rule-1",
+              name: "重大估值变化",
+              min_materiality: "medium",
+              change_types: [],
+              active: 0,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    const comparison = await comparePrivateFundValuationModelVersions(
+      "sungrow",
+      "series-1",
+      "vmv-1",
+      "vmv-2",
+    );
+    const jobs = await runPrivateFundValuationTracking("sungrow");
+    const alert = await updatePrivateFundValuationAlert("sungrow", "val-1", {
+      status: "acknowledged",
+    });
+    const rule = await updatePrivateFundValuationWatchRule("sungrow", "rule-1", {
+      active: false,
+    });
+
+    expect(comparison.changes[0]).toMatchObject({
+      metricKey: "target_price",
+      relativeChange: 0.2,
+      evidenceIds: ["fact:old", "fact:new"],
+    });
+    expect(jobs[0]).toMatchObject({ jobId: "vtj-1", status: "queued" });
+    expect(alert.status).toBe("acknowledged");
+    expect(rule.active).toBe(false);
+    expect(vi.mocked(authenticatedFetch).mock.calls.map(([url]) => url)).toEqual([
+      "/v1/private-fund/projects/sungrow/valuation-models/series-1/compare?from_version=vmv-1&to_version=vmv-2",
+      "/v1/private-fund/projects/sungrow/valuation-tracking/run",
+      "/v1/private-fund/projects/sungrow/valuation-alerts/val-1",
+      "/v1/private-fund/projects/sungrow/valuation-watch-rules/rule-1",
+    ]);
+  });
+
+  it("runs Agent analysis, derives a model, downloads it, and adds it to resources", async () => {
+    const agentAnalysis = {
+      analysis_id: "vaa-1",
+      dataset_id: "sungrow",
+      series_id: "series-1",
+      base_model_version_id: "vmv-2",
+      comparison_model_version_id: "vmv-1",
+      status: "completed",
+      focus: "现金流与 WACC",
+      valuation_method: "DCF",
+      executive_summary: "模型估值上修。",
+      investment_conclusion: "复核关键输入后派生新版本。",
+      analysis: {
+        key_findings: [],
+        evidence_chain: [],
+        recommended_changes: [],
+        risks: [],
+        open_questions: [],
+        selected_evidence: [],
+      },
+      planner: {},
+      evidence_ids: [],
+      model_name: "qwen3",
+      agent_version: "valuation-agent-v1",
+      created_at: "2026-07-02T00:00:00Z",
+      updated_at: "2026-07-02T00:01:00Z",
+      completed_at: "2026-07-02T00:01:00Z",
+    };
+    const derivedModel = {
+      derived_model_id: "vdm-1",
+      dataset_id: "sungrow",
+      series_id: "series-1",
+      analysis_id: "vaa-1",
+      base_model_version_id: "vmv-2",
+      derived_version_no: 3,
+      output_filename: "model-agent-v3.xlsx",
+      output_path: "/tmp/model-agent-v3.xlsx",
+      checksum: "checksum",
+      applied_changes: [],
+      skipped_changes: [],
+      created_at: "2026-07-02T00:02:00Z",
+    };
+    vi.mocked(authenticatedFetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ analysis: agentAnalysis }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ analysis: agentAnalysis }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ derived_model: derivedModel }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response("xlsx-content", {
+          status: 200,
+          headers: {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            derived_model: {
+              ...derivedModel,
+              resource_file_name: "model.xlsx",
+              resource_status: "completed",
+              resource_doc_id: "doc-v3",
+            },
+            job: null,
+            resource_import: {
+              status: "completed",
+              file_name: "model.xlsx",
+              already_added: false,
+              copied: true,
+            },
+          }),
+          { status: 202, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    const queued = await runPrivateFundValuationAgentAnalysis("sungrow", "series-1", {
+      baseModelVersionId: "vmv-2",
+      comparisonModelVersionId: "vmv-1",
+      focus: "现金流与 WACC",
+    });
+    const fetched = await getPrivateFundValuationAgentAnalysis("sungrow", "vaa-1");
+    const derived = await derivePrivateFundValuationModel("sungrow", "vaa-1");
+    const workbook = await fetchPrivateFundValuationDerivedModelFile("sungrow", "vdm-1");
+    const imported = await addPrivateFundValuationDerivedModelToResources("sungrow", "vdm-1");
+
+    expect(queued).toMatchObject({ analysisId: "vaa-1", valuationMethod: "DCF" });
+    expect(fetched.executiveSummary).toBe("模型估值上修。");
+    expect(derived).toMatchObject({ derivedModelId: "vdm-1", derivedVersionNo: 3 });
+    expect(await workbook.text()).toBe("xlsx-content");
+    expect(imported).toMatchObject({
+      status: "completed",
+      fileName: "model.xlsx",
+      copied: true,
+      derivedModel: { resourceStatus: "completed", resourceDocId: "doc-v3" },
+    });
+    expect(JSON.parse(String(vi.mocked(authenticatedFetch).mock.calls[0][1]?.body))).toEqual({
+      base_model_version_id: "vmv-2",
+      comparison_model_version_id: "vmv-1",
+      focus: "现金流与 WACC",
+    });
+    expect(vi.mocked(authenticatedFetch).mock.calls.map(([url]) => url)).toEqual([
+      "/v1/private-fund/projects/sungrow/valuation-models/series-1/agent-analysis",
+      "/v1/private-fund/projects/sungrow/valuation-agent-analyses/vaa-1",
+      "/v1/private-fund/projects/sungrow/valuation-agent-analyses/vaa-1/derive-model",
+      "/v1/private-fund/projects/sungrow/valuation-derived-models/vdm-1/file",
+      "/v1/private-fund/projects/sungrow/valuation-derived-models/vdm-1/add-to-resources",
+    ]);
   });
 });
 

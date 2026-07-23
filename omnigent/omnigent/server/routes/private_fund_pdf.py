@@ -43,6 +43,8 @@ from omnigent.runtime.policies.builder import load_session_usage
 from omnigent.server import (
     private_fund_source_folders,
     private_fund_tracking,
+    private_fund_valuation_agent,
+    private_fund_valuation_tracking,
     private_fund_workflow,
 )
 from omnigent.server.auth import AuthProvider
@@ -301,6 +303,22 @@ class UpdateResearchAlertRequest(BaseModel):
     snoozed_until: str = ""
 
 
+class UpdateValuationWatchRuleRequest(BaseModel):
+    active: bool | None = None
+    min_materiality: str | None = None
+
+
+class UpdateValuationAlertRequest(BaseModel):
+    status: str
+    snoozed_until: str = ""
+
+
+class RunValuationAgentAnalysisRequest(BaseModel):
+    base_model_version_id: str = ""
+    comparison_model_version_id: str = ""
+    focus: str = Field(default="", max_length=2000)
+
+
 def _jsonable(value: Any) -> Any:
     if hasattr(value, "to_dict"):
         return _jsonable(value.to_dict())
@@ -475,6 +493,12 @@ def _persisted_project_pipeline_job(job_id: str) -> dict[str, Any] | None:
     return None
 
 
+def _get_project_pipeline_job_payload(job_id: str) -> dict[str, Any] | None:
+    with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
+        job = _PRIVATE_FUND_PIPELINE_JOBS.get(job_id)
+    return dict(job) if job else _persisted_project_pipeline_job(job_id)
+
+
 def _project_index_stats(dataset_id: str) -> dict[str, Any]:
     collection_db = _collection_db_path(dataset_id)
     stats: dict[str, Any] = {
@@ -556,8 +580,58 @@ def _project_memo_stats(dataset_id: str) -> dict[str, Any]:
     }
 
 
-def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
-    """Project documents, agent outputs and saved excerpts into one asset catalog."""
+
+def _asset_display_fields(asset_type: str, source_kind: str = "") -> dict[str, Any]:
+    """User-facing group/label for contextable catalog items."""
+    kind = str(source_kind or "")
+    atype = str(asset_type or "")
+    if atype == "document" or kind == "document":
+        return {"display_group": "source", "display_label": "资料"}
+    if atype == "information" or kind == "saved_information":
+        return {"display_group": "answer_note", "display_label": "回答笔记"}
+    if atype == "analysis" or kind == "research_node":
+        return {"display_group": "research_note", "display_label": "研究笔记"}
+    if kind == "research_node_block":
+        return {"display_group": "research_note", "display_label": "研究笔记附件"}
+    if atype == "memo" or kind == "memo":
+        return {"display_group": "memo", "display_label": "Memo"}
+    if atype == "report" or kind == "equity_report":
+        return {"display_group": "report", "display_label": "专业研报"}
+    if atype in {"metrics", "table", "chart", "infographic"}:
+        return {"display_group": "research_note", "display_label": "研究笔记附件"}
+    return {"display_group": "other", "display_label": atype or "条目"}
+
+
+def _normalize_context_asset_ids(asset_ids: list[str]) -> list[str]:
+    """Prefer main research notes over projected content-block ids."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in asset_ids:
+        asset_id = str(raw or "").strip()
+        if not asset_id:
+            continue
+        if asset_id.startswith("block:"):
+            node_id, separator, _index = asset_id.removeprefix("block:").rpartition(":")
+            if separator and node_id:
+                asset_id = f"node:{node_id}"
+        if asset_id in seen:
+            continue
+        seen.add(asset_id)
+        normalized.append(asset_id)
+    return normalized
+
+
+def _project_assets_payload(
+    dataset_id: str,
+    *,
+    include_blocks: bool = False,
+) -> dict[str, Any]:
+    """Project documents, agent outputs and saved excerpts into one asset catalog.
+
+    By default content-block sub-items are omitted from the library list so
+    research notes appear once; blocks remain on the workflow node for detail.
+    Pass include_blocks=True for admin/delete resolution of legacy block ids.
+    """
     collection_db = _collection_db_path(dataset_id)
     workflow = private_fund_workflow.get_or_create_workflow(collection_db, dataset_id)
     saved = private_fund_workflow.list_saved_assets(collection_db, dataset_id)
@@ -604,7 +678,7 @@ def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
             {
                 "asset_id": f"node:{node_id}",
                 "asset_type": "analysis",
-                "title": node.get("title") or "Agent 分析",
+                "title": node.get("title") or "研究笔记",
                 "summary": node.get("summary") or "",
                 "content_markdown": node.get("latest_output") or "",
                 "format": "rich" if blocks else "markdown",
@@ -619,30 +693,31 @@ def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
                 "metadata": {"node_type": node.get("node_type")},
             }
         )
-        for index, block in enumerate(blocks):
-            block_type = str(block.get("type") or "markdown")
-            if block_type == "markdown":
-                continue
-            block_title = str(block.get("title") or f"{node.get('title')} · {block_type}")
-            assets.append(
-                {
-                    "asset_id": f"block:{node_id}:{index}",
-                    "asset_type": "infographic" if block_type == "html" else block_type,
-                    "title": block_title,
-                    "summary": f"来自分析资产《{node.get('title') or ''}》",
-                    "content_markdown": json.dumps(block, ensure_ascii=False),
-                    "format": block_type,
-                    "status": node.get("status") or "completed",
-                    "source_kind": "research_node_block",
-                    "source_id": node_id,
-                    "tags": [],
-                    "created_at": node.get("created_at"),
-                    "updated_at": node.get("updated_at"),
-                    "version_no": int(node.get("current_version_no") or 0),
-                    "evidence_count": len(block.get("evidence_ids") or []),
-                    "metadata": {"block_index": index, "block": block},
-                }
-            )
+        if include_blocks:
+            for index, block in enumerate(blocks):
+                block_type = str(block.get("type") or "markdown")
+                if block_type == "markdown":
+                    continue
+                block_title = str(block.get("title") or f"{node.get('title')} · {block_type}")
+                assets.append(
+                    {
+                        "asset_id": f"block:{node_id}:{index}",
+                        "asset_type": "infographic" if block_type == "html" else block_type,
+                        "title": block_title,
+                        "summary": f"来自研究笔记《{node.get('title') or ''}》",
+                        "content_markdown": json.dumps(block, ensure_ascii=False),
+                        "format": block_type,
+                        "status": node.get("status") or "completed",
+                        "source_kind": "research_node_block",
+                        "source_id": node_id,
+                        "tags": [],
+                        "created_at": node.get("created_at"),
+                        "updated_at": node.get("updated_at"),
+                        "version_no": int(node.get("current_version_no") or 0),
+                        "evidence_count": len(block.get("evidence_ids") or []),
+                        "metadata": {"block_index": index, "block": block},
+                    }
+                )
 
     memo_dir = _project_dataset_root(dataset_id) / "memos"
     private_fund_tracking.backfill_memo_artifacts(collection_db, dataset_id, memo_dir)
@@ -757,7 +832,14 @@ def _project_assets_payload(dataset_id: str) -> dict[str, Any]:
                 "evidence_count": 0,
             }
         )
-    context_ids = list(saved["context_asset_ids"])
+    for asset in assets:
+        asset.update(
+            _asset_display_fields(
+                str(asset.get("asset_type") or ""),
+                str(asset.get("source_kind") or ""),
+            )
+        )
+    context_ids = _normalize_context_asset_ids(list(saved["context_asset_ids"]))
     if not context_ids:
         context_ids = [f"node:{node_id}" for node_id in workflow.get("context_node_ids", [])]
     return {"assets": assets, "context_asset_ids": context_ids}
@@ -1159,6 +1241,15 @@ def _save_uploaded_project_files(dataset_id: str, files: list[UploadFile]) -> di
                 "company_confidence": 0.0,
             }
         )
+    _mark_project_uploads_changed(dataset_id, uploads_dir)
+    return {
+        "dataset_id": dataset_id,
+        "files": saved,
+        "project": _project_payload(_require_project_row(dataset_id)),
+    }
+
+
+def _mark_project_uploads_changed(dataset_id: str, uploads_dir: Path) -> None:
     with _connect_global_registry() as conn:
         conn.execute(
             """
@@ -1169,11 +1260,6 @@ def _save_uploaded_project_files(dataset_id: str, files: list[UploadFile]) -> di
             (str(uploads_dir), len(_supported_files_in(uploads_dir)), _now_iso(), dataset_id),
         )
         conn.commit()
-    return {
-        "dataset_id": dataset_id,
-        "files": saved,
-        "project": _project_payload(_require_project_row(dataset_id)),
-    }
 
 
 def _set_active_dataset(dataset_id: str) -> dict[str, Any]:
@@ -1185,6 +1271,29 @@ def _set_active_dataset(dataset_id: str) -> dict[str, Any]:
         )
         conn.commit()
     return {"active_dataset_id": dataset_id}
+
+
+def _sync_chunks_to_chroma_optional(
+    collection_db_path: str,
+    dataset_id: str,
+) -> None:
+    """入库后同步 chunks 到 Chroma（仅当 RAGManager 可用时执行，失败不影响主流程）。"""
+    try:
+        from data_ingestion.chroma_bridge import sync_chunks_to_chroma
+        from FinSagent.src.core.RAGManager import RAGManager
+
+        rag_manager = RAGManager()
+        if not hasattr(rag_manager, "_collections") or not rag_manager._collections:
+            return
+        result = sync_chunks_to_chroma(
+            rag_manager, collection_db_path, collection_name="default"
+        )
+        if result["text_chunks"] or result["table_chunks"]:
+            RAGManager._instance = None
+    except ImportError:
+        pass
+    except Exception:
+        _logger.exception("Chroma sync skipped (non-fatal) for dataset %s", dataset_id)
 
 
 def _delete_project_files(dataset_id: str, file_names: list[str]) -> dict[str, Any]:
@@ -1289,6 +1398,11 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
             "status": "running",
             "started_at": _now_iso(),
     }
+    _sync_derived_resource_import(
+        dataset_id,
+        job_id,
+        "running",
+    )
     try:
         ingest = _private_fund_ingest_module()
         classification_llm = None
@@ -1318,7 +1432,11 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
         private_fund_workflow.get_or_create_workflow(_collection_db_path(dataset_id), dataset_id)
         tracking_jobs: list[dict[str, Any]] = []
         tracking_enqueue_error = ""
+        valuation_tracking_jobs: list[dict[str, Any]] = []
+        valuation_tracking_enqueue_error = ""
         if result.status in {"completed", "completed_with_warnings"}:
+            # ── SQLite → Chroma 增量同步（可选，仅当 RAGManager 可用时） ──
+            _sync_chunks_to_chroma_optional(result.collection_db_path, dataset_id)
             try:
                 tracking_jobs = private_fund_tracking.enqueue_current_documents(
                     _collection_db_path(dataset_id),
@@ -1332,10 +1450,32 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
                     job_id,
                     dataset_id,
                 )
+            try:
+                valuation_tracking_jobs = (
+                    private_fund_valuation_tracking.enqueue_model_documents(
+                        _collection_db_path(dataset_id),
+                        dataset_id,
+                        include_history=False,
+                    )
+                )
+            except Exception as exc:
+                valuation_tracking_enqueue_error = str(exc)
+                _logger.exception(
+                    "private fund valuation tracking enqueue failed after ingest: "
+                    "job_id=%s dataset_id=%s",
+                    job_id,
+                    dataset_id,
+                )
         result_payload = ingest.result_to_dict(result)
         result_payload["tracking_jobs"] = tracking_jobs
+        result_payload["valuation_tracking_jobs"] = valuation_tracking_jobs
         if tracking_enqueue_error:
             result_payload["tracking_enqueue_error"] = tracking_enqueue_error
+        if valuation_tracking_enqueue_error:
+            result_payload["valuation_tracking_enqueue_error"] = (
+                valuation_tracking_enqueue_error
+            )
+        _sync_derived_resource_import(dataset_id, job_id, result.status)
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
                 "job_id": job_id,
@@ -1350,6 +1490,7 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
         _logger.exception(
             "private fund project pipeline failed: job_id=%s dataset_id=%s", job_id, dataset_id
         )
+        _sync_derived_resource_import(dataset_id, job_id, "failed", error=str(exc))
         with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
                 **_PRIVATE_FUND_PIPELINE_JOBS.get(job_id, {}),
@@ -1359,6 +1500,65 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
                 "finished_at": _now_iso(),
                 "message": str(exc),
             }
+
+
+def _sync_derived_resource_import(
+    dataset_id: str,
+    pipeline_job_id: str,
+    status: str,
+    *,
+    error: str = "",
+) -> None:
+    try:
+        private_fund_valuation_agent.update_resource_import_for_pipeline(
+            _collection_db_path(dataset_id),
+            dataset_id,
+            pipeline_job_id,
+            status,
+            error=error,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception(
+            "failed to update derived-model resource state: dataset_id=%s job_id=%s",
+            dataset_id,
+            pipeline_job_id,
+        )
+
+
+def _queue_project_pipeline_job(
+    dataset_id: str,
+    background_tasks: BackgroundTasks,
+    request: RunProjectPipelineRequest | None = None,
+) -> dict[str, Any]:
+    row = _require_project_row(dataset_id)
+    uploads_dir = _seed_uploads_from_raw(dataset_id)
+    if not _supported_files_in(uploads_dir):
+        raise HTTPException(
+            status_code=400,
+            detail="Upload at least one supported document before running pipeline.",
+        )
+    job_id = hashlib.sha256(f"{dataset_id}\0{_now_iso()}".encode("utf-8")).hexdigest()[:16]
+    payload = {
+        "dataset_id": dataset_id,
+        "dataset_name": row["name"],
+        "company_name": row["company_name"],
+        "company_ticker": row["company_ticker"],
+        "directory_path": str(uploads_dir),
+        "workspace_root": str(_dataset_workspace_root()),
+        "recursive": request.recursive if request else True,
+        "reset": request.reset if request else False,
+    }
+    with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
+        _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
+            "job_id": job_id,
+            "dataset_id": dataset_id,
+            "status": "queued",
+            "created_at": _now_iso(),
+            "directory_path": str(uploads_dir),
+            "workspace_root": str(_dataset_workspace_root()),
+        }
+    background_tasks.add_task(_project_pipeline_worker, job_id, payload)
+    return dict(_PRIVATE_FUND_PIPELINE_JOBS[job_id])
 
 
 def _trace_payload(demo: PdfResearchDemo, citations: list[Citation]) -> list[dict[str, Any]]:
@@ -3043,42 +3243,11 @@ def create_private_fund_pdf_router(
         background_tasks: BackgroundTasks,
         request: RunProjectPipelineRequest | None = None,
     ) -> dict[str, Any]:
-        row = _require_project_row(dataset_id)
-        uploads_dir = _seed_uploads_from_raw(dataset_id)
-        if not _supported_files_in(uploads_dir):
-            raise HTTPException(
-                status_code=400,
-                detail="Upload at least one supported document before running pipeline.",
-            )
-        job_id = hashlib.sha256(f"{dataset_id}\0{_now_iso()}".encode("utf-8")).hexdigest()[:16]
-        payload = {
-            "dataset_id": dataset_id,
-            "dataset_name": row["name"],
-            "company_name": row["company_name"],
-            "company_ticker": row["company_ticker"],
-            "directory_path": str(uploads_dir),
-            "workspace_root": str(_dataset_workspace_root()),
-            "recursive": request.recursive if request else True,
-            "reset": request.reset if request else False,
-        }
-        with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
-            _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
-                "job_id": job_id,
-                "dataset_id": dataset_id,
-                "status": "queued",
-                "created_at": _now_iso(),
-                "directory_path": str(uploads_dir),
-                "workspace_root": str(_dataset_workspace_root()),
-            }
-        background_tasks.add_task(_project_pipeline_worker, job_id, payload)
-        return {"job": dict(_PRIVATE_FUND_PIPELINE_JOBS[job_id])}
+        return {"job": _queue_project_pipeline_job(dataset_id, background_tasks, request)}
 
     @router.get("/private-fund/pipeline-jobs/{job_id}")
     def get_project_pipeline_job(job_id: str) -> dict[str, Any]:
-        with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
-            job = _PRIVATE_FUND_PIPELINE_JOBS.get(job_id)
-        if not job:
-            job = _persisted_project_pipeline_job(job_id)
+        job = _get_project_pipeline_job_payload(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Unknown private-fund pipeline job.")
         return {"job": dict(job)}
@@ -3120,7 +3289,9 @@ def create_private_fund_pdf_router(
     ) -> dict[str, Any]:
         _require_project_row(dataset_id)
         private_fund_workflow.set_asset_context(
-            _collection_db_path(dataset_id), dataset_id, request.asset_ids
+            _collection_db_path(dataset_id),
+            dataset_id,
+            _normalize_context_asset_ids(list(request.asset_ids or [])),
         )
         return _project_assets_payload(dataset_id)
 
@@ -3136,7 +3307,7 @@ def create_private_fund_pdf_router(
         ]
         if not requested:
             raise HTTPException(status_code=400, detail="Select at least one asset.")
-        catalog = _project_assets_payload(dataset_id)
+        catalog = _project_assets_payload(dataset_id, include_blocks=True)
         by_id = {str(asset["asset_id"]): asset for asset in catalog["assets"]}
         unknown = [asset_id for asset_id in requested if asset_id not in by_id]
         if unknown:
@@ -3194,6 +3365,317 @@ def create_private_fund_pdf_router(
         return private_fund_tracking.tracking_overview(
             _collection_db_path(dataset_id), dataset_id
         )
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-tracking")
+    def get_project_valuation_tracking_overview(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return private_fund_valuation_tracking.tracking_overview(
+            _collection_db_path(dataset_id), dataset_id
+        )
+
+    @router.post(
+        "/private-fund/projects/{dataset_id}/valuation-tracking/run",
+        status_code=202,
+    )
+    def run_project_valuation_tracking(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        jobs = private_fund_valuation_tracking.enqueue_model_documents(
+            _collection_db_path(dataset_id),
+            dataset_id,
+            include_history=True,
+            requeue_failed=True,
+        )
+        return {"jobs": jobs}
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-models/{series_id}/compare")
+    def compare_project_valuation_model_versions(
+        dataset_id: str,
+        series_id: str,
+        from_version: str = Query(..., min_length=1),
+        to_version: str = Query(..., min_length=1),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_valuation_tracking.compare_versions(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                series_id,
+                from_version,
+                to_version,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="Valuation model series or version not found."
+            ) from exc
+
+    @router.get(
+        "/private-fund/projects/{dataset_id}/valuation-models/{series_id}/"
+        "versions/{model_version_id}/overview"
+    )
+    def get_project_valuation_model_overview(
+        dataset_id: str,
+        series_id: str,
+        model_version_id: str,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_valuation_tracking.get_model_overview(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                series_id,
+                model_version_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="Valuation model overview was not found."
+            ) from exc
+
+    @router.post(
+        "/private-fund/projects/{dataset_id}/valuation-models/{series_id}/agent-analysis",
+        status_code=202,
+    )
+    def run_project_valuation_agent_analysis(
+        dataset_id: str,
+        series_id: str,
+        request: RunValuationAgentAnalysisRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_valuation_agent.enqueue_analysis(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                series_id,
+                base_model_version_id=request.base_model_version_id,
+                comparison_model_version_id=request.comparison_model_version_id,
+                focus=request.focus,
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="Valuation model series or version not found."
+            ) from exc
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-agent-analyses/{analysis_id}")
+    def get_project_valuation_agent_analysis(
+        dataset_id: str, analysis_id: str
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "analysis": private_fund_valuation_agent.get_analysis(
+                    _collection_db_path(dataset_id), dataset_id, analysis_id
+                )
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Valuation Agent analysis not found.") from exc
+
+    @router.post(
+        "/private-fund/projects/{dataset_id}/valuation-agent-analyses/{analysis_id}/derive-model",
+        status_code=201,
+    )
+    def derive_project_valuation_model(
+        dataset_id: str, analysis_id: str
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "derived_model": private_fund_valuation_agent.derive_model_version(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    analysis_id,
+                    _project_dataset_root(dataset_id),
+                )
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Valuation Agent analysis not found.") from exc
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get(
+        "/private-fund/projects/{dataset_id}/valuation-derived-models/{derived_model_id}/file"
+    )
+    def get_project_valuation_derived_model_file(
+        dataset_id: str, derived_model_id: str
+    ) -> FileResponse:
+        _require_project_row(dataset_id)
+        try:
+            derived = private_fund_valuation_agent.get_derived_model(
+                _collection_db_path(dataset_id), dataset_id, derived_model_id
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Derived valuation model not found.") from exc
+        path = Path(str(derived["output_path"] or "")).expanduser().resolve()
+        allowed_root = (_project_dataset_root(dataset_id) / "derived_models").resolve()
+        if not path.is_relative_to(allowed_root) or not path.is_file():
+            raise HTTPException(status_code=404, detail="Derived valuation model file is missing.")
+        return FileResponse(
+            path,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=str(derived["output_filename"]),
+        )
+
+    @router.post(
+        "/private-fund/projects/{dataset_id}/valuation-derived-models/"
+        "{derived_model_id}/add-to-resources",
+        status_code=202,
+    )
+    def add_project_valuation_derived_model_to_resources(
+        dataset_id: str,
+        derived_model_id: str,
+        background_tasks: BackgroundTasks,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        collection_db = _collection_db_path(dataset_id)
+        try:
+            derived = private_fund_valuation_agent.get_derived_model(
+                collection_db, dataset_id, derived_model_id
+            )
+            base_version = private_fund_valuation_tracking.get_model_version(
+                collection_db,
+                dataset_id,
+                str(derived["base_model_version_id"]),
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="Derived valuation model or its base version was not found.",
+            ) from exc
+
+        output_path = Path(str(derived["output_path"] or "")).expanduser().resolve()
+        allowed_root = (_project_dataset_root(dataset_id) / "derived_models").resolve()
+        if not output_path.is_relative_to(allowed_root) or not output_path.is_file():
+            raise HTTPException(status_code=404, detail="Derived valuation model file is missing.")
+        actual_checksum = hashlib.sha256(output_path.read_bytes()).hexdigest()
+        if actual_checksum != str(derived["checksum"]):
+            raise HTTPException(
+                status_code=409,
+                detail="Derived valuation model checksum no longer matches its audit record.",
+            )
+
+        resource_file_name = _safe_upload_name(str(base_version["original_filename"] or ""))
+        uploads_dir = _seed_uploads_from_raw(dataset_id)
+        target = uploads_dir / resource_file_name
+        existing_checksum = (
+            hashlib.sha256(target.read_bytes()).hexdigest() if target.is_file() else ""
+        )
+        copied = existing_checksum != actual_checksum
+        if copied:
+            shutil.copy2(output_path, target)
+        _mark_project_uploads_changed(dataset_id, uploads_dir)
+
+        document = private_fund_valuation_agent.find_imported_document(
+            collection_db,
+            dataset_id,
+            resource_file_name,
+            actual_checksum,
+        )
+        if document is not None:
+            completed = private_fund_valuation_agent.mark_resource_import_completed(
+                collection_db,
+                dataset_id,
+                derived_model_id,
+                file_name=resource_file_name,
+                doc_id=str(document["doc_id"]),
+            )
+            return {
+                "derived_model": completed,
+                "job": None,
+                "resource_import": {
+                    "status": "completed",
+                    "file_name": resource_file_name,
+                    "already_added": True,
+                    "copied": copied,
+                },
+            }
+
+        existing_job_id = str(derived.get("resource_pipeline_job_id") or "")
+        if existing_job_id and str(derived.get("resource_status") or "") in {
+            "queued",
+            "running",
+        }:
+            existing_job = _get_project_pipeline_job_payload(existing_job_id)
+            if existing_job and str(existing_job.get("status") or "") in {
+                "queued",
+                "running",
+            }:
+                return {
+                    "derived_model": derived,
+                    "job": existing_job,
+                    "resource_import": {
+                        "status": str(existing_job["status"]),
+                        "file_name": resource_file_name,
+                        "already_added": False,
+                        "copied": copied,
+                    },
+                }
+
+        job = _queue_project_pipeline_job(
+            dataset_id,
+            background_tasks,
+            RunProjectPipelineRequest(reset=False, recursive=True),
+        )
+        queued = private_fund_valuation_agent.mark_resource_import_requested(
+            collection_db,
+            dataset_id,
+            derived_model_id,
+            file_name=resource_file_name,
+            pipeline_job_id=str(job["job_id"]),
+        )
+        return {
+            "derived_model": queued,
+            "job": job,
+            "resource_import": {
+                "status": "queued",
+                "file_name": resource_file_name,
+                "already_added": False,
+                "copied": copied,
+            },
+        }
+
+    @router.patch(
+        "/private-fund/projects/{dataset_id}/valuation-watch-rules/{rule_id}"
+    )
+    def update_project_valuation_watch_rule(
+        dataset_id: str,
+        rule_id: str,
+        request: UpdateValuationWatchRuleRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "watch_rule": private_fund_valuation_tracking.update_rule(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    rule_id,
+                    active=request.active,
+                    min_materiality=request.min_materiality,
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Valuation watch rule not found.") from exc
+
+    @router.patch("/private-fund/projects/{dataset_id}/valuation-alerts/{alert_id}")
+    def update_project_valuation_alert(
+        dataset_id: str,
+        alert_id: str,
+        request: UpdateValuationAlertRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return {
+                "alert": private_fund_valuation_tracking.update_alert_status(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    alert_id,
+                    status=request.status,
+                    snoozed_until=request.snoozed_until,
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Valuation alert not found.") from exc
 
     @router.post("/private-fund/projects/{dataset_id}/tracking/run", status_code=202)
     def run_project_tracking(dataset_id: str) -> dict[str, Any]:

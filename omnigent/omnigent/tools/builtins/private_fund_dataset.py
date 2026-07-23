@@ -16,10 +16,15 @@ from uuid import uuid4
 
 from omnigent.tools.base import Tool, ToolContext
 
-_DEFAULT_TOP_K = 8
+_DEFAULT_TOP_K = 5
 _MAX_TOP_K = 30
-_MAX_EXCERPT_CHARS = 900
-_MAX_CELL_ROWS = 240
+_MAX_EXCERPT_CHARS = 500
+_MAX_DETAIL_CONTENT_CHARS = 6000
+_MAX_DETAIL_PAGE_CHARS = 3500
+_MAX_CELL_ROWS = 48
+_MAX_CELL_ROWS_HARD = 80
+_MAX_SEARCH_PAYLOAD_CHARS = 42000
+_MAX_DETAIL_PAYLOAD_CHARS = 45000
 _PDF_SOURCE_HASH = "#private-fund-pdf-source"
 _EXCEL_SOURCE_HASH = "#private-fund-excel-source"
 
@@ -36,15 +41,29 @@ _SEARCH_SCHEMA: dict[str, Any] = {
         },
         "top_k": {
             "type": "integer",
-            "description": "Maximum evidence units to return. Defaults to 8.",
+            "description": "Maximum evidence cards to return. Defaults to 5 (max 30).",
         },
         "include_metric_facts": {
             "type": "boolean",
-            "description": "Whether to search structured Excel metric facts.",
+            "description": (
+                "Search structured Excel metric facts. Default false; set true for "
+                "financial metrics / model numbers."
+            ),
         },
         "include_cells": {
             "type": "boolean",
             "description": "Whether to search raw Excel cells. Use sparingly.",
+        },
+        "compact": {
+            "type": "boolean",
+            "description": (
+                "Return slim evidence cards (default true). Set false only when a "
+                "downstream tool needs the full audit payload."
+            ),
+        },
+        "include_expanded_terms": {
+            "type": "boolean",
+            "description": "Include query term expansion list. Default false.",
         },
     },
     "required": ["query"],
@@ -127,7 +146,23 @@ _SOURCE_DETAIL_SCHEMA: dict[str, Any] = {
         },
         "context_radius": {
             "type": "integer",
-            "description": "Rows/pages around the source to include when possible.",
+            "description": "Rows/pages around the source to include when possible. Default 1.",
+        },
+        "mode": {
+            "type": "string",
+            "description": (
+                "Response shape: auto|meta|text|excel_window|full. "
+                "Default auto (text for PDF chunks, excel_window for fact/cell). "
+                "Use full only when you truly need the complete payload."
+            ),
+        },
+        "max_chars": {
+            "type": "integer",
+            "description": "Max characters for content/page text windows. Default 6000.",
+        },
+        "max_cells": {
+            "type": "integer",
+            "description": "Max Excel cells to return in a window. Default 48.",
         },
     },
     "required": ["evidence_id"],
@@ -431,8 +466,314 @@ _TERM_SYNONYMS: dict[str, list[str]] = {
 }
 
 
-def _json(payload: Any) -> str:
+def _json(payload: Any, *, compact: bool = True) -> str:
+    """Serialize tool payloads. Compact by default to keep MCP under token limits."""
+    if compact:
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _clip_text(value: Any, max_chars: int) -> str:
+    text = _normalize(value)
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def _compact_cell_dict(cell: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "ref": cell.get("cell_ref") or cell.get("ref"),
+        "r": cell.get("row_index") if cell.get("row_index") is not None else cell.get("r"),
+        "c": cell.get("col_index") if cell.get("col_index") is not None else cell.get("c"),
+        "v": cell.get("display_value") if cell.get("display_value") is not None else cell.get("v"),
+    }
+    for key in ("row_label", "col_label", "period", "unit"):
+        if cell.get(key) not in (None, ""):
+            out[key] = cell.get(key)
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _compact_search_evidence(item: dict[str, Any]) -> dict[str, Any]:
+    """Project a full evidence unit into an agent-friendly card."""
+    excerpt = item.get("excerpt") or item.get("summary") or ""
+    if not isinstance(excerpt, str):
+        excerpt = str(excerpt)
+    card: dict[str, Any] = {
+        "evidence_id": item.get("evidence_id"),
+        "evidence_type": item.get("evidence_type"),
+        "score": item.get("score"),
+        "content_type": item.get("content_type"),
+        "citation": item.get("citation"),
+        "markdown_citation": item.get("markdown_citation"),
+        "excerpt": _clip_text(excerpt, _MAX_EXCERPT_CHARS),
+    }
+    if item.get("title_path"):
+        card["title_path"] = item.get("title_path")
+    source = item.get("source") or {}
+    locator: dict[str, Any] = {}
+    for key in (
+        "page_start",
+        "page_end",
+        "sheet_name",
+        "cell_range",
+        "slide_start",
+        "slide_end",
+        "heading_path",
+        "source_url",
+    ):
+        if source.get(key) not in (None, ""):
+            locator[key] = source.get(key)
+    if locator:
+        card["locator"] = locator
+    document = item.get("document") or {}
+    filename = document.get("filename") or document.get("original_filename")
+    if filename:
+        card["filename"] = filename
+    metric = item.get("metric")
+    if isinstance(metric, dict) and metric:
+        card["metric"] = {
+            key: metric.get(key)
+            for key in ("name", "period", "value_text", "value_numeric", "unit")
+            if metric.get(key) not in (None, "")
+        }
+    return {k: v for k, v in card.items() if v is not None}
+
+
+def _project_search_for_agent(
+    result: dict[str, Any],
+    *,
+    compact: bool = True,
+    include_expanded_terms: bool = False,
+) -> dict[str, Any]:
+    dataset = result.get("dataset") or {}
+    evidence = list(result.get("evidence") or [])
+    if compact:
+        evidence = [_compact_search_evidence(item) for item in evidence]
+    payload: dict[str, Any] = {
+        "dataset": {
+            "dataset_id": dataset.get("dataset_id"),
+            "name": dataset.get("name"),
+            "company_name": dataset.get("company_name") or "",
+            "company_ticker": dataset.get("company_ticker") or "",
+        },
+        "query": result.get("query"),
+        "evidence": evidence,
+        "evidence_count": len(evidence),
+        "answer_contract": result.get("answer_contract")
+        or (
+            "Answer only from returned evidence. Cite each material claim with "
+            "markdown_citation when present, otherwise citation."
+        ),
+        "hint": (
+            "Compact evidence cards. For more text/table context call "
+            "private_fund_source_detail(evidence_id, mode='text'|'excel_window'|'meta'). "
+            "Set include_metric_facts=true when you need Excel metric facts."
+        ),
+    }
+    if include_expanded_terms and result.get("expanded_terms"):
+        payload["expanded_terms"] = result.get("expanded_terms")
+    return _enforce_payload_budget(payload, _MAX_SEARCH_PAYLOAD_CHARS)
+
+
+def _slim_dataset_ref(info: Any) -> dict[str, Any]:
+    if not isinstance(info, dict):
+        return {"dataset_id": info}
+    return {
+        "dataset_id": info.get("dataset_id"),
+        "name": info.get("name"),
+        "company_name": info.get("company_name") or "",
+        "company_ticker": info.get("company_ticker") or "",
+    }
+
+
+def _project_source_detail_for_agent(
+    detail: dict[str, Any],
+    *,
+    mode: str = "auto",
+    max_chars: int = _MAX_DETAIL_CONTENT_CHARS,
+    max_cells: int = _MAX_CELL_ROWS,
+) -> dict[str, Any]:
+    """Shape source_detail for agent turns. Store-level callers can pass mode='full'."""
+    resolved = (mode or "auto").strip().lower()
+    max_chars = max(500, min(int(max_chars or _MAX_DETAIL_CONTENT_CHARS), 20000))
+    max_cells = max(1, min(int(max_cells or _MAX_CELL_ROWS), _MAX_CELL_ROWS_HARD))
+
+    evidence_id = str(detail.get("evidence_id") or "")
+    if resolved == "auto":
+        if evidence_id.startswith(("fact:", "cell:")) or detail.get("excel_cells") or detail.get(
+            "metric"
+        ):
+            resolved = "excel_window"
+        else:
+            resolved = "text"
+
+    if resolved == "full":
+        return _cap_full_detail(detail, max_chars=max_chars, max_cells=max_cells)
+
+    source = detail.get("source") or {}
+    payload: dict[str, Any] = {
+        "dataset": _slim_dataset_ref(detail.get("dataset")),
+        "evidence_id": detail.get("evidence_id"),
+        "citation": detail.get("citation"),
+        "markdown_citation": detail.get("markdown_citation"),
+        "content_type": detail.get("content_type"),
+        "title_path": detail.get("title_path"),
+        "mode": resolved,
+    }
+    locator: dict[str, Any] = {}
+    for key in (
+        "page_start",
+        "page_end",
+        "sheet_name",
+        "cell_range",
+        "slide_start",
+        "slide_end",
+        "heading_path",
+        "source_url",
+    ):
+        if source.get(key) not in (None, ""):
+            locator[key] = source.get(key)
+    if locator:
+        payload["locator"] = locator
+    document = detail.get("document") or {}
+    filename = document.get("filename") or document.get("original_filename")
+    if filename:
+        payload["filename"] = filename
+
+    if isinstance(detail.get("metric"), dict):
+        metric = detail["metric"]
+        payload["metric"] = {
+            key: metric.get(key)
+            for key in ("name", "period", "value_text", "value_numeric", "unit", "formula", "confidence")
+            if metric.get(key) not in (None, "")
+        }
+
+    if resolved == "meta":
+        content = detail.get("content")
+        if content:
+            payload["preview"] = _clip_text(content, min(400, max_chars))
+            payload["content_total_chars"] = len(_normalize(content))
+        if detail.get("excel_cells"):
+            payload["excel_cells_available"] = len(detail["excel_cells"])
+        return _enforce_payload_budget(payload, _MAX_DETAIL_PAYLOAD_CHARS)
+
+    if resolved in {"text", "excel_window"}:
+        content = detail.get("content")
+        if content and resolved == "text":
+            raw = _normalize(content)
+            payload["content"] = _clip_text(raw, max_chars)
+            payload["content_total_chars"] = len(raw)
+            payload["content_truncated"] = len(raw) > len(payload["content"])
+        if detail.get("pdf_pages"):
+            pages = []
+            page_budget = max(800, max_chars // max(1, len(detail["pdf_pages"])))
+            page_budget = min(page_budget, _MAX_DETAIL_PAGE_CHARS)
+            for page in detail["pdf_pages"]:
+                text = _normalize(page.get("text"))
+                pages.append(
+                    {
+                        "page_number": page.get("page_number"),
+                        "text": _clip_text(text, page_budget),
+                        "truncated": len(text) > page_budget,
+                    }
+                )
+            payload["pdf_pages"] = pages
+        if detail.get("cell") and resolved == "excel_window":
+            payload["cell"] = _compact_cell_dict(detail["cell"]) if isinstance(detail["cell"], dict) else detail["cell"]
+        cells = detail.get("excel_cells") or []
+        if cells and resolved in {"text", "excel_window"}:
+            limited = cells[:max_cells]
+            payload["excel_cells"] = [
+                _compact_cell_dict(cell) if isinstance(cell, dict) else cell for cell in limited
+            ]
+            payload["excel_cells_count"] = len(cells)
+            payload["excel_cells_truncated"] = len(cells) > max_cells
+        if resolved == "text" and not payload.get("content") and payload.get("excel_cells"):
+            payload["hint"] = "Chunk has no long text; excel_cells window included."
+        return _enforce_payload_budget(payload, _MAX_DETAIL_PAYLOAD_CHARS)
+
+    return _cap_full_detail(detail, max_chars=max_chars, max_cells=max_cells)
+
+
+def _cap_full_detail(
+    detail: dict[str, Any],
+    *,
+    max_chars: int,
+    max_cells: int,
+) -> dict[str, Any]:
+    """Keep full-ish shape but hard-cap the heavy fields."""
+    out = dict(detail)
+    if isinstance(out.get("dataset"), dict):
+        # Drop huge nested paths when possible but keep tests' document fields.
+        pass
+    content = out.get("content")
+    if isinstance(content, str) and len(content) > max_chars:
+        out["content"] = _clip_text(content, max_chars)
+        out["content_truncated"] = True
+        out["content_total_chars"] = len(content)
+    if isinstance(out.get("pdf_pages"), list):
+        pages = []
+        for page in out["pdf_pages"]:
+            if not isinstance(page, dict):
+                continue
+            page_copy = dict(page)
+            text = _normalize(page_copy.get("text"))
+            if len(text) > _MAX_DETAIL_PAGE_CHARS:
+                page_copy["text"] = _clip_text(text, _MAX_DETAIL_PAGE_CHARS)
+                page_copy["truncated"] = True
+            pages.append(page_copy)
+        out["pdf_pages"] = pages
+    if isinstance(out.get("excel_cells"), list) and len(out["excel_cells"]) > max_cells:
+        out["excel_cells"] = out["excel_cells"][:max_cells]
+        out["excel_cells_truncated"] = True
+    if isinstance(out.get("dataset"), dict) and "collection_db_path" in out["dataset"]:
+        # Prefer slim dataset for agent full mode too if still over budget later.
+        pass
+    return _enforce_payload_budget(out, _MAX_DETAIL_PAYLOAD_CHARS)
+
+
+def _enforce_payload_budget(payload: dict[str, Any], max_chars: int) -> dict[str, Any]:
+    encoded = _json(payload)
+    if len(encoded) <= max_chars:
+        return payload
+    # Progressive stripping of heavy fields.
+    working = dict(payload)
+    for key in ("pdf_pages", "excel_cells", "metadata", "source", "document", "expanded_terms"):
+        if key in working:
+            working.pop(key, None)
+            working["truncated"] = True
+            working["truncated_fields"] = list(
+                set(list(working.get("truncated_fields") or []) + [key])
+            )
+            encoded = _json(working)
+            if len(encoded) <= max_chars:
+                return working
+    # Last resort: keep ids/citations only.
+    minimal = {
+        "dataset": working.get("dataset"),
+        "evidence_id": working.get("evidence_id"),
+        "query": working.get("query"),
+        "citation": working.get("citation"),
+        "markdown_citation": working.get("markdown_citation"),
+        "evidence": [
+            {
+                "evidence_id": item.get("evidence_id"),
+                "citation": item.get("citation"),
+                "markdown_citation": item.get("markdown_citation"),
+                "excerpt": _clip_text(item.get("excerpt"), 200),
+            }
+            for item in (working.get("evidence") or [])[:5]
+            if isinstance(item, dict)
+        ]
+        if working.get("evidence") is not None
+        else None,
+        "truncated": True,
+        "hint": "Payload exceeded budget; re-query with smaller top_k or source_detail mode=meta.",
+    }
+    minimal = {k: v for k, v in minimal.items() if v is not None}
+    return minimal
 
 
 def _decode_json(value: str | None, fallback: Any = None) -> Any:
@@ -940,7 +1281,7 @@ class _DatasetStore:
         query: str,
         dataset_id: str | None = None,
         top_k: int = _DEFAULT_TOP_K,
-        include_metric_facts: bool = True,
+        include_metric_facts: bool = False,
         include_cells: bool = False,
     ) -> dict[str, Any]:
         terms = _query_terms(query)
@@ -1327,20 +1668,38 @@ class _DatasetStore:
         evidence_id: str,
         dataset_id: str | None = None,
         context_radius: int = 2,
+        mode: str = "full",
+        max_chars: int = _MAX_DETAIL_CONTENT_CHARS,
+        max_cells: int = _MAX_CELL_ROWS,
     ) -> dict[str, Any]:
         info = self.dataset_info(dataset_id)
         collection_db = Path(info["collection_db_path"])
         kind, _, raw_id = evidence_id.partition(":")
         if not raw_id:
             raise ValueError("evidence_id must look like chunk:<id>, fact:<id>, or cell:<id>")
+        radius = max(0, min(3, int(context_radius if context_radius is not None else 2)))
+        cell_limit = max(1, min(int(max_cells or _MAX_CELL_ROWS), _MAX_CELL_ROWS_HARD))
         with self._connect(collection_db) as conn:
             if kind == "chunk":
-                return self._chunk_detail(conn, info, raw_id, context_radius)
-            if kind == "fact":
-                return self._fact_detail(conn, info, raw_id, context_radius)
-            if kind == "cell":
-                return self._cell_detail(conn, info, raw_id, context_radius)
-        raise ValueError(f"unsupported evidence type: {kind}")
+                detail = self._chunk_detail(
+                    conn, info, raw_id, radius, max_cells=cell_limit
+                )
+            elif kind == "fact":
+                detail = self._fact_detail(
+                    conn, info, raw_id, radius, max_cells=cell_limit
+                )
+            elif kind == "cell":
+                detail = self._cell_detail(
+                    conn, info, raw_id, radius, max_cells=cell_limit
+                )
+            else:
+                raise ValueError(f"unsupported evidence type: {kind}")
+        return _project_source_detail_for_agent(
+            detail,
+            mode=mode,
+            max_chars=max_chars,
+            max_cells=cell_limit,
+        )
 
     def _chunk_detail(
         self,
@@ -1348,6 +1707,7 @@ class _DatasetStore:
         info: dict[str, Any],
         chunk_id: str,
         context_radius: int,
+        max_cells: int = _MAX_CELL_ROWS,
     ) -> dict[str, Any]:
         location_projection = _compatible_projection(
             conn,
@@ -1402,6 +1762,7 @@ class _DatasetStore:
                 row["doc_id"],
                 row["sheet_name"],
                 row["cell_range"],
+                max_cells=max_cells,
             )
         return detail
 
@@ -1411,6 +1772,7 @@ class _DatasetStore:
         info: dict[str, Any],
         fact_id: str,
         context_radius: int,
+        max_cells: int = _MAX_CELL_ROWS,
     ) -> dict[str, Any]:
         document_projection = _document_audit_projection(conn)
         row = conn.execute(
@@ -1434,15 +1796,17 @@ class _DatasetStore:
         ).fetchone()
         cells: list[dict[str, Any]] = []
         if cell is not None:
-            radius = max(0, min(8, context_radius))
+            radius = max(0, min(4, context_radius))
+            col_span = 5
             cells = self._cells_by_bounds(
                 conn,
                 row["doc_id"],
                 row["sheet_name"],
                 int(cell["row_index"]) - radius,
-                max(1, int(cell["col_index"]) - 8),
+                max(1, int(cell["col_index"]) - col_span),
                 int(cell["row_index"]) + radius,
-                int(cell["col_index"]) + 8,
+                int(cell["col_index"]) + col_span,
+                max_cells=max_cells,
             )
         citation = f"{row['original_filename']} {row['sheet_name']}!{row['cell_ref']}"
         source_url = _excel_source_url(
@@ -1484,6 +1848,7 @@ class _DatasetStore:
         info: dict[str, Any],
         cell_id: str,
         context_radius: int,
+        max_cells: int = _MAX_CELL_ROWS,
     ) -> dict[str, Any]:
         document_projection = _document_audit_projection(conn)
         row = conn.execute(
@@ -1498,15 +1863,17 @@ class _DatasetStore:
         ).fetchone()
         if row is None:
             raise RuntimeError(f"excel cell not found: {cell_id}")
-        radius = max(0, min(8, context_radius))
+        radius = max(0, min(4, context_radius))
+        col_span = 5
         cells = self._cells_by_bounds(
             conn,
             row["doc_id"],
             row["sheet_name"],
             int(row["row_index"]) - radius,
-            max(1, int(row["col_index"]) - 8),
+            max(1, int(row["col_index"]) - col_span),
             int(row["row_index"]) + radius,
-            int(row["col_index"]) + 8,
+            int(row["col_index"]) + col_span,
+            max_cells=max_cells,
         )
         citation = f"{row['original_filename']} {row['sheet_name']}!{row['cell_ref']}"
         source_url = _excel_source_url(
@@ -1552,17 +1919,21 @@ class _DatasetStore:
             """,
             (doc_id, max(1, page_start - radius), page_end + radius),
         ).fetchall()
-        return [
-            {
-                "page_number": row["page_number"],
-                "text": row["text"],
-                "char_count": row["char_count"],
-                "word_count": row["word_count"],
-                "extraction_method": row["extraction_method"],
-                "bbox": _decode_json(row["bbox_json"], None),
-            }
-            for row in rows
-        ]
+        pages: list[dict[str, Any]] = []
+        for row in rows:
+            text = _normalize(row["text"])
+            clipped = _clip_text(text, _MAX_DETAIL_PAGE_CHARS)
+            pages.append(
+                {
+                    "page_number": row["page_number"],
+                    "text": clipped,
+                    "char_count": row["char_count"],
+                    "word_count": row["word_count"],
+                    "extraction_method": row["extraction_method"],
+                    "truncated": len(text) > len(clipped),
+                }
+            )
+        return pages
 
     def _cells_in_range(
         self,
@@ -1570,11 +1941,14 @@ class _DatasetStore:
         doc_id: str,
         sheet_name: str,
         cell_range: str,
+        max_cells: int = _MAX_CELL_ROWS,
     ) -> list[dict[str, Any]]:
         bounds = _parse_cell_range(cell_range)
         if bounds is None:
             return []
-        return self._cells_by_bounds(conn, doc_id, sheet_name, *bounds)
+        return self._cells_by_bounds(
+            conn, doc_id, sheet_name, *bounds, max_cells=max_cells
+        )
 
     def _cells_by_bounds(
         self,
@@ -1585,7 +1959,9 @@ class _DatasetStore:
         col_start: int,
         row_end: int,
         col_end: int,
+        max_cells: int = _MAX_CELL_ROWS,
     ) -> list[dict[str, Any]]:
+        limit = max(1, min(int(max_cells or _MAX_CELL_ROWS), _MAX_CELL_ROWS_HARD))
         rows = conn.execute(
             """
             SELECT *
@@ -1604,7 +1980,7 @@ class _DatasetStore:
                 max(1, row_end),
                 max(1, col_start),
                 max(1, col_end),
-                _MAX_CELL_ROWS,
+                limit,
             ),
         ).fetchall()
         return [self._cell_payload(row) for row in rows]
@@ -1666,6 +2042,7 @@ class _DatasetStore:
                         evidence_id=evidence_id,
                         dataset_id=str(info["dataset_id"]),
                         context_radius=1,
+                        mode="full",
                     )
                     detail["excerpt"] = str(
                         detail.get("content")
@@ -2398,8 +2775,10 @@ class PrivateFundDatasetSearchTool(_PrivateFundDatasetBaseTool):
     @classmethod
     def description(cls) -> str:
         return (
-            "Search source-backed evidence from the latest private-fund dataset DB, "
-            "including PDF chunks, Excel sheet/region summaries, and metric facts."
+            "Search source-backed evidence cards from the private-fund dataset DB "
+            "(PDF chunks / optional Excel metric facts). Returns compact citations + "
+            "short excerpts. Use private_fund_source_detail for fuller text/table windows. "
+            "Set include_metric_facts=true for structured financial metrics."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -2417,12 +2796,21 @@ class PrivateFundDatasetSearchTool(_PrivateFundDatasetBaseTool):
         if not isinstance(query, str) or not query.strip():
             raise ValueError("query is required")
         dataset_id = payload.get("dataset_id")
-        return self._store(ctx).search(
+        compact = payload.get("compact")
+        if compact is None:
+            compact = True
+        include_expanded = bool(payload.get("include_expanded_terms", False))
+        result = self._store(ctx).search(
             query=query,
             dataset_id=dataset_id if isinstance(dataset_id, str) else None,
             top_k=_coerce_top_k(payload.get("top_k")),
-            include_metric_facts=bool(payload.get("include_metric_facts", True)),
+            include_metric_facts=bool(payload.get("include_metric_facts", False)),
             include_cells=bool(payload.get("include_cells", False)),
+        )
+        return _project_search_for_agent(
+            result,
+            compact=bool(compact),
+            include_expanded_terms=include_expanded,
         )
 
 
@@ -2436,8 +2824,9 @@ class PrivateFundSourceDetailTool(_PrivateFundDatasetBaseTool):
     @classmethod
     def description(cls) -> str:
         return (
-            "Fetch page text, Excel cells, formulas, and metadata for an evidence_id "
-            "returned by private_fund_dataset_search."
+            "Fetch a bounded window for an evidence_id from private_fund_dataset_search. "
+            "Modes: auto|meta|text|excel_window|full. Prefer auto/text/excel_window; "
+            "avoid full unless necessary."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -2455,10 +2844,16 @@ class PrivateFundSourceDetailTool(_PrivateFundDatasetBaseTool):
         if not isinstance(evidence_id, str) or not evidence_id.strip():
             raise ValueError("evidence_id is required")
         dataset_id = payload.get("dataset_id")
+        mode = payload.get("mode") or "auto"
+        max_chars = payload.get("max_chars")
+        max_cells = payload.get("max_cells")
         return self._store(ctx).source_detail(
             evidence_id=evidence_id,
             dataset_id=dataset_id if isinstance(dataset_id, str) else None,
-            context_radius=int(payload.get("context_radius") or 2),
+            context_radius=int(payload.get("context_radius") if payload.get("context_radius") is not None else 1),
+            mode=str(mode),
+            max_chars=int(max_chars) if max_chars is not None else _MAX_DETAIL_CONTENT_CHARS,
+            max_cells=int(max_cells) if max_cells is not None else _MAX_CELL_ROWS,
         )
 
 

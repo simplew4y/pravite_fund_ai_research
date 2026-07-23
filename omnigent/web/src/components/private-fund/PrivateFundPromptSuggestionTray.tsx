@@ -16,7 +16,7 @@ export function PrivateFundPromptSuggestionTray({
     <section aria-label="研究问题建议" className={cn("w-full", className)}>
       <div className="private-fund-suggestion-row flex items-center gap-1.5 overflow-x-auto pb-0.5">
         <span className="shrink-0 pr-1 text-xs font-medium text-[var(--pf-ink-muted)]">
-          你可以问
+          建议追问
         </span>
         {suggestions.map((suggestion) => (
           <button
@@ -24,7 +24,7 @@ export function PrivateFundPromptSuggestionTray({
             disabled={disabled}
             key={suggestion.id}
             onClick={() => onSelect(suggestion.prompt)}
-            title={suggestion.prompt}
+            title={[suggestion.reason, suggestion.prompt].filter(Boolean).join(" · ")}
             type="button"
           >
             {suggestion.title}

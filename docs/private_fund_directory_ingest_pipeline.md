@@ -156,6 +156,13 @@ Excel 不再以“完整表格 chunk”为主。新的存储分三层：
 
 Agent 检索时应先搜 summary chunk 定位 sheet/region，再查 `metric_facts` 或 `excel_cells` 精确取数，最后返回 `sheet_name!cell_ref` 作为证据。
 
+### 📝 估值期间与原始数据 Sheet 治理（2026-07-17）
+
+- 📝 期间只接受独立的 `20xx`、`20xxE`、`FY 20xx`、`1Q26` 等年份/季度 token；长小数中的相似数字片段不再被当作期间。
+- 📝 每个数值单元格优先继承同列最近的有效期间表头，再回退到通用列标签，减少合并三表和长现金流表的期间漂移。
+- 📝 `Upload`、`Download`、`Raw Data`、`Bloomberg`、`__FDSCACHE__` 等 Sheet 优先标记为 `raw_upload`，不会因为内容里出现 DCF/WACC 字样而进入估值主表候选。
+- 📝 估值模型总览在入库后消费这些结构化事实，生成与模型版本绑定的三表、趋势、估值指标 JSON 和无脚本 HTML；该阶段不重开工作簿、不执行公式或宏。
+
 ## 后端接口
 
 新增接口：

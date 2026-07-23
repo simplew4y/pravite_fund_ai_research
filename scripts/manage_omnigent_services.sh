@@ -21,7 +21,7 @@ usage() {
 Usage: $0 {start|stop|restart|status|logs|attach}
 
 Commands:
-  start    Start LiteLLM, Omnigent Server, Research Tracking Worker, and Omnigent Host in tmux.
+  start    Start LiteLLM, Omnigent Server, both tracking workers, and Omnigent Host in tmux.
   stop     Stop the managed tmux stack and legacy service sessions.
   restart  Stop and start the complete stack.
   status   Show tmux, HTTP, and Host connection status.
@@ -86,6 +86,12 @@ tracking_worker_online() {
       | grep -qx 'tracking'
 }
 
+valuation_worker_online() {
+  tmux has-session -t "$STACK_SESSION" 2>/dev/null \
+    && tmux list-windows -t "$STACK_SESSION" -F '#{window_name}' 2>/dev/null \
+      | grep -qx 'valuation'
+}
+
 wait_until() {
   local label="$1"
   local check_function="$2"
@@ -127,6 +133,14 @@ run_tracking_worker() {
   exec uv run --offline python -m omnigent.server.private_fund_tracking_worker
 }
 
+run_valuation_worker() {
+  configure_agent_runtime
+  until litellm_healthy; do sleep 1; done
+  export PDF_RESEARCH_LLM_BASE_URL="${PRIVATE_FUND_VALUATION_LLM_BASE_URL:-$LITELLM_URL/v1}"
+  cd "$OMNIGENT_DIR"
+  exec uv run --offline python -m omnigent.server.private_fund_valuation_worker
+}
+
 run_control() {
   while :; do sleep 3600; done
 }
@@ -134,7 +148,8 @@ run_control() {
 start_stack() {
   require_runtime
   if tmux has-session -t "$STACK_SESSION" 2>/dev/null; then
-    if litellm_healthy && server_healthy && host_online; then
+    if litellm_healthy && server_healthy && host_online \
+      && tracking_worker_online && valuation_worker_online; then
       echo "Omnigent stack is already online in tmux session '$STACK_SESSION'."
       status_stack
       return 0
@@ -147,6 +162,7 @@ start_stack() {
   tmux new-window -d -t "$STACK_SESSION" -n litellm "$SCRIPT_PATH" _run-litellm
   tmux new-window -d -t "$STACK_SESSION" -n server "$SCRIPT_PATH" _run-server
   tmux new-window -d -t "$STACK_SESSION" -n tracking "$SCRIPT_PATH" _run-tracking
+  tmux new-window -d -t "$STACK_SESSION" -n valuation "$SCRIPT_PATH" _run-valuation
   tmux new-window -d -t "$STACK_SESSION" -n host "$SCRIPT_PATH" _run-host
   tmux select-window -t "$STACK_SESSION:server"
 
@@ -159,6 +175,10 @@ start_stack() {
     return 1
   fi
   if ! wait_until "Research Tracking Worker" tracking_worker_online; then
+    logs_stack
+    return 1
+  fi
+  if ! wait_until "Valuation Tracking Worker" valuation_worker_online; then
     logs_stack
     return 1
   fi
@@ -212,6 +232,12 @@ status_stack() {
     echo "Tracking: offline"
     failed=1
   fi
+  if valuation_worker_online; then
+    echo "Valuation: online"
+  else
+    echo "Valuation: offline"
+    failed=1
+  fi
   return "$failed"
 }
 
@@ -221,7 +247,7 @@ logs_stack() {
     return 1
   fi
   local window_name
-  for window_name in litellm server tracking host; do
+  for window_name in litellm server tracking valuation host; do
     echo "===== $window_name ====="
     if [[ "$window_name" == "litellm" && -f "$OMNIGENT_DIR/.tmp-litellm.log" ]]; then
       tail -80 "$OMNIGENT_DIR/.tmp-litellm.log" || true
@@ -252,6 +278,7 @@ case "$command_name" in
   _run-litellm) run_litellm ;;
   _run-server) run_server ;;
   _run-tracking) run_tracking_worker ;;
+  _run-valuation) run_valuation_worker ;;
   _run-host) run_host ;;
   *) usage; exit 2 ;;
 esac

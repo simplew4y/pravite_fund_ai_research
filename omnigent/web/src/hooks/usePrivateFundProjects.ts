@@ -9,6 +9,7 @@ import {
   getPrivateFundProject,
   getPrivateFundSourceFolders,
   getPrivateFundTrackingOverview,
+  getPrivateFundValuationTrackingOverview,
   getPrivateFundWorkflow,
   listPrivateFundProjects,
   movePrivateFundSourceFile,
@@ -162,6 +163,18 @@ export function usePrivateFundTracking(datasetId: string | null | undefined) {
   return useQuery({
     queryKey: ["private-fund-tracking", datasetId],
     queryFn: () => getPrivateFundTrackingOverview(datasetId!),
+    enabled: Boolean(datasetId),
+    refetchInterval: (query) =>
+      query.state.data?.jobs.some((job) => ["queued", "running"].includes(job.status))
+        ? 2000
+        : 30_000,
+  });
+}
+
+export function usePrivateFundValuationTracking(datasetId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["private-fund-valuation-tracking", datasetId],
+    queryFn: () => getPrivateFundValuationTrackingOverview(datasetId!),
     enabled: Boolean(datasetId),
     refetchInterval: (query) =>
       query.state.data?.jobs.some((job) => ["queued", "running"].includes(job.status))

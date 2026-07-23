@@ -18206,17 +18206,76 @@ def create_sessions_router(
         if body.type == _COMPACT_TYPE:
             # Unified control dispatch (designs/CLAUDE_NATIVE.md
             # "Control events dispatch on the runner"): forward /compact
-            # to the bound runner first, regardless of harness. The
-            # runner dispatches by harness — claude-native injects
-            # /compact into the tmux pane so Claude Code compacts its
-            # own context and returns 200; other harnesses 204 no-op.
-            # The Omnigent server stays harness-agnostic: it runs its own
-            # in-process compaction only when the runner did NOT handle
-            # the control (204 / no runner bound). A 4xx/5xx from the
-            # runner (e.g. 503 when the claude-native pane isn't
-            # attached) is surfaced as an error rather than silently
-            # falling through to AP-side compaction, which would be
-            # wrong for a terminal-owned session.
+            # to the bound runner first. The runner dispatches by harness —
+            # claude-native injects /compact into the tmux pane so Claude
+            # Code compacts its own context and returns 200; other
+            # harnesses 204 no-op.
+            #
+            # Native terminal sessions (claude-code-native-ui / private-fund
+            # research, etc.) MUST NOT fall back to AP-side
+            # ``compact_conversation_now``: that path needs a configured
+            # Omnigent LLM model the native agent does not declare, and
+            # would only summarise the transcript mirror without shrinking
+            # Claude's real context. Instead: ensure the native terminal is
+            # ready (same preflight as user messages), inject /compact, and
+            # surface a clear error if injection still fails.
+            if _is_native_terminal_session(conv):
+                runner_client = await _get_runner_client(session_id, runner_router)
+                if runner_client is None:
+                    from omnigent.runtime import get_runner_client as _get_global_runner_client
+
+                    runner_client = cast(
+                        "httpx.AsyncClient | None",
+                        _get_global_runner_client(),
+                    )
+                if runner_client is None:
+                    raise OmnigentError(
+                        "Compaction failed: the session runner is not online. "
+                        "Send any chat message first to wake/reattach the Host runner, "
+                        "then click compact again (or type /compact in the agent terminal).",
+                        code=ErrorCode.RUNNER_UNAVAILABLE,
+                    )
+                ensure_outcome = await _ensure_native_terminal_ready(
+                    runner_client,
+                    session_id,
+                    conv,
+                )
+                if ensure_outcome.error is not None:
+                    raise OmnigentError(
+                        ensure_outcome.error.message
+                        or "Compaction failed: native terminal is not ready.",
+                        code=ErrorCode.INTERNAL_ERROR,
+                    )
+                runner_result = await _forward_session_change_to_runner(
+                    session_id,
+                    runner_router,
+                    {"type": _COMPACT_TYPE},
+                )
+                if runner_result is not None and runner_result.status_code == 200:
+                    return {"queued": False}
+                detail = "could not inject /compact into the agent terminal"
+                if runner_result is None:
+                    detail = "could not reach the Host runner to inject /compact"
+                elif runner_result.status_code != 204:
+                    detail = (
+                        f"runner returned HTTP {runner_result.status_code}"
+                        + (
+                            f": {runner_result.body[:240]}"
+                            if runner_result.body
+                            else ""
+                        )
+                    )
+                else:
+                    detail = (
+                        "runner did not handle compact (session harness not live). "
+                        "Send any chat message first to attach the terminal, then retry."
+                    )
+                raise OmnigentError(
+                    f"Compaction failed: {detail}",
+                    code=ErrorCode.INTERNAL_ERROR,
+                )
+
+            # Non-native harnesses: prefer runner handling, else AP-side compact.
             runner_result = await _forward_session_change_to_runner(
                 session_id,
                 runner_router,

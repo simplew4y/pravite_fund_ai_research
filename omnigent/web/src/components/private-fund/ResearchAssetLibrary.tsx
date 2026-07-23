@@ -30,6 +30,8 @@ import { cn } from "@/lib/utils";
 type AssetView = "list" | "grid";
 type AssetSort = "updated" | "oldest" | "title" | "type" | "evidence";
 
+export type ResearchAssetLibraryZone = "sources" | "notes" | "memos" | "generic";
+
 export type ResearchAssetLibraryProps = {
   assets: PrivateFundAsset[];
   contextAssetIds: string[];
@@ -37,6 +39,8 @@ export type ResearchAssetLibraryProps = {
   description?: string;
   emptyMessage?: string;
   compact?: boolean;
+  /** Controls which filters/copy apply for the functional area. */
+  zone?: ResearchAssetLibraryZone;
   contextPending?: boolean;
   onSetContext: (assetIds: string[]) => Promise<void> | void;
   onOpenAsset: (asset: PrivateFundAsset) => void;
@@ -44,9 +48,9 @@ export type ResearchAssetLibraryProps = {
 };
 
 const typeLabels: Record<string, string> = {
-  document: "原始资料",
-  information: "重要信息",
-  analysis: "分析输出",
+  document: "资料",
+  information: "回答笔记",
+  analysis: "研究笔记",
   metrics: "关键指标",
   table: "表格",
   chart: "图表",
@@ -108,6 +112,7 @@ function documentType(asset: PrivateFundAsset): string {
 function assetTypeLabel(asset: PrivateFundAsset): string {
   const classifiedType = documentType(asset);
   if (classifiedType) return documentTypeLabels[classifiedType] ?? classifiedType;
+  if (asset.displayLabel) return asset.displayLabel;
   return typeLabels[asset.assetType] ?? asset.assetType;
 }
 
@@ -151,7 +156,7 @@ function AssetRowCheckbox({
 }) {
   return (
     <input
-      aria-label={label ?? `选择资产 ${asset.title}`}
+      aria-label={label ?? `加入上下文 ${asset.title}`}
       checked={checked}
       className="size-3.5 cursor-pointer accent-[var(--pf-accent)] disabled:cursor-wait"
       disabled={disabled}
@@ -198,8 +203,9 @@ export function ResearchAssetLibrary({
   contextAssetIds,
   title = "资产库",
   description,
-  emptyMessage = "没有符合条件的资产。上传资料、勾选重要信息或让 Agent 生成输出后，会自动出现在这里。",
+  emptyMessage = "暂无内容。上传资料、保存回答笔记或生成研究笔记后会出现在这里。",
   compact = false,
+  zone = "generic",
   contextPending,
   onSetContext,
   onOpenAsset,
@@ -208,6 +214,9 @@ export function ResearchAssetLibrary({
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [documentTypeFilter, setDocumentTypeFilter] = useState("all");
+  const [noteGroupFilter, setNoteGroupFilter] = useState<"all" | "answer_note" | "research_note">(
+    "all",
+  );
   const [sort, setSort] = useState<AssetSort>("updated");
   const [view, setView] = useState<AssetView>("list");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -224,15 +233,25 @@ export function ResearchAssetLibrary({
   );
   const visibleAssets = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    const filtered = assets.filter(
-      (asset) =>
-        (typeFilter === "all" || asset.assetType === typeFilter) &&
-        (documentTypeFilter === "all" || documentType(asset) === documentTypeFilter) &&
-        (!needle ||
-          `${asset.title} ${asset.summary} ${asset.tags.join(" ")}`
-            .toLocaleLowerCase()
-            .includes(needle)),
-    );
+    const filtered = assets.filter((asset) => {
+      if (zone === "notes" && noteGroupFilter !== "all") {
+        const group =
+          asset.displayGroup ||
+          (asset.assetType === "information" ? "answer_note" : "research_note");
+        if (group !== noteGroupFilter) return false;
+      }
+      if (typeFilter !== "all" && asset.assetType !== typeFilter) return false;
+      if (documentTypeFilter !== "all" && documentType(asset) !== documentTypeFilter) return false;
+      if (
+        needle &&
+        !`${asset.title} ${asset.summary} ${asset.tags.join(" ")} ${asset.displayLabel ?? ""}`
+          .toLocaleLowerCase()
+          .includes(needle)
+      ) {
+        return false;
+      }
+      return true;
+    });
     return filtered.sort((left, right) => {
       if (sort === "title") return left.title.localeCompare(right.title, "zh-CN");
       if (sort === "type") return left.assetType.localeCompare(right.assetType);
@@ -246,7 +265,7 @@ export function ResearchAssetLibrary({
         String(left.updatedAt ?? left.createdAt ?? ""),
       );
     });
-  }, [assets, documentTypeFilter, query, sort, typeFilter]);
+  }, [assets, documentTypeFilter, noteGroupFilter, query, sort, typeFilter, zone]);
   const visibleAssetIds = useMemo(
     () => visibleAssets.map((asset) => asset.assetId),
     [visibleAssets],
@@ -294,7 +313,7 @@ export function ResearchAssetLibrary({
       await onDeleteAssets(selectedAssetIds);
       setDeleteOpen(false);
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "删除资产失败");
+      setDeleteError(error instanceof Error ? error.message : "删除失败");
     } finally {
       setDeletePending(false);
     }
@@ -308,10 +327,10 @@ export function ResearchAssetLibrary({
       <Dialog open={deleteOpen} onOpenChange={(open) => !deletePending && setDeleteOpen(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除 {selectedAssetIds.length} 项资产？</DialogTitle>
+            <DialogTitle>删除 {selectedAssetIds.length} 项？</DialogTitle>
             <DialogDescription>
-              此操作不可撤销。分析节点会连同其图表和分析引用一起删除，Memo/研报会删除对应产物文件。
-              {includesDocument ? "所选原始资料也会从当前项目资料来源中移除。" : ""}
+              此操作不可撤销。研究笔记会连同其中的图表等内容一起删除；Memo 会删除对应产物文件。
+              {includesDocument ? "所选资料也会从当前项目资料来源中移除。" : ""}
             </DialogDescription>
           </DialogHeader>
           {deleteError ? (
@@ -377,7 +396,7 @@ export function ResearchAssetLibrary({
         <label className="relative block">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
           <input
-            aria-label="搜索资产"
+            aria-label="搜索"
             className="h-9 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-8 pr-3 text-xs outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索标题、摘要或标签"
@@ -385,43 +404,68 @@ export function ResearchAssetLibrary({
           />
         </label>
         <div className="grid grid-cols-2 gap-2">
-          <label className="relative">
-            <span className="sr-only">资产类型</span>
-            <select
-              aria-label="资产类型"
-              className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
-              onChange={(event) => setTypeFilter(event.target.value)}
-              value={typeFilter}
-            >
-              <option value="all">全部类型</option>
-              {availableTypes.map((type) => (
-                <option key={type} value={type}>
-                  {typeLabels[type] ?? type}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="relative">
-            <span className="sr-only">文档类型</span>
-            <select
-              aria-label="文档类型"
-              className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
-              onChange={(event) => setDocumentTypeFilter(event.target.value)}
-              value={documentTypeFilter}
-            >
-              <option value="all">全部文档类型</option>
-              {availableDocumentTypes.map((type) => (
-                <option key={type} value={type}>
-                  {documentTypeLabels[type] ?? type}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="relative col-span-2">
+          {zone === "notes" ? (
+            <label className="relative col-span-2">
+              <span className="sr-only">笔记类型</span>
+              <select
+                aria-label="笔记类型"
+                className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
+                onChange={(event) =>
+                  setNoteGroupFilter(event.target.value as "all" | "answer_note" | "research_note")
+                }
+                value={noteGroupFilter}
+              >
+                <option value="all">全部笔记</option>
+                <option value="answer_note">回答笔记</option>
+                <option value="research_note">研究笔记</option>
+              </select>
+            </label>
+          ) : null}
+          {zone === "sources" || (zone === "generic" && availableDocumentTypes.length > 0) ? (
+            <label className={zone === "sources" ? "relative col-span-2" : "relative"}>
+              <span className="sr-only">资料类型</span>
+              <select
+                aria-label="资料类型"
+                className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
+                onChange={(event) => setDocumentTypeFilter(event.target.value)}
+                value={documentTypeFilter}
+              >
+                <option value="all">全部资料类型</option>
+                {availableDocumentTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {documentTypeLabels[type] ?? type}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {zone === "generic" ? (
+            <label className="relative">
+              <span className="sr-only">条目类型</span>
+              <select
+                aria-label="条目类型"
+                className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
+                onChange={(event) => setTypeFilter(event.target.value)}
+                value={typeFilter}
+              >
+                <option value="all">全部类型</option>
+                {availableTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {typeLabels[type] ?? type}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label
+            className={
+              zone === "notes" || zone === "sources" ? "relative col-span-2" : "relative col-span-2"
+            }
+          >
             <ArrowDownAZ className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
-            <span className="sr-only">资产排序</span>
+            <span className="sr-only">排序</span>
             <select
-              aria-label="资产排序"
+              aria-label="排序"
               className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-7 pr-2 text-xs"
               onChange={(event) => setSort(event.target.value as AssetSort)}
               value={sort}
@@ -438,7 +482,7 @@ export function ResearchAssetLibrary({
           <label className="flex min-w-0 cursor-pointer items-center gap-2 text-xs font-medium">
             <AssetSelectionCheckbox
               checked={allVisibleSelected}
-              label="选择当前显示的全部资产"
+              label="选择当前显示的全部条目"
               mixed={someVisibleSelected}
               disabled={visibleAssetIds.length === 0 || contextPending}
               onChange={toggleVisibleAssets}
@@ -447,7 +491,7 @@ export function ResearchAssetLibrary({
           </label>
           <div className="ml-auto flex shrink-0 items-center gap-1">
             <Button
-              aria-label={`删除已选 ${selectedAssetIds.length} 项资产`}
+              aria-label={`删除已选 ${selectedAssetIds.length} 项`}
               className="h-7 shrink-0 gap-1 px-2 text-xs"
               disabled={selectedAssetIds.length === 0 || contextPending}
               onClick={() => {
@@ -463,7 +507,7 @@ export function ResearchAssetLibrary({
             </Button>
             {selectedAssetIds.length > 0 ? (
               <Button
-                aria-label="清除资产选择"
+                aria-label="清除选择"
                 className="size-7"
                 disabled={contextPending}
                 onClick={clearAssetSelection}
@@ -491,7 +535,7 @@ export function ResearchAssetLibrary({
                   asset={asset}
                   checked={contextSet.has(asset.assetId)}
                   disabled={contextPending}
-                  label={`选择资产 ${asset.title}`}
+                  label={`加入上下文 ${asset.title}`}
                   onChange={() => toggleAssetSelection(asset.assetId)}
                 />
                 <button
@@ -530,7 +574,7 @@ export function ResearchAssetLibrary({
           <table className="w-full table-fixed border-collapse text-left text-xs">
             <thead className="sticky top-0 z-10 bg-[var(--pf-panel-subtle)] text-xs text-[var(--pf-ink-muted)]">
               <tr>
-                <th className="w-12 px-3 py-2" title="选择资产">
+                <th className="w-12 px-3 py-2" title="加入上下文">
                   选择
                 </th>
                 <th className="px-2 py-2">资产</th>
@@ -550,7 +594,7 @@ export function ResearchAssetLibrary({
                       asset={asset}
                       checked={contextSet.has(asset.assetId)}
                       disabled={contextPending}
-                      label={`选择资产 ${asset.title}`}
+                      label={`加入上下文 ${asset.title}`}
                       onChange={() => toggleAssetSelection(asset.assetId)}
                     />
                   </td>
@@ -604,7 +648,7 @@ export function ResearchAssetLibrary({
                       asset={asset}
                       checked={contextSet.has(asset.assetId)}
                       disabled={contextPending}
-                      label={`选择资产 ${asset.title}`}
+                      label={`加入上下文 ${asset.title}`}
                       onChange={() => toggleAssetSelection(asset.assetId)}
                     />
                     {contextSet.has(asset.assetId) ? "已加入上下文" : "选择"}

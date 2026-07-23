@@ -27,8 +27,6 @@ export const usePrivateFundWorkspaceStore = create<PrivateFundWorkspaceState>((s
   clearDocumentPreview: (requestId) =>
     set((state) => ({
       documentPreviewRequest:
-        state.documentPreviewRequest?.requestId === requestId
-          ? null
-          : state.documentPreviewRequest,
+        state.documentPreviewRequest?.requestId === requestId ? null : state.documentPreviewRequest,
     })),
 }));
