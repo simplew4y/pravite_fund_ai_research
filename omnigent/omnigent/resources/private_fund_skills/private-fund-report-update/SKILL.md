@@ -28,3 +28,9 @@ Produce an append-only report revision with explicit lineage and a concise chang
 - A prior citation cannot be reused blindly: inspect the current evidence with `private_fund_source_detail`, especially after a document version changes.
 - If updated evidence cannot be resolved to a file and page, sheet/cell, slide, or heading, mark the claim `待复核` instead of carrying it forward as verified.
 - A revision is a new artifact, not an in-place edit.
+
+## 📝 Knowledge Projection Contract
+
+- Preserve stable report/Memo topic and explicit `revision_of` lineage so the background Obsidian worker can keep one series homepage and an append-only version timeline.
+- Return the authoritative series/version identifiers and distinguish `not_mentioned` from invalidated or withdrawn.
+- Never update Obsidian managed notes directly. The projection worker owns version notes, adjacent diffs, Bases, and conflict handling while preserving analyst `USER` sections.

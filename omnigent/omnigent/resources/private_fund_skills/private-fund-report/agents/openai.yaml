@@ -1,4 +1,4 @@
 interface:
   display_name: "Private Fund Report"
-  short_description: "Build a long-form report from checked nodes"
-  default_prompt: "Build a source-backed long-form report from the checked research nodes."
+  short_description: "Build a long-form report from checked research nodes"
+  default_prompt: "Use $private-fund-report to build a source-backed long-form report from checked research nodes."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "估值影响识别"
+  short_description: "Extract evidence-backed valuation impact cards"
+  default_prompt: "Use $private-fund-valuation-impacts to extract evidence-backed valuation impacts from supporting research documents."

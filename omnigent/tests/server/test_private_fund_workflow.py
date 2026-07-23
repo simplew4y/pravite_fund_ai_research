@@ -61,6 +61,7 @@ def test_agentic_research_mcp_tools_are_registered() -> None:
     tools = {tool.name(): tool for tool in build_private_fund_dataset_tools(None)}
     names = set(tools)
     assert "private_fund_research_context" in names
+    assert "private_fund_knowledge_status" in names
     assert "private_fund_research_node_save" in names
     assert "private_fund_equity_report_generate" in names
     assert "private_fund_equity_report_status" in names

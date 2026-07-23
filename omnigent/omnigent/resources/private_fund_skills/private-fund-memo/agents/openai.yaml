@@ -1,0 +1,4 @@
+interface:
+  display_name: "Private Fund Memo"
+  short_description: "Create an evidence-backed versioned research Memo"
+  default_prompt: "Use $private-fund-memo to create or revise an evidence-backed private-fund Memo without overwriting history."

@@ -127,7 +127,8 @@ def test_delete_project_removes_managed_workspace_and_clears_active_state(
     )
     dataset_root = Path(project["dataset_root"])
     uploads_dir = Path(project["uploads_dir"])
-    (dataset_root / "meta").mkdir(parents=True)
+    # Project payload hydration may initialize the collection DB parent already.
+    (dataset_root / "meta").mkdir(parents=True, exist_ok=True)
     (dataset_root / "meta" / "collection.sqlite3").touch()
     (uploads_dir / "report.pdf").write_bytes(b"source")
     private_fund_pdf._set_active_dataset("demo")

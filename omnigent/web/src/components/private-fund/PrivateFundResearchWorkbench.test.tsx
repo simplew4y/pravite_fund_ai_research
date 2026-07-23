@@ -171,14 +171,18 @@ let renderedQueryClient: QueryClient;
 
 function renderWorkbench(
   onGenerateNode = vi.fn(),
-  options: { hasConversationContext?: boolean } = {},
+  options: {
+    hasConversationContext?: boolean;
+    conversationId?: string;
+    generationAvailable?: boolean;
+  } = {},
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   renderedQueryClient = queryClient;
   render(
     <QueryClientProvider client={queryClient}>
       <PrivateFundResearchWorkbench
-        conversationId="conv-test"
+        conversationId={options.conversationId ?? "conv-test"}
         datasetId="阳光电源"
         datasetName="阳光电源"
         hasConversationContext={options.hasConversationContext}
@@ -188,7 +192,7 @@ function renderWorkbench(
             <ActionFixture />
           </>
         }
-        onGenerateNode={onGenerateNode}
+        {...(options.generationAvailable === false ? {} : { onGenerateNode })}
       />
     </QueryClientProvider>,
   );
@@ -269,6 +273,21 @@ describe("PrivateFundResearchWorkbench", () => {
     renderWorkbench();
     const grid = screen.getByTestId("private-fund-workbench-grid");
     expect(grid.className).toContain("flex");
+  });
+
+  it("keeps the complete workbench chrome visible before the first conversation", () => {
+    window.localStorage.setItem("omnigent.privateFund.workbenchChrome", "ide");
+    renderWorkbench(vi.fn(), { conversationId: "", generationAvailable: false });
+
+    expect(screen.getByRole("button", { name: "研究" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "资料" })).toBeInTheDocument();
+    expect(screen.getByTestId("private-fund-ide-activity-rail")).toBeInTheDocument();
+    expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "请先在研究区输入问题并创建会话，再生成研究笔记",
+    );
   });
 
   it("opens research note detail from the notes workspace", async () => {
@@ -743,5 +762,4 @@ describe("PrivateFundResearchWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "资料" }));
     expect(screen.getByRole("heading", { name: "资料" })).toBeInTheDocument();
   });
-
 });

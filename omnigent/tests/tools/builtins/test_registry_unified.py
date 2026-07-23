@@ -124,6 +124,7 @@ def test_builtin_names_size_matches_registry() -> None:
                 # opt-in builtins for generic SDK agents and execute
                 # runner-local against the session-bound dataset.
                 "private_fund_dataset_status",
+                "private_fund_knowledge_status",
                 "private_fund_dataset_search",
                 "private_fund_source_detail",
                 "private_fund_dataset_memo",

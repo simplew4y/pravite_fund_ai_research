@@ -3,6 +3,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="${HOME}/.bun/bin:${HOME}/.local/bin:${PATH}"
+LOCAL_ENV_FILE="${OMNIGENT_LOCAL_ENV_FILE:-$ROOT_DIR/.env}"
+if [[ -f "$LOCAL_ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$LOCAL_ENV_FILE"
+  set +a
+fi
 OMNIGENT_DIR="$ROOT_DIR/omnigent"
 OMNIGENT_CLI="$OMNIGENT_DIR/.venv/bin/omnigent"
 STACK_SESSION="${OMNIGENT_STACK_TMUX_SESSION:-omnigent-stack}"
@@ -24,7 +31,7 @@ usage() {
 Usage: $0 {start|stop|restart|status|logs|attach}
 
 Commands:
-  start    Start LiteLLM, Omnigent Server, both tracking workers, and Omnigent Host in tmux.
+  start    Start LiteLLM, Omnigent Server, all research workers, and Omnigent Host in tmux.
   stop     Stop the managed tmux stack and legacy service sessions.
   restart  Stop and start the complete stack.
   status   Show tmux, HTTP, and Host connection status.
@@ -53,6 +60,9 @@ configure_agent_runtime() {
   export OMNIGENT_LOCAL_SINGLE_USER="${OMNIGENT_LOCAL_SINGLE_USER:-1}"
   export OMNIGENT_WS_ALLOWED_ORIGINS="${OMNIGENT_WS_ALLOWED_ORIGINS:-http://127.0.0.1:6767,http://localhost:6767,http://127.0.0.1:6768,http://localhost:6768}"
   export OMNIGENT_NO_UPDATE_CHECK="${OMNIGENT_NO_UPDATE_CHECK:-1}"
+  # Citation repair is bounded to one targeted pass. Tests and ad-hoc library
+  # use remain deterministic unless this managed runtime explicitly enables it.
+  export PRIVATE_FUND_CITATION_GATE_RETRY="${PRIVATE_FUND_CITATION_GATE_RETRY:-1}"
   # Every model consumer uses a stable local alias. LiteLLM hot-reloads the
   # user-selected upstream provider without restarting Omnigent or workers.
   export ANTHROPIC_AUTH_TOKEN="$LITELLM_KEY"
@@ -103,6 +113,12 @@ valuation_worker_online() {
       | grep -qx 'valuation'
 }
 
+obsidian_worker_online() {
+  tmux has-session -t "$STACK_SESSION" 2>/dev/null \
+    && tmux list-windows -t "$STACK_SESSION" -F '#{window_name}' 2>/dev/null \
+      | grep -qx 'obsidian'
+}
+
 wait_until() {
   local label="$1"
   local check_function="$2"
@@ -151,6 +167,17 @@ run_valuation_worker() {
   exec uv run --offline python -m omnigent.server.private_fund_valuation_worker
 }
 
+run_obsidian_worker() {
+  export PRIVATE_FUND_OBSIDIAN_VAULT_PATH="${PRIVATE_FUND_OBSIDIAN_VAULT_PATH:-$HOME/feiyuzi/personal_obsidian_workspace}"
+  if [[ ! -d "$PRIVATE_FUND_OBSIDIAN_VAULT_PATH" ]]; then
+    echo "Obsidian vault not found: $PRIVATE_FUND_OBSIDIAN_VAULT_PATH" >&2
+    echo "Set PRIVATE_FUND_OBSIDIAN_VAULT_PATH to the real Vault root." >&2
+    exit 1
+  fi
+  cd "$OMNIGENT_DIR"
+  exec uv run --offline python -m omnigent.server.private_fund_obsidian_worker
+}
+
 run_control() {
   while :; do sleep 3600; done
 }
@@ -159,7 +186,7 @@ start_stack() {
   require_runtime
   if tmux has-session -t "$STACK_SESSION" 2>/dev/null; then
     if litellm_healthy && server_healthy && host_online \
-      && tracking_worker_online && valuation_worker_online; then
+      && tracking_worker_online && valuation_worker_online && obsidian_worker_online; then
       echo "Omnigent stack is already online in tmux session '$STACK_SESSION'."
       status_stack
       return 0
@@ -173,6 +200,7 @@ start_stack() {
   tmux new-window -d -t "$STACK_SESSION" -n server "$SCRIPT_PATH" _run-server
   tmux new-window -d -t "$STACK_SESSION" -n tracking "$SCRIPT_PATH" _run-tracking
   tmux new-window -d -t "$STACK_SESSION" -n valuation "$SCRIPT_PATH" _run-valuation
+  tmux new-window -d -t "$STACK_SESSION" -n obsidian "$SCRIPT_PATH" _run-obsidian
   tmux new-window -d -t "$STACK_SESSION" -n host "$SCRIPT_PATH" _run-host
   tmux select-window -t "$STACK_SESSION:server"
 
@@ -189,6 +217,10 @@ start_stack() {
     return 1
   fi
   if ! wait_until "Valuation Tracking Worker" valuation_worker_online; then
+    logs_stack
+    return 1
+  fi
+  if ! wait_until "Obsidian Projection Worker" obsidian_worker_online; then
     logs_stack
     return 1
   fi
@@ -248,6 +280,12 @@ status_stack() {
     echo "Valuation: offline"
     failed=1
   fi
+  if obsidian_worker_online; then
+    echo "Obsidian:  online"
+  else
+    echo "Obsidian:  offline"
+    failed=1
+  fi
   return "$failed"
 }
 
@@ -257,7 +295,7 @@ logs_stack() {
     return 1
   fi
   local window_name
-  for window_name in litellm server tracking valuation host; do
+  for window_name in litellm server tracking valuation obsidian host; do
     echo "===== $window_name ====="
     if [[ "$window_name" == "litellm" && -f "$OMNIGENT_DIR/.tmp-litellm.log" ]]; then
       tail -80 "$OMNIGENT_DIR/.tmp-litellm.log" || true
@@ -289,6 +327,7 @@ case "$command_name" in
   _run-server) run_server ;;
   _run-tracking) run_tracking_worker ;;
   _run-valuation) run_valuation_worker ;;
+  _run-obsidian) run_obsidian_worker ;;
   _run-host) run_host ;;
   *) usage; exit 2 ;;
 esac

@@ -33,10 +33,12 @@ export function usePrivateFundDocumentUpload(datasetId: string | null | undefine
   const mutation = useMutation({
     mutationFn: async ({ files, skipped }: { files: File[]; skipped: number }) => {
       if (!datasetId) throw new Error("请先选择研究项目");
-      await uploadPrivateFundFiles(datasetId, files);
+      const uploaded = await uploadPrivateFundFiles(datasetId, files);
       setStage("queued");
       setMessage("文档已上传，正在等待索引任务启动。请保持窗口打开。");
-      let job = await runPrivateFundPipeline(datasetId);
+      // New servers enqueue automatically with the upload.  The fallback keeps
+      // compatibility with older deployments during rolling upgrades.
+      let job = uploaded.job ?? (await runPrivateFundPipeline(datasetId));
       while (["queued", "running", "indexing"].includes(job.status)) {
         setStage(job.status === "queued" ? "queued" : "running");
         setMessage(job.message || "pipeline 正在解析文档、提取内容并建立检索索引。");

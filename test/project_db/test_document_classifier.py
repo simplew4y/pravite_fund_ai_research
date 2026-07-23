@@ -50,7 +50,7 @@ def test_financial_report_uses_controlled_type_and_project_company() -> None:
         expected_ticker="300274.SZ",
     )
 
-    assert result.doc_type == "financial_report"
+    assert result.doc_type == "financial_valuation_data"
     assert result.doc_subtype == "annual_report"
     assert result.confidence >= 0.9
     assert result.classification_status == "accepted"
@@ -68,7 +68,7 @@ def test_meeting_minutes_are_not_reduced_to_pdf_file_type() -> None:
 
     result = classifier.classify_document(preview)
 
-    assert result.doc_type == "meeting_minutes"
+    assert result.doc_type == "meeting_third_party"
     assert result.doc_subtype == "research_meeting"
     assert result.classification_status == "accepted"
 
@@ -84,7 +84,7 @@ def test_excel_structure_can_identify_a_dcf_valuation_model() -> None:
 
     result = classifier.classify_document(preview)
 
-    assert result.doc_type == "valuation_model"
+    assert result.doc_type == "financial_valuation_data"
     assert result.doc_subtype == "dcf_model"
     assert result.confidence >= 0.9
 
@@ -98,7 +98,7 @@ def test_ambiguous_document_uses_llm_but_validates_the_taxonomy() -> None:
     llm = _FakeChatClient(
         {
             "taxonomy_version": classifier.TAXONOMY_VERSION,
-            "doc_type": "research_report",
+            "doc_type": "meeting_third_party",
             "doc_subtype": "internal_research_report",
             "confidence": 0.91,
             "company_name": "Sungrow Power Supply Co., Ltd.",
@@ -113,7 +113,7 @@ def test_ambiguous_document_uses_llm_but_validates_the_taxonomy() -> None:
 
     assert len(llm.calls) == 1
     assert result.method == "hybrid_llm"
-    assert result.doc_type == "research_report"
+    assert result.doc_type == "meeting_third_party"
     assert result.doc_subtype == "internal_research_report"
     assert result.classification_status == "accepted"
     assert result.company_name == "Sungrow Power Supply Co., Ltd."
@@ -136,7 +136,7 @@ def test_llm_cannot_create_an_unregistered_document_type() -> None:
 
     result = classifier.classify_document(preview, llm_client=llm)
 
-    assert result.doc_type == "unknown"
+    assert result.doc_type == "other"
     assert result.classification_status == "needs_review"
     assert "unsupported doc_type" in result.llm_error
 
@@ -145,7 +145,7 @@ def test_llm_review_flag_is_respected_even_with_high_confidence() -> None:
     preview = classifier.DocumentPreview("ambiguous.pdf", "pdf", "management discussion")
     llm = _FakeChatClient(
         {
-            "doc_type": "research_report",
+            "doc_type": "meeting_third_party",
             "doc_subtype": "internal_research_report",
             "confidence": 0.95,
             "company_name": "",
@@ -158,7 +158,7 @@ def test_llm_review_flag_is_respected_even_with_high_confidence() -> None:
 
     result = classifier.classify_document(preview, llm_client=llm)
 
-    assert result.doc_type == "research_report"
+    assert result.doc_type == "meeting_third_party"
     assert result.confidence == 0.95
     assert result.classification_status == "needs_review"
 
@@ -181,9 +181,12 @@ def test_company_conflict_is_explicit_instead_of_overwriting_the_project() -> No
     assert result.classification_status == "company_conflict"
 
 
-def test_taxonomy_has_explicit_unknown_and_no_free_form_escape_hatch() -> None:
-    assert classifier.DOCUMENT_TYPE_TAXONOMY["unknown"] == ()
+def test_taxonomy_has_exactly_three_primary_categories() -> None:
     assert classifier.DOCUMENT_TYPE_TAXONOMY["other"] == ()
-    assert "valuation_model" in classifier.DOCUMENT_TYPE_TAXONOMY
-    assert "meeting_minutes" in classifier.DOCUMENT_TYPE_TAXONOMY
-    assert "financial_report" in classifier.DOCUMENT_TYPE_TAXONOMY
+    assert set(classifier.DOCUMENT_TYPE_TAXONOMY) == {
+        "financial_valuation_data",
+        "meeting_third_party",
+        "other",
+    }
+    assert "dcf_model" in classifier.DOCUMENT_TYPE_TAXONOMY["financial_valuation_data"]
+    assert "research_meeting" in classifier.DOCUMENT_TYPE_TAXONOMY["meeting_third_party"]

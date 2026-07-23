@@ -9,9 +9,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 DOCUMENT_TYPE_FOLDER_NAMES: dict[str, str] = {
+    "financial_valuation_data": "财报与估值数据",
+    "meeting_third_party": "会议与第三方信息",
+    "other": "其他",
+}
+
+LEGACY_DOCUMENT_TYPE_FOLDER_NAMES: dict[str, str] = {
     "financial_report": "财务报告",
     "earnings_release": "业绩公告",
     "meeting_minutes": "会议纪要",
@@ -24,8 +30,23 @@ DOCUMENT_TYPE_FOLDER_NAMES: dict[str, str] = {
     "other": "其他资料",
 }
 
+LEGACY_DOCUMENT_TYPE_MAP: dict[str, str] = {
+    "financial_report": "financial_valuation_data",
+    "earnings_release": "financial_valuation_data",
+    "valuation_model": "financial_valuation_data",
+    "financial_dataset": "financial_valuation_data",
+    "meeting_minutes": "meeting_third_party",
+    "research_report": "meeting_third_party",
+    "investor_presentation": "meeting_third_party",
+    "regulatory_announcement": "meeting_third_party",
+    "company_material": "meeting_third_party",
+    "other": "other",
+    "unknown": "other",
+}
+
 # Kept only to migrate databases created by the original fixed-folder model.
 LEGACY_SYSTEM_FOLDER_NAMES: dict[str, str] = {
+    **LEGACY_DOCUMENT_TYPE_FOLDER_NAMES,
     **DOCUMENT_TYPE_FOLDER_NAMES,
     "needs_review": "待复核",
     "unknown": "待识别",
@@ -116,16 +137,13 @@ def _validate_folder_name(value: str) -> str:
 
 
 def _classification_target(file: dict[str, Any]) -> tuple[str, str]:
-    status = str(file.get("classification_status") or "pending").strip().lower()
     doc_type = str(file.get("doc_type") or "unknown").strip().lower()
-    if status in {"pending", ""} or doc_type in {"", "unknown"}:
-        return "status:unknown", "待识别"
-    if status in {"needs_review", "company_conflict"}:
-        return "status:needs_review", "待复核"
+    doc_type = LEGACY_DOCUMENT_TYPE_MAP.get(doc_type, doc_type)
+    if doc_type not in DOCUMENT_TYPE_FOLDER_NAMES:
+        doc_type = "other"
     name = DOCUMENT_TYPE_FOLDER_NAMES.get(doc_type)
-    if name is None:
-        name = doc_type.replace("_", " ").strip() or "其他资料"
-        name = name[:40]
+    if name is None:  # Defensive fallback for future taxonomy changes.
+        name = "其他"
     return f"doc_type:{doc_type}", name
 
 
@@ -370,17 +388,6 @@ def _upsert_assignment(
     )
 
 
-def _legacy_folder_target(classification_key: str) -> tuple[str, str]:
-    if classification_key == "needs_review":
-        return "status:needs_review", "待复核"
-    if classification_key == "unknown":
-        return "status:unknown", "待识别"
-    return (
-        f"doc_type:{classification_key}",
-        DOCUMENT_TYPE_FOLDER_NAMES.get(classification_key, classification_key.replace("_", " ")),
-    )
-
-
 def _migrate_legacy_model(
     conn: sqlite3.Connection,
     dataset_id: str,
@@ -470,7 +477,10 @@ def _migrate_legacy_model(
         canonical_name = LEGACY_SYSTEM_FOLDER_NAMES.get(legacy_key, "")
         unchanged_system_name = bool(canonical_name and str(row["name"]) == canonical_name)
         if assignment_count and unchanged_system_name:
-            next_key, _name = _legacy_folder_target(legacy_key)
+            # Keep each legacy folder unique during the v1 table migration.
+            # The normal assignment sync below then moves automatic files into
+            # one of the three canonical folders and removes empty old folders.
+            next_key = f"legacy:{legacy_key or folder_id}"
             conn.execute(
                 """
                 UPDATE source_folders
@@ -585,6 +595,23 @@ def _sync_assignments(
             "auto",
             classification_key,
         )
+    conn.execute(
+        """
+        DELETE FROM source_folders
+        WHERE dataset_id=? AND folder_kind='auto'
+          AND COALESCE(classification_key,'') NOT IN (
+              'doc_type:financial_valuation_data',
+              'doc_type:meeting_third_party',
+              'doc_type:other'
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM source_folder_file_assignments a
+              WHERE a.dataset_id=source_folders.dataset_id
+                AND a.folder_id=source_folders.folder_id
+          )
+        """,
+        (dataset_id,),
+    )
     conn.commit()
 
 

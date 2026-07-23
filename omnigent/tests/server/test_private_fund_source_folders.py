@@ -37,15 +37,15 @@ def test_folder_tree_lazily_creates_only_required_classification_folders(
     )
 
     assert {folder["name"] for folder in tree["folders"]} == {
-        "财务报告",
-        "待复核",
-        "待识别",
+        "财报与估值数据",
+        "会议与第三方信息",
+        "其他",
     }
-    assert folder_by_name(tree, "财务报告")["files"] == [
+    assert folder_by_name(tree, "财报与估值数据")["files"] == [
         {"file_name": "annual.pdf", "assignment": "auto"}
     ]
-    assert folder_by_name(tree, "待复核")["files"][0]["file_name"] == "meeting.pdf"
-    assert folder_by_name(tree, "待识别")["files"][0]["file_name"] == "legacy.xlsx"
+    assert folder_by_name(tree, "会议与第三方信息")["files"][0]["file_name"] == "meeting.pdf"
+    assert folder_by_name(tree, "其他")["files"][0]["file_name"] == "legacy.xlsx"
 
 
 def test_folder_crud_and_manual_assignment_survive_reload(tmp_path: Path) -> None:
@@ -68,7 +68,7 @@ def test_folder_crud_and_manual_assignment_survive_reload(tmp_path: Path) -> Non
         folders.delete_folder(db_path, "sungrow", custom["folder_id"], files)
 
     restored = folders.move_file(db_path, "sungrow", "annual.pdf", None, files)
-    assert folder_by_name(restored, "财务报告")["files"] == [
+    assert folder_by_name(restored, "财报与估值数据")["files"] == [
         {"file_name": "annual.pdf", "assignment": "auto"}
     ]
     assert folder_by_name(restored, "重点跟踪")["file_count"] == 0
@@ -80,23 +80,23 @@ def test_empty_folders_persist_and_all_empty_folders_can_be_deleted(tmp_path: Pa
     db_path = tmp_path / "collection.sqlite3"
     files = [source_file("model.xlsx", "valuation_model", "accepted")]
     tree = folders.get_folder_tree(db_path, "sungrow", files)
-    model_folder = folder_by_name(tree, "估值模型")
+    model_folder = folder_by_name(tree, "财报与估值数据")
 
     custom_tree = folders.create_folder(db_path, "sungrow", "归档", files)
     archive_folder = folder_by_name(custom_tree, "归档")
     folders.move_file(db_path, "sungrow", "model.xlsx", archive_folder["folder_id"], files)
 
     reloaded = folders.get_folder_tree(db_path, "sungrow", files)
-    assert folder_by_name(reloaded, "估值模型")["file_count"] == 0
+    assert folder_by_name(reloaded, "财报与估值数据")["file_count"] == 0
     deleted = folders.delete_folder(db_path, "sungrow", model_folder["folder_id"], files)
-    assert all(folder["name"] != "估值模型" for folder in deleted["folders"])
+    assert all(folder["name"] != "财报与估值数据" for folder in deleted["folders"])
 
 
 def test_renaming_auto_folder_detaches_future_classification(tmp_path: Path) -> None:
     db_path = tmp_path / "collection.sqlite3"
     first_files = [source_file("model-v1.xlsx", "valuation_model", "accepted")]
     initial = folders.get_folder_tree(db_path, "sungrow", first_files)
-    original_folder = folder_by_name(initial, "估值模型")
+    original_folder = folder_by_name(initial, "财报与估值数据")
 
     renamed = folders.rename_folder(
         db_path,
@@ -117,10 +117,10 @@ def test_renaming_auto_folder_detaches_future_classification(tmp_path: Path) -> 
     assert folder_by_name(reloaded, "其他模型")["files"] == [
         {"file_name": "model-v1.xlsx", "assignment": "manual"}
     ]
-    assert folder_by_name(reloaded, "估值模型")["files"] == [
+    assert folder_by_name(reloaded, "财报与估值数据")["files"] == [
         {"file_name": "model-v2.xlsx", "assignment": "auto"}
     ]
-    assert folder_by_name(reloaded, "估值模型")["folder_id"] != original_folder["folder_id"]
+    assert folder_by_name(reloaded, "财报与估值数据")["folder_id"] != original_folder["folder_id"]
 
 
 def test_auto_assignment_tracks_pipeline_classification_but_manual_move_does_not(
@@ -129,12 +129,12 @@ def test_auto_assignment_tracks_pipeline_classification_but_manual_move_does_not
     db_path = tmp_path / "collection.sqlite3"
     pending = [source_file("document.pdf")]
     initial = folders.get_folder_tree(db_path, "sungrow", pending)
-    assert folder_by_name(initial, "待识别")["file_count"] == 1
+    assert folder_by_name(initial, "其他")["file_count"] == 1
 
     classified = [source_file("document.pdf", "research_report", "accepted")]
     updated = folders.get_folder_tree(db_path, "sungrow", classified)
-    assert folder_by_name(updated, "待识别")["file_count"] == 0
-    assert folder_by_name(updated, "研究报告")["file_count"] == 1
+    assert folder_by_name(updated, "其他")["file_count"] == 0
+    assert folder_by_name(updated, "会议与第三方信息")["file_count"] == 1
 
     custom_tree = folders.create_folder(db_path, "sungrow", "人工归档", classified)
     custom = folder_by_name(custom_tree, "人工归档")

@@ -20,7 +20,7 @@ const assets: PrivateFundAsset[] = [
     versionNo: 1,
     evidenceCount: 12,
     metadata: {
-      doc_type: "financial_report",
+      doc_type: "financial_valuation_data",
       doc_subtype: "annual_report",
       doc_type_confidence: 0.97,
     },
@@ -175,10 +175,10 @@ describe("ResearchAssetLibrary", () => {
     expect(screen.queryByText("管理层网络安全观点")).toBeNull();
 
     fireEvent.change(screen.getByRole("combobox", { name: "资料类型" }), {
-      target: { value: "annual_report" },
+      target: { value: "financial_valuation_data" },
     });
     expect(screen.getByRole("button", { name: "打开资产 交流会原文.pdf" })).toHaveTextContent(
-      "年报",
+      "财报与估值数据",
     );
 
     fireEvent.click(screen.getByRole("checkbox", { name: "加入上下文 交流会原文.pdf" }));

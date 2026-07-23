@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import subprocess
@@ -22,8 +23,8 @@ from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
-from urllib.parse import urlencode
+from typing import Annotated, Any
+from urllib.parse import unquote_plus, urlencode
 
 from fastapi import (
     APIRouter,
@@ -79,6 +80,12 @@ EXCEL_SOURCE_MAX_COLUMNS = 80
 EXCEL_SOURCE_NEARBY_RADIUS = 8
 PROJECT_UPLOADS_DIRNAME = "_uploads"
 PROJECT_UPLOADS_MARKER = ".source-initialized"
+GLOBAL_UPLOADS_DIRNAME = "_inbox"
+GLOBAL_UPLOAD_FILE_LIMIT_BYTES = 256 * 1024 * 1024
+GLOBAL_UPLOAD_BATCH_LIMIT_BYTES = 1024 * 1024 * 1024
+GLOBAL_UPLOAD_AUTO_MATCH_THRESHOLD = 0.92
+GLOBAL_UPLOAD_AUTO_MATCH_MARGIN = 0.12
+GLOBAL_UPLOAD_AUTO_CREATE_THRESHOLD = 0.92
 PRIVATE_FUND_PROJECT_LABEL_ID = "private_fund.dataset_id"
 PRIVATE_FUND_PROJECT_LABEL_NAME = "private_fund.dataset_name"
 SUPPORTED_PROJECT_UPLOAD_SUFFIXES = {
@@ -93,6 +100,7 @@ SUPPORTED_PROJECT_UPLOAD_SUFFIXES = {
     ".txt",
 }
 _PRIVATE_FUND_PIPELINE_JOBS_LOCK = threading.Lock()
+_GLOBAL_UPLOAD_PROJECTS_LOCK = threading.Lock()
 _PRIVATE_FUND_PIPELINE_JOBS: dict[str, dict[str, Any]] = {}
 _PROJECT_USAGE_PAGE_SIZE = 1000
 _PROJECT_USAGE_TOKEN_KEYS = (
@@ -214,6 +222,10 @@ class RunProjectPipelineRequest(BaseModel):
 
 class DeleteProjectFilesRequest(BaseModel):
     file_names: list[str] = Field(default_factory=list)
+
+
+class RouteGlobalUploadRequest(BaseModel):
+    dataset_id: str
 
 
 class CreateSourceFolderRequest(BaseModel):
@@ -399,6 +411,1089 @@ def _connect_global_registry(workspace_root: Path | None = None) -> sqlite3.Conn
     conn = ingest.connect_sqlite(workspace / "datasets.sqlite3")
     ingest.ensure_global_schema(conn)
     return conn
+
+
+def _global_uploads_root(workspace_root: Path | None = None) -> Path:
+    return (workspace_root or _dataset_workspace_root()) / GLOBAL_UPLOADS_DIRNAME
+
+
+def _normalized_identity(value: str) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    text = re.sub(r"[^\w\u3400-\u9fff]+", "", text, flags=re.UNICODE)
+    for suffix in (
+        "股份有限公司",
+        "有限责任公司",
+        "有限公司",
+        "corporation",
+        "incorporated",
+        "holdings",
+        "limited",
+        "corp",
+        "inc",
+        "ltd",
+    ):
+        normalized_suffix = re.sub(r"\W+", "", suffix.casefold())
+        if text.endswith(normalized_suffix) and len(text) > len(normalized_suffix):
+            text = text[: -len(normalized_suffix)]
+            break
+    return text
+
+
+def _normalized_ticker(value: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9]+", "", str(value or "")).upper()
+    for suffix in ("SZ", "SH", "BJ", "HK", "OQ", "US", "CH", "PA", "DE", "L", "N"):
+        if text.endswith(suffix) and len(text) > len(suffix) + 1:
+            return text[: -len(suffix)]
+    return text
+
+
+def _identities_match(left: str, right: str) -> bool:
+    left_key = _normalized_identity(left)
+    right_key = _normalized_identity(right)
+    if not left_key or not right_key:
+        return False
+    if left_key == right_key:
+        return True
+    min_length = min(len(left_key), len(right_key))
+    return min_length >= 4 and (left_key in right_key or right_key in left_key)
+
+
+@dataclass(frozen=True)
+class _GlobalUploadIdentity:
+    company_name: str = ""
+    company_ticker: str = ""
+    company_confidence: float = 0.0
+    ticker_confidence: float = 0.0
+    method: str = "not_detected"
+
+
+def _clean_filename_company_name(value: str) -> str:
+    text = unquote_plus(unicodedata.normalize("NFKC", value or ""))
+    return re.sub(r"[_\s]+", " ", text).strip(" ._-")
+
+
+def _filename_global_upload_identity(filename: str) -> _GlobalUploadIdentity:
+    stem = unicodedata.normalize("NFKC", Path(filename).stem)
+    stem = re.sub(r"^\d{10,}[_\s-]+", "", stem)
+    structured = re.match(
+        r"^(?P<company>.+?)_(?P<symbol>[A-Za-z0-9]{1,12})"
+        r"(?:_[A-Za-z])?\.(?P<market>[A-Za-z]{1,5})(?:_|$)",
+        stem,
+    )
+    if structured:
+        company = _clean_filename_company_name(structured.group("company"))
+        ticker = f"{structured.group('symbol').upper()}.{structured.group('market').upper()}"
+        return _GlobalUploadIdentity(
+            company_name=company,
+            company_ticker=ticker,
+            company_confidence=0.995,
+            ticker_confidence=0.995,
+            method="structured_filename",
+        )
+
+    compact_chinese = re.match(
+        r"^(?P<company>[\u3400-\u9fff·（）()]{2,30}?)(?P<symbol>\d{6})(?=\D|$)",
+        stem,
+    )
+    if compact_chinese:
+        return _GlobalUploadIdentity(
+            company_name=compact_chinese.group("company"),
+            company_ticker=compact_chinese.group("symbol"),
+            company_confidence=0.99,
+            ticker_confidence=0.99,
+            method="filename_company_ticker",
+        )
+
+    chinese_company = re.match(
+        r"^(?P<company>[\u3400-\u9fff·（）()]{2,30}?)(?="
+        r"(?:20\d{2}|年度|近况|交流|调研|研究|报告|纪要|[-_]))",
+        stem,
+    )
+    ticker_match = re.search(
+        r"(?<!\d)(?P<symbol>\d{6})(?:[ ._-]*(?P<market>CH|HK|SZ|SH|BJ))?(?!\d)",
+        stem,
+        flags=re.IGNORECASE,
+    )
+    company_name = chinese_company.group("company") if chinese_company else ""
+    company_ticker = ""
+    if ticker_match:
+        company_ticker = ticker_match.group("symbol")
+        if ticker_match.group("market"):
+            company_ticker += f".{ticker_match.group('market').upper()}"
+    if company_name or company_ticker:
+        return _GlobalUploadIdentity(
+            company_name=company_name,
+            company_ticker=company_ticker,
+            company_confidence=0.97 if company_name else 0.0,
+            ticker_confidence=0.97 if company_ticker else 0.0,
+            method=(
+                "filename_company_ticker"
+                if company_name and company_ticker
+                else "filename_company"
+                if company_name
+                else "filename_ticker"
+            ),
+        )
+    return _GlobalUploadIdentity()
+
+
+def _global_upload_identity(classification: Any, filename: str) -> _GlobalUploadIdentity:
+    filename_identity = _filename_global_upload_identity(filename)
+    classified_name = str(getattr(classification, "company_name", "") or "").strip()
+    classified_ticker = str(getattr(classification, "company_ticker", "") or "").strip()
+    classified_confidence = float(
+        getattr(classification, "company_confidence", 0) or 0
+    )
+    filename_and_document_agree = bool(
+        filename_identity.company_name
+        and classified_name
+        and _identities_match(filename_identity.company_name, classified_name)
+    )
+    if filename_and_document_agree:
+        company_name = classified_name
+        company_confidence = max(
+            filename_identity.company_confidence, classified_confidence
+        )
+    else:
+        company_name = filename_identity.company_name or classified_name
+        company_confidence = (
+            filename_identity.company_confidence
+            if filename_identity.company_name
+            else classified_confidence
+        )
+    company_ticker = filename_identity.company_ticker or classified_ticker
+    ticker_confidence = (
+        filename_identity.ticker_confidence
+        if filename_identity.company_ticker
+        else classified_confidence if classified_ticker else 0.0
+    )
+    methods = [
+        value
+        for value in (
+            filename_identity.method if filename_identity.method != "not_detected" else "",
+            str(getattr(classification, "company_method", "") or ""),
+        )
+        if value
+    ]
+    return _GlobalUploadIdentity(
+        company_name=company_name,
+        company_ticker=company_ticker,
+        company_confidence=company_confidence,
+        ticker_confidence=ticker_confidence,
+        method="+".join(dict.fromkeys(methods)) or "not_detected",
+    )
+
+
+def _cluster_global_upload_identities(
+    identified: list[tuple[sqlite3.Row, _GlobalUploadIdentity]],
+) -> list[list[tuple[sqlite3.Row, _GlobalUploadIdentity]]]:
+    parents = list(range(len(identified)))
+
+    def find(index: int) -> int:
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parents[right_root] = left_root
+
+    for left_index, (_left_item, left) in enumerate(identified):
+        for right_index in range(left_index + 1, len(identified)):
+            right = identified[right_index][1]
+            same_ticker = bool(
+                left.company_ticker
+                and right.company_ticker
+                and _normalized_ticker(left.company_ticker)
+                == _normalized_ticker(right.company_ticker)
+            )
+            same_company = bool(
+                left.company_name
+                and right.company_name
+                and _identities_match(left.company_name, right.company_name)
+            )
+            if same_ticker or same_company:
+                union(left_index, right_index)
+
+    groups: dict[int, list[tuple[sqlite3.Row, _GlobalUploadIdentity]]] = {}
+    for index, entry in enumerate(identified):
+        groups.setdefault(find(index), []).append(entry)
+    return list(groups.values())
+
+
+def _merge_global_upload_identity(
+    group: list[tuple[sqlite3.Row, _GlobalUploadIdentity]],
+) -> _GlobalUploadIdentity:
+    identities = [identity for _item, identity in group]
+    names = sorted(
+        (identity for identity in identities if identity.company_name),
+        key=lambda identity: (-identity.company_confidence, -len(identity.company_name)),
+    )
+    tickers = sorted(
+        (identity for identity in identities if identity.company_ticker),
+        key=lambda identity: (
+            -identity.ticker_confidence,
+            -int("." in identity.company_ticker),
+            -len(identity.company_ticker),
+        ),
+    )
+    methods = [identity.method for identity in identities if identity.method != "not_detected"]
+    return _GlobalUploadIdentity(
+        company_name=names[0].company_name if names else "",
+        company_ticker=tickers[0].company_ticker if tickers else "",
+        company_confidence=names[0].company_confidence if names else 0.0,
+        ticker_confidence=tickers[0].ticker_confidence if tickers else 0.0,
+        method="+".join(dict.fromkeys(methods)) or "not_detected",
+    )
+
+
+def _project_routing_aliases(row: sqlite3.Row) -> list[str]:
+    aliases = [str(row["company_name"] or ""), str(row["name"] or "")]
+    try:
+        metadata = json.loads(str(row["metadata_json"] or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        metadata = {}
+    configured = metadata.get("company_aliases") if isinstance(metadata, dict) else None
+    if isinstance(configured, list):
+        aliases.extend(str(value) for value in configured if str(value).strip())
+    return list(dict.fromkeys(value.strip() for value in aliases if value.strip()))
+
+
+def _canonical_global_upload_project(
+    identity: _GlobalUploadIdentity,
+    project_rows: list[sqlite3.Row],
+) -> tuple[sqlite3.Row, float, str] | None:
+    ticker_key = _normalized_ticker(identity.company_ticker)
+    if ticker_key:
+        ticker_matches = [
+            row
+            for row in project_rows
+            if _normalized_ticker(str(row["company_ticker"] or "")) == ticker_key
+        ]
+        if ticker_matches:
+            ticker_matches.sort(
+                key=lambda row: (str(row["created_at"] or ""), str(row["dataset_id"]))
+            )
+            return ticker_matches[0], 0.995, "ticker_exact"
+
+    if identity.company_name:
+        company_matches = [
+            row
+            for row in project_rows
+            if any(
+                _identities_match(identity.company_name, alias)
+                for alias in _project_routing_aliases(row)
+            )
+        ]
+        if company_matches:
+            company_matches.sort(
+                key=lambda row: (str(row["created_at"] or ""), str(row["dataset_id"]))
+            )
+            return company_matches[0], 0.98, "company_identity"
+    return None
+
+
+def _merge_project_identity_metadata(
+    row: sqlite3.Row,
+    identity: _GlobalUploadIdentity,
+    aliases: list[str],
+) -> sqlite3.Row:
+    try:
+        metadata = json.loads(str(row["metadata_json"] or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        metadata = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    existing_aliases = metadata.get("company_aliases")
+    combined_aliases = [
+        str(value).strip()
+        for value in [
+            *(existing_aliases if isinstance(existing_aliases, list) else []),
+            *aliases,
+            identity.company_name,
+        ]
+        if str(value).strip()
+    ]
+    metadata["company_aliases"] = list(dict.fromkeys(str(value) for value in combined_aliases))
+    metadata.setdefault("source", "global_upload_auto")
+    dataset_id = str(row["dataset_id"])
+    with _connect_global_registry() as conn:
+        conn.execute(
+            """
+            UPDATE datasets
+            SET company_name = ?, company_ticker = ?, metadata_json = ?, updated_at = ?
+            WHERE dataset_id = ?
+            """,
+            (
+                str(row["company_name"] or identity.company_name),
+                str(row["company_ticker"] or identity.company_ticker),
+                json.dumps(metadata, ensure_ascii=False),
+                _now_iso(),
+                dataset_id,
+            ),
+        )
+        conn.commit()
+        refreshed = conn.execute(
+            "SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)
+        ).fetchone()
+    if refreshed is None:
+        raise RuntimeError(f"Auto-routed project disappeared: {dataset_id}")
+    return refreshed
+
+
+def _auto_project_dataset_id(identity: _GlobalUploadIdentity) -> str:
+    seed = identity.company_ticker.lower() or identity.company_name
+    base = _safe_dataset_id(seed, fallback=f"company-{secrets.token_hex(4)}")
+    with _connect_global_registry() as conn:
+        existing_ids = {
+            str(row[0])
+            for row in conn.execute("SELECT dataset_id FROM datasets").fetchall()
+        }
+    candidate = base
+    suffix = 2
+    while candidate in existing_ids:
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _ensure_global_upload_project(
+    identity: _GlobalUploadIdentity,
+    aliases: list[str],
+) -> tuple[sqlite3.Row, float, str] | None:
+    with _GLOBAL_UPLOAD_PROJECTS_LOCK:
+        with _connect_global_registry() as conn:
+            project_rows = conn.execute(
+                "SELECT * FROM datasets ORDER BY created_at, dataset_id"
+            ).fetchall()
+        existing = _canonical_global_upload_project(identity, project_rows)
+        if existing is not None:
+            row, score, method = existing
+            return _merge_project_identity_metadata(row, identity, aliases), score, method
+
+        if (
+            not identity.company_name
+            or identity.company_confidence < GLOBAL_UPLOAD_AUTO_CREATE_THRESHOLD
+        ):
+            return None
+        dataset_id = _auto_project_dataset_id(identity)
+        _create_project_row(
+            CreateProjectRequest(
+                dataset_id=dataset_id,
+                name=identity.company_name,
+                company_name=identity.company_name,
+                company_ticker=identity.company_ticker,
+            ),
+            metadata_source="global_upload_auto",
+            company_aliases=aliases,
+        )
+        row = _project_row(dataset_id)
+        if row is None:
+            raise RuntimeError(f"Auto-created project was not persisted: {dataset_id}")
+        return row, 1.0, "auto_created"
+
+
+def _global_upload_project_candidate(
+    row: sqlite3.Row,
+    *,
+    score: float,
+    method: str,
+) -> dict[str, Any]:
+    return {
+        "dataset_id": str(row["dataset_id"]),
+        "project_name": str(row["name"]),
+        "company_name": str(row["company_name"] or row["name"] or ""),
+        "company_ticker": str(row["company_ticker"] or ""),
+        "score": round(score, 4),
+        "method": method,
+    }
+
+
+def _match_global_upload_projects(
+    classification: Any,
+    filename: str,
+    project_rows: list[sqlite3.Row],
+) -> list[dict[str, Any]]:
+    detected_company = str(getattr(classification, "company_name", "") or "")
+    detected_ticker = _normalized_ticker(
+        str(getattr(classification, "company_ticker", "") or "")
+    )
+    company_confidence = float(getattr(classification, "company_confidence", 0) or 0)
+    filename_key = _normalized_identity(filename)
+    generic_names = {
+        "project",
+        "newproject",
+        "dataset",
+        "research",
+        "项目",
+        "新项目",
+        "研究项目",
+        "ces",
+        "test",
+    }
+    candidates: list[dict[str, Any]] = []
+    for row in project_rows:
+        score = 0.0
+        methods: list[str] = []
+        project_ticker = _normalized_ticker(str(row["company_ticker"] or ""))
+        if detected_ticker and project_ticker and detected_ticker == project_ticker:
+            score = 0.99
+            methods.append("ticker_exact")
+        elif project_ticker and project_ticker in re.sub(
+            r"[^A-Za-z0-9]+", "", filename
+        ).upper():
+            score = max(score, 0.97)
+            methods.append("filename_ticker")
+
+        aliases = _project_routing_aliases(row)
+        for alias in aliases:
+            alias_key = _normalized_identity(alias)
+            if not alias_key:
+                continue
+            if detected_company and _identities_match(detected_company, alias):
+                score = max(score, min(0.98, company_confidence + 0.02))
+                methods.append("company_identity")
+            if (
+                alias_key not in generic_names
+                and len(alias_key) >= (2 if re.search(r"[\u3400-\u9fff]", alias_key) else 4)
+                and alias_key in filename_key
+            ):
+                score = max(score, 0.96)
+                methods.append("filename_company")
+
+        if score <= 0:
+            continue
+        candidates.append(
+            {
+                "dataset_id": str(row["dataset_id"]),
+                "project_name": str(row["name"]),
+                "company_name": str(row["company_name"] or row["name"] or ""),
+                "company_ticker": str(row["company_ticker"] or ""),
+                "score": round(score, 4),
+                "method": "+".join(dict.fromkeys(methods)),
+            }
+        )
+    candidates.sort(key=lambda item: (-float(item["score"]), item["project_name"]))
+    return candidates[:8]
+
+
+def _select_automatic_global_upload_project(
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not candidates:
+        return None
+    top = candidates[0]
+    runner_up = float(candidates[1]["score"]) if len(candidates) > 1 else 0.0
+    if (
+        float(top["score"]) < GLOBAL_UPLOAD_AUTO_MATCH_THRESHOLD
+        or float(top["score"]) - runner_up < GLOBAL_UPLOAD_AUTO_MATCH_MARGIN
+    ):
+        return None
+    return top
+
+
+_GLOBAL_UPLOAD_ITEM_UPDATE_FIELDS = {
+    "status",
+    "company_name",
+    "company_ticker",
+    "company_confidence",
+    "company_detection_method",
+    "matched_dataset_id",
+    "project_match_confidence",
+    "project_match_method",
+    "candidate_projects_json",
+    "pipeline_job_id",
+    "error_message",
+}
+
+
+def _update_global_upload_item(item_id: str, **values: Any) -> None:
+    invalid = set(values) - _GLOBAL_UPLOAD_ITEM_UPDATE_FIELDS
+    if invalid:
+        raise ValueError(f"Unsupported global-upload fields: {sorted(invalid)}")
+    if not values:
+        return
+    values["updated_at"] = _now_iso()
+    assignments = ", ".join(f"{key} = ?" for key in values)
+    with _connect_global_registry() as conn:
+        conn.execute(
+            f"UPDATE private_fund_upload_items SET {assignments} WHERE item_id = ?",
+            (*values.values(), item_id),
+        )
+        conn.commit()
+
+
+def _set_global_upload_batch_status(
+    batch_id: str,
+    status: str,
+    *,
+    message: str = "",
+    finished: bool = False,
+) -> None:
+    with _connect_global_registry() as conn:
+        conn.execute(
+            """
+            UPDATE private_fund_upload_batches
+            SET status = ?, message = ?, updated_at = ?, finished_at = ?
+            WHERE batch_id = ?
+            """,
+            (status, message, _now_iso(), _now_iso() if finished else None, batch_id),
+        )
+        conn.commit()
+
+
+def _global_upload_batch_payload(batch_id: str) -> dict[str, Any] | None:
+    with _connect_global_registry() as conn:
+        batch = conn.execute(
+            "SELECT * FROM private_fund_upload_batches WHERE batch_id = ?", (batch_id,)
+        ).fetchone()
+        if batch is None:
+            return None
+        rows = conn.execute(
+            """
+            SELECT * FROM private_fund_upload_items
+            WHERE batch_id = ? ORDER BY created_at, original_filename
+            """,
+            (batch_id,),
+        ).fetchall()
+        projects = {
+            str(row["dataset_id"]): str(row["name"])
+            for row in conn.execute("SELECT dataset_id, name FROM datasets").fetchall()
+        }
+    items: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = str(row["status"])
+        counts[status] = counts.get(status, 0) + 1
+        try:
+            candidates = json.loads(str(row["candidate_projects_json"] or "[]"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            candidates = []
+        matched_dataset_id = str(row["matched_dataset_id"] or "") or None
+        items.append(
+            {
+                "item_id": row["item_id"],
+                "batch_id": row["batch_id"],
+                "file_name": row["original_filename"],
+                "file_type": row["file_type"],
+                "size": int(row["file_size"] or 0),
+                "checksum": row["checksum"],
+                "status": status,
+                "company_name": row["company_name"] or "",
+                "company_ticker": row["company_ticker"] or "",
+                "company_confidence": float(row["company_confidence"] or 0),
+                "company_detection_method": row["company_detection_method"] or "",
+                "matched_dataset_id": matched_dataset_id,
+                "matched_project_name": projects.get(matched_dataset_id or "", ""),
+                "project_match_confidence": float(row["project_match_confidence"] or 0),
+                "project_match_method": row["project_match_method"] or "",
+                "candidate_projects": candidates if isinstance(candidates, list) else [],
+                "pipeline_job_id": row["pipeline_job_id"],
+                "error_message": row["error_message"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        )
+    return {
+        "batch_id": batch["batch_id"],
+        "status": batch["status"],
+        "file_count": int(batch["file_count"] or 0),
+        "message": batch["message"] or "",
+        "counts": counts,
+        "items": items,
+        "created_at": batch["created_at"],
+        "updated_at": batch["updated_at"],
+        "finished_at": batch["finished_at"],
+    }
+
+
+def _list_global_upload_items_payload(status: str = "needs_review") -> list[dict[str, Any]]:
+    with _connect_global_registry() as conn:
+        batch_ids = [
+            str(row[0])
+            for row in conn.execute(
+                """
+                SELECT DISTINCT batch_id FROM private_fund_upload_items
+                WHERE status = ? ORDER BY updated_at DESC
+                """,
+                (status,),
+            ).fetchall()
+        ]
+    items: list[dict[str, Any]] = []
+    for batch_id in batch_ids:
+        payload = _global_upload_batch_payload(batch_id)
+        if payload:
+            items.extend(item for item in payload["items"] if item["status"] == status)
+    return items
+
+
+def _list_global_upload_batches_payload(limit: int = 20) -> list[dict[str, Any]]:
+    with _connect_global_registry() as conn:
+        batch_ids = [
+            str(row[0])
+            for row in conn.execute(
+                """
+                SELECT batch_id FROM private_fund_upload_batches
+                ORDER BY updated_at DESC LIMIT ?
+                """,
+                (max(1, min(limit, 100)),),
+            ).fetchall()
+        ]
+    return [
+        payload
+        for batch_id in batch_ids
+        if (payload := _global_upload_batch_payload(batch_id)) is not None
+    ]
+
+
+def _create_global_upload_batch(files: list[UploadFile]) -> dict[str, Any]:
+    if not files:
+        raise HTTPException(status_code=400, detail="At least one file is required.")
+    safe_names = [_safe_upload_name(uploaded.filename) for uploaded in files]
+    batch_id = f"upload_{secrets.token_hex(10)}"
+    batch_dir = _global_uploads_root() / batch_id
+    batch_dir.mkdir(parents=True, exist_ok=False)
+    now = _now_iso()
+    total_size = 0
+    try:
+        with _connect_global_registry() as conn:
+            conn.execute(
+                """
+                INSERT INTO private_fund_upload_batches (
+                    batch_id, status, file_count, message, created_at, updated_at, finished_at
+                ) VALUES (?, 'queued', ?, ?, ?, ?, NULL)
+                """,
+                (
+                    batch_id,
+                    len(files),
+                    "Files uploaded; company identification is queued.",
+                    now,
+                    now,
+                ),
+            )
+            for uploaded, filename in zip(files, safe_names, strict=True):
+                item_id = f"file_{secrets.token_hex(10)}"
+                staged_path = batch_dir / f"{item_id}{Path(filename).suffix.lower()}"
+                digest = hashlib.sha256()
+                size = 0
+                with staged_path.open("wb") as destination:
+                    while chunk := uploaded.file.read(1024 * 1024):
+                        size += len(chunk)
+                        total_size += len(chunk)
+                        if size > GLOBAL_UPLOAD_FILE_LIMIT_BYTES:
+                            raise HTTPException(
+                                status_code=413,
+                                detail=f"Uploaded file is too large: {filename}",
+                            )
+                        if total_size > GLOBAL_UPLOAD_BATCH_LIMIT_BYTES:
+                            raise HTTPException(
+                                status_code=413, detail="Upload batch is too large."
+                            )
+                        digest.update(chunk)
+                        destination.write(chunk)
+                if size == 0:
+                    raise HTTPException(
+                        status_code=400, detail=f"Uploaded file is empty: {filename}"
+                    )
+                conn.execute(
+                    """
+                    INSERT INTO private_fund_upload_items (
+                        item_id, batch_id, original_filename, staged_path, file_type,
+                        file_size, checksum, status, company_name, company_ticker,
+                        company_confidence, company_detection_method, matched_dataset_id,
+                        project_match_confidence, project_match_method,
+                        candidate_projects_json, pipeline_job_id, error_message,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'uploaded', '', '', 0, '', NULL,
+                              0, '', '[]', NULL, NULL, ?, ?)
+                    """,
+                    (
+                        item_id,
+                        batch_id,
+                        filename,
+                        str(staged_path),
+                        staged_path.suffix.lower().lstrip("."),
+                        size,
+                        digest.hexdigest(),
+                        now,
+                        now,
+                    ),
+                )
+            conn.commit()
+    except Exception:
+        shutil.rmtree(batch_dir, ignore_errors=True)
+        raise
+    payload = _global_upload_batch_payload(batch_id)
+    if payload is None:
+        raise RuntimeError("Global upload batch was not persisted.")
+    return payload
+
+
+def _global_upload_item_row(item_id: str) -> sqlite3.Row | None:
+    with _connect_global_registry() as conn:
+        return conn.execute(
+            "SELECT * FROM private_fund_upload_items WHERE item_id = ?", (item_id,)
+        ).fetchone()
+
+
+def _route_global_upload_item(
+    item_id: str,
+    dataset_id: str,
+    *,
+    match_confidence: float = 1.0,
+    match_method: str = "manual",
+) -> bool:
+    item = _global_upload_item_row(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Global upload item not found.")
+    _require_project_row(dataset_id)
+    if str(item["status"]) in {"completed", "completed_with_warnings", "duplicate"}:
+        raise HTTPException(status_code=409, detail="This upload item is already complete.")
+    staged_path = Path(str(item["staged_path"]))
+    if not staged_path.is_file():
+        raise HTTPException(
+            status_code=410, detail="The staged upload file is no longer available."
+        )
+
+    previous_dataset_id = str(item["matched_dataset_id"] or "")
+    if (
+        previous_dataset_id
+        and previous_dataset_id != dataset_id
+        and str(item["status"]) == "needs_review"
+    ):
+        previous_target = _project_uploads_dir(previous_dataset_id) / str(
+            item["original_filename"]
+        )
+        if previous_target.is_file():
+            previous_digest = hashlib.sha256(previous_target.read_bytes()).hexdigest()
+            if previous_digest == str(item["checksum"]):
+                previous_target.unlink()
+                _mark_project_uploads_changed(
+                    previous_dataset_id, _project_uploads_dir(previous_dataset_id)
+                )
+
+    uploads_dir = _seed_uploads_from_raw(dataset_id)
+    target = uploads_dir / _safe_upload_name(str(item["original_filename"]))
+    duplicate = False
+    if target.is_file():
+        duplicate = hashlib.sha256(target.read_bytes()).hexdigest() == str(item["checksum"])
+    retry_existing = bool(
+        duplicate and str(item["status"]) == "failed" and item["pipeline_job_id"]
+    )
+    if not duplicate:
+        temporary = target.with_name(f".{target.name}.{item_id}.tmp")
+        shutil.copy2(staged_path, temporary)
+        os.replace(temporary, target)
+        _mark_project_uploads_changed(dataset_id, uploads_dir)
+    _update_global_upload_item(
+        item_id,
+        status="routed" if retry_existing or not duplicate else "duplicate",
+        matched_dataset_id=dataset_id,
+        project_match_confidence=match_confidence,
+        project_match_method=match_method,
+        error_message=None,
+    )
+    return retry_existing or not duplicate
+
+
+def _finalize_global_upload_batch(batch_id: str) -> None:
+    payload = _global_upload_batch_payload(batch_id)
+    if payload is None:
+        return
+    statuses = {str(item["status"]) for item in payload["items"]}
+    if statuses & {"uploaded", "identifying", "routing", "routed", "index_queued", "indexing"}:
+        status = (
+            "indexing"
+            if statuses & {"routing", "routed", "index_queued", "indexing"}
+            else "identifying"
+        )
+        _set_global_upload_batch_status(batch_id, status)
+        return
+    if "needs_review" in statuses:
+        _set_global_upload_batch_status(
+            batch_id,
+            "needs_review",
+            message="Some files need a project choice before indexing can continue.",
+        )
+        return
+    if "failed" in statuses:
+        _set_global_upload_batch_status(
+            batch_id,
+            "completed_with_errors",
+            message="Some files failed to identify or index.",
+            finished=True,
+        )
+        return
+    _set_global_upload_batch_status(
+        batch_id,
+        "completed",
+        message="All routed files finished indexing.",
+        finished=True,
+    )
+
+
+def _run_global_upload_pipeline(
+    batch_id: str, dataset_id: str, item_ids: list[str]
+) -> None:
+    row = _require_project_row(dataset_id)
+    uploads_dir = _seed_uploads_from_raw(dataset_id)
+    item_rows = [
+        item
+        for item_id in item_ids
+        if (item := _global_upload_item_row(item_id)) is not None
+    ]
+    detected_project_company = next(
+        (
+            str(item["company_name"])
+            for item in item_rows
+            if item["company_name"]
+            and _identities_match(str(item["company_name"]), str(row["name"] or ""))
+        ),
+        "",
+    )
+    detected_project_ticker = next(
+        (str(item["company_ticker"]) for item in item_rows if item["company_ticker"]),
+        "",
+    )
+    expected_company = str(row["company_name"] or detected_project_company or row["name"] or "")
+    expected_ticker = str(row["company_ticker"] or detected_project_ticker or "")
+    job_id = hashlib.sha256(f"global-upload\0{dataset_id}\0{_now_iso()}".encode()).hexdigest()[
+        :16
+    ]
+    payload = {
+        "dataset_id": dataset_id,
+        "dataset_name": row["name"],
+        "company_name": expected_company,
+        "company_ticker": expected_ticker,
+        "directory_path": str(uploads_dir),
+        "workspace_root": str(_dataset_workspace_root()),
+        "recursive": True,
+        "reset": False,
+    }
+    with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
+        _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
+            "job_id": job_id,
+            "dataset_id": dataset_id,
+            "status": "queued",
+            "created_at": _now_iso(),
+            "directory_path": str(uploads_dir),
+            "workspace_root": str(_dataset_workspace_root()),
+        }
+    for item_id in item_ids:
+        _update_global_upload_item(
+            item_id, status="indexing", pipeline_job_id=job_id, error_message=None
+        )
+    _set_global_upload_batch_status(batch_id, "indexing", message="Project indexing is running.")
+    _project_pipeline_worker(job_id, payload)
+    job = _get_project_pipeline_job_payload(job_id) or {}
+    job_status = str(job.get("status") or "failed")
+    result = job.get("result") if isinstance(job.get("result"), dict) else {}
+    documents = result.get("documents") if isinstance(result, dict) else []
+    document_by_name = {
+        str(document.get("filename") or ""): document
+        for document in documents or []
+        if isinstance(document, dict)
+    }
+    for item_id in item_ids:
+        item = _global_upload_item_row(item_id)
+        if item is None:
+            continue
+        document = document_by_name.get(str(item["original_filename"])) or {}
+        document_status = str(document.get("status") or "")
+        if document_status == "classification_review_required":
+            _update_global_upload_item(
+                item_id,
+                status="needs_review",
+                error_message=str(
+                    document.get("error_message") or "Company conflict requires review."
+                ),
+            )
+        elif document_status in {"needs_ocr", "unsupported"}:
+            _update_global_upload_item(
+                item_id,
+                status="completed_with_warnings",
+                error_message=str(
+                    document.get("error_message") or "Indexing completed with warnings."
+                ),
+            )
+        elif (
+            job_status in {"completed", "completed_with_warnings"}
+            and document_status != "failed"
+        ):
+            _update_global_upload_item(item_id, status="completed", error_message=None)
+        else:
+            _update_global_upload_item(
+                item_id,
+                status="failed",
+                error_message=str(
+                    document.get("error_message")
+                    or job.get("message")
+                    or f"Pipeline did not complete: {job_status}"
+                ),
+            )
+
+
+def _process_global_upload_batch(batch_id: str) -> None:
+    _set_global_upload_batch_status(
+        batch_id,
+        "identifying",
+        message="Identifying companies and grouping files in the background.",
+    )
+    with _connect_global_registry() as conn:
+        items = conn.execute(
+            """
+            SELECT * FROM private_fund_upload_items
+            WHERE batch_id = ? AND status = 'uploaded'
+            ORDER BY created_at
+            """,
+            (batch_id,),
+        ).fetchall()
+    ingest = _private_fund_ingest_module()
+    classification_llm = None
+    if os.environ.get("PRIVATE_FUND_DOCUMENT_CLASSIFIER_USE_LLM", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }:
+        try:
+            classification_llm, _ = _load_chat_client()
+        except Exception:  # noqa: BLE001 - optional LLM failure must fall back to rules
+            _logger.warning(
+                "global upload classifier LLM unavailable; using deterministic rules",
+                exc_info=True,
+            )
+    identified: list[tuple[sqlite3.Row, _GlobalUploadIdentity]] = []
+    for item in items:
+        item_id = str(item["item_id"])
+        try:
+            _update_global_upload_item(item_id, status="identifying", error_message=None)
+            preview = ingest.build_document_preview(Path(str(item["staged_path"])))
+            classification = ingest.classify_document(
+                preview,
+                expected_company="",
+                expected_ticker="",
+                llm_client=classification_llm,
+            )
+            identity = _global_upload_identity(
+                classification, str(item["original_filename"])
+            )
+            identified.append((item, identity))
+            _update_global_upload_item(
+                item_id,
+                company_name=identity.company_name,
+                company_ticker=identity.company_ticker,
+                company_confidence=identity.company_confidence,
+                company_detection_method=identity.method,
+            )
+        except Exception as exc:
+            _logger.exception("global upload identification failed: item_id=%s", item_id)
+            _update_global_upload_item(item_id, status="failed", error_message=str(exc))
+
+    _set_global_upload_batch_status(
+        batch_id,
+        "routing",
+        message="Creating or matching one research project per company.",
+    )
+    routed: dict[str, list[str]] = {}
+    for group in _cluster_global_upload_identities(identified):
+        identity = _merge_global_upload_identity(group)
+        aliases = list(
+            dict.fromkeys(
+                entry_identity.company_name
+                for _item, entry_identity in group
+                if entry_identity.company_name
+            )
+        )
+        try:
+            project_match = _ensure_global_upload_project(identity, aliases)
+            if project_match is None:
+                for item, _item_identity in group:
+                    _update_global_upload_item(
+                        str(item["item_id"]),
+                        status="needs_review",
+                        company_name=identity.company_name,
+                        company_ticker=identity.company_ticker,
+                        company_confidence=identity.company_confidence,
+                        company_detection_method=identity.method,
+                        matched_dataset_id=None,
+                        project_match_confidence=0.0,
+                        project_match_method="",
+                        candidate_projects_json="[]",
+                        error_message=(
+                            "The company could not be identified with enough confidence; "
+                            "the file remains safely staged for later review."
+                        ),
+                    )
+                continue
+            project, match_confidence, match_method = project_match
+            candidate = _global_upload_project_candidate(
+                project, score=match_confidence, method=match_method
+            )
+            dataset_id = str(project["dataset_id"])
+            for item, _item_identity in group:
+                item_id = str(item["item_id"])
+                _update_global_upload_item(
+                    item_id,
+                    status="routing",
+                    company_name=identity.company_name,
+                    company_ticker=identity.company_ticker,
+                    company_confidence=identity.company_confidence,
+                    company_detection_method=identity.method,
+                    matched_dataset_id=dataset_id,
+                    project_match_confidence=match_confidence,
+                    project_match_method=match_method,
+                    candidate_projects_json=json.dumps([candidate], ensure_ascii=False),
+                    error_message=None,
+                )
+                if _route_global_upload_item(
+                    item_id,
+                    dataset_id,
+                    match_confidence=match_confidence,
+                    match_method=match_method,
+                ):
+                    routed.setdefault(dataset_id, []).append(item_id)
+        except Exception as exc:
+            item_ids = [str(item["item_id"]) for item, _identity in group]
+            _logger.exception(
+                "global upload project routing failed: batch_id=%s item_ids=%s",
+                batch_id,
+                item_ids,
+            )
+            for item_id in item_ids:
+                _update_global_upload_item(item_id, status="failed", error_message=str(exc))
+    for dataset_id, item_ids in routed.items():
+        try:
+            _run_global_upload_pipeline(batch_id, dataset_id, item_ids)
+        except Exception as exc:
+            _logger.exception(
+                "global upload project pipeline failed: batch_id=%s dataset_id=%s",
+                batch_id,
+                dataset_id,
+            )
+            for item_id in item_ids:
+                _update_global_upload_item(item_id, status="failed", error_message=str(exc))
+    _finalize_global_upload_batch(batch_id)
+
+
+def _process_manually_routed_global_upload(item_id: str, dataset_id: str) -> None:
+    item = _global_upload_item_row(item_id)
+    if item is None:
+        return
+    batch_id = str(item["batch_id"])
+    try:
+        needs_pipeline = _route_global_upload_item(
+            item_id, dataset_id, match_confidence=1.0, match_method="manual"
+        )
+        if needs_pipeline:
+            _run_global_upload_pipeline(batch_id, dataset_id, [item_id])
+    except Exception as exc:
+        _logger.exception("manual global upload routing failed: item_id=%s", item_id)
+        _update_global_upload_item(item_id, status="failed", error_message=str(exc))
+    _finalize_global_upload_batch(batch_id)
 
 
 def _private_fund_ingest_module() -> Any:
@@ -1140,7 +2235,12 @@ def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
     return files
 
 
-def _create_project_row(request: CreateProjectRequest) -> dict[str, Any]:
+def _create_project_row(
+    request: CreateProjectRequest,
+    *,
+    metadata_source: str = "omnigent_research_project_ui",
+    company_aliases: list[str] | None = None,
+) -> dict[str, Any]:
     name = request.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Project name is required.")
@@ -1176,7 +2276,25 @@ def _create_project_row(request: CreateProjectRequest) -> dict[str, Any]:
                 0,
                 now,
                 now,
-                json.dumps({"source": "omnigent_research_project_ui"}, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "source": metadata_source,
+                        **(
+                            {
+                                "company_aliases": list(
+                                    dict.fromkeys(
+                                        value.strip()
+                                        for value in (company_aliases or [])
+                                        if value.strip()
+                                    )
+                                )
+                            }
+                            if company_aliases
+                            else {}
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
             ),
         )
         conn.commit()
@@ -1431,6 +2549,13 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
                         _collection_db_path(dataset_id),
                         dataset_id,
                         include_history=False,
+                    )
+                )
+                valuation_tracking_jobs.append(
+                    private_fund_valuation_tracking.enqueue_context_refresh(
+                        _collection_db_path(dataset_id),
+                        dataset_id,
+                        source_id=job_id,
                     )
                 )
             except Exception as exc:
@@ -2935,6 +4060,7 @@ class _PrivateFundPdfWorkspace:
                 "needs_review": result.needs_review,
                 "llm_used": result.llm_used,
                 "llm_error": result.llm_error,
+                "citation_gate": result.citation_gate,
                 "citations": _jsonable(result.citations),
                 "traces": _trace_payload(self.demo, result.citations),
             }
@@ -3025,6 +4151,7 @@ class _PrivateFundPdfWorkspace:
             "sections": _jsonable(memo.sections),
             "llm_used": memo.llm_used,
             "llm_error": memo.llm_error,
+            "citation_gates": [section.citation_gate for section in memo.sections],
             "citations": _jsonable(memo.citations),
             "traces": _trace_payload(self.demo, memo.citations),
             "pdf_path": str(pdf_path),
@@ -3041,6 +4168,59 @@ def create_private_fund_pdf_router(
     """Create local private-fund PDF endpoints mounted under ``/v1``."""
     router = APIRouter()
     active_workspace = workspace or _PrivateFundPdfWorkspace()
+
+    @router.post("/private-fund/uploads", status_code=202)
+    def upload_private_fund_files_globally(
+        background_tasks: BackgroundTasks,
+        files: Annotated[list[UploadFile], FastApiFile(...)],
+    ) -> dict[str, Any]:
+        batch = _create_global_upload_batch(files)
+        background_tasks.add_task(_process_global_upload_batch, str(batch["batch_id"]))
+        return {"batch": batch}
+
+    @router.get("/private-fund/upload-batches/{batch_id}")
+    def get_private_fund_upload_batch(batch_id: str) -> dict[str, Any]:
+        batch = _global_upload_batch_payload(batch_id)
+        if batch is None:
+            raise HTTPException(status_code=404, detail="Global upload batch not found.")
+        return {"batch": batch}
+
+    @router.get("/private-fund/upload-batches")
+    def list_private_fund_upload_batches(
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> dict[str, Any]:
+        return {"batches": _list_global_upload_batches_payload(limit)}
+
+    @router.get("/private-fund/upload-items")
+    def list_private_fund_upload_items(
+        status: str = Query(default="needs_review", min_length=1, max_length=40),
+    ) -> dict[str, Any]:
+        return {"items": _list_global_upload_items_payload(status)}
+
+    @router.post("/private-fund/upload-items/{item_id}/route", status_code=202)
+    def route_private_fund_upload_item(
+        item_id: str,
+        request: RouteGlobalUploadRequest,
+        background_tasks: BackgroundTasks,
+    ) -> dict[str, Any]:
+        item = _global_upload_item_row(item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Global upload item not found.")
+        _require_project_row(request.dataset_id)
+        if str(item["status"]) not in {"needs_review", "failed"}:
+            raise HTTPException(
+                status_code=409,
+                detail="Only uploads that need review or failed may be routed manually.",
+            )
+        _update_global_upload_item(item_id, status="routing", error_message=None)
+        _set_global_upload_batch_status(
+            str(item["batch_id"]), "indexing", message="Manual project routing is queued."
+        )
+        background_tasks.add_task(
+            _process_manually_routed_global_upload, item_id, request.dataset_id
+        )
+        batch = _global_upload_batch_payload(str(item["batch_id"]))
+        return {"batch": batch}
 
     @router.get("/private-fund/projects")
     def list_projects(request: Request) -> dict[str, Any]:
@@ -3094,11 +4274,17 @@ def create_private_fund_pdf_router(
     @router.post("/private-fund/projects/{dataset_id}/files")
     def upload_project_files(
         dataset_id: str,
-        files: list[UploadFile] = FastApiFile(...),
+        background_tasks: BackgroundTasks,
+        files: Annotated[list[UploadFile], FastApiFile(...)],
     ) -> dict[str, Any]:
         if not files:
             raise HTTPException(status_code=400, detail="At least one file is required.")
-        return _save_uploaded_project_files(dataset_id, files)
+        payload = _save_uploaded_project_files(dataset_id, files)
+        # Upload is the durable user event: indexing and valuation analysis are
+        # queued here so callers cannot accidentally save a file without
+        # starting the pipeline.
+        payload["job"] = _queue_project_pipeline_job(dataset_id, background_tasks)
+        return payload
 
     @router.delete("/private-fund/projects/{dataset_id}/files/{file_name}")
     def delete_project_file(dataset_id: str, file_name: str) -> dict[str, Any]:
@@ -3358,6 +4544,12 @@ def create_private_fund_pdf_router(
             _collection_db_path(dataset_id),
             dataset_id,
             include_history=True,
+            requeue_failed=True,
+        )
+        private_fund_valuation_tracking.enqueue_context_refresh(
+            _collection_db_path(dataset_id),
+            dataset_id,
+            source_id=f"manual-{_now_iso()}",
             requeue_failed=True,
         )
         return {"jobs": jobs}

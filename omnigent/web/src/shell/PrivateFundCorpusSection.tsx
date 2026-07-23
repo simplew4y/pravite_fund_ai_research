@@ -28,12 +28,15 @@ import {
   RotateCcwIcon,
   SearchIcon,
   Trash2Icon,
+  UploadCloudIcon,
   UploadIcon,
 } from "lucide-react";
 
 import { PrivateFundCreateProjectDialog } from "@/components/private-fund/PrivateFundCreateProjectDialog";
+import { PrivateFundGlobalUploadDialog } from "@/components/private-fund/PrivateFundGlobalUploadDialog";
 import { PrivateFundUploadDialog } from "@/components/private-fund/PrivateFundUploadDialog";
 import { usePrivateFundDocumentUpload } from "@/components/private-fund/usePrivateFundDocumentUpload";
+import { usePrivateFundGlobalUpload } from "@/components/private-fund/usePrivateFundGlobalUpload";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -415,6 +418,7 @@ export function PrivateFundCorpusSection({
   const project = projectQuery.data?.project;
   const files = projectQuery.data?.files ?? EMPTY_FILES;
   const upload = usePrivateFundDocumentUpload(selectedDatasetId);
+  const globalUpload = usePrivateFundGlobalUpload();
   const deleteProject = useDeletePrivateFundProject();
   const deleteFiles = useDeletePrivateFundFiles(selectedDatasetId);
   const createFolder = useCreatePrivateFundSourceFolder(selectedDatasetId);
@@ -755,8 +759,6 @@ export function PrivateFundCorpusSection({
     );
   }
 
-  if (!selectedDatasetId && projects.length === 0 && !projectsLoading) return null;
-
   return (
     <section className="mb-3" data-testid="private-fund-corpus-section">
       <PrivateFundCreateProjectDialog
@@ -765,6 +767,21 @@ export function PrivateFundCorpusSection({
         onCreated={(created) => switchProject(created.datasetId)}
       />
       <PrivateFundUploadDialog {...upload.dialogProps} />
+      <PrivateFundGlobalUploadDialog
+        open={globalUpload.open}
+        batch={globalUpload.batch}
+        message={globalUpload.message}
+        projects={projects}
+        uploading={globalUpload.isUploading}
+        processing={globalUpload.isProcessing}
+        routing={globalUpload.isRouting}
+        progressPercent={globalUpload.progressPercent}
+        progressLabel={globalUpload.progressLabel}
+        onOpenChange={globalUpload.setOpen}
+        onSelectFiles={globalUpload.selectFiles}
+        onRoute={globalUpload.routeItem}
+        onStartAnotherBatch={globalUpload.startAnotherBatch}
+      />
       <Dialog
         open={projectDeleteOpen}
         onOpenChange={(open) => !deleteProject.isPending && setProjectDeleteOpen(open)}
@@ -859,6 +876,31 @@ export function PrivateFundCorpusSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Button
+        type="button"
+        variant="secondary"
+        data-testid="private-fund-global-upload-button"
+        className="mb-2 h-auto w-full justify-start gap-2 rounded-lg px-2.5 py-2 text-left"
+        onClick={globalUpload.openDialog}
+      >
+        {globalUpload.isUploading || globalUpload.isProcessing ? (
+          <Loader2Icon className="size-4 shrink-0 animate-spin text-primary" />
+        ) : (
+          <UploadCloudIcon className="size-4 shrink-0 text-primary" />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-semibold">统一上传资料</span>
+          <span className="block truncate text-[10px] font-normal text-muted-foreground">
+            {globalUpload.progressLabel}
+          </span>
+        </span>
+        {globalUpload.attentionCount > 0 ? (
+          <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">
+            {globalUpload.attentionCount} 待确认
+          </span>
+        ) : null}
+      </Button>
 
       <div className="flex min-h-9 items-center gap-1">
         <Popover open={projectPickerOpen} onOpenChange={setProjectPickerOpen}>

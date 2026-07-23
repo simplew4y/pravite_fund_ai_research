@@ -11,6 +11,7 @@ docs/.obsidian/
 # Secrets / local credentials.
 .env
 .env.*
+!.env.example
 OAI_CONFIG_LIST
 PERSONAL_KEYS
 config_api_keys

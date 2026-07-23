@@ -190,8 +190,7 @@ export function PrivateFundComposeIntentBanner({
   noteMode: PresentationMode;
   onClear: () => void;
 }) {
-  const noteLabel =
-    PRIVATE_FUND_NOTE_OPTIONS.find((o) => o.value === noteMode)?.label ?? "文本";
+  const noteLabel = PRIVATE_FUND_NOTE_OPTIONS.find((o) => o.value === noteMode)?.label ?? "文本";
   const title = intent === "memo" ? "生成 Memo 模式" : `生成${noteLabel}笔记模式`;
   const hint =
     intent === "memo"

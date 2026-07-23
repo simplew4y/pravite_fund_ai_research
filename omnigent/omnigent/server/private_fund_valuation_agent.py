@@ -659,7 +659,9 @@ def _plan_evidence(
 You are the planning stage of a valuation-model analysis Agent.
 Choose the evidence needed to analyze the model across valuation method,
 operating forecasts, assumptions, formula logic, sensitivities, risks, and
-investment impact. Return JSON only with:
+investment impact. When a predecessor exists, prioritize evidence that explains
+why each material input, output, formula, period, or scenario changed instead of
+merely repeating the numeric delta. Return JSON only with:
 {{"selected_evidence_ids": ["..."], "analysis_dimensions": ["..."],
   "comparison_questions": ["..."]}}
 Select at most {MAX_SELECTED_EVIDENCE} IDs and use only IDs in the catalog.
@@ -831,6 +833,7 @@ Return a compact JSON object only with this shape:
   "valuation_method": "...",
   "executive_summary": "...",
   "investment_conclusion": "...",
+  "version_change_summary": "...",
   "key_findings": [
     {{"title":"...", "detail":"...", "impact":"low|medium|high|critical",
       "confidence":0.0, "evidence_ids":["..."]}}
@@ -844,7 +847,9 @@ Return a compact JSON object only with this shape:
 
 Keep the response decision-dense: 5-6 key findings, no more than 3 risks, and
 no more than 3 open questions. Keep each detail within 160 Chinese characters.
-Do not invent evidence, values, or formulas.
+State whether an explanation is deterministic from the workbook or an inference.
+Treat a matching historical snapshot as rollback, not as a new economic change.
+Do not invent evidence, values, formulas, or reasons for changes.
 
 Model: {version["series_name"]} v{version["document_version_no"]}
 Company: {version["company_name"]} {version["company_ticker"]}
@@ -925,6 +930,9 @@ Selected evidence:
         "valuation_method": str(analysis_payload.get("valuation_method") or "unknown")[:300],
         "executive_summary": executive_summary,
         "investment_conclusion": str(analysis_payload.get("investment_conclusion") or "")[:12000],
+        "version_change_summary": str(
+            analysis_payload.get("version_change_summary") or ""
+        )[:12000],
         "key_findings": _normalize_claims(analysis_payload.get("key_findings"), valid_ids),
         "evidence_chain": _normalize_claims(action_payload.get("evidence_chain"), valid_ids),
         "recommended_changes": _normalize_recommendations(
