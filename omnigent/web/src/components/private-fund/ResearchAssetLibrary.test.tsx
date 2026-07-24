@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { PrivateFundAsset } from "@/lib/privateFundApi";
@@ -44,6 +44,30 @@ const assets: PrivateFundAsset[] = [
     updatedAt: "2026-07-12T00:00:00Z",
   },
 ];
+
+const memoAsset = (
+  assetId: string,
+  seriesId: string,
+  title: string,
+  versionNo: number,
+  updatedAt: string,
+): PrivateFundAsset => ({
+  assetId,
+  assetType: "memo",
+  displayGroup: "memo",
+  displayLabel: "Memo",
+  title,
+  summary: `Memo v${versionNo}`,
+  contentMarkdown: `# ${title}`,
+  format: "markdown",
+  status: "completed",
+  sourceKind: "memo",
+  tags: [],
+  versionNo,
+  evidenceCount: versionNo,
+  metadata: { series_id: seriesId, memo_version_id: assetId },
+  updatedAt,
+});
 
 describe("ResearchAssetLibrary", () => {
   it("filters assets and adds a checked asset directly to the conversation context", () => {
@@ -103,13 +127,13 @@ describe("ResearchAssetLibrary", () => {
     expect(screen.queryByRole("button", { name: /上传/ })).toBeNull();
   });
 
-  it("uses the conversation-context selection for deletion", async () => {
+  it("keeps conversation context separate from batch deletion selection", async () => {
     const deleteAssets = vi.fn().mockResolvedValue(undefined);
     const setContext = vi.fn();
-    const { rerender } = render(
+    render(
       <ResearchAssetLibrary
         assets={assets}
-        contextAssetIds={[]}
+        contextAssetIds={["asset_info"]}
         onDeleteAssets={deleteAssets}
         onOpenAsset={vi.fn()}
         onSetContext={setContext}
@@ -119,24 +143,22 @@ describe("ResearchAssetLibrary", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "条目类型" }), {
       target: { value: "document" },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部条目" }));
-    expect(setContext).toHaveBeenCalledWith(["document:report"]);
+    expect(screen.queryByRole("button", { name: /删除管理选中/ })).toBeNull();
 
-    rerender(
-      <ResearchAssetLibrary
-        assets={assets}
-        contextAssetIds={["document:report"]}
-        onDeleteAssets={deleteAssets}
-        onOpenAsset={vi.fn()}
-        onSetContext={setContext}
-      />,
-    );
-    expect(screen.getByRole("checkbox", { name: "加入上下文 交流会原文.pdf" })).toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: "删除已选 1 项" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入批量管理" }));
+    expect(screen.getByRole("checkbox", { name: "选择管理 交流会原文.pdf" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "删除管理选中 0 项" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择当前显示的全部管理条目" }));
+    expect(setContext).not.toHaveBeenCalled();
+    expect(screen.getByRole("checkbox", { name: "选择管理 交流会原文.pdf" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "删除管理选中 1 项" }));
     expect(screen.getByRole("heading", { name: "删除 1 项？" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 
-    expect(deleteAssets).toHaveBeenCalledWith(["document:report"]);
+    await waitFor(() => expect(deleteAssets).toHaveBeenCalledWith(["document:report"]));
+    expect(screen.queryByTestId("asset-management-toolbar")).toBeNull();
+    expect(screen.getByRole("button", { name: "进入批量管理" })).toBeInTheDocument();
   });
 
   it("supports compact type filtering and ascending or descending time sorting", () => {
@@ -196,6 +218,76 @@ describe("ResearchAssetLibrary", () => {
       />,
     );
     expect(screen.getByRole("checkbox", { name: "加入上下文 交流会原文.pdf" })).toBeChecked();
-    expect(screen.getByRole("button", { name: "删除已选 1 项" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /删除管理选中/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "进入批量管理" }));
+    expect(screen.queryByRole("checkbox", { name: "加入上下文 交流会原文.pdf" })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "选择管理 交流会原文.pdf" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "删除管理选中 0 项" })).toBeDisabled();
+  });
+
+  it("groups Memo versions by series and opens the latest version by default", () => {
+    const open = vi.fn();
+    const openHistory = vi.fn();
+    const memoAssets = [
+      memoAsset("memo:v1", "series-overseas", "海外盈利质量 Memo", 1, "2026-07-01T00:00:00Z"),
+      memoAsset("memo:v2", "series-overseas", "海外盈利质量 Memo", 2, "2026-07-10T00:00:00Z"),
+      memoAsset("memo:risk-v1", "series-risk", "风险事项 Memo", 1, "2026-07-08T00:00:00Z"),
+    ];
+
+    render(
+      <ResearchAssetLibrary
+        assets={memoAssets}
+        compact
+        contextAssetIds={[]}
+        onDeleteAssets={vi.fn()}
+        onOpenAsset={open}
+        onOpenMemoHistory={openHistory}
+        onSetContext={vi.fn()}
+        title="Memo"
+        zone="memos"
+      />,
+    );
+
+    expect(screen.getAllByText("海外盈利质量 Memo")).toHaveLength(1);
+    expect(screen.getByText(/当前 v2 · 共 2 个版本/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开当前版本 海外盈利质量 Memo" }));
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ assetId: "memo:v2" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "查看版本记录 海外盈利质量 Memo" }));
+    expect(screen.getByRole("button", { name: "打开 海外盈利质量 Memo v2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开 海外盈利质量 Memo v1" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "对比版本 海外盈利质量 Memo" }));
+    expect(openHistory).toHaveBeenCalledWith("series-overseas");
+    expect(screen.queryByRole("button", { name: "对比版本 风险事项 Memo" })).toBeNull();
+  });
+
+  it("keeps concrete Memo versions visible in batch management mode", () => {
+    const memoAssets = [
+      memoAsset("memo:v1", "series-overseas", "海外盈利质量 Memo", 1, "2026-07-01T00:00:00Z"),
+      memoAsset("memo:v2", "series-overseas", "海外盈利质量 Memo", 2, "2026-07-10T00:00:00Z"),
+    ];
+
+    render(
+      <ResearchAssetLibrary
+        assets={memoAssets}
+        compact
+        contextAssetIds={[]}
+        onDeleteAssets={vi.fn()}
+        onOpenAsset={vi.fn()}
+        onSetContext={vi.fn()}
+        title="Memo"
+        zone="memos"
+      />,
+    );
+
+    expect(screen.getAllByText("海外盈利质量 Memo")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "进入批量管理" }));
+    expect(screen.getAllByText("海外盈利质量 Memo")).toHaveLength(2);
+    expect(
+      screen.getAllByRole("checkbox", { name: "选择管理 海外盈利质量 Memo" }),
+    ).toHaveLength(2);
   });
 });

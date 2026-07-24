@@ -101,7 +101,7 @@ function TableBlock({ block }: { block: Extract<PrivateFundRichContentBlock, { t
     <BlockFrame title={block.title}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[520px] border-collapse text-xs">
-          <thead className="bg-[var(--pf-panel-subtle)] text-[var(--pf-ink-secondary)]">
+          <thead className="sticky top-0 z-10 bg-[var(--pf-panel-subtle)] text-[var(--pf-ink-secondary)] shadow-[0_1px_0_var(--pf-line)]">
             <tr>
               {block.columns.map((column) => (
                 <th
@@ -199,9 +199,12 @@ function ChartBlock({ block }: { block: Extract<PrivateFundRichContentBlock, { t
         </ResponsiveContainer>
       </div>
       {block.source_note ? (
-        <p className="px-4 pb-3 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
-          {block.source_note}
-        </p>
+        <div className="border-t border-[var(--pf-line)] bg-[var(--pf-panel-subtle)]/55 px-4 py-2.5">
+          <p className="text-[10px] font-semibold text-[var(--pf-ink-muted)]">数据来源</p>
+          <p className="mt-0.5 text-[10px] leading-4 text-[var(--pf-ink-secondary)]">
+            {block.source_note}
+          </p>
+        </div>
       ) : null}
     </BlockFrame>
   );

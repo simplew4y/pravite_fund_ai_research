@@ -3725,8 +3725,8 @@ function PrivateFundConversationTokenUsageIndicator({
             contextPct != null
               ? `Current context usage is ${contextPct}%`
               : totals.totalTokens != null
-              ? `This conversation has used ${totals.totalTokens.toLocaleString()} tokens`
-              : "No token usage recorded for this conversation yet"
+                ? `This conversation has used ${totals.totalTokens.toLocaleString()} tokens`
+                : "No token usage recorded for this conversation yet"
           }
           className="flex items-center gap-1.5 rounded-md text-[11px] font-medium text-[var(--pf-accent-ink)] tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -3746,9 +3746,7 @@ function PrivateFundConversationTokenUsageIndicator({
             累计 {totals.totalTokens.toLocaleString()} tokens
           </p>
         ) : !hasContextUsage ? (
-          <p className="mt-1 tabular-nums text-muted-foreground">
-            完成首次模型调用后显示真实用量
-          </p>
+          <p className="mt-1 tabular-nums text-muted-foreground">完成首次模型调用后显示真实用量</p>
         ) : null}
         {totals.totalTokens != null ? (
           <p className="mt-1 tabular-nums text-muted-foreground">

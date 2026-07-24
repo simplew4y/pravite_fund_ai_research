@@ -43,4 +43,38 @@ describe("RichNodeContent", () => {
     expect(screen.queryByTitle("HTML 图文预览")).not.toBeInTheDocument();
     expect(screen.getByText("投资结论")).toBeInTheDocument();
   });
+
+  it("keeps table headers visible and separates chart source notes", () => {
+    render(
+      <RichNodeContent
+        blocks={[
+          {
+            type: "table",
+            title: "盈利能力对比",
+            columns: [
+              { key: "period", label: "期间" },
+              { key: "margin", label: "毛利率", align: "right" },
+            ],
+            rows: [{ period: "2026Q1", margin: "31.2%" }],
+          },
+          {
+            type: "chart",
+            title: "毛利率趋势",
+            chart_type: "line",
+            x_key: "period",
+            series: [{ key: "margin", label: "毛利率" }],
+            data: [{ period: "2026Q1", margin: 31.2 }],
+            y_unit: "%",
+            source_note: "来源：经营数据.xlsx Chart!B2:C6",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "期间" }).closest("thead")).toHaveClass(
+      "sticky",
+    );
+    expect(screen.getByText("数据来源")).toBeInTheDocument();
+    expect(screen.getByText("来源：经营数据.xlsx Chart!B2:C6")).toBeInTheDocument();
+  });
 });
