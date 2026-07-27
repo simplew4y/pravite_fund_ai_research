@@ -83,34 +83,17 @@ class VLLMReranker:
         if not docs:
             return []
 
-        is_dashscope = "dashscope" in self.endpoint_url or "aliyuncs.com" in self.endpoint_url
-
-        if is_dashscope:
-            payload = {
-                "model": self.model_name,
-                "input": {
-                    "query": query,
-                    "documents": docs,
-                },
-                "parameters": {
-                    "top_n": len(docs),
-                },
-            }
-        else:
-            payload = {
+        payload = self._post_rerank(
+            {
                 "model": self.model_name,
                 "query": query,
                 "documents": docs,
                 "top_n": len(docs),
             }
-
-        result = self._post_rerank(payload)
+        )
 
         logits = [self._to_logit(0.5)] * len(docs)
-        results_list = result.get("results", result.get("output", {}).get("results", []))
-        if not results_list and "output" in result:
-            results_list = result["output"].get("results", [])
-        for item in results_list:
+        for item in payload.get("results", []):
             doc_index = item["index"]
             if 0 <= doc_index < len(logits):
                 logits[doc_index] = self._transform_score(item["relevance_score"])

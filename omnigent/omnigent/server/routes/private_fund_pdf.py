@@ -2391,29 +2391,6 @@ def _set_active_dataset(dataset_id: str) -> dict[str, Any]:
     return {"active_dataset_id": dataset_id}
 
 
-def _sync_chunks_to_chroma_optional(
-    collection_db_path: str,
-    dataset_id: str,
-) -> None:
-    """入库后同步 chunks 到 Chroma（仅当 RAGManager 可用时执行，失败不影响主流程）。"""
-    try:
-        from data_ingestion.chroma_bridge import sync_chunks_to_chroma
-        from FinSagent.src.core.RAGManager import RAGManager
-
-        rag_manager = RAGManager()
-        if not hasattr(rag_manager, "_collections") or not rag_manager._collections:
-            return
-        result = sync_chunks_to_chroma(
-            rag_manager, collection_db_path, collection_name="default"
-        )
-        if result["text_chunks"] or result["table_chunks"]:
-            RAGManager._instance = None
-    except ImportError:
-        pass
-    except Exception:
-        _logger.exception("Chroma sync skipped (non-fatal) for dataset %s", dataset_id)
-
-
 def _delete_project_files(dataset_id: str, file_names: list[str]) -> dict[str, Any]:
     _require_project_row(dataset_id)
     safe_names = [Path(name).name for name in dict.fromkeys(file_names) if Path(name).name.strip()]
@@ -2553,8 +2530,6 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
         valuation_tracking_jobs: list[dict[str, Any]] = []
         valuation_tracking_enqueue_error = ""
         if result.status in {"completed", "completed_with_warnings"}:
-            # ── SQLite → Chroma 增量同步（可选，仅当 RAGManager 可用时） ──
-            _sync_chunks_to_chroma_optional(result.collection_db_path, dataset_id)
             try:
                 tracking_jobs = private_fund_tracking.enqueue_current_documents(
                     _collection_db_path(dataset_id),

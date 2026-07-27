@@ -67,7 +67,6 @@ class RAGManager:
                     model_name=self.embeddings_model_name,
                     timeout_seconds=float(config.get("embedding_timeout_seconds", 60)),
                     batch_size=int(config.get("embedding_batch_size", 32)),
-                    api_key=config.get("llm_api_key"),
                 )
             else:
                 self.embeddings = HuggingFaceEmbeddings(model_name=self.embeddings_model_name)
