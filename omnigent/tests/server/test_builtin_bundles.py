@@ -142,9 +142,12 @@ def test_pi_native_bundle_is_global_orchestrator_with_research_memory(
     assert spec.agent_session_sharing.value == "none"
     assert {skill.name for skill in spec.skills} == {
         "private-fund-memo",
+        "private-fund-knowledge-base",
         "private-fund-node",
         "private-fund-report",
         "private-fund-report-update",
+        "private-fund-valuation-impacts",
+        "private-fund-valuation-metrics",
     }
     assert {tool.name for tool in spec.tools.builtins} >= {
         "private_fund_dataset_status",
