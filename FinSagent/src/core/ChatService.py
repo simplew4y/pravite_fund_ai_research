@@ -138,6 +138,41 @@ class ChatService:
         self.session_history_store = session_history_store_from_config(config)
         self._agentic_search_corpus: Optional[CorpusStore] = None
 
+        # Research Memory
+        try:
+            from core.ResearchMemory import ResearchMemory
+            self.memory = ResearchMemory(
+                base_dir=config.get("memory", {}).get("dir", ".memory")
+            )
+            # Wire embedding function
+            try:
+                if hasattr(self, 'rag') and self.rag and self.rag.rag_manager:
+                    r = self.rag.rag_manager._retrievers[0]
+                    self.memory.set_embedding_fn(r.embeddings.embed_query)
+            except Exception:
+                pass
+            # Wire LLM for checkpoint
+            try:
+                llm_base = config.get("llm_base_url", "")
+                llm_key = config.get("llm_api_key", "EMPTY")
+                llm_model = config.get("llm_model_name", "")
+                if llm_base and llm_model:
+                    import openai
+                    lc = openai.OpenAI(api_key=llm_key, base_url=llm_base)
+                    def _llm_call(prompt, _lc=lc, _model=llm_model):
+                        return _lc.chat.completions.create(
+                            model=_model,
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=0, max_tokens=1024
+                        ).choices[0].message.content
+                    self.memory.set_llm_fn(_llm_call)
+            except Exception:
+                pass
+            logger.info("ResearchMemory initialized")
+        except Exception as e:
+            self.memory = None
+            logger.warning("ResearchMemory not available: %s", e)
+
         logger.info("ChatService initialized successfully")
 
     def get_or_create_session(self, session_id: str) -> SessionManager:
@@ -263,6 +298,23 @@ class ChatService:
             is_off_topic,
         )
 
+    def _get_memory_context(self, question: str, session_id: str) -> str:
+        if not hasattr(self, 'memory') or not self.memory:
+            return ''
+        try:
+            parts = []
+            # Global memory: auto-injected preferences/habits
+            global_mem = self.memory.get_global_memory_text()
+            if global_mem:
+                parts.append(global_mem)
+            # Session memory: retrieved facts
+            sess_mem = self.memory.retrieve_for_prompt(question, session_id=session_id)
+            if sess_mem:
+                parts.append(sess_mem)
+            return '\n\n'.join(parts)
+        except Exception:
+            return ''
+
     def _build_agentic_initial_state(
         self,
         question: str,
@@ -273,6 +325,7 @@ class ChatService:
             "original_query": question,
             "user_query_raw": question,
             "chat_history": session_manager.get_chat_history_copy(),
+            "memory_context": self._get_memory_context(question, session_manager.session_id),
             "rag": self.rag,
             "session_manager": session_manager,
             "config": self.config,
@@ -1374,6 +1427,13 @@ class ChatService:
 
             if final_answer:
                 session_manager.add_exchange(question, final_answer)
+                if hasattr(self, 'memory') and self.memory:
+                    try:
+                        asyncio.ensure_future(self._async_record_memory(
+                            session_id, question, final_answer,
+                            last_selected_agents, last_off_topic))
+                    except Exception:
+                        pass
                 await self._persist_session_history_turn(
                     session_id,
                     question,
@@ -1393,6 +1453,21 @@ class ChatService:
             yield {"event": "error", "data": {"message": str(e)}}
         finally:
             session_manager.request_lock.release()
+
+    async def _async_record_memory(self, session_id, question, answer, agents, off_topic):
+        if not hasattr(self, 'memory') or not self.memory:
+            return
+        try:
+            self.memory.record_turn(
+                session_id=session_id, question=question, answer=answer,
+                audit={'model_name': 'memory', 'latency_ms': 0, 'status': 'ok'})
+            try:
+                self.memory.extract_preferences_from_turn(question, answer)
+            except Exception:
+                pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning('Memory record failed: %s', e)
 
     def __del__(self):
         """清理资源"""

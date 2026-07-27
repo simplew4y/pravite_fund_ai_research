@@ -11,7 +11,14 @@ Write in the same language as the user query. Avoid bullet lists or markdown; pr
 
 User question: {question}
 
+Related History (past research):
+{memory_context}
+
 Agent drafts:
 {sub_answers}
 
 Final answer:
+
+Related History:
+{memory_context}
+
