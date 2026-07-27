@@ -1,14 +1,21 @@
 import {
   ArrowDownAZ,
   BarChart3,
+  Check,
+  ChevronDown,
+  ChevronRight,
   FileSpreadsheet,
   FileText,
   GalleryVerticalEnd,
+  GitCompareArrows,
   Grid2X2,
+  History,
   Image,
   Info,
   LayoutList,
+  ListChecks,
   Search,
+  SlidersHorizontal,
   Table2,
   Trash2,
   X,
@@ -24,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { PrivateFundAsset } from "@/lib/privateFundApi";
 import { cn } from "@/lib/utils";
 
@@ -44,7 +52,15 @@ export type ResearchAssetLibraryProps = {
   contextPending?: boolean;
   onSetContext: (assetIds: string[]) => Promise<void> | void;
   onOpenAsset: (asset: PrivateFundAsset) => void;
+  onOpenMemoHistory?: (seriesId: string) => void;
   onDeleteAssets: (assetIds: string[]) => Promise<void>;
+};
+
+type MemoAssetSeries = {
+  seriesId: string;
+  title: string;
+  current: PrivateFundAsset;
+  versions: PrivateFundAsset[];
 };
 
 const typeLabels: Record<string, string> = {
@@ -143,6 +159,50 @@ function formatDate(value: string | null | undefined): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(date);
 }
 
+function formatUpdatedDate(value: string | null | undefined): string {
+  if (!value) return "更新时间未知";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "更新时间未知";
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayDifference = Math.round((startOfToday - startOfDate) / 86_400_000);
+  if (dayDifference === 0) return "更新于今天";
+  if (dayDifference === 1) return "更新于昨天";
+  return `更新于 ${formatDate(value)}`;
+}
+
+function memoSeriesId(asset: PrivateFundAsset): string {
+  const seriesId = asset.metadata.series_id;
+  return typeof seriesId === "string" && seriesId.trim()
+    ? seriesId
+    : `standalone:${asset.assetId}`;
+}
+
+function groupMemoAssets(assets: PrivateFundAsset[]): MemoAssetSeries[] {
+  const groups = new Map<string, PrivateFundAsset[]>();
+  for (const asset of assets) {
+    const seriesId = memoSeriesId(asset);
+    const versions = groups.get(seriesId) ?? [];
+    versions.push(asset);
+    groups.set(seriesId, versions);
+  }
+  return [...groups.entries()].map(([seriesId, seriesAssets]) => {
+    const versions = [...seriesAssets].sort((left, right) => {
+      if (right.versionNo !== left.versionNo) return right.versionNo - left.versionNo;
+      return String(right.updatedAt ?? right.createdAt ?? "").localeCompare(
+        String(left.updatedAt ?? left.createdAt ?? ""),
+      );
+    });
+    return {
+      seriesId,
+      title: versions[0].title,
+      current: versions[0],
+      versions,
+    };
+  });
+}
+
 function AssetRowCheckbox({
   asset,
   label,
@@ -211,6 +271,7 @@ export function ResearchAssetLibrary({
   contextPending,
   onSetContext,
   onOpenAsset,
+  onOpenMemoHistory,
   onDeleteAssets,
 }: ResearchAssetLibraryProps) {
   const [query, setQuery] = useState("");
@@ -221,9 +282,15 @@ export function ResearchAssetLibrary({
   );
   const [sort, setSort] = useState<AssetSort>("updated");
   const [view, setView] = useState<AssetView>("list");
+  const [managing, setManaging] = useState(false);
+  const [managedSelection, setManagedSelection] = useState<Set<string>>(() => new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [expandedMemoSeriesIds, setExpandedMemoSeriesIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const compactSideLibrary = compact && (zone === "notes" || zone === "memos");
 
   const availableTypes = useMemo(
     () => [...new Set(assets.map((asset) => asset.assetType))].sort(),
@@ -272,48 +339,80 @@ export function ResearchAssetLibrary({
     () => visibleAssets.map((asset) => asset.assetId),
     [visibleAssets],
   );
+  const visibleMemoSeries = useMemo(() => groupMemoAssets(visibleAssets), [visibleAssets]);
   const contextSet = useMemo(() => new Set(contextAssetIds), [contextAssetIds]);
-  const selectedAssetIds = useMemo(
-    () => assets.filter((asset) => contextSet.has(asset.assetId)).map((asset) => asset.assetId),
-    [assets, contextSet],
+  const managedAssetIds = useMemo(
+    () =>
+      assets.filter((asset) => managedSelection.has(asset.assetId)).map((asset) => asset.assetId),
+    [assets, managedSelection],
   );
-  const visibleSelectedCount = visibleAssetIds.filter((assetId) => contextSet.has(assetId)).length;
-  const allVisibleSelected =
-    visibleAssetIds.length > 0 && visibleSelectedCount === visibleAssetIds.length;
-  const someVisibleSelected = visibleSelectedCount > 0 && !allVisibleSelected;
-  const selectedAssets = assets.filter((asset) => contextSet.has(asset.assetId));
-  const includesDocument = selectedAssets.some((asset) => asset.assetType === "document");
+  const visibleManagedCount = visibleAssetIds.filter((assetId) =>
+    managedSelection.has(assetId),
+  ).length;
+  const allVisibleManaged =
+    visibleAssetIds.length > 0 && visibleManagedCount === visibleAssetIds.length;
+  const someVisibleManaged = visibleManagedCount > 0 && !allVisibleManaged;
+  const managedAssets = assets.filter((asset) => managedSelection.has(asset.assetId));
+  const includesDocument = managedAssets.some((asset) => asset.assetType === "document");
 
-  function toggleVisibleAssets() {
-    const next = new Set(contextAssetIds);
-    if (allVisibleSelected) {
+  function toggleVisibleManagedAssets() {
+    const next = new Set(managedSelection);
+    if (allVisibleManaged) {
       for (const assetId of visibleAssetIds) next.delete(assetId);
     } else {
       for (const assetId of visibleAssetIds) next.add(assetId);
     }
-    void onSetContext([...next]);
+    setManagedSelection(next);
   }
 
-  function toggleAssetSelection(assetId: string) {
+  function toggleContextAsset(assetId: string) {
     const next = new Set(contextAssetIds);
     if (next.has(assetId)) next.delete(assetId);
     else next.add(assetId);
     void onSetContext([...next]);
   }
 
-  function clearAssetSelection() {
-    const next = new Set(contextAssetIds);
-    for (const assetId of selectedAssetIds) next.delete(assetId);
-    void onSetContext([...next]);
+  function toggleManagedAsset(assetId: string) {
+    setManagedSelection((current) => {
+      const next = new Set(current);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  }
+
+  function toggleMemoSeries(seriesId: string) {
+    setExpandedMemoSeriesIds((current) => {
+      const next = new Set(current);
+      if (next.has(seriesId)) next.delete(seriesId);
+      else next.add(seriesId);
+      return next;
+    });
+  }
+
+  function leaveManagement() {
+    setManaging(false);
+    setManagedSelection(new Set());
+    setDeleteOpen(false);
+    setDeleteError("");
+  }
+
+  function toggleManagementMode() {
+    if (managing) {
+      leaveManagement();
+      return;
+    }
+    setManagedSelection(new Set());
+    setManaging(true);
   }
 
   async function confirmDelete() {
-    if (selectedAssetIds.length === 0) return;
+    if (managedAssetIds.length === 0) return;
     setDeletePending(true);
     setDeleteError("");
     try {
-      await onDeleteAssets(selectedAssetIds);
-      setDeleteOpen(false);
+      await onDeleteAssets(managedAssetIds);
+      leaveManagement();
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : "删除失败");
     } finally {
@@ -329,7 +428,7 @@ export function ResearchAssetLibrary({
       <Dialog open={deleteOpen} onOpenChange={(open) => !deletePending && setDeleteOpen(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除 {selectedAssetIds.length} 项？</DialogTitle>
+            <DialogTitle>删除 {managedAssetIds.length} 项？</DialogTitle>
             <DialogDescription>
               此操作不可撤销。研究笔记会连同其中的图表等内容一起删除；Memo 会删除对应产物文件。
               {includesDocument ? "所选资料也会从当前项目资料来源中移除。" : ""}
@@ -360,168 +459,292 @@ export function ResearchAssetLibrary({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <div className="space-y-2.5 border-b border-[var(--pf-line)] p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">{title}</h2>
-            <p className="mt-0.5 text-xs text-[var(--pf-ink-muted)]">
-              {description ?? `${assets.length} 项资产，${selectedAssetIds.length} 项已选`}
-            </p>
-          </div>
-          {!compact ? (
-            <div className="flex rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] p-0.5">
-              <button
-                aria-label="列表视图"
-                className={cn(
-                  "rounded-md p-1.5 text-[var(--pf-ink-muted)]",
-                  view === "list" && "bg-[var(--pf-panel-raised)] text-[var(--pf-ink)] shadow-sm",
-                )}
-                onClick={() => setView("list")}
-                type="button"
-              >
-                <LayoutList size={14} />
-              </button>
-              <button
-                aria-label="卡片视图"
-                className={cn(
-                  "rounded-md p-1.5 text-[var(--pf-ink-muted)]",
-                  view === "grid" && "bg-[var(--pf-panel-raised)] text-[var(--pf-ink)] shadow-sm",
-                )}
-                onClick={() => setView("grid")}
-                type="button"
-              >
-                <Grid2X2 size={14} />
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <label className="relative block">
-          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
-          <input
-            aria-label="搜索"
-            className="h-9 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-8 pr-3 text-xs outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索标题、摘要或标签"
-            value={query}
-          />
-        </label>
-        <div className="grid grid-cols-2 gap-2">
-          {zone === "notes" ? (
-            <label className="relative col-span-2">
-              <span className="sr-only">笔记类型</span>
-              <select
-                aria-label="笔记类型"
-                className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
-                onChange={(event) =>
-                  setNoteGroupFilter(event.target.value as "all" | "answer_note" | "research_note")
-                }
-                value={noteGroupFilter}
-              >
-                <option value="all">全部笔记</option>
-                <option value="answer_note">回答笔记</option>
-                <option value="research_note">研究笔记</option>
-              </select>
-            </label>
-          ) : null}
-          {zone === "sources" || (zone === "generic" && availableDocumentTypes.length > 0) ? (
-            <label className={zone === "sources" ? "relative col-span-2" : "relative"}>
-              <span className="sr-only">资料类型</span>
-              <select
-                aria-label="资料类型"
-                className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
-                onChange={(event) => setDocumentTypeFilter(event.target.value)}
-                value={documentTypeFilter}
-              >
-                <option value="all">全部资料类型</option>
-                {availableDocumentTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {documentTypeLabels[type] ?? type}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {zone === "generic" ? (
-            <label className="relative">
-              <span className="sr-only">条目类型</span>
-              <select
-                aria-label="条目类型"
-                className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
-                onChange={(event) => setTypeFilter(event.target.value)}
-                value={typeFilter}
-              >
-                <option value="all">全部类型</option>
-                {availableTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {typeLabels[type] ?? type}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label
-            className={
-              zone === "notes" || zone === "sources" ? "relative col-span-2" : "relative col-span-2"
-            }
-          >
-            <ArrowDownAZ className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
-            <span className="sr-only">排序</span>
-            <select
-              aria-label="排序"
-              className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-7 pr-2 text-xs"
-              onChange={(event) => setSort(event.target.value as AssetSort)}
-              value={sort}
-            >
-              <option value="updated">最近更新</option>
-              <option value="oldest">最早更新</option>
-              <option value="title">标题</option>
-              <option value="type">类型</option>
-              <option value="evidence">溯源数量</option>
-            </select>
-          </label>
-        </div>
-        <div className="flex min-h-9 flex-wrap items-center gap-2 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-2 py-1">
-          <label className="flex min-w-0 cursor-pointer items-center gap-2 text-xs font-medium">
-            <AssetSelectionCheckbox
-              checked={allVisibleSelected}
-              label="选择当前显示的全部条目"
-              mixed={someVisibleSelected}
-              disabled={visibleAssetIds.length === 0 || contextPending}
-              onChange={toggleVisibleAssets}
-            />
-            <span className="truncate">{selectedAssetIds.length} 项已选</span>
-          </label>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <Button
-              aria-label={`删除已选 ${selectedAssetIds.length} 项`}
-              className="h-7 shrink-0 gap-1 px-2 text-xs"
-              disabled={selectedAssetIds.length === 0 || contextPending}
-              onClick={() => {
-                setDeleteError("");
-                setDeleteOpen(true);
-              }}
-              size="sm"
-              type="button"
-              variant="destructive"
-            >
-              <Trash2 className="size-3" />
-              删除{selectedAssetIds.length > 0 ? ` ${selectedAssetIds.length}` : ""}
-            </Button>
-            {selectedAssetIds.length > 0 ? (
+      <div
+        className={cn(
+          "border-b border-[var(--pf-line)]",
+          compactSideLibrary ? "space-y-2 p-2" : "space-y-2.5 p-3",
+        )}
+      >
+        {compactSideLibrary ? (
+          <>
+            <div className="flex items-center gap-1.5">
+              <label className="relative min-w-0 flex-1">
+                <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
+                <input
+                  aria-label="搜索"
+                  className="h-8 w-full rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-8 pr-2 text-xs outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={zone === "memos" ? "搜索 Memo" : "搜索笔记"}
+                  value={query}
+                />
+              </label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    aria-label="筛选与排序"
+                    className="size-8 shrink-0"
+                    size="icon"
+                    title="筛选与排序"
+                    type="button"
+                    variant={sort === "updated" ? "ghost" : "secondary"}
+                  >
+                    <SlidersHorizontal className="size-3.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-56 space-y-2.5 p-3">
+                  <p className="text-xs font-semibold text-[var(--pf-ink)]">筛选与排序</p>
+                  <label className="block space-y-1">
+                    <span className="text-[11px] text-[var(--pf-ink-muted)]">排序方式</span>
+                    <select
+                      aria-label="排序"
+                      className="h-8 w-full rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
+                      onChange={(event) => setSort(event.target.value as AssetSort)}
+                      value={sort}
+                    >
+                      <option value="updated">最近更新</option>
+                      <option value="oldest">最早更新</option>
+                      <option value="title">标题</option>
+                      <option value="type">类型</option>
+                      <option value="evidence">溯源数量</option>
+                    </select>
+                  </label>
+                </PopoverContent>
+              </Popover>
               <Button
-                aria-label="清除选择"
-                className="size-7"
-                disabled={contextPending}
-                onClick={clearAssetSelection}
-                size="icon"
+                aria-label={managing ? "完成批量管理" : "进入批量管理"}
+                className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+                disabled={assets.length === 0 || deletePending}
+                onClick={toggleManagementMode}
+                size="sm"
                 type="button"
-                variant="ghost"
+                variant={managing ? "secondary" : "ghost"}
               >
-                <X className="size-3.5" />
+                {managing ? <Check className="size-3.5" /> : <ListChecks className="size-3.5" />}
+                {managing ? "完成" : "管理"}
               </Button>
+            </div>
+            {zone === "notes" ? (
+              <div
+                aria-label="笔记类型"
+                className="grid h-8 grid-cols-3 rounded-md bg-[var(--pf-panel-subtle)] p-0.5"
+                role="group"
+              >
+                {[
+                  ["all", "全部"],
+                  ["answer_note", "回答"],
+                  ["research_note", "研究"],
+                ].map(([value, label]) => (
+                  <button
+                    aria-label={
+                      value === "all"
+                        ? "显示全部笔记"
+                        : value === "answer_note"
+                          ? "仅显示回答笔记"
+                          : "仅显示研究笔记"
+                    }
+                    aria-pressed={noteGroupFilter === value}
+                    className={cn(
+                      "rounded-[5px] px-2 text-xs font-medium text-[var(--pf-ink-muted)] transition-colors hover:text-[var(--pf-ink)]",
+                      noteGroupFilter === value &&
+                        "bg-[var(--pf-panel-raised)] text-[var(--pf-ink)] shadow-sm",
+                    )}
+                    key={value}
+                    onClick={() =>
+                      setNoteGroupFilter(value as "all" | "answer_note" | "research_note")
+                    }
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             ) : null}
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">{title}</h2>
+                <p className="mt-0.5 text-xs text-[var(--pf-ink-muted)]">
+                  {description ??
+                    `${assets.length} 项资产，${assets.filter((asset) => contextSet.has(asset.assetId)).length} 项已加入上下文`}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {!compact ? (
+                  <div className="flex rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] p-0.5">
+                    <button
+                      aria-label="列表视图"
+                      className={cn(
+                        "rounded-md p-1.5 text-[var(--pf-ink-muted)]",
+                        view === "list" &&
+                          "bg-[var(--pf-panel-raised)] text-[var(--pf-ink)] shadow-sm",
+                      )}
+                      onClick={() => setView("list")}
+                      type="button"
+                    >
+                      <LayoutList size={14} />
+                    </button>
+                    <button
+                      aria-label="卡片视图"
+                      className={cn(
+                        "rounded-md p-1.5 text-[var(--pf-ink-muted)]",
+                        view === "grid" &&
+                          "bg-[var(--pf-panel-raised)] text-[var(--pf-ink)] shadow-sm",
+                      )}
+                      onClick={() => setView("grid")}
+                      type="button"
+                    >
+                      <Grid2X2 size={14} />
+                    </button>
+                  </div>
+                ) : null}
+                <Button
+                  aria-label={managing ? "完成批量管理" : "进入批量管理"}
+                  className="h-8 gap-1.5 px-2 text-xs"
+                  disabled={assets.length === 0 || deletePending}
+                  onClick={toggleManagementMode}
+                  size="sm"
+                  type="button"
+                  variant={managing ? "secondary" : "ghost"}
+                >
+                  {managing ? <Check className="size-3.5" /> : <ListChecks className="size-3.5" />}
+                  {managing ? "完成" : "管理"}
+                </Button>
+              </div>
+            </div>
+            <label className="relative block">
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
+              <input
+                aria-label="搜索"
+                className="h-9 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-8 pr-3 text-xs outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索标题、摘要或标签"
+                value={query}
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {zone === "notes" ? (
+                <label className="relative col-span-2">
+                  <span className="sr-only">笔记类型</span>
+                  <select
+                    aria-label="笔记类型"
+                    className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
+                    onChange={(event) =>
+                      setNoteGroupFilter(
+                        event.target.value as "all" | "answer_note" | "research_note",
+                      )
+                    }
+                    value={noteGroupFilter}
+                  >
+                    <option value="all">全部笔记</option>
+                    <option value="answer_note">回答笔记</option>
+                    <option value="research_note">研究笔记</option>
+                  </select>
+                </label>
+              ) : null}
+              {zone === "sources" || (zone === "generic" && availableDocumentTypes.length > 0) ? (
+                <label className={zone === "sources" ? "relative col-span-2" : "relative"}>
+                  <span className="sr-only">资料类型</span>
+                  <select
+                    aria-label="资料类型"
+                    className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
+                    onChange={(event) => setDocumentTypeFilter(event.target.value)}
+                    value={documentTypeFilter}
+                  >
+                    <option value="all">全部资料类型</option>
+                    {availableDocumentTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {documentTypeLabels[type] ?? type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {zone === "generic" ? (
+                <label className="relative">
+                  <span className="sr-only">条目类型</span>
+                  <select
+                    aria-label="条目类型"
+                    className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
+                    onChange={(event) => setTypeFilter(event.target.value)}
+                    value={typeFilter}
+                  >
+                    <option value="all">全部类型</option>
+                    {availableTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {typeLabels[type] ?? type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label className="relative col-span-2">
+                <ArrowDownAZ className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
+                <span className="sr-only">排序</span>
+                <select
+                  aria-label="排序"
+                  className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-7 pr-2 text-xs"
+                  onChange={(event) => setSort(event.target.value as AssetSort)}
+                  value={sort}
+                >
+                  <option value="updated">最近更新</option>
+                  <option value="oldest">最早更新</option>
+                  <option value="title">标题</option>
+                  <option value="type">类型</option>
+                  <option value="evidence">溯源数量</option>
+                </select>
+              </label>
+            </div>
+          </>
+        )}
+        {managing ? (
+          <div
+            className="flex min-h-9 flex-wrap items-center gap-2 rounded-lg border border-[var(--pf-accent)]/40 bg-[var(--pf-accent-soft)] px-2 py-1"
+            data-testid="asset-management-toolbar"
+          >
+            <label className="flex min-w-0 cursor-pointer items-center gap-2 text-xs font-medium">
+              <AssetSelectionCheckbox
+                checked={allVisibleManaged}
+                label="选择当前显示的全部管理条目"
+                mixed={someVisibleManaged}
+                disabled={visibleAssetIds.length === 0 || deletePending}
+                onChange={toggleVisibleManagedAssets}
+              />
+              <span className="truncate">{managedAssetIds.length} 项已选</span>
+            </label>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <Button
+                aria-label={`删除管理选中 ${managedAssetIds.length} 项`}
+                className="h-7 shrink-0 gap-1 px-2 text-xs"
+                disabled={managedAssetIds.length === 0 || deletePending}
+                onClick={() => {
+                  setDeleteError("");
+                  setDeleteOpen(true);
+                }}
+                size="sm"
+                type="button"
+                variant="destructive"
+              >
+                <Trash2 className="size-3" />
+                删除{managedAssetIds.length > 0 ? ` ${managedAssetIds.length}` : ""}
+              </Button>
+              {managedAssetIds.length > 0 ? (
+                <Button
+                  aria-label="清除管理选择"
+                  className="size-7"
+                  disabled={deletePending}
+                  onClick={() => setManagedSelection(new Set())}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X className="size-3.5" />
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
@@ -529,16 +752,141 @@ export function ResearchAssetLibrary({
           <div className="m-4 rounded-2xl border border-dashed border-[var(--pf-line-strong)] bg-[var(--pf-panel-raised)] p-7 text-center text-xs leading-5 text-[var(--pf-ink-muted)]">
             {emptyMessage}
           </div>
+        ) : zone === "memos" && !managing ? (
+          <ul className="divide-y divide-[var(--pf-line)] px-3">
+            {visibleMemoSeries.map((series) => {
+              const expanded = expandedMemoSeriesIds.has(series.seriesId);
+              const currentInContext = contextSet.has(series.current.assetId);
+              return (
+                <li className="py-3" key={series.seriesId}>
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <AssetRowCheckbox
+                      asset={series.current}
+                      checked={currentInContext}
+                      disabled={contextPending}
+                      label={`加入上下文 ${series.title} 当前版本`}
+                      onChange={() => toggleContextAsset(series.current.assetId)}
+                    />
+                    <span className="mt-0.5 rounded-md bg-[var(--pf-accent-soft)] p-1.5 text-[var(--pf-accent-ink)]">
+                      <GalleryVerticalEnd className="size-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <button
+                        aria-label={`打开资产 ${series.title}`}
+                        className="block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)]"
+                        onClick={() => onOpenAsset(series.current)}
+                        type="button"
+                      >
+                        <span className="block truncate text-sm font-semibold">{series.title}</span>
+                        <span className="mt-0.5 block text-[11px] text-[var(--pf-ink-muted)]">
+                          当前 v{series.current.versionNo} · 共 {series.versions.length} 个版本 ·{" "}
+                          {formatUpdatedDate(
+                            series.current.updatedAt ?? series.current.createdAt,
+                          )}
+                        </span>
+                      </button>
+                      {currentInContext ? (
+                        <p className="mt-1 text-[11px] text-[var(--pf-accent-ink)]">
+                          当前版本已加入上下文
+                        </p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-1">
+                        <Button
+                          aria-label={`打开当前版本 ${series.title}`}
+                          className="h-7 gap-1 px-2 text-xs"
+                          onClick={() => onOpenAsset(series.current)}
+                          size="sm"
+                          type="button"
+                          variant="secondary"
+                        >
+                          打开
+                        </Button>
+                        <Button
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? "收起" : "查看"}版本记录 ${series.title}`}
+                          className="h-7 gap-1 px-2 text-xs"
+                          onClick={() => toggleMemoSeries(series.seriesId)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <History className="size-3" />
+                          版本记录
+                          {expanded ? (
+                            <ChevronDown className="size-3" />
+                          ) : (
+                            <ChevronRight className="size-3" />
+                          )}
+                        </Button>
+                        {series.versions.length > 1 && onOpenMemoHistory ? (
+                          <Button
+                            aria-label={`对比版本 ${series.title}`}
+                            className="h-7 gap-1 px-2 text-xs"
+                            onClick={() => onOpenMemoHistory(series.seriesId)}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            <GitCompareArrows className="size-3" />
+                            对比
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                  {expanded ? (
+                    <ul className="ml-8 mt-2 divide-y divide-[var(--pf-line)] border-l border-[var(--pf-line-strong)] pl-3">
+                      {series.versions.map((version, index) => (
+                        <li className="flex items-center gap-2 py-2" key={version.assetId}>
+                          <AssetRowCheckbox
+                            asset={version}
+                            checked={contextSet.has(version.assetId)}
+                            disabled={contextPending}
+                            label={`加入上下文 ${series.title} v${version.versionNo}`}
+                            onChange={() => toggleContextAsset(version.assetId)}
+                          />
+                          <button
+                            aria-label={`打开 ${series.title} v${version.versionNo}`}
+                            className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-[var(--pf-panel-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)]"
+                            onClick={() => onOpenAsset(version)}
+                            type="button"
+                          >
+                            <span className="shrink-0 text-xs font-semibold">
+                              v{version.versionNo}
+                            </span>
+                            <span className="truncate text-[11px] text-[var(--pf-ink-muted)]">
+                              {formatDate(version.updatedAt ?? version.createdAt)}
+                              {index === 0 ? " · 当前" : ""}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         ) : compact ? (
           <ul className="divide-y divide-[var(--pf-line)] px-3">
             {visibleAssets.map((asset) => (
-              <li className="flex items-start gap-2.5 py-3" key={asset.assetId}>
+              <li
+                className={cn(
+                  "flex items-start gap-2.5 py-3",
+                  managing && managedSelection.has(asset.assetId) && "bg-[var(--pf-accent-soft)]",
+                )}
+                key={asset.assetId}
+              >
                 <AssetRowCheckbox
                   asset={asset}
-                  checked={contextSet.has(asset.assetId)}
-                  disabled={contextPending}
-                  label={`加入上下文 ${asset.title}`}
-                  onChange={() => toggleAssetSelection(asset.assetId)}
+                  checked={
+                    managing ? managedSelection.has(asset.assetId) : contextSet.has(asset.assetId)
+                  }
+                  disabled={managing ? deletePending : contextPending}
+                  label={managing ? `选择管理 ${asset.title}` : `加入上下文 ${asset.title}`}
+                  onChange={() =>
+                    managing ? toggleManagedAsset(asset.assetId) : toggleContextAsset(asset.assetId)
+                  }
                 />
                 <button
                   aria-label={`打开资产 ${asset.title}`}
@@ -576,8 +924,11 @@ export function ResearchAssetLibrary({
           <table className="w-full table-fixed border-collapse text-left text-xs">
             <thead className="sticky top-0 z-10 bg-[var(--pf-panel-subtle)] text-xs text-[var(--pf-ink-muted)]">
               <tr>
-                <th className="w-12 px-3 py-2" title="加入上下文">
-                  选择
+                <th
+                  className="w-16 px-3 py-2"
+                  title={managing ? "选择要管理的条目" : "加入问题上下文"}
+                >
+                  {managing ? "选择" : "加入"}
                 </th>
                 <th className="px-2 py-2">资产</th>
                 <th className="w-20 px-2 py-2">类型</th>
@@ -587,17 +938,28 @@ export function ResearchAssetLibrary({
             <tbody>
               {visibleAssets.map((asset) => (
                 <tr
-                  className="cursor-pointer border-t border-[var(--pf-line)] transition-colors hover:bg-[var(--pf-panel-subtle)]"
+                  className={cn(
+                    "cursor-pointer border-t border-[var(--pf-line)] transition-colors hover:bg-[var(--pf-panel-subtle)]",
+                    managing && managedSelection.has(asset.assetId) && "bg-[var(--pf-accent-soft)]",
+                  )}
                   key={asset.assetId}
                   onClick={() => onOpenAsset(asset)}
                 >
                   <td className="px-3 py-3 align-top">
                     <AssetRowCheckbox
                       asset={asset}
-                      checked={contextSet.has(asset.assetId)}
-                      disabled={contextPending}
-                      label={`加入上下文 ${asset.title}`}
-                      onChange={() => toggleAssetSelection(asset.assetId)}
+                      checked={
+                        managing
+                          ? managedSelection.has(asset.assetId)
+                          : contextSet.has(asset.assetId)
+                      }
+                      disabled={managing ? deletePending : contextPending}
+                      label={managing ? `选择管理 ${asset.title}` : `加入上下文 ${asset.title}`}
+                      onChange={() =>
+                        managing
+                          ? toggleManagedAsset(asset.assetId)
+                          : toggleContextAsset(asset.assetId)
+                      }
                     />
                   </td>
                   <td className="px-2 py-2.5">
@@ -633,7 +995,7 @@ export function ResearchAssetLibrary({
               <div
                 className={cn(
                   "min-h-36 rounded-2xl border bg-[var(--pf-panel-raised)] p-3 text-left transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-[var(--pf-line-strong)] hover:shadow-[var(--pf-shadow)]",
-                  contextSet.has(asset.assetId)
+                  (managing ? managedSelection.has(asset.assetId) : contextSet.has(asset.assetId))
                     ? "border-[var(--pf-accent)]"
                     : "border-[var(--pf-line)]",
                 )}
@@ -648,12 +1010,26 @@ export function ResearchAssetLibrary({
                   <label className="flex cursor-pointer items-center gap-1 text-[11px] text-[var(--pf-ink-muted)]">
                     <AssetRowCheckbox
                       asset={asset}
-                      checked={contextSet.has(asset.assetId)}
-                      disabled={contextPending}
-                      label={`加入上下文 ${asset.title}`}
-                      onChange={() => toggleAssetSelection(asset.assetId)}
+                      checked={
+                        managing
+                          ? managedSelection.has(asset.assetId)
+                          : contextSet.has(asset.assetId)
+                      }
+                      disabled={managing ? deletePending : contextPending}
+                      label={managing ? `选择管理 ${asset.title}` : `加入上下文 ${asset.title}`}
+                      onChange={() =>
+                        managing
+                          ? toggleManagedAsset(asset.assetId)
+                          : toggleContextAsset(asset.assetId)
+                      }
                     />
-                    {contextSet.has(asset.assetId) ? "已加入上下文" : "选择"}
+                    {managing
+                      ? managedSelection.has(asset.assetId)
+                        ? "已选择"
+                        : "选择"
+                      : contextSet.has(asset.assetId)
+                        ? "已加入上下文"
+                        : "加入上下文"}
                   </label>
                 </div>
                 <button

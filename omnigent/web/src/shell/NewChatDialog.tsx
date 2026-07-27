@@ -2281,7 +2281,12 @@ export function NewChatLandingScreen() {
     selectedAgent != null &&
     selectedPrivateFundProject != null &&
     selectedPrivateFundProject.indexReady &&
-    (sandboxSelected ? sandboxRepoValid : !!selectedHostId && workspaceValid) &&
+    // Private-fund sessions are bound to the authenticated user's dataset
+    // directory and shared service host by the server. Public project
+    // responses intentionally omit absolute paths, so the launcher must not
+    // wait for a browser-visible workspace or host selection.
+    (privateFundResearchEntry ||
+      (sandboxSelected ? sandboxRepoValid : !!selectedHostId && workspaceValid)) &&
     !creating;
 
   // Why submit is disabled, surfaced as the button's tooltip. Checked in the
@@ -2290,14 +2295,14 @@ export function NewChatLandingScreen() {
   // actionable (submitting, or mid-create).
   const submitDisabledReason = canSubmit
     ? null
-    : sandboxSelected && !sandboxRepoValid
-      ? "Please enter a valid repository URL"
-      : !sandboxSelected && (!selectedHostId || !workspaceValid)
-        ? "Waiting for the research project workspace"
-        : selectedPrivateFundProject == null
-          ? "Select a research project first"
-          : !selectedPrivateFundProject.indexReady
-            ? "Run pipeline for the selected research project first"
+    : selectedPrivateFundProject == null
+      ? "Select a research project first"
+      : !selectedPrivateFundProject.indexReady
+        ? "Run pipeline for the selected research project first"
+        : !privateFundResearchEntry && sandboxSelected && !sandboxRepoValid
+          ? "Please enter a valid repository URL"
+          : !privateFundResearchEntry && !sandboxSelected && (!selectedHostId || !workspaceValid)
+            ? "Waiting for the research project workspace"
             : message.trim().length === 0
               ? "Enter a message to get started"
               : null;
@@ -2440,7 +2445,7 @@ export function NewChatLandingScreen() {
         data = (await res.json()) as { id: string };
       }
       // Sandbox creates have no user-picked workspace to remember.
-      if (!sandboxSelected) addRecent(workspaceTrimmed);
+      if (!sandboxSelected && workspaceTrimmed) addRecent(workspaceTrimmed);
       // Fire-and-forget: don't block navigation on the sidebar list refresh.
       // The background refetch (or the WS session_added push) backfills the
       // new session's row within ~1s of landing in the chat; the chat itself

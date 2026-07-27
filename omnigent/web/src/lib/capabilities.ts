@@ -31,6 +31,7 @@ export interface ServerInfo {
    * first admin.
    */
   needs_setup: boolean;
+  registration_mode?: "invite" | "open" | null;
   /**
    * True on Databricks/internal deployments (the server's internal lakebox
    * CLI is present). Gates Databricks-only UI hints — the "Databricks Lakebox"
@@ -68,6 +69,8 @@ export interface ServerInfo {
    * (``OMNIGENT_SMART_ROUTING=1`` + ``llm:`` config). Hidden by default.
    */
   smart_routing_enabled: boolean;
+  /** The server exposes user-manageable private-fund model settings. */
+  llm_configuration_enabled: boolean;
 }
 
 /** Sentinel used when the probe fails — accounts is off, no login URL. */
@@ -75,11 +78,13 @@ const _OFF: ServerInfo = {
   accounts_enabled: false,
   login_url: null,
   needs_setup: false,
+  registration_mode: null,
   databricks_features: false,
   managed_sandboxes_enabled: false,
   sandbox_provider: null,
   server_version: null,
   smart_routing_enabled: false,
+  llm_configuration_enabled: false,
 };
 
 let _cached: ServerInfo | null = null;
@@ -108,12 +113,17 @@ export async function resolveServerInfo(): Promise<ServerInfo> {
           accounts_enabled: data.accounts_enabled === true,
           login_url: typeof data.login_url === "string" ? data.login_url : null,
           needs_setup: data.needs_setup === true,
+          registration_mode:
+            data.registration_mode === "open" || data.registration_mode === "invite"
+              ? data.registration_mode
+              : null,
           databricks_features: data.databricks_features === true,
           managed_sandboxes_enabled: data.managed_sandboxes_enabled === true,
           sandbox_provider:
             typeof data.sandbox_provider === "string" ? data.sandbox_provider : null,
           server_version: typeof data.server_version === "string" ? data.server_version : null,
           smart_routing_enabled: data.smart_routing_enabled === true,
+          llm_configuration_enabled: data.llm_configuration_enabled === true,
         };
         return _cached;
       }

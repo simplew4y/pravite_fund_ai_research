@@ -61,6 +61,9 @@ from omnigent.server.routes.builtin_agents import create_builtin_agents_router
 from omnigent.server.routes.comments import create_comments_router
 from omnigent.server.routes.default_policies import create_default_policies_router
 from omnigent.server.routes.policy_registry import create_policy_registry_router
+from omnigent.server.routes.private_fund_llm_config import (
+    create_private_fund_llm_config_router,
+)
 from omnigent.server.routes.private_fund_pdf import create_private_fund_pdf_router
 from omnigent.server.routes.runner_tunnel import create_runner_tunnel_router
 from omnigent.server.routes.session_mcp_servers import create_session_mcp_servers_router
@@ -68,6 +71,7 @@ from omnigent.server.routes.session_policies import create_session_policies_rout
 from omnigent.server.routes.sessions import (
     SessionLiveness,
     create_sessions_router,
+    has_running_sessions,
     set_server_runner_router,
 )
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
@@ -1193,13 +1197,14 @@ def create_app(
             from omnigent.server.accounts_bootstrap import bootstrap_admin
 
             _accounts_cfg = auth_provider._accounts_config
-            _bootstrap_result = bootstrap_admin(
-                account_store,
-                init_admin_password=_accounts_cfg.init_admin_password,
-                base_url=_accounts_cfg.base_url,
-                session_ttl_hours=_accounts_cfg.session_ttl_hours,
-                cookie_secret=_accounts_cfg.cookie_secret,
-            )
+            if _accounts_cfg.registration_mode != "open":
+                _bootstrap_result = bootstrap_admin(
+                    account_store,
+                    init_admin_password=_accounts_cfg.init_admin_password,
+                    base_url=_accounts_cfg.base_url,
+                    session_ttl_hours=_accounts_cfg.session_ttl_hours,
+                    cookie_secret=_accounts_cfg.cookie_secret,
+                )
 
     from omnigent.runner.routing import RunnerRouter
     from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
@@ -1374,6 +1379,14 @@ def create_app(
             await _mcp_pool.shutdown_all()
 
     app = FastAPI(title="Omnigent Server", lifespan=_lifespan)
+
+    @app.middleware("http")
+    async def private_data_cache_control(request: Request, call_next: Any) -> Any:
+        response = await call_next(request)
+        if request.url.path.startswith(("/auth/", "/v1/private-fund", "/v1/me")):
+            response.headers["Cache-Control"] = "private, no-store"
+            response.headers["Pragma"] = "no-cache"
+        return response
     from omnigent.runtime import telemetry
 
     telemetry.instrument_fastapi_app(app)
@@ -1814,7 +1827,14 @@ def create_app(
         # login) creates the first admin. Exposing it is safe — it's a
         # boolean about whether setup is pending, not a secret.
         needs_setup = False
-        if accounts_enabled and account_store is not None:
+        registration_mode = (
+            auth_provider._accounts_config.registration_mode if accounts_enabled else None
+        )
+        if (
+            accounts_enabled
+            and account_store is not None
+            and registration_mode != "open"
+        ):
             needs_setup = not any(u.has_password for u in account_store.list_users())
         # databricks_features gates the Databricks-deployment-only UI hints
         # (the "Databricks Lakebox" connect tab). True only when the internal
@@ -1861,11 +1881,13 @@ def create_app(
             "accounts_enabled": accounts_enabled,
             "login_url": login_url,
             "needs_setup": needs_setup,
+            "registration_mode": registration_mode,
             "databricks_features": databricks_features,
             "managed_sandboxes_enabled": managed_sandboxes_enabled,
             "sandbox_provider": sandbox_provider,
             "server_version": _server_version(),
             "smart_routing_enabled": smart_routing_enabled,
+            "llm_configuration_enabled": True,
         }
 
     @app.get("/v1/me", response_model=None)  # Union return type (dict | JSONResponse)
@@ -1921,6 +1943,7 @@ def create_app(
             # (host.runner_exited) as last_task_error so a reload still
             # renders the error banner after the live push is gone.
             runner_exit_reports=runner_exit_reports,
+            account_store=account_store,
         ),
         prefix="/v1",
         tags=["sessions"],
@@ -1996,9 +2019,27 @@ def create_app(
         tags=["policy_registry"],
     )
     app.include_router(
+        create_private_fund_llm_config_router(
+            auth_provider=auth_provider,
+            has_running_sessions=has_running_sessions,
+            account_store=account_store,
+        ),
+        prefix="/v1",
+        tags=["private_fund_llm_config"],
+    )
+    if account_store is not None:
+        from omnigent.server.user_llm_gateway import create_user_llm_gateway_router
+
+        app.include_router(
+            create_user_llm_gateway_router(account_store.storage_location),
+            prefix="/internal/private-fund/llm",
+            tags=["private_fund_llm_gateway"],
+        )
+    app.include_router(
         create_private_fund_pdf_router(
             conversation_store=conversation_store,
             auth_provider=auth_provider,
+            account_store=account_store,
         ),
         prefix="/v1",
         tags=["private_fund_pdf"],

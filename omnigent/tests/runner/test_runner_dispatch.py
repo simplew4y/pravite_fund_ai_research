@@ -5356,6 +5356,7 @@ def test_native_relay_builtin_set_matches_toolmanager_gating(
     assert {"sys_session_list", "sys_session_get_history", "sys_session_get_info"} <= relayed
     assert {"sys_call_async", "sys_read_inbox", "sys_cancel_async", "sys_cancel_task"} <= relayed
     assert {"list_comments", "update_comment"} <= relayed
+    assert "load_skill" in relayed
 
     # Exact-set check on the writes: an extra name means a grant leaked
     # beyond its arm (e.g. create from tools.agents alone — letting a
@@ -5371,6 +5372,28 @@ def test_native_relay_builtin_set_matches_toolmanager_gating(
     # otherwise they'd be double-advertised and bypass that override.
     os_tools = {"sys_os_read", "sys_os_write", "sys_os_edit", "sys_os_shell"}
     assert not (os_tools & _NATIVE_RELAY_BUILTIN_TOOLS)
+
+
+@pytest.mark.parametrize(
+    "timers_enabled, expected",
+    [
+        pytest.param(True, {"sys_timer_set", "sys_timer_cancel"}, id="enabled"),
+        pytest.param(False, set(), id="disabled"),
+    ],
+)
+def test_native_relay_advertises_timer_tools_per_spec_gate(
+    timers_enabled: bool,
+    expected: set[str],
+) -> None:
+    """Native orchestrators receive timer tools only after explicit opt-in."""
+    from omnigent.runner.tool_dispatch import _NATIVE_RELAY_BUILTIN_TOOLS
+    from omnigent.tools.manager import ToolManager
+
+    spec = AgentSpec(spec_version=1, timers=timers_enabled)
+    schema_names = {s["function"]["name"] for s in ToolManager(spec).get_tool_schemas()}
+    relayed = schema_names & _NATIVE_RELAY_BUILTIN_TOOLS
+
+    assert relayed & {"sys_timer_set", "sys_timer_cancel"} == expected
 
 
 @pytest.mark.parametrize(

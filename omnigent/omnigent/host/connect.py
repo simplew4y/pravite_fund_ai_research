@@ -57,7 +57,9 @@ from omnigent.onboarding.harness_readiness import (
 from omnigent.runner.identity import (
     RUNNER_ID_ENV_VAR,
     RUNNER_PARENT_PID_ENV_VAR,
+    RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
     RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR,
+    RUNNER_USER_LLM_GATEWAY_ENV_VAR,
     RUNNER_WORKSPACE_ENV_VAR,
     token_bound_runner_id,
 )
@@ -424,6 +426,7 @@ def _build_runner_env(
     binding_token: str,
     workspace: str,
     parent_pid: int,
+    runtime_env: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """
     Build the environment for a spawned runner subprocess.
@@ -467,6 +470,32 @@ def _build_runner_env(
     env[RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR] = binding_token
     env[RUNNER_WORKSPACE_ENV_VAR] = workspace
     env[RUNNER_PARENT_PID_ENV_VAR] = str(parent_pid)
+    if runtime_env:
+        allowed_runtime_names = {
+            RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
+            RUNNER_USER_LLM_GATEWAY_ENV_VAR,
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_BASE_URL",
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "OPENAI_BASE_URL",
+            "OPENAI_API_KEY",
+            "LLM_BASE_URL",
+            "LLM_API_KEY",
+            "LLM_MODEL_NAME",
+            "PDF_RESEARCH_LLM_BASE_URL",
+            "PDF_RESEARCH_LLM_API_KEY",
+            "PDF_RESEARCH_LLM_MODEL",
+        }
+        env.update(
+            {
+                key: value
+                for key, value in runtime_env.items()
+                if key in allowed_runtime_names
+            }
+        )
     return env
 
 
@@ -799,6 +828,7 @@ class HostProcess:
             binding_token=frame.binding_token,
             workspace=str(workspace),
             parent_pid=os.getpid(),
+            runtime_env=frame.runtime_env,
         )
 
         try:

@@ -12856,6 +12856,10 @@ async def test_auto_create_claude_terminal_registers_permission_hook(
     """
     monkeypatch.setattr(claude_native_bridge, "_TRUSTED_PARENT", tmp_path)
     monkeypatch.setattr(claude_native_bridge, "_BRIDGE_ROOT", tmp_path / "root")
+    monkeypatch.setattr(
+        "omnigent.runner.app._default_claude_native_command",
+        lambda: "claude",
+    )
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:8000")
     monkeypatch.setenv("OMNIGENT_CLAUDE_NATIVE_AUTO_APPROVE", "1")
 
@@ -12966,6 +12970,7 @@ async def test_auto_create_pi_terminal_launches_required_terminal(
     import omnigent.pi_native_credentials as pi_native_credentials
 
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("OMNIGENT_PI_MEMORY_DIR", str(tmp_path / "pi-memory"))
     monkeypatch.setattr(pi_native_bridge, "_BRIDGE_ROOT", tmp_path / "pi-bridge")
     # The lifecycle of the launch — not the binary or credentials — is under
     # test, so neither a real Pi install nor a configured provider is needed.
@@ -13192,6 +13197,7 @@ async def test_auto_create_pi_terminal_inherits_agent_sandbox(
     from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
 
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("OMNIGENT_PI_MEMORY_DIR", str(tmp_path / "pi-memory"))
     monkeypatch.setattr(pi_native_bridge, "_BRIDGE_ROOT", tmp_path / "pi-bridge")
     monkeypatch.setattr(pi_native, "resolve_pi_executable", lambda: "pi")
     # Accept the ``model`` kwarg the runner now threads through (the spec model
@@ -13528,6 +13534,10 @@ async def test_auto_create_claude_terminal_injects_ucode_gateway_config(
 
     monkeypatch.setattr(claude_native_bridge, "_TRUSTED_PARENT", tmp_path)
     monkeypatch.setattr(claude_native_bridge, "_BRIDGE_ROOT", tmp_path / "root")
+    monkeypatch.setattr(
+        "omnigent.runner.app._default_claude_native_command",
+        lambda: "claude",
+    )
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:8000")
     # The supported credential source for a host-spawned runner: the
     # global config's ``auth:`` block (written by ``omnigent setup``),

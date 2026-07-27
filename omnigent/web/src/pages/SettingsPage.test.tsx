@@ -17,20 +17,19 @@ const mocks = vi.hoisted(() => ({
   accountsEnabled: true,
   me: { id: "alice", is_admin: false } as { id: string; is_admin: boolean } | null,
   conversations: [] as Conversation[],
-  testLlmConfig: vi.fn(),
-  saveLlmConfig: vi.fn(),
-  getLlmApplyStatus: vi.fn(),
-  refreshLlmConfig: vi.fn(),
-  llmConfig: null as null | {
-    preset: "dashscope" | "deepseek" | "openai" | "anthropic" | "custom";
-    provider: string;
-    baseUrl: string;
-    model: string;
-    hasApiKey: boolean;
-    maskedApiKey: string;
-    configured: boolean;
+  llmConfig: {
+    preset: "dashscope",
+    provider: "dashscope",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model: "qwen3-max",
+    hasApiKey: true,
+    maskedApiKey: "sk-bab*****************d2",
+    configured: true,
   },
-  llmApplyStatus: { busy: false, applying: false, detail: undefined as string | undefined },
+  llmApplyStatus: { busy: false, applying: false },
+  refreshLlm: vi.fn(),
+  testLlm: vi.fn(),
+  saveLlm: vi.fn(),
 }));
 
 vi.mock("next-themes", () => ({
@@ -53,23 +52,20 @@ vi.mock("@/hooks/useConversations", () => ({
   useArchiveConversation: () => ({ mutate: mocks.archiveMutate, isPending: false }),
   useStopAndDeleteConversation: () => ({ mutate: mocks.deleteMutate, isPending: false }),
 }));
-vi.mock("@/lib/nativeBridge", () => ({
-  isElectronShell: () => true,
-  supportsDesktopLlmConfiguration: () => true,
-  getCliStatus: vi.fn().mockResolvedValue(null),
-  resetCliPath: vi.fn().mockResolvedValue(null),
-  testLlmConfig: mocks.testLlmConfig,
-  saveLlmConfig: mocks.saveLlmConfig,
-  getLlmApplyStatus: mocks.getLlmApplyStatus,
-}));
 vi.mock("@/lib/LlmConfigContext", () => ({
   useLlmConfiguration: () => ({
+    enabled: true,
     config: mocks.llmConfig,
     applyStatus: mocks.llmApplyStatus,
     loading: false,
     requireConfiguration: () => true,
-    refresh: mocks.refreshLlmConfig,
+    refresh: mocks.refreshLlm,
   }),
+}));
+vi.mock("@/lib/llmConfigApi", () => ({
+  getLlmApplyStatus: () => Promise.resolve({ busy: false, applying: false }),
+  testLlmConfig: mocks.testLlm,
+  saveLlmConfig: mocks.saveLlm,
 }));
 
 import { SettingsPage } from "./SettingsPage";
@@ -101,74 +97,19 @@ beforeEach(() => {
   mocks.setTheme.mockReset();
   mocks.archiveMutate.mockReset();
   mocks.deleteMutate.mockReset();
-  mocks.testLlmConfig.mockReset();
-  mocks.saveLlmConfig.mockReset();
-  mocks.getLlmApplyStatus.mockReset();
-  mocks.getLlmApplyStatus.mockResolvedValue({ busy: false, applying: false });
-  mocks.refreshLlmConfig.mockReset();
-  mocks.llmConfig = null;
-  mocks.llmApplyStatus = { busy: false, applying: false, detail: undefined };
   mocks.theme = "system";
   mocks.accountsEnabled = true;
   mocks.me = { id: "alice", is_admin: false };
   mocks.conversations = [];
+  mocks.refreshLlm.mockReset();
+  mocks.testLlm.mockReset();
+  mocks.saveLlm.mockReset();
+  mocks.testLlm.mockResolvedValue({ ok: true });
+  mocks.saveLlm.mockResolvedValue({ ok: true, config: mocks.llmConfig });
 });
 afterEach(cleanup);
 
 describe("SettingsPage", () => {
-  it("tests a desktop model configuration without exposing it outside the native bridge", async () => {
-    mocks.testLlmConfig.mockResolvedValue({ ok: true });
-    renderPage("/settings/llm");
-    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "test-key" } });
-    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
-    await waitFor(() =>
-      expect(mocks.testLlmConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ preset: "dashscope", model: "qwen3-max", apiKey: "test-key" }),
-      ),
-    );
-    expect(screen.getByText("连接成功，模型服务可以正常使用。")).toBeInTheDocument();
-  });
-
-  it("shows the masked API key as a solid value and replaces it as a whole", () => {
-    mocks.llmConfig = {
-      preset: "dashscope",
-      provider: "dashscope",
-      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      model: "qwen3-max",
-      hasApiKey: true,
-      maskedApiKey: "sk-bab*****************d2",
-      configured: true,
-    };
-    renderPage("/settings/llm");
-
-    const maskedInput = screen.getByLabelText("API Key");
-    expect(maskedInput).toHaveValue("sk-bab*****************d2");
-    expect(maskedInput).toHaveAttribute("readonly");
-
-    fireEvent.click(maskedInput);
-    const replacementInput = screen.getByLabelText("API Key");
-    expect(replacementInput).toHaveValue("");
-    expect(replacementInput).toHaveAttribute("type", "password");
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
-
-    fireEvent.change(replacementInput, { target: { value: "sk-new-secret" } });
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
-    expect(screen.getByLabelText("API Key")).toHaveValue("sk-bab*****************d2");
-  });
-
-  it("disables model changes while a response is running", () => {
-    mocks.llmApplyStatus = {
-      busy: true,
-      applying: false,
-      detail: "当前有回答正在生成，请等待完成后修改。",
-    };
-    renderPage("/settings/llm");
-
-    expect(screen.getByText("当前有回答正在生成，请等待完成后修改。")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
-  });
-
   it("renders the Appearance section and applies a theme on card click", () => {
     renderPage("/settings/appearance");
     expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
@@ -227,5 +168,64 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByTestId("delete-archived"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(mocks.deleteMutate).toHaveBeenCalledWith({ id: "conv_archived" });
+  });
+
+  it("shows a masked API key and supports whole-value edit cancellation", async () => {
+    renderPage("/settings/llm");
+
+    const masked = await screen.findByDisplayValue("sk-bab*****************d2");
+    expect(masked).not.toBeDisabled();
+    fireEvent.click(masked);
+    expect(screen.getByPlaceholderText("请输入完整的新 API Key")).toHaveValue("");
+
+    fireEvent.change(screen.getByPlaceholderText("请输入完整的新 API Key"), {
+      target: { value: "sk-replacement" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    expect(screen.getByDisplayValue("sk-bab*****************d2")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("sk-replacement")).toBeNull();
+  });
+
+  it("keeps credentials scoped to the saved provider when switching presets", async () => {
+    renderPage("/settings/llm");
+    await screen.findByDisplayValue("sk-bab*****************d2");
+
+    fireEvent.keyDown(screen.getByTestId("llm-provider-select"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "DeepSeek" }));
+
+    expect(screen.getByDisplayValue("https://api.deepseek.com/v1")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("例如 qwen3-max")).toHaveValue("");
+    expect(screen.getByPlaceholderText("请输入完整的新 API Key")).toHaveValue("");
+    expect(screen.queryByDisplayValue("sk-bab*****************d2")).toBeNull();
+
+    fireEvent.keyDown(screen.getByTestId("llm-provider-select"), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "通义千问（DashScope）" }));
+
+    expect(
+      screen.getByDisplayValue("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("qwen3-max")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("sk-bab*****************d2")).toBeInTheDocument();
+  });
+
+  it("tests and saves without resending an unchanged masked key", async () => {
+    renderPage("/settings/llm");
+    await screen.findByDisplayValue("sk-bab*****************d2");
+
+    fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
+    await waitFor(() =>
+      expect(mocks.testLlm).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "qwen3-max", apiKey: "" }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() =>
+      expect(mocks.saveLlm).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "qwen3-max", apiKey: "" }),
+      ),
+    );
+    expect(mocks.refreshLlm).toHaveBeenCalled();
   });
 });

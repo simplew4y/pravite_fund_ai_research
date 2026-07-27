@@ -327,7 +327,8 @@ _POLICY_TOOLS = frozenset({"sys_add_policy", "sys_policy_registry"})
 # ignore the harness ``tools`` list, so the relay is their ONLY tool
 # surface; this set is the runner-/server-proxied builtin surface that
 # rides through the Omnigent ``/mcp`` endpoint (comment, session read/write,
-# async inbox, task lifecycle, agent-discovery, and terminal families —
+# async inbox, task lifecycle, agent-discovery, timer, skill, and terminal
+# families —
 # the same dispatch posture non-native harnesses get via
 # ``request.tools``). ``sys_terminal_*`` inherits the spec gate for
 # free: the relay only advertises names that ``ToolManager(spec)``
@@ -349,6 +350,8 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     | _POLICY_TOOLS
     | _TERMINAL_TOOLS
     | _PRIVATE_FUND_DATASET_TOOLS
+    | _TIMER_TOOLS
+    | _SKILL_TOOLS
 )
 
 

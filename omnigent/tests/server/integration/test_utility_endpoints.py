@@ -78,6 +78,25 @@ async def test_info_returns_expected_fields(client: httpx.AsyncClient) -> None:
     assert data["needs_setup"] is False
     assert isinstance(data["databricks_features"], bool)
     assert isinstance(data["managed_sandboxes_enabled"], bool)
+    assert data["llm_configuration_enabled"] is True
+
+
+async def test_llm_config_endpoint_never_returns_plaintext_key(client: httpx.AsyncClient) -> None:
+    resp = await client.get("/v1/private-fund/llm-config")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert set(data) == {
+        "preset",
+        "provider",
+        "baseUrl",
+        "model",
+        "hasApiKey",
+        "maskedApiKey",
+        "configured",
+    }
+    assert "apiKey" not in data
+    assert isinstance(data["hasApiKey"], bool)
+    assert isinstance(data["maskedApiKey"], str)
 
 
 # ── GET /v1/me ───────────────────────────────────────────

@@ -29,6 +29,7 @@ from urllib.parse import unquote_plus, urlencode
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     HTTPException,
     Query,
     Request,
@@ -49,6 +50,13 @@ from omnigent.server import (
     private_fund_workflow,
 )
 from omnigent.server.auth import AuthProvider
+from omnigent.server.private_fund_tenant import (
+    bind_tenant_job_payload,
+    current_dataset_root,
+    current_tenant,
+    tenant_job_payload,
+    tenant_scope_dependency,
+)
 from omnigent.server.routes._auth_helpers import require_user
 from omnigent.stores.conversation_store import ConversationStore
 
@@ -74,7 +82,11 @@ if str(_PRIVATE_FUND_SRC) not in sys.path:
     sys.path.insert(0, str(_PRIVATE_FUND_SRC))
 
 from pdf_research_demo.demo import ChatClient, MemoDraft, PdfResearchDemo  # noqa: E402
-from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config  # noqa: E402
+from pdf_research_demo.llm import (  # noqa: E402
+    LLMConfig,
+    OpenAICompatibleChatClient,
+    load_llm_config,
+)
 from pdf_research_demo.memo_pdf import render_memo_pdf  # noqa: E402
 from pdf_research_demo.models import Citation  # noqa: E402
 
@@ -1286,6 +1298,7 @@ def _run_global_upload_pipeline(
         "workspace_root": str(_dataset_workspace_root()),
         "recursive": True,
         "reset": False,
+        "_tenant": tenant_job_payload(),
     }
     with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
         _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
@@ -1350,7 +1363,15 @@ def _run_global_upload_pipeline(
             )
 
 
-def _process_global_upload_batch(batch_id: str) -> None:
+def _process_global_upload_batch(
+    batch_id: str,
+    job_tenant: dict[str, str] | None = None,
+) -> None:
+    with bind_tenant_job_payload({"_tenant": job_tenant}):
+        _process_global_upload_batch_in_scope(batch_id)
+
+
+def _process_global_upload_batch_in_scope(batch_id: str) -> None:
     _set_global_upload_batch_status(
         batch_id,
         "identifying",
@@ -1493,7 +1514,19 @@ def _process_global_upload_batch(batch_id: str) -> None:
     _finalize_global_upload_batch(batch_id)
 
 
-def _process_manually_routed_global_upload(item_id: str, dataset_id: str) -> None:
+def _process_manually_routed_global_upload(
+    item_id: str,
+    dataset_id: str,
+    job_tenant: dict[str, str] | None = None,
+) -> None:
+    with bind_tenant_job_payload({"_tenant": job_tenant}):
+        _process_manually_routed_global_upload_in_scope(item_id, dataset_id)
+
+
+def _process_manually_routed_global_upload_in_scope(
+    item_id: str,
+    dataset_id: str,
+) -> None:
     item = _global_upload_item_row(item_id)
     if item is None:
         return
@@ -1544,11 +1577,13 @@ def _collection_db_path(dataset_id: str) -> Path:
 
 
 def _latest_project_job(dataset_id: str) -> dict[str, Any] | None:
+    workspace = str(_dataset_workspace_root())
     with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
         in_memory = [
             dict(job)
             for job in _PRIVATE_FUND_PIPELINE_JOBS.values()
             if job.get("dataset_id") == dataset_id
+            and str(job.get("workspace_root") or "") == workspace
         ]
     if in_memory:
         in_memory.sort(
@@ -1605,7 +1640,9 @@ def _persisted_project_pipeline_job(job_id: str) -> dict[str, Any] | None:
 def _get_project_pipeline_job_payload(job_id: str) -> dict[str, Any] | None:
     with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
         job = _PRIVATE_FUND_PIPELINE_JOBS.get(job_id)
-    return dict(job) if job else _persisted_project_pipeline_job(job_id)
+    if job and str(job.get("workspace_root") or "") == str(_dataset_workspace_root()):
+        return dict(job)
+    return _persisted_project_pipeline_job(job_id)
 
 
 def _project_index_stats(dataset_id: str) -> dict[str, Any]:
@@ -2458,6 +2495,7 @@ def _delete_project(dataset_id: str) -> dict[str, Any]:
     with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
         running = any(
             job.get("dataset_id") == dataset_id and job.get("status") in {"queued", "running"}
+            and str(job.get("workspace_root") or "") == str(_dataset_workspace_root())
             for job in _PRIVATE_FUND_PIPELINE_JOBS.values()
         )
     if running or latest_job and latest_job.get("status") in {"queued", "running"}:
@@ -2491,6 +2529,7 @@ def _delete_project(dataset_id: str) -> dict[str, Any]:
             job_id
             for job_id, job in _PRIVATE_FUND_PIPELINE_JOBS.items()
             if job.get("dataset_id") == dataset_id
+            and str(job.get("workspace_root") or "") == str(workspace)
         ]
         for job_id in stale_job_ids:
             _PRIVATE_FUND_PIPELINE_JOBS.pop(job_id, None)
@@ -2498,6 +2537,11 @@ def _delete_project(dataset_id: str) -> dict[str, Any]:
 
 
 def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
+    with bind_tenant_job_payload(payload):
+        _project_pipeline_worker_in_scope(job_id, payload)
+
+
+def _project_pipeline_worker_in_scope(job_id: str, payload: dict[str, Any]) -> None:
     dataset_id = payload["dataset_id"]
     with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
         _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
@@ -2594,6 +2638,7 @@ def _project_pipeline_worker(job_id: str, payload: dict[str, Any]) -> None:
             _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
                 "job_id": job_id,
                 "dataset_id": dataset_id,
+                "workspace_root": payload["workspace_root"],
                 "status": result.status,
                 "started_at": result.started_at,
                 "finished_at": result.finished_at,
@@ -2661,6 +2706,7 @@ def _queue_project_pipeline_job(
         "workspace_root": str(_dataset_workspace_root()),
         "recursive": request.recursive if request else True,
         "reset": request.reset if request else False,
+        "_tenant": tenant_job_payload(),
     }
     with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
         _PRIVATE_FUND_PIPELINE_JOBS[job_id] = {
@@ -2682,6 +2728,23 @@ def _trace_payload(demo: PdfResearchDemo, citations: list[Citation]) -> list[dic
 def _load_chat_client() -> tuple[ChatClient | None, dict[str, Any]]:
     if os.environ.get("PRIVATE_FUND_USE_LLM", "1").strip().lower() in {"0", "false", "no"}:
         return None, {"enabled": False, "reason": "PRIVATE_FUND_USE_LLM disabled"}
+
+    tenant = current_tenant()
+    if tenant is not None:
+        from omnigent.server.user_llm_gateway import issue_user_llm_token
+
+        gateway = os.environ.get(
+            "OMNIGENT_INTERNAL_LLM_GATEWAY_URL",
+            "http://127.0.0.1:6767/internal/private-fund/llm",
+        ).rstrip("/")
+        config = LLMConfig(
+            model_name="private-fund-default",
+            base_url=f"{gateway}/v1",
+            api_key=issue_user_llm_token(tenant.user_id, f"pipeline:{tenant.data_namespace}"),
+            timeout_seconds=600,
+            source="user-scoped local gateway",
+        )
+        return OpenAICompatibleChatClient(config), config.safe_summary()
 
     config_path = os.environ.get("PRIVATE_FUND_LLM_CONFIG") or None
     try:
@@ -2729,6 +2792,9 @@ def _png_size(path: Path) -> tuple[int, int]:
 
 
 def _dataset_workspace_root() -> Path:
+    tenant_root = current_dataset_root(DATASET_WORKSPACE_DIR)
+    if tenant_root != DATASET_WORKSPACE_DIR:
+        return tenant_root
     override = os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
     return Path(override).expanduser().resolve() if override else DATASET_WORKSPACE_DIR
 
@@ -2761,6 +2827,22 @@ def _active_collection_db(dataset_id: str | None = None) -> tuple[Path, str] | N
     if not collection_db.exists():
         return None
     return collection_db, active_dataset
+
+
+def _safe_dataset_stored_path(raw_path: Any, dataset_id: str) -> Path | None:
+    try:
+        candidate = Path(str(raw_path or "")).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    if current_tenant() is None:
+        return candidate
+    try:
+        allowed_root = _project_dataset_root(dataset_id).resolve()
+    except (OSError, RuntimeError):
+        return None
+    if not candidate.is_relative_to(allowed_root):
+        return None
+    return candidate
 
 
 def _dataset_document_by_name(
@@ -2813,8 +2895,10 @@ def _dataset_pdf_path_by_name(pdf_name: str, dataset_id: str | None = None) -> P
     document = _dataset_document_by_name(pdf_name, dataset_id, file_types={"pdf"})
     if document is None:
         return None
-    row, _, _ = document
-    candidate = Path(row["stored_path"]).expanduser().resolve()
+    row, _, active_dataset = document
+    candidate = _safe_dataset_stored_path(row["stored_path"], active_dataset)
+    if candidate is None:
+        return None
     if candidate.is_file() and candidate.suffix.lower() == ".pdf":
         return candidate
     return None
@@ -2859,7 +2943,7 @@ def _dataset_pdf_path_by_page_quote(
     collection = _active_collection_db(dataset_id)
     if collection is None:
         return None
-    collection_db, _active_dataset = collection
+    collection_db, active_dataset = collection
     try:
         with sqlite3.connect(str(collection_db), timeout=5) as conn:
             conn.row_factory = sqlite3.Row
@@ -2882,8 +2966,8 @@ def _dataset_pdf_path_by_page_quote(
     best_path: Path | None = None
     best_score = -1.0
     for row in rows:
-        candidate = Path(row["stored_path"]).expanduser().resolve()
-        if not candidate.is_file() or candidate.suffix.lower() != ".pdf":
+        candidate = _safe_dataset_stored_path(row["stored_path"], active_dataset)
+        if candidate is None or not candidate.is_file() or candidate.suffix.lower() != ".pdf":
             continue
         score = _source_match_score(quote, row["text"])
         if score > best_score:
@@ -2913,7 +2997,7 @@ def _dataset_pdf_path_by_evidence_id(
     collection = _active_collection_db(dataset_id)
     if collection is None:
         return None
-    collection_db, _active_dataset = collection
+    collection_db, active_dataset = collection
     try:
         with sqlite3.connect(str(collection_db), timeout=5) as conn:
             conn.row_factory = sqlite3.Row
@@ -2933,7 +3017,9 @@ def _dataset_pdf_path_by_evidence_id(
         return None
     if row is None:
         return None
-    candidate = Path(row["stored_path"]).expanduser().resolve()
+    candidate = _safe_dataset_stored_path(row["stored_path"], active_dataset)
+    if candidate is None:
+        return None
     return candidate if candidate.is_file() and candidate.suffix.lower() == ".pdf" else None
 
 
@@ -4034,11 +4120,14 @@ class _PrivateFundPdfWorkspace:
                 "citation_count": len(self.demo.store.citations),
                 "memo_pdf_count": len(self.memo_pdfs),
                 "llm": self._llm_summary,
-                "default_pdf_path": str(DEFAULT_PDF_PATH),
+                "default_pdf_path": None if current_tenant() is not None else str(DEFAULT_PDF_PATH),
             }
 
     def register_pdf(self, request: RegisterPdfRequest) -> dict[str, Any]:
         pdf_path = Path(request.pdf_path).expanduser().resolve()
+        tenant = current_tenant()
+        if tenant is not None and not pdf_path.is_relative_to(tenant.dataset_root):
+            raise HTTPException(status_code=404, detail="PDF not found.")
         if not pdf_path.is_file():
             raise HTTPException(status_code=404, detail=f"PDF not found: {pdf_path}")
         if pdf_path.suffix.lower() != ".pdf":
@@ -4122,6 +4211,9 @@ class _PrivateFundPdfWorkspace:
     ) -> Path:
         if pdf_path:
             resolved = Path(pdf_path).expanduser().resolve()
+            tenant = current_tenant()
+            if tenant is not None and not resolved.is_relative_to(tenant.dataset_root):
+                raise HTTPException(status_code=404, detail="PDF not found.")
         elif evidence_id:
             resolved = _dataset_pdf_path_by_evidence_id(evidence_id, dataset_id=dataset_id)
             if resolved is None:
@@ -4178,10 +4270,22 @@ def create_private_fund_pdf_router(
     *,
     conversation_store: ConversationStore | None = None,
     auth_provider: AuthProvider | None = None,
+    account_store: Any | None = None,
 ) -> APIRouter:
     """Create local private-fund PDF endpoints mounted under ``/v1``."""
-    router = APIRouter()
-    active_workspace = workspace or _PrivateFundPdfWorkspace()
+    router = APIRouter(
+        dependencies=[Depends(tenant_scope_dependency(auth_provider, account_store))]
+    )
+    workspaces: dict[str, _PrivateFundPdfWorkspace] = {}
+
+    def active_workspace() -> _PrivateFundPdfWorkspace:
+        tenant = current_tenant()
+        key = tenant.data_namespace if tenant is not None else "__legacy__"
+        if workspace is not None:
+            return workspace
+        if key not in workspaces:
+            workspaces[key] = _PrivateFundPdfWorkspace()
+        return workspaces[key]
 
     @router.post("/private-fund/uploads", status_code=202)
     def upload_private_fund_files_globally(
@@ -4189,7 +4293,18 @@ def create_private_fund_pdf_router(
         files: Annotated[list[UploadFile], FastApiFile(...)],
     ) -> dict[str, Any]:
         batch = _create_global_upload_batch(files)
-        background_tasks.add_task(_process_global_upload_batch, str(batch["batch_id"]))
+        job_tenant = tenant_job_payload()
+        if job_tenant is None:
+            background_tasks.add_task(
+                _process_global_upload_batch,
+                str(batch["batch_id"]),
+            )
+        else:
+            background_tasks.add_task(
+                _process_global_upload_batch,
+                str(batch["batch_id"]),
+                job_tenant,
+            )
         return {"batch": batch}
 
     @router.get("/private-fund/upload-batches/{batch_id}")
@@ -4230,9 +4345,20 @@ def create_private_fund_pdf_router(
         _set_global_upload_batch_status(
             str(item["batch_id"]), "indexing", message="Manual project routing is queued."
         )
-        background_tasks.add_task(
-            _process_manually_routed_global_upload, item_id, request.dataset_id
-        )
+        job_tenant = tenant_job_payload()
+        if job_tenant is None:
+            background_tasks.add_task(
+                _process_manually_routed_global_upload,
+                item_id,
+                request.dataset_id,
+            )
+        else:
+            background_tasks.add_task(
+                _process_manually_routed_global_upload,
+                item_id,
+                request.dataset_id,
+                job_tenant,
+            )
         batch = _global_upload_batch_payload(str(item["batch_id"]))
         return {"batch": batch}
 
@@ -5197,27 +5323,27 @@ def create_private_fund_pdf_router(
 
     @router.get("/private-fund/pdf/status")
     def status() -> dict[str, Any]:
-        return active_workspace.status()
+        return active_workspace().status()
 
     @router.post("/private-fund/pdf/register")
     def register_pdf(request: RegisterPdfRequest) -> dict[str, Any]:
-        return active_workspace.register_pdf(request)
+        return active_workspace().register_pdf(request)
 
     @router.post("/private-fund/pdf/ask")
     def ask_pdf(request: AskPdfRequest) -> dict[str, Any]:
-        return active_workspace.ask(request)
+        return active_workspace().ask(request)
 
     @router.get("/private-fund/citations/{citation_id}")
     def trace_citation(citation_id: str) -> dict[str, Any]:
-        return active_workspace.trace(citation_id)
+        return active_workspace().trace(citation_id)
 
     @router.post("/private-fund/memo/generate")
     def generate_memo(request: MemoRequest | None = None) -> dict[str, Any]:
-        return active_workspace.generate_memo(request)
+        return active_workspace().generate_memo(request)
 
     @router.get("/private-fund/memo/{memo_id}/pdf")
     def memo_pdf(memo_id: str) -> FileResponse:
-        pdf_path = active_workspace.memo_pdf_path(memo_id)
+        pdf_path = active_workspace().memo_pdf_path(memo_id)
         return FileResponse(pdf_path, media_type="application/pdf", filename=pdf_path.name)
 
     @router.get("/private-fund/dataset/memo/file")
@@ -5244,8 +5370,10 @@ def create_private_fund_pdf_router(
         document = _dataset_document_by_name(file_name, dataset_id)
         if document is None:
             raise HTTPException(status_code=404, detail=f"Document not found: {file_name}")
-        row, _collection_db, _active_dataset = document
-        stored_path = Path(str(row["stored_path"] or "")).expanduser().resolve()
+        row, _collection_db, active_dataset = document
+        stored_path = _safe_dataset_stored_path(row["stored_path"], active_dataset)
+        if stored_path is None:
+            raise HTTPException(status_code=404, detail=f"Document not found: {file_name}")
         if not stored_path.is_file():
             raise HTTPException(status_code=404, detail=f"Document file is missing: {file_name}")
         media_types = {
@@ -5285,7 +5413,7 @@ def create_private_fund_pdf_router(
         evidence_id: str | None = Query(default=None),
         dataset_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_pdf_path = active_workspace.source_pdf_path(
+        resolved_pdf_path = active_workspace().source_pdf_path(
             pdf_path,
             pdf_name=pdf_name,
             evidence_id=evidence_id,
@@ -5370,7 +5498,7 @@ def create_private_fund_pdf_router(
         evidence_id: str | None = Query(default=None),
         dataset_id: str | None = Query(default=None),
     ) -> FileResponse:
-        resolved_pdf_path = active_workspace.source_pdf_path(
+        resolved_pdf_path = active_workspace().source_pdf_path(
             pdf_path,
             pdf_name=pdf_name,
             evidence_id=evidence_id,

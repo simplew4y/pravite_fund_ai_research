@@ -33,35 +33,53 @@ def _workspace_root() -> Path:
     return (
         Path(
             os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
-            or _PROJECT_ROOT / "output" / "private_fund_datasets"
+            or _PROJECT_ROOT / "output" / "users"
         )
         .expanduser()
         .resolve()
     )
 
 
-def _collection_dbs(workspace: Path) -> list[tuple[str, Path]]:
+def _collection_dbs(workspace: Path) -> list[tuple[str, str, Path]]:
     pairs = []
     if not workspace.is_dir():
         return pairs
-    for path in workspace.glob("*/meta/collection.sqlite3"):
+    for path in workspace.glob("*/private_fund_datasets/*/meta/collection.sqlite3"):
         dataset_id = path.parent.parent.name
+        data_namespace = path.parents[3].name
         if dataset_id.startswith("_"):
             continue
-        pairs.append((dataset_id, path))
-    return sorted(pairs, key=lambda item: item[0])
+        pairs.append((data_namespace, dataset_id, path))
+    return sorted(pairs, key=lambda item: (item[0], item[1]))
 
 
-def _load_llm_client() -> Any | None:
+def _load_llm_client(data_namespace: str, dataset_id: str) -> Any | None:
     enabled = os.environ.get("PRIVATE_FUND_TRACKING_USE_LLM", "1").strip().lower()
     if enabled in {"0", "false", "no", "off"}:
         return None
     try:
-        from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+        from pdf_research_demo.llm import LLMConfig, OpenAICompatibleChatClient
 
-        config_path = os.environ.get("PRIVATE_FUND_LLM_CONFIG") or None
-        config = load_llm_config(config_path)
-        return OpenAICompatibleChatClient(config) if config else None
+        from omnigent.server.accounts_store import SqlAlchemyAccountStore
+        from omnigent.server.user_llm_gateway import issue_user_llm_token
+
+        data_dir = Path(os.environ.get("OMNIGENT_DATA_DIR") or Path.home() / ".omnigent")
+        store = SqlAlchemyAccountStore(f"sqlite:///{data_dir / 'chat.db'}")
+        user_id = store.get_user_id_by_data_namespace(data_namespace)
+        if not user_id:
+            return None
+        gateway = os.environ.get(
+            "OMNIGENT_INTERNAL_LLM_GATEWAY_URL",
+            "http://127.0.0.1:6767/internal/private-fund/llm",
+        ).rstrip("/")
+        config = LLMConfig(
+            model_name="private-fund-default",
+            base_url=f"{gateway}/v1",
+            api_key=issue_user_llm_token(user_id, f"tracking:{dataset_id}"),
+            timeout_seconds=600,
+            source="user-scoped local gateway",
+        )
+        return OpenAICompatibleChatClient(config)
     except Exception:  # noqa: BLE001
         _LOGGER.warning(
             "tracking LLM is unavailable; using deterministic extraction", exc_info=True
@@ -80,8 +98,9 @@ def _write_health(workspace: Path, payload: dict[str, Any]) -> None:
 def run_cycle(workspace: Path, llm_client: Any | None, *, max_jobs_per_db: int = 5) -> int:
     processed = 0
     errors: list[dict[str, str]] = []
-    for dataset_id, collection_db in _collection_dbs(workspace):
+    for data_namespace, dataset_id, collection_db in _collection_dbs(workspace):
         try:
+            dataset_llm_client = llm_client or _load_llm_client(data_namespace, dataset_id)
             private_fund_tracking.recover_stale_jobs(collection_db, dataset_id)
             # Reconcile the current document snapshot every cycle so imports that
             # bypass the Omnigent HTTP pipeline still emit idempotent ingest jobs.
@@ -91,7 +110,7 @@ def run_cycle(workspace: Path, llm_client: Any | None, *, max_jobs_per_db: int =
                 result = private_fund_tracking.process_next_job(
                     collection_db,
                     dataset_id,
-                    llm_client=llm_client,
+                    llm_client=dataset_llm_client,
                 )
                 if result is None:
                     break
@@ -143,7 +162,7 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     workspace = _workspace_root()
-    llm_client = _load_llm_client()
+    llm_client = None
     while not _STOP:
         processed = run_cycle(
             workspace,

@@ -44,6 +44,7 @@ class Account:
     created_at: int | None
     last_login_at: int | None
     has_password: bool
+    data_namespace: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)

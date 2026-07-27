@@ -72,16 +72,13 @@ cat <<'MSG'
 
 Setup complete.
 
-Before starting the full Omnigent + Claude Code Haha stack, provide model credentials
-with either environment variables:
-
-  export DASHSCOPE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-  export DASHSCOPE_API_KEY="<your-key>"
-
-or a local FinSagent/config/production.yaml containing llm_base_url and llm_api_key.
-
 Start the full stack:
 
-  scripts/run_omnigent_cc_haha.sh
+  scripts/manage_omnigent_services.sh start
+
+The stack also starts before a model is configured. Open the workbench Settings
+page and configure "Model service"; LiteLLM applies the saved provider without
+restarting the complete stack. Development configuration is stored in the local,
+Git-ignored FinSagent/config/production.yaml.
 
 MSG

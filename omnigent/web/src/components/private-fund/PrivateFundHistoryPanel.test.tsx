@@ -21,9 +21,12 @@ vi.mock("@/lib/privateFundApi", async (importOriginal) => {
   };
 });
 
-const memoVersion = (versionNo: number): PrivateFundMemoVersion => ({
-  memoVersionId: `memo-v${versionNo}`,
-  seriesId: "series-1",
+const memoVersion = (
+  versionNo: number,
+  seriesId = "series-1",
+): PrivateFundMemoVersion => ({
+  memoVersionId: `${seriesId}-memo-v${versionNo}`,
+  seriesId,
   versionNo,
   asOfDate: `2026-07-${String(versionNo).padStart(2, "0")}`,
   status: "completed",
@@ -60,18 +63,18 @@ const overview: PrivateFundTrackingOverview = {
       title: "投资逻辑 Memo",
       currentVersionNo: 2,
       versionCount: 2,
-      currentMemoVersionId: "memo-v2",
+      currentMemoVersionId: "series-1-memo-v2",
       updatedAt: "2026-07-14T00:00:00Z",
     },
   ],
   memoVersions: [memoVersion(2), memoVersion(1)],
 };
 
-function renderPanel() {
+function renderPanel(initialSeriesId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <PrivateFundHistoryPanel datasetId="sungrow" />
+      <PrivateFundHistoryPanel datasetId="sungrow" initialSeriesId={initialSeriesId} />
     </QueryClientProvider>,
   );
 }
@@ -154,11 +157,55 @@ describe("PrivateFundHistoryPanel", () => {
     renderPanel();
 
     await waitFor(() =>
-      expect(comparePrivateFundMemoVersions).toHaveBeenCalledWith("sungrow", "memo-v1", "memo-v2"),
+      expect(comparePrivateFundMemoVersions).toHaveBeenCalledWith(
+        "sungrow",
+        "series-1-memo-v1",
+        "series-1-memo-v2",
+      ),
     );
     expect(await screen.findByText("海外增长放缓，储能业务补位。")).toBeInTheDocument();
     expect(screen.getByText("新版未提及")).toBeInTheDocument();
     expect(await screen.findByText("2026 年收入增速假设下调至 20%。")).toBeInTheDocument();
     expect(screen.getByText("2026 年收入增速假设为 25%。")).toBeInTheDocument();
+  });
+
+  it("opens the requested Memo series when entered from the asset library", async () => {
+    const secondSeriesVersions = [
+      memoVersion(2, "series-2"),
+      memoVersion(1, "series-2"),
+    ];
+    vi.mocked(usePrivateFundTracking).mockReturnValue({
+      data: {
+        ...overview,
+        memoSeries: [
+          ...overview.memoSeries,
+          {
+            seriesId: "series-2",
+            topic: "海外盈利质量",
+            title: "海外盈利质量 Memo",
+            currentVersionNo: 2,
+            versionCount: 2,
+            currentMemoVersionId: "series-2-memo-v2",
+            updatedAt: "2026-07-15T00:00:00Z",
+          },
+        ],
+        memoVersions: [...overview.memoVersions, ...secondSeriesVersions],
+      },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof usePrivateFundTracking>);
+
+    renderPanel("series-2");
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Memo 系列" })).toHaveValue("series-2"),
+    );
+    await waitFor(() =>
+      expect(comparePrivateFundMemoVersions).toHaveBeenCalledWith(
+        "sungrow",
+        "series-2-memo-v1",
+        "series-2-memo-v2",
+      ),
+    );
   });
 });

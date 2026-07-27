@@ -5895,6 +5895,39 @@ def test_bedrock_config_for_native_claude_non_anthropic_returns_none() -> None:
     assert claude_native._bedrock_config_for_native_claude(entry) is None
 
 
+def test_runner_gateway_config_overrides_machine_provider() -> None:
+    """A private-fund runner resolves its session-scoped local gateway."""
+    from omnigent.runner.identity import RUNNER_USER_LLM_GATEWAY_ENV_VAR
+
+    cfg = claude_native.native_claude_config_from_runner_gateway_env(
+        {
+            RUNNER_USER_LLM_GATEWAY_ENV_VAR: "1",
+            "ANTHROPIC_BASE_URL": "http://127.0.0.1:6767/internal/private-fund/llm",
+            "ANTHROPIC_AUTH_TOKEN": "session-token",
+            "ANTHROPIC_MODEL": "private-fund-default",
+        }
+    )
+
+    assert cfg is not None
+    assert cfg.env["ANTHROPIC_BASE_URL"].endswith("/internal/private-fund/llm")
+    assert cfg.api_key_helper == "printf %s session-token"
+    assert cfg.model == "private-fund-default"
+
+
+def test_runner_gateway_config_requires_explicit_marker() -> None:
+    """Ambient provider variables do not become a private user gateway."""
+    assert (
+        claude_native.native_claude_config_from_runner_gateway_env(
+            {
+                "ANTHROPIC_BASE_URL": "https://models.example.test",
+                "ANTHROPIC_AUTH_TOKEN": "ambient-token",
+                "ANTHROPIC_MODEL": "ambient-model",
+            }
+        )
+        is None
+    )
+
+
 def test_resolve_native_claude_config_spec_provider_default(
     _isolated_provider_config: Path,
 ) -> None:

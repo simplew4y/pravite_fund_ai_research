@@ -66,9 +66,15 @@ global.fetch = async (_url, request) => {
 };
 
 let pollInbox = null;
+let pollerUnrefCount = 0;
 global.setInterval = (fn, _ms) => {
   pollInbox = fn;
-  return { fakeInterval: true };
+  return {
+    fakeInterval: true,
+    unref() {
+      pollerUnrefCount += 1;
+    },
+  };
 };
 
 const handlers = {};
@@ -93,6 +99,9 @@ require(extensionPath)(pi);
     ui: { setTitle() {}, setStatus() {}, notify() {} },
   });
   assert.equal(typeof pollInbox, "function");
+  // The resident TUI has other live handles, but print/JSON mode does not.
+  // Its inbox interval must not keep a completed headless process alive.
+  assert.equal(pollerUnrefCount, 1);
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     pollInbox();
@@ -906,6 +915,75 @@ require(extensionPath)(pi);
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_appends_orchestrator_contract_to_pi_system_prompt(tmp_path: Path) -> None:
+    """The bridge injects AgentSpec instructions without replacing Pi context."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for the pi-native extension e2e test")
+
+    extension_path = (
+        Path(__file__).resolve().parents[1]
+        / "omnigent"
+        / "resources"
+        / "pi_native"
+        / "omnigent_pi_native_extension.js"
+    )
+
+    script = r"""
+const assert = require("assert").strict;
+const fs = require("fs");
+const path = require("path");
+
+const extensionPath = process.argv[1];
+const tmpDir = process.argv[2];
+const configPath = path.join(tmpDir, "config.json");
+fs.writeFileSync(
+  configPath,
+  JSON.stringify({
+    serverUrl: "http://omnigent.test",
+    sessionId: "conv_abc",
+    systemPrompt: "Use durable memory, but keep evidence canonical.",
+  }),
+);
+process.env.OMNIGENT_PI_NATIVE_CONFIG = configPath;
+
+const handlers = {};
+const pi = {
+  registerCommand() {},
+  registerTool() {},
+  on(eventName, handler) {
+    handlers[eventName] = handler;
+  },
+};
+require(extensionPath)(pi);
+
+(async () => {
+  assert.equal(typeof handlers.before_agent_start, "function");
+  const result = await handlers.before_agent_start({
+    systemPrompt: "Pi base prompt and project AGENTS.md",
+  });
+  assert.equal(
+    result.systemPrompt,
+    "Pi base prompt and project AGENTS.md\n\n" +
+      "Use durable memory, but keep evidence canonical.",
+  );
+})().catch((error) => {
+  console.error(error && error.stack ? error.stack : error);
+  process.exit(1);
+});
+"""
+
+    result = subprocess.run(
+        [node, "-e", script, str(extension_path), str(tmp_path)],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_bridged_tool_call_skips_hook_policy_eval(tmp_path: Path) -> None:
     """The tool_call hook must NOT re-evaluate policy for bridged Omnigent tools.
 
@@ -1145,13 +1223,13 @@ require(extensionPath)(pi);
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_mcp_unreachable_fails_closed_without_throwing(tmp_path: Path) -> None:
-    """An unreachable Omnigent MCP server resolves to an error, never a throw.
+def test_mcp_unreachable_throws_for_pi_to_mark_failed(tmp_path: Path) -> None:
+    """An unreachable Omnigent MCP server throws a readable tool error.
 
     Boundary discipline at the /mcp call site: a transport failure (connection
-    refused) and an HTTP non-2xx must each resolve ``execute`` to a readable
-    ``isError: true`` tool result so the Pi agent loop keeps running, rather than
-    rejecting the promise and wedging the turn.
+    refused) and an HTTP non-2xx must each reject ``execute`` with a readable
+    error. Pi 0.75+ catches that rejection, reports ``isError: true`` to the LLM,
+    and keeps the agent loop running; returned ``isError`` fields are ignored.
     """
     node = shutil.which("node")
     if node is None:
@@ -1209,14 +1287,16 @@ const pi = {
 require(extensionPath)(pi);
 
 (async () => {
-  const thrown = await registered.sys_os_shell.execute("call-1", {});
-  assert.equal(thrown.isError, true, JSON.stringify(thrown));
-  assert.ok(thrown.content[0].text.indexOf("ECONNREFUSED") !== -1, thrown.content[0].text);
+  await assert.rejects(
+    registered.sys_os_shell.execute("call-1", {}),
+    /ECONNREFUSED/,
+  );
 
   mode = "http";
-  const http = await registered.sys_os_shell.execute("call-2", {});
-  assert.equal(http.isError, true, JSON.stringify(http));
-  assert.ok(http.content[0].text.indexOf("503") !== -1, http.content[0].text);
+  await assert.rejects(
+    registered.sys_os_shell.execute("call-2", {}),
+    /HTTP 503/,
+  );
 })().catch((error) => {
   console.error(error && error.stack ? error.stack : error);
   process.exit(1);
@@ -1234,13 +1314,13 @@ require(extensionPath)(pi);
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_input_required_denied_fails_closed_not_false_success(tmp_path: Path) -> None:
-    """A declined ASK gate fails CLOSED (isError) — never reports false success.
+def test_input_required_denied_throws_not_false_success(tmp_path: Path) -> None:
+    """A declined ASK gate throws for Pi to mark failed — never false success.
 
     When the elicitation park collapses to DENY, the extension retries once with
-    ``{action: "decline"}``; the proxy returns a -32000 error which surfaces as an
-    ``isError: true`` tool result. The raw ``input_required`` envelope must never
-    be returned to the model as a successful result.
+    ``{action: "decline"}``; the proxy returns a -32000 error which becomes a
+    rejected execute promise. Pi catches it and emits ``isError: true``. The raw
+    ``input_required`` envelope must never reach the model as a successful result.
     """
     node = shutil.which("node")
     if node is None:
@@ -1333,18 +1413,23 @@ const pi = {
 require(extensionPath)(pi);
 
 (async () => {
-  const result = await registered.sys_os_shell.execute("call-1", {});
+  let rejection = null;
+  try {
+    await registered.sys_os_shell.execute("call-1", {});
+  } catch (error) {
+    rejection = error;
+  }
 
   assert.equal(mcpCallCount, 2, "expected one approval retry");
   assert.deepEqual(lastRetryBody.params.inputResponses, {
     [ELICIT_ID]: { action: "decline" },
   });
 
-  // Must surface as an error, NOT a false success, and must not leak the raw
-  // input_required envelope.
-  assert.equal(result.isError, true, JSON.stringify(result));
-  assert.ok(result.content[0].text.indexOf("denied") !== -1, result.content[0].text);
-  assert.equal(result.content[0].text.indexOf("input_required"), -1, result.content[0].text);
+  // Must reject, NOT report false success, and must not leak the raw
+  // input_required envelope in the readable error.
+  assert.ok(rejection instanceof Error);
+  assert.match(rejection.message, /denied/i);
+  assert.equal(rejection.message.indexOf("input_required"), -1, rejection.message);
 })().catch((error) => {
   console.error(error && error.stack ? error.stack : error);
   process.exit(1);

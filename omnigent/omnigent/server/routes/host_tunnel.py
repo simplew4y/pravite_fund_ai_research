@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 
@@ -57,6 +59,7 @@ _logger = logging.getLogger(__name__)
 SUPPORTED_FRAME_PROTOCOL_MAJOR = 1
 PING_INTERVAL_S = 30.0
 PING_MISS_THRESHOLD = 3
+PRIVATE_FUND_SERVICE_HOST_OWNER = "__private_fund_service__"
 
 
 def create_host_tunnel_router(
@@ -138,6 +141,20 @@ def create_host_tunnel_router(
         # ``accept()``.
         managed_token = ws.headers.get(MANAGED_HOST_TOKEN_HEADER)
         if managed_token is not None:
+            shared_token = os.environ.get("OMNIGENT_SHARED_HOST_TOKEN", "")
+            shared_host_id = os.environ.get("OMNIGENT_SHARED_HOST_ID", "")
+            is_shared_host = bool(
+                shared_token
+                and shared_host_id == host_id
+                and hmac.compare_digest(managed_token, shared_token)
+            )
+            if is_shared_host:
+                tunnel_owner = PRIVATE_FUND_SERVICE_HOST_OWNER
+            else:
+                managed = await asyncio.to_thread(
+                    host_store.resolve_launch_token,
+                    managed_token,
+                )
             # A managed-host launch token is an explicit credential: when
             # presented, it must resolve — never fall through to user auth
             # (a peer that chose this header has no user identity to fall
@@ -145,11 +162,10 @@ def create_host_tunnel_router(
             # into header/anonymous auth). The token is scoped to one
             # host_id; presenting it for any other path fails closed so a
             # leaked token cannot register arbitrary hosts.
-            managed = await asyncio.to_thread(host_store.resolve_launch_token, managed_token)
-            if managed is None or managed.host_id != host_id:
-                await ws.close(code=4004, reason="unauthenticated")
-                return
-            tunnel_owner = managed.owner
+                if managed is None or managed.host_id != host_id:
+                    await ws.close(code=4004, reason="unauthenticated")
+                    return
+                tunnel_owner = managed.owner
         elif auth_provider is not None:
             tunnel_owner = auth_provider.get_user_id(ws)
             if tunnel_owner is None:

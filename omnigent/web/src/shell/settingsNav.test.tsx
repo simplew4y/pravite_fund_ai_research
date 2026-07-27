@@ -60,7 +60,7 @@ describe("settingsNavGroups", () => {
     expect(withAccounts[0]).toBe("account");
   });
 
-  it("includes desktop model settings and Local CLI only in the desktop shell", () => {
+  it("includes Local CLI only in the desktop shell", () => {
     const ids = (isDesktop: boolean) =>
       settingsNavGroups(false, isDesktop)
         .flatMap((g) => g.items)
@@ -68,8 +68,15 @@ describe("settingsNavGroups", () => {
     expect(ids(false)).not.toContain("cli");
     expect(ids(false)).not.toContain("llm");
     expect(ids(true)).toContain("cli");
-    expect(ids(true)).toContain("llm");
-    expect(ids(true).indexOf("llm")).toBeLessThan(ids(true).indexOf("cli"));
+    expect(ids(true)).not.toContain("llm");
+  });
+
+  it("shows model service independently of the Electron-only CLI section", () => {
+    const browserIds = settingsNavGroups(false, false, true)
+      .flatMap((group) => group.items)
+      .map((item) => item.id);
+    expect(browserIds).toContain("llm");
+    expect(browserIds).not.toContain("cli");
   });
 });
 

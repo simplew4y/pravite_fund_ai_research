@@ -10,6 +10,7 @@ import pytest
 
 from omnigent.runner.identity import (
     RUNNER_AUTH_SECRET_ENV_VARS,
+    RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
     RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR,
     strip_runner_auth_secrets,
     token_bound_runner_id,
@@ -52,6 +53,7 @@ def test_strip_removes_every_registered_secret_name() -> None:
     :returns: None.
     """
     assert RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR in RUNNER_AUTH_SECRET_ENV_VARS
+    assert RUNNER_SERVER_AUTH_TOKEN_ENV_VAR in RUNNER_AUTH_SECRET_ENV_VARS
 
     seeded = {name: f"secret-{name}" for name in RUNNER_AUTH_SECRET_ENV_VARS}
     seeded["KEEP_ME"] = "keep"
@@ -74,6 +76,7 @@ def test_strip_runner_auth_secrets_removes_token_and_keeps_rest() -> None:
     source = {
         "PATH": "/usr/bin",
         "ANTHROPIC_API_KEY": "sk-keep-me",
+        RUNNER_SERVER_AUTH_TOKEN_ENV_VAR: "server-user-token",
         RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR: "bug-binding-token-secret",
     }
 
@@ -81,6 +84,7 @@ def test_strip_runner_auth_secrets_removes_token_and_keeps_rest() -> None:
 
     assert result == {"PATH": "/usr/bin", "ANTHROPIC_API_KEY": "sk-keep-me"}
     assert "bug-binding-token-secret" not in result.values()
+    assert "server-user-token" not in result.values()
 
 
 def test_strip_runner_auth_secrets_does_not_mutate_input() -> None:

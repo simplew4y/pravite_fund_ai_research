@@ -19,6 +19,8 @@ RUNNER_PARENT_PID_ENV_VAR = "OMNIGENT_RUNNER_PARENT_PID"
 RUNNER_ADOPT_SIGNAL: signal.Signals | None = getattr(signal, "SIGUSR1", None)
 RUNNER_WORKSPACE_ENV_VAR = "OMNIGENT_RUNNER_WORKSPACE"
 RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR = "OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN"
+RUNNER_SERVER_AUTH_TOKEN_ENV_VAR = "OMNIGENT_RUNNER_SERVER_AUTH_TOKEN"
+RUNNER_USER_LLM_GATEWAY_ENV_VAR = "OMNIGENT_RUNNER_USER_LLM_GATEWAY"
 RUNNER_TUNNEL_TOKEN_HEADER = "X-Omnigent-Runner-Tunnel-Token"
 # Sentinel ``Origin`` header that the project's own non-browser WebSocket
 # clients (runner -> server tunnel, host/daemon -> server tunnel,
@@ -52,7 +54,12 @@ OMNIGENT_SESSION_ENV_VALUE = "1"
 # spawned child: the agent payload there could use it to impersonate the
 # runner. Stripped at every runner→child spawn boundary via
 # :func:`strip_runner_auth_secrets`.
-RUNNER_AUTH_SECRET_ENV_VARS: frozenset[str] = frozenset({RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR})
+RUNNER_AUTH_SECRET_ENV_VARS: frozenset[str] = frozenset(
+    {
+        RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR,
+        RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
+    }
+)
 
 
 def strip_runner_auth_secrets(env: Mapping[str, str]) -> dict[str, str]:

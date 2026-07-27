@@ -246,6 +246,16 @@ class AuthProvider(ABC):
         """Return the authenticated user ID, or ``None``."""
         ...
 
+    def mint_internal_bearer_token(self, user_id: str) -> str | None:
+        """Mint a short-lived bearer for a trusted internal client.
+
+        Providers without signed-cookie support return ``None``. The token
+        represents ``user_id`` and remains subject to normal route permission
+        checks.
+        """
+        del user_id
+        return None
+
 
 class UnifiedAuthProvider(AuthProvider):
     """Unified authentication provider that supports header-based,
@@ -347,6 +357,24 @@ class UnifiedAuthProvider(AuthProvider):
         if self._source in ("oidc", "accounts"):
             return self._check_cookie(request)
         return self._check_header(request)
+
+    def mint_internal_bearer_token(self, user_id: str) -> str | None:
+        """Mint a 24-hour Accounts/OIDC bearer for a session runner."""
+        if self._source not in ("oidc", "accounts"):
+            return None
+        cookie_config = (
+            self._oidc_config if self._source == "oidc" else self._accounts_config
+        )
+        if cookie_config is None:
+            return None
+        from omnigent.server.oidc import mint_session_cookie
+
+        return mint_session_cookie(
+            user_id=user_id,
+            cookie_secret=cookie_config.cookie_secret,
+            ttl_hours=24,
+            provider="omnigent-runner",
+        )
 
     def _check_cookie(self, request: HTTPConnection) -> str | None:
         """Validate the session cookie or Bearer token and return the

@@ -29,6 +29,7 @@ import { useDirectorySessions } from "@/hooks/useDirectorySessions";
 import { useRunnerHealthRegistration } from "@/hooks/RunnerHealthProvider";
 import type { Conversation } from "@/hooks/useConversations";
 import { setOmnigentHostConfig } from "@/lib/host";
+import type { PrivateFundProject } from "@/lib/privateFundApi";
 import { setPendingInitialPrompt, useChatStore } from "@/store/chatStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -625,6 +626,7 @@ function renderLanding(infoOverrides: Partial<ServerInfo> = {}, route = "/") {
     sandbox_provider: null,
     server_version: null,
     smart_routing_enabled: false,
+    llm_configuration_enabled: false,
     ...infoOverrides,
   };
   return render(
@@ -1850,6 +1852,45 @@ describe("NewChatLandingScreen private-fund research mode", () => {
     expect(prompt).toContain("可点击的 Markdown 引用");
     expect(prompt).toContain("资料未覆盖/需复核");
     expect(prompt).toContain("核验最近业绩变化");
+  });
+
+  it("creates a private-fund session without exposing a host or absolute workspace", async () => {
+    const project = privateFundProjectsState.projects[0] as PrivateFundProject;
+    const projectDetail = privateFundProjectsState.project as {
+      project: PrivateFundProject;
+      files: unknown[];
+    };
+    privateFundProjectsState.projects[0] = {
+      ...project,
+      datasetRoot: null,
+      sourceDir: null,
+      uploadsDir: null,
+    };
+    privateFundProjectsState.project = {
+      ...projectDetail,
+      project: privateFundProjectsState.projects[0] as PrivateFundProject,
+    };
+    mockHosts([]);
+
+    renderLanding();
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "review the latest operating results" },
+    });
+
+    const submit = screen.getByTestId("new-chat-landing-submit") as HTMLButtonElement;
+    await waitFor(() => expect(submit.disabled).toBe(false));
+    fireEvent.click(submit);
+
+    await waitFor(() =>
+      expect(authenticatedFetchMock.mock.calls.some(([url]) => url === "/v1/sessions")).toBe(true),
+    );
+    const sessionCall = authenticatedFetchMock.mock.calls.find(([url]) => url === "/v1/sessions");
+    const body = JSON.parse((sessionCall?.[1]?.body as string) ?? "{}");
+    expect(body.host_id).toBeNull();
+    expect(body.workspace).toBe("");
+    expect(body.labels).toMatchObject({
+      "private_fund.dataset_id": project.datasetId,
+    });
   });
 
   it("prefers Claude Native over the OpenAI Agents research fallback", async () => {

@@ -696,6 +696,7 @@ describe("PrivateFundResearchWorkbench", () => {
       "src",
       `/v1/private-fund/dataset/memo/file?path=${encodeURIComponent(storedPath)}`,
     );
+    expect(screen.queryByTestId("pdf-preview-toolbar")).toBeNull();
   });
 
   it("renders Excel document assets with the structured workbook viewer", () => {
@@ -744,6 +745,141 @@ describe("PrivateFundResearchWorkbench", () => {
       expect(setPrivateFundAssetContext).toHaveBeenCalledWith("阳光电源", ["node:node-overseas"]),
     );
     expect(screen.queryByText("上下文")).toBeNull();
+  });
+
+  it("previews side-panel notes without replacing the active conversation", () => {
+    window.localStorage.setItem("omnigent.privateFund.workbenchChrome", "ide");
+    renderWorkbench();
+
+    expect(screen.getAllByRole("heading", { name: "笔记" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "筛选与排序" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "笔记类型" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "笔记类型" })).toBeNull();
+    expect(screen.queryByText("1 条笔记（回答笔记与研究笔记）")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "仅显示回答笔记" }));
+    expect(screen.queryByRole("button", { name: "打开资产 海外盈利质量改善" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "仅显示研究笔记" }));
+    expect(screen.getByRole("button", { name: "打开资产 海外盈利质量改善" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选与排序" }));
+    expect(screen.getByRole("combobox", { name: "排序" })).toBeInTheDocument();
+
+    const search = screen.getByRole("textbox", { name: "搜索" });
+    fireEvent.change(search, { target: { value: "海外" } });
+    fireEvent.click(screen.getByRole("button", { name: "打开资产 海外盈利质量改善" }));
+
+    expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
+    expect(screen.getByTestId("private-fund-side-asset-detail")).toBeInTheDocument();
+    expect(screen.getByTestId("private-fund-ide-side-panel")).toHaveStyle({ width: "520px" });
+    expect(screen.getByRole("heading", { name: "海外盈利质量改善" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回笔记列表" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上一条笔记" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下一条笔记" })).toBeDisabled();
+    expect(screen.getByTestId("asset-preview-metadata")).toHaveTextContent("来源 0 条");
+    expect(
+      screen.getByRole("button", { name: "在主工作区展开 海外盈利质量改善" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回笔记列表" }));
+
+    expect(screen.queryByTestId("private-fund-side-asset-detail")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "搜索" })).toHaveValue("海外");
+    expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
+  });
+
+  it("reviews adjacent notes without returning to the list", () => {
+    window.localStorage.setItem("omnigent.privateFund.workbenchChrome", "ide");
+    vi.mocked(usePrivateFundAssets).mockReturnValue({
+      data: {
+        contextAssetIds: [],
+        assets: [
+          {
+            ...assetCatalog.assets[0],
+            assetId: "note:first",
+            assetType: "information",
+            displayGroup: "answer_note",
+            displayLabel: "回答笔记",
+            title: "第一条研究结论",
+            sourceKind: "saved_information",
+            sourceId: "response-first",
+            contentMarkdown: "## 核心判断\n\n海外业务盈利质量改善。",
+            updatedAt: "2026-07-14T08:30:00Z",
+          },
+          {
+            ...assetCatalog.assets[0],
+            assetId: "note:second",
+            assetType: "analysis",
+            displayGroup: "research_note",
+            displayLabel: "研究笔记",
+            title: "第二条风险复核",
+            sourceKind: "saved_information",
+            sourceId: "response-second",
+            contentMarkdown: "## 风险因素\n\n渠道库存仍需跟踪。",
+            evidenceCount: 2,
+            updatedAt: "2026-07-13T09:45:00Z",
+          },
+        ],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof usePrivateFundAssets>);
+
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: "打开资产 第一条研究结论" }));
+
+    expect(screen.getByRole("navigation", { name: "第一条研究结论目录" })).toHaveTextContent(
+      "核心判断",
+    );
+    expect(screen.getByTestId("asset-preview-metadata")).toHaveTextContent("1 / 2");
+    fireEvent.click(screen.getByRole("button", { name: "下一条笔记" }));
+    expect(screen.getByRole("heading", { name: "第二条风险复核" })).toBeInTheDocument();
+    expect(screen.getByTestId("asset-preview-metadata")).toHaveTextContent("来源 2 条");
+    expect(screen.getByTestId("asset-preview-metadata")).toHaveTextContent("2 / 2");
+    expect(screen.getByRole("button", { name: "下一条笔记" })).toBeDisabled();
+  });
+
+  it("previews side-panel Memo files without replacing the active conversation", () => {
+    const storedPath = "/dataset/memos/investment-case.pdf";
+    window.localStorage.setItem("omnigent.privateFund.workbenchChrome", "ide");
+    vi.mocked(usePrivateFundAssets).mockReturnValue({
+      data: {
+        contextAssetIds: [],
+        assets: [
+          {
+            ...assetCatalog.assets[0],
+            assetId: "memo:investment-case",
+            assetType: "memo",
+            displayGroup: "memo",
+            displayLabel: "Memo",
+            title: "投资逻辑 Memo",
+            sourceKind: "memo",
+            sourceId: storedPath,
+            storedPath,
+            fileType: "pdf",
+            format: "pdf",
+            contentMarkdown: "",
+          },
+        ],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof usePrivateFundAssets>);
+
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: "Memo" }));
+    expect(screen.getAllByRole("heading", { name: "Memo" })).toHaveLength(1);
+    expect(screen.queryByText("1 份 Memo")).toBeNull();
+    expect(screen.getByRole("button", { name: "筛选与排序" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "打开资产 投资逻辑 Memo" }));
+
+    expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
+    expect(screen.getByTestId("private-fund-side-asset-detail")).toContainElement(
+      screen.getByTitle("投资逻辑 Memo PDF 预览"),
+    );
+    expect(screen.getByRole("button", { name: "返回Memo列表" })).toBeInTheDocument();
+    expect(screen.getByTestId("asset-preview-metadata")).toHaveTextContent("PDF");
+    expect(screen.queryByTestId("pdf-preview-toolbar")).toBeNull();
   });
 
   it("keeps 研究/资料 as primary tabs and only secondary tools on the side rail", () => {

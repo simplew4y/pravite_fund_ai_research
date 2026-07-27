@@ -68,20 +68,17 @@ import { absoluteTime } from "@/lib/relativeTime";
 import { useSettingsRoute } from "@/shell/settingsNav";
 import { type ThemeMode, normalizeThemeMode } from "@/components/theme/themeMode";
 import { useIsEmbedded } from "@/lib/embedded";
+import { type CliStatus, getCliStatus, isElectronShell, resetCliPath } from "@/lib/nativeBridge";
+import { cn } from "@/lib/utils";
 import {
-  type CliStatus,
-  type LlmConnectionTestResult,
-  type LlmApplyStatus,
-  type LlmProviderInput,
-  type LlmProviderPreset,
-  getCliStatus,
   getLlmApplyStatus,
-  isElectronShell,
-  resetCliPath,
   saveLlmConfig,
   testLlmConfig,
-} from "@/lib/nativeBridge";
-import { cn } from "@/lib/utils";
+  type LlmApplyStatus,
+  type LlmConnectionTestResult,
+  type LlmProviderInput,
+  type LlmProviderPreset,
+} from "@/lib/llmConfigApi";
 import { useLlmConfiguration } from "@/lib/LlmConfigContext";
 
 /**
@@ -94,6 +91,7 @@ import { useLlmConfiguration } from "@/lib/LlmConfigContext";
 export function SettingsPage() {
   const info = useServerInfo();
   const accountsEnabled = info !== "loading" && info.accounts_enabled;
+  const { enabled: llmEnabled } = useLlmConfiguration();
   const { section } = useSettingsRoute();
 
   return (
@@ -103,7 +101,7 @@ export function SettingsPage() {
       {section === "account" && accountsEnabled && <AccountSection />}
       {section === "archived" && <ArchivedSection />}
       {section === "cli" && isElectronShell() && <LocalCliSection />}
-      {section === "llm" && isElectronShell() && <LlmProviderSection />}
+      {section === "llm" && llmEnabled && <LlmProviderSection />}
     </PageScroll>
   );
 }
@@ -115,12 +113,12 @@ const LLM_PRESETS: Record<
   dashscope: {
     label: "通义千问（DashScope）",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    defaultModel: "qwen3-max",
+    defaultModel: "",
   },
   deepseek: {
     label: "DeepSeek",
     baseUrl: "https://api.deepseek.com/v1",
-    defaultModel: "deepseek-chat",
+    defaultModel: "",
   },
   openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", defaultModel: "" },
   anthropic: { label: "Anthropic", baseUrl: "https://api.anthropic.com", defaultModel: "" },
@@ -137,6 +135,7 @@ function llmResultMessage(result: LlmConnectionTestResult): string {
     validation: "配置不完整",
     busy: "当前不能修改模型配置",
     apply: "模型配置应用失败",
+    provider: "模型接口不兼容",
   };
   return `${prefix[result.error ?? ""] ?? "模型服务请求失败"}${result.detail ? `：${result.detail}` : ""}`;
 }
@@ -154,16 +153,24 @@ function LlmProviderSection() {
   const [editingApiKey, setEditingApiKey] = useState(false);
   const [activity, setActivity] = useState<LlmApplyStatus>(applyStatus);
 
+  const formForPreset = useCallback(
+    (preset: LlmProviderPreset): LlmProviderInput => {
+      const isSavedPreset = config?.preset === preset;
+      return {
+        preset,
+        baseUrl: isSavedPreset ? config.baseUrl : LLM_PRESETS[preset].baseUrl,
+        model: isSavedPreset ? config.model : "",
+        apiKey: "",
+      };
+    },
+    [config],
+  );
+
   useEffect(() => {
     if (!config) return;
-    setForm({
-      preset: config.preset,
-      baseUrl: config.baseUrl,
-      model: config.model,
-      apiKey: "",
-    });
+    setForm(formForPreset(config.preset));
     setEditingApiKey(!config.hasApiKey);
-  }, [config]);
+  }, [config, formForPreset]);
 
   useEffect(() => {
     setActivity(applyStatus);
@@ -201,7 +208,9 @@ function LlmProviderSection() {
     setEditingApiKey(false);
   };
 
-  const apiKeyRequired = (!config?.hasApiKey || editingApiKey) && !(form.apiKey ?? "").trim();
+  const usingSavedApiKey =
+    config?.preset === form.preset && config.hasApiKey && !editingApiKey;
+  const apiKeyRequired = !usingSavedApiKey && !(form.apiKey ?? "").trim();
 
   return (
     <Section title="模型服务" description="配置工作台用于投研问答和内容生成的模型 API。">
@@ -222,17 +231,13 @@ function LlmProviderSection() {
             value={form.preset}
             onValueChange={(value) => {
               const preset = value as LlmProviderPreset;
-              const definition = LLM_PRESETS[preset];
-              setForm((current) => ({
-                ...current,
-                preset,
-                baseUrl: definition.baseUrl,
-                model: definition.defaultModel,
-              }));
+              const isSavedPreset = config?.preset === preset;
+              setForm(formForPreset(preset));
+              setEditingApiKey(!(isSavedPreset && config.hasApiKey));
               setResult(null);
             }}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full" data-testid="llm-provider-select">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -268,7 +273,7 @@ function LlmProviderSection() {
         <label className="flex flex-col gap-2 text-sm font-medium">
           API Key
           <div className="flex items-center gap-2">
-            {config?.hasApiKey && !editingApiKey ? (
+            {config?.preset === form.preset && config.hasApiKey && !editingApiKey ? (
               <Input
                 type="text"
                 readOnly
@@ -281,7 +286,7 @@ function LlmProviderSection() {
               />
             ) : (
               <Input
-                autoFocus={Boolean(config?.hasApiKey)}
+                autoFocus={Boolean(config?.preset === form.preset && config.hasApiKey)}
                 type="password"
                 autoComplete="new-password"
                 value={form.apiKey ?? ""}
@@ -291,7 +296,7 @@ function LlmProviderSection() {
                 }
               />
             )}
-            {config?.hasApiKey && editingApiKey && (
+            {config?.preset === form.preset && config.hasApiKey && editingApiKey && (
               <Button
                 type="button"
                 variant="ghost"

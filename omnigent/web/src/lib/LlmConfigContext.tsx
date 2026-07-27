@@ -17,16 +17,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useServerInfo } from "@/lib/CapabilitiesContext";
 import {
   getLlmApplyStatus,
   getLlmConfig,
-  isElectronShell,
   onLlmApplyStatusChanged,
   type LlmApplyStatus,
   type LlmProviderConfig,
-} from "@/lib/nativeBridge";
+} from "@/lib/llmConfigApi";
+import { supportsDesktopLlmConfiguration } from "@/lib/nativeBridge";
 
 interface LlmConfigContextValue {
+  enabled: boolean;
   config: LlmProviderConfig | null;
   applyStatus: LlmApplyStatus;
   loading: boolean;
@@ -35,6 +37,7 @@ interface LlmConfigContextValue {
 }
 
 const LlmConfigContext = createContext<LlmConfigContextValue>({
+  enabled: false,
   config: null,
   applyStatus: { busy: false, applying: false },
   loading: false,
@@ -43,9 +46,12 @@ const LlmConfigContext = createContext<LlmConfigContextValue>({
 });
 
 export function LlmConfigProvider({ children }: { children: ReactNode }) {
-  const desktop = isElectronShell();
+  const serverInfo = useServerInfo();
+  const enabled =
+    supportsDesktopLlmConfiguration() ||
+    (serverInfo !== "loading" && serverInfo.llm_configuration_enabled);
   const [config, setConfig] = useState<LlmProviderConfig | null>(null);
-  const [loading, setLoading] = useState(desktop);
+  const [loading, setLoading] = useState(enabled);
   const [promptOpen, setPromptOpen] = useState(false);
   const [applyStatus, setApplyStatus] = useState<LlmApplyStatus>({
     busy: false,
@@ -55,7 +61,11 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   const refresh = useCallback(async () => {
-    if (!desktop) return;
+    if (!enabled) {
+      setConfig(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const next = await getLlmConfig();
     setConfig(next);
@@ -63,28 +73,29 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
     if (next && !next.configured && !location.pathname.includes("/settings/llm")) {
       setPromptOpen(true);
     }
-  }, [desktop, location.pathname]);
+  }, [enabled, location.pathname]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!desktop) return;
+    if (!enabled) return;
     void getLlmApplyStatus().then(setApplyStatus);
-    return onLlmApplyStatusChanged(setApplyStatus);
-  }, [desktop]);
+    const unsubscribe = onLlmApplyStatusChanged(setApplyStatus);
+    return unsubscribe;
+  }, [enabled]);
 
   const requireConfiguration = useCallback(() => {
-    if (applyStatus.applying) return false;
-    if (!desktop || (!loading && config === null) || config?.configured) return true;
-    if (loading) return false;
+    if (!enabled || (!loading && config === null) || config?.configured) return true;
+    if (loading || applyStatus.applying) return false;
     setPromptOpen(true);
     return false;
-  }, [applyStatus.applying, config, desktop, loading]);
+  }, [applyStatus.applying, config, enabled, loading]);
+
   const contextValue = useMemo(
-    () => ({ config, applyStatus, loading, requireConfiguration, refresh }),
-    [applyStatus, config, loading, requireConfiguration, refresh],
+    () => ({ enabled, config, applyStatus, loading, requireConfiguration, refresh }),
+    [applyStatus, config, enabled, loading, requireConfiguration, refresh],
   );
 
   return (

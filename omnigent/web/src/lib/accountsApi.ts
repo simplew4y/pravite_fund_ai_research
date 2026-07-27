@@ -114,6 +114,25 @@ export async function logout(): Promise<void> {
   }
 }
 
+export function clearUserScopedBrowserState(): void {
+  try {
+    const keys = Array.from({ length: window.localStorage.length }, (_, index) =>
+      window.localStorage.key(index),
+    ).filter((key): key is string => Boolean(key));
+    for (const key of keys) {
+      if (
+        key.startsWith("omnigent.privateFund") ||
+        key.startsWith("omnigent:") ||
+        key.startsWith("omnigent.")
+      ) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Storage cleanup is best-effort; the hard navigation clears memory state.
+  }
+}
+
 /**
  * GET /auth/me — fetch the current user.
  *
@@ -140,8 +159,9 @@ export async function getMe(): Promise<CurrentAccount | null> {
 
 /** Body of POST /auth/register. */
 export interface RegisterRequest {
-  invite: string;
-  username: string;
+  invite?: string;
+  username?: string;
+  email?: string;
   password: string;
 }
 

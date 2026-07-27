@@ -248,9 +248,9 @@ export function supportsDesktopLlmConfiguration(): boolean {
   const electron = electronApi();
   return Boolean(
     electron?.getLlmConfig &&
-    electron.testLlmConfig &&
-    electron.saveLlmConfig &&
-    electron.getLlmApplyStatus,
+      electron.testLlmConfig &&
+      electron.saveLlmConfig &&
+      electron.getLlmApplyStatus,
   );
 }
 
@@ -615,7 +615,9 @@ export async function getLlmConfig(): Promise<LlmProviderConfig | null> {
   }
 }
 
-export async function testLlmConfig(config: LlmProviderInput): Promise<LlmConnectionTestResult> {
+export async function testLlmConfig(
+  config: LlmProviderInput,
+): Promise<LlmConnectionTestResult> {
   const electron = electronApi();
   if (!electron?.testLlmConfig)
     return { ok: false, error: "runtime", detail: "Desktop bridge unavailable." };
@@ -647,6 +649,8 @@ export async function getLlmApplyStatus(): Promise<LlmApplyStatus> {
   }
 }
 
-export function onLlmApplyStatusChanged(callback: (status: LlmApplyStatus) => void): () => void {
+export function onLlmApplyStatusChanged(
+  callback: (status: LlmApplyStatus) => void,
+): () => void {
   return electronApi()?.onLlmApplyStatusChanged?.(callback) ?? (() => {});
 }

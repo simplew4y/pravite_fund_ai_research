@@ -51,6 +51,7 @@ def resolve_host_owner(
     user_id: str | None,
     host_id: str,
     host_store: HostStore,
+    allow_shared_host: bool = False,
 ) -> Host:
     """
     Authorize that the caller owns a known host.
@@ -74,7 +75,14 @@ def resolve_host_owner(
     host = host_store.get_host(host_id)
     if host is None:
         raise HTTPException(status_code=404, detail="host not found")
-    if user_id is not None and host.owner != user_id:
+    if (
+        user_id is not None
+        and host.owner != user_id
+        and not (
+            allow_shared_host
+            and host.owner == "__private_fund_service__"
+        )
+    ):
         raise HTTPException(status_code=403, detail="not your host")
     return host
 
@@ -88,6 +96,7 @@ def resolve_host_launch(
     host_registry: HostRegistry,
     conversation_store: ConversationStore,
     permission_store: PermissionStore | None,
+    allow_shared_host: bool = False,
 ) -> HostLaunchTarget:
     """
     Resolve and authorize a host runner launch.
@@ -121,6 +130,7 @@ def resolve_host_launch(
         user_id=user_id,
         host_id=host_id,
         host_store=host_store,
+        allow_shared_host=allow_shared_host,
     )
 
     conn = host_registry.get(host_id)

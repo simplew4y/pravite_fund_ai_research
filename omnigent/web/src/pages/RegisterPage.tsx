@@ -1,67 +1,50 @@
-/**
- * The invite-redemption page (``/register?invite=...``).
- *
- * Reached by clicking the copyable URL an admin minted in the
- * Members page. The user chooses their own username + password,
- * the server consumes the invite + creates the account + sets the
- * session cookie, and we navigate to ``/``.
- *
- * Mounted outside the AppShell for the same reason LoginPage is —
- * the chrome loads sidebar / conversations / runner hooks that
- * require an authenticated identity.
- *
- * Username constraints are intentionally restrictive to match the
- * server's validation regex
- * (``^[a-z0-9][a-z0-9._-]{0,63}(@[a-z0-9.-]+\.[a-z]{2,})?$``).
- * The form lowercases on input so the user can't accidentally
- * type a mixed-case value that the server then rejects.
- */
-
 import { useEffect, useState, type FormEvent } from "react";
-import { useSearchParams } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { register as registerRequest } from "@/lib/accountsApi";
+import { useServerInfo } from "@/lib/CapabilitiesContext";
+import {
+  clearUserScopedBrowserState,
+  register as registerRequest,
+} from "@/lib/accountsApi";
+import { Link, useSearchParams } from "@/lib/routing";
 
 const MIN_PASSWORD_LENGTH = 8;
 
 export function RegisterPage() {
+  const info = useServerInfo();
   const [params] = useSearchParams();
   const invite = params.get("invite") ?? "";
-
-  const [username, setUsername] = useState("");
+  const openRegistration = info !== "loading" && info.registration_mode === "open";
+  const [identity, setIdentity] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Server rejects invites that are missing / expired / redeemed
-  // with a generic 400. Surface the same generic UI in the
-  // most-common bad case (no invite param at all).
-  const missingInvite = invite === "";
-
   useEffect(() => {
-    const el = document.getElementById("register-username");
-    if (el instanceof HTMLInputElement) el.focus();
+    document.getElementById("register-identity")?.focus();
   }, []);
 
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (submitting) return;
     setError(null);
-
     if (password !== confirm) {
-      setError("Passwords don't match.");
+      setError("两次输入的密码不一致。");
       return;
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      setError(`密码至少需要 ${MIN_PASSWORD_LENGTH} 个字符。`);
       return;
     }
-
     setSubmitting(true);
-    const result = await registerRequest({ invite, username, password });
+    const result = await registerRequest(
+      openRegistration
+        ? { email: identity.trim().toLowerCase(), password }
+        : { invite, username: identity.trim().toLowerCase(), password },
+    );
     if (result.ok) {
+      clearUserScopedBrowserState();
       window.location.href = "/";
       return;
     }
@@ -69,87 +52,76 @@ export function RegisterPage() {
     setError(result.error);
   }
 
+  const missingInvite = !openRegistration && !invite;
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center bg-background px-4"
-      // Centered auth page (no header / native bars): just keep the card clear
-      // of the notch + home indicator. 0 off the iOS shell. See index.css.
-      style={{
-        paddingTop: "var(--omnigent-safe-top)",
-        paddingBottom: "var(--omnigent-safe-bottom)",
-      }}
-    >
+    <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm space-y-6">
-        <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
+        <header className="space-y-1 text-center">
+          <h1 className="text-2xl font-semibold">创建账户</h1>
           <p className="text-sm text-muted-foreground">
-            You were invited to join this Omnigent server.
+            {openRegistration ? "使用邮箱开始你的私募投研工作区。" : "接受邀请并创建账户。"}
           </p>
-        </div>
+        </header>
 
         {missingInvite ? (
           <div
             role="alert"
+            aria-label="Invite token required"
             className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
           >
-            This page needs an invite token in the URL — make sure you opened the link your admin
-            sent you.
+            邀请链接无效或缺少邀请码。
           </div>
         ) : (
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="register-username" className="text-sm font-medium leading-none">
-                Username
+              <label htmlFor="register-identity" className="text-sm font-medium">
+                {openRegistration ? "邮箱" : "用户名"}
               </label>
               <Input
-                id="register-username"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                id="register-identity"
+                aria-label={openRegistration ? "Email" : "Username"}
+                type={openRegistration ? "email" : "text"}
+                autoComplete={openRegistration ? "email" : "username"}
+                value={identity}
+                onChange={(event) => setIdentity(event.target.value)}
                 disabled={submitting}
                 required
-                pattern="[a-z0-9][a-z0-9._\-]{0,63}(@[a-z0-9.\-]+\.[a-z]{2,})?"
-                title="Lowercase letters, digits, dots, hyphens, underscores (or a lowercase email)"
               />
-              <p className="text-xs text-muted-foreground">
-                Lowercase letters, digits, dots, hyphens, underscores — or a lowercase email.
-              </p>
             </div>
-
             <div className="space-y-1.5">
-              <label htmlFor="register-password" className="text-sm font-medium leading-none">
-                Password
+              <label htmlFor="register-password" className="text-sm font-medium">
+                密码
               </label>
               <Input
                 id="register-password"
+                aria-label="Password"
                 type="password"
                 autoComplete="new-password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(event) => setPassword(event.target.value)}
                 disabled={submitting}
-                required
                 minLength={MIN_PASSWORD_LENGTH}
+                required
               />
             </div>
-
             <div className="space-y-1.5">
-              <label htmlFor="register-confirm" className="text-sm font-medium leading-none">
-                Confirm password
+              <label htmlFor="register-confirm" className="text-sm font-medium">
+                确认密码
               </label>
               <Input
                 id="register-confirm"
+                aria-label="Confirm password"
                 type="password"
                 autoComplete="new-password"
                 value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
+                onChange={(event) => setConfirm(event.target.value)}
                 disabled={submitting}
-                required
                 minLength={MIN_PASSWORD_LENGTH}
+                required
               />
             </div>
-
-            {error !== null && (
+            {error && (
               <div
                 role="alert"
                 className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
@@ -157,19 +129,27 @@ export function RegisterPage() {
                 {error}
               </div>
             )}
-
             <Button
               type="submit"
+              aria-label="Create account"
               className="w-full"
               disabled={
-                submitting || password.length < MIN_PASSWORD_LENGTH || username.length === 0
+                submitting ||
+                identity.trim().length === 0 ||
+                password.length < MIN_PASSWORD_LENGTH
               }
             >
-              {submitting ? "Creating…" : "Create account"}
+              {submitting ? "正在创建..." : "创建账户"}
             </Button>
           </form>
         )}
+        <p className="text-center text-sm text-muted-foreground">
+          已有账户？{" "}
+          <Link to="/login" className="font-medium text-foreground hover:underline">
+            登录
+          </Link>
+        </p>
       </div>
-    </div>
+    </main>
   );
 }

@@ -6,118 +6,29 @@ OMNIGENT_DIR="$ROOT_DIR/omnigent"
 FINSAGENT_CONFIG="${FINSAGENT_CONFIG:-$ROOT_DIR/FinSagent/config/production.yaml}"
 LITELLM_HOST="${LITELLM_HOST:-127.0.0.1}"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
-LITELLM_CONFIG="$OMNIGENT_DIR/.tmp-litellm-dashscope.yaml"
+LITELLM_CONFIG="${LITELLM_CONFIG:-$OMNIGENT_DIR/.tmp-litellm-runtime/config.yaml}"
 LITELLM_LOG="$OMNIGENT_DIR/.tmp-litellm.log"
 
-read_yaml_value() {
-  local key="$1"
-  python3 - "$FINSAGENT_CONFIG" "$key" <<'PY'
-import re
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-key = sys.argv[2]
-pattern = re.compile(rf"^\s*{re.escape(key)}\s*:\s*(.*?)\s*$")
-for line in path.read_text(encoding="utf-8").splitlines():
-    match = pattern.match(line)
-    if match:
-        value = match.group(1).strip()
-        if (
-            len(value) >= 2
-            and value[0] == value[-1]
-            and value[0] in {"'", '"'}
-        ):
-            value = value[1:-1]
-        print(value)
-        raise SystemExit(0)
-raise SystemExit(1)
-PY
-}
-
-export LITELLM_TARGET_MODEL_NAME="${LITELLM_TARGET_MODEL_NAME:-$(read_yaml_value llm_model_name)}"
-export LITELLM_TARGET_API_BASE="${LITELLM_TARGET_API_BASE:-${OPENAI_BASE_URL:-${DEEPSEEK_BASE_URL:-${DASHSCOPE_BASE_URL:-$(read_yaml_value llm_base_url)}}}}"
-export LITELLM_TARGET_API_KEY="${LITELLM_TARGET_API_KEY:-${OPENAI_API_KEY:-${DEEPSEEK_API_KEY:-${DASHSCOPE_API_KEY:-$(read_yaml_value llm_api_key)}}}}"
-export LITELLM_CHAT_TEMPLATE_ENABLE_THINKING="${LITELLM_CHAT_TEMPLATE_ENABLE_THINKING:-$(read_yaml_value llm_chat_template_enable_thinking || true)}"
-
-if [[ -z "${LITELLM_TARGET_PROVIDER:-}" ]]; then
-  case "$LITELLM_TARGET_API_BASE" in
-    *deepseek*) LITELLM_TARGET_PROVIDER="deepseek" ;;
-    *dashscope*) LITELLM_TARGET_PROVIDER="dashscope" ;;
-    *) LITELLM_TARGET_PROVIDER="openai" ;;
-  esac
-fi
-export LITELLM_TARGET_PROVIDER
-
-if [[ -z "$LITELLM_TARGET_MODEL_NAME" || -z "$LITELLM_TARGET_API_BASE" || -z "$LITELLM_TARGET_API_KEY" ]]; then
-  echo "Missing llm_model_name, llm_base_url, or llm_api_key in $FINSAGENT_CONFIG" >&2
+PYTHON_BIN="$OMNIGENT_DIR/.venv/bin/python"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  echo "Omnigent Python environment not found: $PYTHON_BIN" >&2
+  echo "Run scripts/setup_full_system.sh first." >&2
   exit 1
 fi
 
-python3 - "$LITELLM_CONFIG" <<'PY'
-import os
-import sys
-from pathlib import Path
+export PRIVATE_FUND_PROJECT_ROOT="$ROOT_DIR"
+export FINSAGENT_CONFIG
+export LITELLM_CONFIG
+export LITELLM_URL="http://$LITELLM_HOST:$LITELLM_PORT"
 
-path = Path(sys.argv[1])
-target_model_name = os.environ["LITELLM_TARGET_MODEL_NAME"]
-target_provider = os.environ["LITELLM_TARGET_PROVIDER"].strip().strip("/")
-target_model = target_model_name if "/" in target_model_name else f"{target_provider}/{target_model_name}"
-thinking_setting = os.environ.get("LITELLM_CHAT_TEMPLATE_ENABLE_THINKING", "").strip().lower()
+PYTHONPATH="$ROOT_DIR:$ROOT_DIR/src:$OMNIGENT_DIR${PYTHONPATH:+:$PYTHONPATH}" \
+  "$PYTHON_BIN" -c \
+  "from omnigent.server.private_fund_llm_config import write_generated_litellm_config; write_generated_litellm_config()"
 
-model_names = list(
-    dict.fromkeys(
-        [
-            target_model_name,
-            # Existing Claude Native sessions use this name. Keep it as a
-            # stable compatibility alias when the upstream model changes.
-            "qwen3-max",
-            "claude-sonnet-4-6",
-            "claude-sonnet-4-5",
-            "claude-opus-4-6",
-            "claude-opus-4-7",
-            "claude-opus-4-8",
-            "claude-haiku-4-6",
-            "claude-haiku-4-5",
-        ]
-    )
-)
-
-lines = ["model_list:"]
-for name in model_names:
-    lines.extend(
-        [
-            f"  - model_name: {name}",
-            "    litellm_params:",
-            f"      model: {target_model}",
-            "      api_base: os.environ/LITELLM_TARGET_API_BASE",
-            "      api_key: os.environ/LITELLM_TARGET_API_KEY",
-        ]
-    )
-    if thinking_setting in {"0", "false", "no", "off"}:
-        lines.extend(
-            [
-                "      extra_body:",
-                "        chat_template_kwargs:",
-                "          enable_thinking: false",
-            ]
-        )
-
-lines.extend(
-    [
-        "",
-        "litellm_settings:",
-        "  drop_params: true",
-        "  request_timeout: 600",
-        "",
-    ]
-)
-path.write_text("\n".join(lines), encoding="utf-8")
-PY
-
-cd "$OMNIGENT_DIR"
-exec uvx --from 'litellm[proxy]' litellm \
+cd "$(dirname "$LITELLM_CONFIG")"
+exec uvx --from 'litellm[proxy]==1.91.4' litellm \
   --config "$LITELLM_CONFIG" \
+  --reload \
   --host "$LITELLM_HOST" \
   --port "$LITELLM_PORT" \
   >>"$LITELLM_LOG" 2>&1

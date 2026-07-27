@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="${HOME}/.bun/bin:${HOME}/.local/bin:${PATH}"
 LOCAL_ENV_FILE="${OMNIGENT_LOCAL_ENV_FILE:-$ROOT_DIR/.env}"
 if [[ -f "$LOCAL_ENV_FILE" ]]; then
   set -a
@@ -9,7 +10,6 @@ if [[ -f "$LOCAL_ENV_FILE" ]]; then
   source "$LOCAL_ENV_FILE"
   set +a
 fi
-export PATH="${HOME}/.bun/bin:${HOME}/.local/bin:${PATH}"
 OMNIGENT_DIR="$ROOT_DIR/omnigent"
 OMNIGENT_CLI="$OMNIGENT_DIR/.venv/bin/omnigent"
 STACK_SESSION="${OMNIGENT_STACK_TMUX_SESSION:-omnigent-stack}"
@@ -21,8 +21,12 @@ SERVER_URL="${OMNIGENT_SERVER_URL:-http://$SERVER_HOST:$SERVER_PORT}"
 LITELLM_HOST="${LITELLM_HOST:-127.0.0.1}"
 LITELLM_PORT="${LITELLM_PORT:-4000}"
 LITELLM_URL="http://$LITELLM_HOST:$LITELLM_PORT"
+LITELLM_MODEL="${PRIVATE_FUND_LITELLM_MODEL:-private-fund-default}"
+LITELLM_KEY="${PRIVATE_FUND_LITELLM_KEY:-sk-local-cc-haha}"
 WAIT_SECONDS="${OMNIGENT_STACK_WAIT_SECONDS:-180}"
 SCRIPT_PATH="$ROOT_DIR/scripts/manage_omnigent_services.sh"
+AUTH_RUNTIME_DIR="$ROOT_DIR/tmp/multi-user-auth"
+AUTH_SECRETS_FILE="$AUTH_RUNTIME_DIR/secrets.env"
 
 usage() {
   cat <<EOF
@@ -53,26 +57,62 @@ require_runtime() {
   fi
 }
 
+ensure_runtime_secrets() {
+  mkdir -p "$AUTH_RUNTIME_DIR"
+  chmod 700 "$AUTH_RUNTIME_DIR"
+  if [[ ! -f "$AUTH_SECRETS_FILE" ]]; then
+    local cookie_secret user_secret shared_host_token
+    cookie_secret="$(openssl rand -hex 32)"
+    user_secret="$(openssl rand -hex 32)"
+    shared_host_token="$(openssl rand -hex 32)"
+    umask 077
+    cat >"$AUTH_SECRETS_FILE" <<EOF
+OMNIGENT_ACCOUNTS_COOKIE_SECRET=$cookie_secret
+OMNIGENT_USER_SECRETS_KEY=$user_secret
+OMNIGENT_SHARED_HOST_TOKEN=$shared_host_token
+EOF
+  fi
+  chmod 600 "$AUTH_SECRETS_FILE"
+}
+
 configure_agent_runtime() {
-  export OMNIGENT_AUTH_ENABLED="${OMNIGENT_AUTH_ENABLED:-0}"
-  export OMNIGENT_LOCAL_SINGLE_USER="${OMNIGENT_LOCAL_SINGLE_USER:-1}"
+  ensure_runtime_secrets
+  set -a
+  # shellcheck disable=SC1090
+  source "$AUTH_SECRETS_FILE"
+  set +a
+  export OMNIGENT_AUTH_ENABLED="${OMNIGENT_AUTH_ENABLED:-1}"
+  export OMNIGENT_AUTH_PROVIDER="${OMNIGENT_AUTH_PROVIDER:-accounts}"
+  export OMNIGENT_ACCOUNTS_ENABLED="${OMNIGENT_ACCOUNTS_ENABLED:-1}"
+  export OMNIGENT_ACCOUNTS_REGISTRATION_MODE="${OMNIGENT_ACCOUNTS_REGISTRATION_MODE:-open}"
+  export OMNIGENT_ACCOUNTS_BASE_URL="${OMNIGENT_ACCOUNTS_BASE_URL:-http://127.0.0.1:6768}"
+  export OMNIGENT_LOCAL_SINGLE_USER="${OMNIGENT_LOCAL_SINGLE_USER:-0}"
+  export OMNIGENT_SHARED_HOST_ID="${OMNIGENT_SHARED_HOST_ID:-host_private_fund_service}"
+  export OMNIGENT_SHARED_HOST_NAME="${OMNIGENT_SHARED_HOST_NAME:-private-fund-service}"
+  export OMNIGENT_INTERNAL_LLM_GATEWAY_URL="${OMNIGENT_INTERNAL_LLM_GATEWAY_URL:-$SERVER_URL/internal/private-fund/llm}"
   export OMNIGENT_WS_ALLOWED_ORIGINS="${OMNIGENT_WS_ALLOWED_ORIGINS:-http://127.0.0.1:6767,http://localhost:6767,http://127.0.0.1:6768,http://localhost:6768}"
   export OMNIGENT_NO_UPDATE_CHECK="${OMNIGENT_NO_UPDATE_CHECK:-1}"
+  export LITELLM_LOCAL_MODEL_COST_MAP="${LITELLM_LOCAL_MODEL_COST_MAP:-True}"
   # Citation repair is bounded to one targeted pass. Tests and ad-hoc library
   # use remain deterministic unless this managed runtime explicitly enables it.
   export PRIVATE_FUND_CITATION_GATE_RETRY="${PRIVATE_FUND_CITATION_GATE_RETRY:-1}"
-  # Claude Native is the primary private-fund agent. Route it through the
-  # managed LiteLLM proxy by default so Claude Code can use the configured
-  # third-party Anthropic-compatible model instead of requiring an Anthropic
-  # login. Dedicated OMNIGENT_* overrides remain available for operators, but
-  # inherited ANTHROPIC_* values cannot accidentally bypass this stack.
-  export ANTHROPIC_AUTH_TOKEN="${OMNIGENT_CLAUDE_API_TOKEN:-sk-local-cc-haha}"
+  # Every model consumer uses a stable local alias. LiteLLM hot-reloads the
+  # user-selected upstream provider without restarting Omnigent or workers.
+  export ANTHROPIC_AUTH_TOKEN="$LITELLM_KEY"
   unset ANTHROPIC_API_KEY || true
-  export ANTHROPIC_BASE_URL="${OMNIGENT_CLAUDE_API_BASE_URL:-$LITELLM_URL}"
-  export ANTHROPIC_MODEL="${OMNIGENT_CLAUDE_MODEL:-qwen3-max}"
-  export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-$ANTHROPIC_MODEL}"
-  export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL:-$ANTHROPIC_MODEL}"
-  export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL:-$ANTHROPIC_MODEL}"
+  export ANTHROPIC_BASE_URL="$LITELLM_URL"
+  export ANTHROPIC_MODEL="$LITELLM_MODEL"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$LITELLM_MODEL"
+  export ANTHROPIC_DEFAULT_HAIKU_MODEL="$LITELLM_MODEL"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$LITELLM_MODEL"
+  export OPENAI_BASE_URL="$LITELLM_URL/v1"
+  export OPENAI_API_KEY="$LITELLM_KEY"
+  export LLM_BASE_URL="$OPENAI_BASE_URL"
+  export LLM_API_KEY="$LITELLM_KEY"
+  export LLM_MODEL_NAME="$LITELLM_MODEL"
+  export PDF_RESEARCH_LLM_BASE_URL="$OPENAI_BASE_URL"
+  export PDF_RESEARCH_LLM_API_KEY="$LITELLM_KEY"
+  export PDF_RESEARCH_LLM_MODEL="$LITELLM_MODEL"
   export API_TIMEOUT_MS="${API_TIMEOUT_MS:-3000000}"
   export DISABLE_TELEMETRY="${DISABLE_TELEMETRY:-1}"
   export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
@@ -88,10 +128,11 @@ server_healthy() {
 }
 
 host_online() {
-  local status
-  status="$("$OMNIGENT_CLI" host status --server "$SERVER_URL" 2>/dev/null | tr -d '\r')" \
-    || return 1
-  grep -q 'process=online.*host=online' <<<"$status"
+  tmux has-session -t "$STACK_SESSION" 2>/dev/null \
+    && tmux list-windows -t "$STACK_SESSION" -F '#{window_name}' 2>/dev/null \
+      | grep -qx 'host' \
+    && tmux capture-pane -p -t "$STACK_SESSION:host" -S -80 2>/dev/null \
+      | grep -q 'Connected'
 }
 
 tracking_worker_online() {
@@ -129,6 +170,7 @@ wait_until() {
 }
 
 run_litellm() {
+  export LITELLM_LOCAL_MODEL_COST_MAP="${LITELLM_LOCAL_MODEL_COST_MAP:-True}"
   exec "$ROOT_DIR/scripts/start_litellm_dashscope.sh"
 }
 
@@ -142,6 +184,9 @@ run_server() {
 run_host() {
   configure_agent_runtime
   until server_healthy; do sleep 1; done
+  export OMNIGENT_HOST_ID="$OMNIGENT_SHARED_HOST_ID"
+  export OMNIGENT_HOST_NAME="$OMNIGENT_SHARED_HOST_NAME"
+  export OMNIGENT_HOST_TOKEN="$OMNIGENT_SHARED_HOST_TOKEN"
   cd "$OMNIGENT_DIR"
   exec "$OMNIGENT_CLI" host --server "$SERVER_URL" --non-interactive
 }
@@ -156,7 +201,6 @@ run_tracking_worker() {
 run_valuation_worker() {
   configure_agent_runtime
   until litellm_healthy; do sleep 1; done
-  export PDF_RESEARCH_LLM_BASE_URL="${PRIVATE_FUND_VALUATION_LLM_BASE_URL:-$LITELLM_URL/v1}"
   cd "$OMNIGENT_DIR"
   exec uv run --offline python -m omnigent.server.private_fund_valuation_worker
 }

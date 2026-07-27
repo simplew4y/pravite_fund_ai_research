@@ -5,14 +5,21 @@ import {
   BookOpen,
   Calculator,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Columns2,
+  Download,
+  ExternalLink,
   FileStack,
   History,
   Loader2,
+  ListTree,
+  Maximize2,
   Menu,
   MessageSquareText,
   NotebookPen,
   Package,
+  PanelRightClose,
   PanelTop,
 } from "lucide-react";
 import {
@@ -129,6 +136,7 @@ export type WorkbenchChromeMode = "tabs" | "ide";
 const WORKBENCH_CHROME_STORAGE_KEY = "omnigent.privateFund.workbenchChrome";
 const IDE_PANEL_WIDTH_KEY = "omnigent.privateFund.idePanelWidth";
 const IDE_PANEL_DEFAULT_WIDTH = 360;
+const IDE_PANEL_DETAIL_WIDTH = 520;
 const IDE_PANEL_MIN_WIDTH = 280;
 const IDE_PANEL_MAX_WIDTH = 560;
 
@@ -213,6 +221,35 @@ function assetNeedsWidePreview(asset: PrivateFundAsset): boolean {
     ["table", "chart", "infographic", "memo", "report"].includes(asset.assetType) ||
     ["html", "pdf", "xlsx", "xls", "xlsm", "csv"].includes(asset.format.toLowerCase())
   );
+}
+
+function formatPreviewDate(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function extractMarkdownOutline(markdown?: string | null): string[] {
+  if (!markdown) return [];
+  return [...markdown.matchAll(/^#{1,4}\s+(.+)$/gm)]
+    .map((match) => match[1]?.replace(/\s+#+\s*$/, "").trim() ?? "")
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function assetSourceCount(asset: PrivateFundAsset): number {
+  const metadataCount = [
+    asset.metadata.source_count,
+    asset.metadata.evidence_count,
+    asset.metadata.trusted_source_count,
+  ].find((value) => typeof value === "number");
+  return typeof metadataCount === "number" ? metadataCount : asset.evidenceCount;
 }
 
 type DocumentPreviewPayload = {
@@ -407,9 +444,11 @@ export function PrivateFundResearchWorkbench({
   const workflow = workflowQuery.data;
   const assetCatalog = assetsQuery.data;
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [sidePanelAssetId, setSidePanelAssetId] = useState("");
   const [returnToResearchAfterPreview, setReturnToResearchAfterPreview] = useState(false);
   const [, setAssetPanelExpanded] = useState(false);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("research");
+  const [historySeriesId, setHistorySeriesId] = useState("");
   const [chromeMode, setChromeMode] = useState<WorkbenchChromeMode>(() =>
     typeof window === "undefined" ? "ide" : readChromeMode(),
   );
@@ -428,6 +467,7 @@ export function PrivateFundResearchWorkbench({
   );
   const clearDocumentPreview = usePrivateFundWorkspaceStore((state) => state.clearDocumentPreview);
   const handledPreviewRequestId = useRef(0);
+  const sidePreviewScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!notice) return;
     const timeout = window.setTimeout(() => setNotice(null), 4000);
@@ -458,35 +498,67 @@ export function PrivateFundResearchWorkbench({
     ],
   );
   const selectedAsset = assets.find((asset) => asset.assetId === selectedAssetId);
-  const selectedNode = selectedAsset?.sourceKind.startsWith("research_node")
-    ? workflow?.nodes.find((node) => node.nodeId === selectedAsset.sourceId)
-    : undefined;
-  const selectedMemoUrl =
-    (selectedAsset?.assetType === "memo" || selectedAsset?.assetType === "report") &&
-    selectedAsset.storedPath &&
-    ["pdf", "html"].includes(selectedAsset.format.toLowerCase())
-      ? `/v1/private-fund/dataset/memo/file?path=${encodeURIComponent(selectedAsset.storedPath)}`
-      : null;
-  const selectedDocumentUrl =
-    selectedAsset?.assetType === "document" && selectedAsset.format.toLowerCase() === "pdf"
-      ? `/v1/private-fund/dataset/document/file?${new URLSearchParams({
-          dataset_id: datasetId,
-          file_name: selectedAsset.title,
-        })}`
-      : null;
-  const selectedDocumentSource = useMemo<PdfSourceSelection | null>(() => {
-    if (!selectedAsset || selectedAsset.assetType !== "document") return null;
-    if (!["xlsx", "xls", "xlsm", "csv"].includes(selectedAsset.format.toLowerCase())) return null;
-    return {
-      kind: "excel",
-      label: selectedAsset.title,
-      workbookName: selectedAsset.title,
-      datasetId,
-    };
-  }, [datasetId, selectedAsset]);
+  const sidePanelAsset = assets.find((asset) => asset.assetId === sidePanelAssetId);
+  const sidePanelAssets = useMemo(() => {
+    const filtered =
+      sidePanelKind === "memos"
+        ? assets.filter((asset) => asset.assetType === "memo")
+        : assets.filter(
+            (asset) =>
+              asset.assetType === "information" ||
+              asset.assetType === "analysis" ||
+              asset.displayGroup === "answer_note" ||
+              asset.displayGroup === "research_note",
+          );
+    return [...filtered].sort(
+      (left, right) =>
+        new Date(right.updatedAt ?? right.createdAt ?? 0).getTime() -
+        new Date(left.updatedAt ?? left.createdAt ?? 0).getTime(),
+    );
+  }, [assets, sidePanelKind]);
+  const sidePanelAssetIndex = sidePanelAssets.findIndex(
+    (asset) => asset.assetId === sidePanelAssetId,
+  );
+
+  const moveSidePanelPreview = useCallback(
+    (offset: -1 | 1) => {
+      if (sidePanelAssetIndex < 0) return;
+      const nextAsset = sidePanelAssets[sidePanelAssetIndex + offset];
+      if (!nextAsset) return;
+      setSidePanelAssetId(nextAsset.assetId);
+      const preview = sidePreviewScrollRef.current;
+      if (preview && typeof preview.scrollTo === "function") {
+        preview.scrollTo({ top: 0, behavior: "smooth" });
+      } else if (preview) {
+        preview.scrollTop = 0;
+      }
+    },
+    [sidePanelAssetIndex, sidePanelAssets],
+  );
+
+  const scrollToPreviewHeading = useCallback((headingText: string) => {
+    const root = sidePreviewScrollRef.current;
+    if (!root) return;
+    const heading = [...root.querySelectorAll<HTMLElement>("h1, h2, h3, h4")].find(
+      (candidate) => candidate.textContent?.trim() === headingText,
+    );
+    if (heading && typeof heading.scrollIntoView === "function") {
+      heading.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
 
   const isIde = chromeMode === "ide";
   const sidePanelView = sidePanelKind;
+  const sidePanelAssetCount =
+    sidePanelView === "memos"
+      ? assets.filter((asset) => asset.assetType === "memo").length
+      : assets.filter(
+          (asset) =>
+            asset.assetType === "information" ||
+            asset.assetType === "analysis" ||
+            asset.displayGroup === "answer_note" ||
+            asset.displayGroup === "research_note",
+        ).length;
   const showIdeSidePanel =
     isIde && idePanelOpen && !FULL_MAIN_VIEWS.has(workspaceView) && !selectedAsset;
   // Tabs: chat only on research. IDE: chat stays while side panel views are active.
@@ -517,6 +589,7 @@ export function PrivateFundResearchWorkbench({
       if (chromeMode === "ide") {
         // 笔记 / Memo → 侧栏，主区保持对话
         if (SIDE_PANEL_VIEWS.has(next)) {
+          if (next !== sidePanelKind) setSidePanelAssetId("");
           setSidePanelKind(next as "notes" | "memos");
           setIdePanelOpen(true);
           setWorkspaceView("research");
@@ -534,7 +607,20 @@ export function PrivateFundResearchWorkbench({
       }
       setWorkspaceView(next);
     },
-    [chromeMode],
+    [chromeMode, sidePanelKind],
+  );
+
+  const openMemoHistory = useCallback(
+    (seriesId: string) => {
+      setHistorySeriesId(seriesId);
+      setReturnToResearchAfterPreview(false);
+      setSelectedAssetId("");
+      setSidePanelAssetId("");
+      setAssetPanelExpanded(false);
+      setWorkspaceView("history");
+      setIdePanelOpen(false);
+    },
+    [],
   );
 
   const onIdeResizePointerDown = useCallback(
@@ -571,6 +657,15 @@ export function PrivateFundResearchWorkbench({
     setSelectedAssetId(asset.assetId);
     setAssetPanelExpanded(assetNeedsWidePreview(asset));
   }, []);
+
+  const openSidePanelAsset = useCallback((asset: PrivateFundAsset) => {
+    setSidePanelAssetId(asset.assetId);
+    setIdePanelWidth((width) => Math.max(width, IDE_PANEL_DETAIL_WIDTH));
+  }, []);
+
+  useEffect(() => {
+    if (sidePanelAssetId && !sidePanelAsset) setSidePanelAssetId("");
+  }, [sidePanelAsset, sidePanelAssetId]);
 
   useEffect(() => {
     if (
@@ -690,6 +785,7 @@ export function PrivateFundResearchWorkbench({
     onSuccess: (next, deletedIds) => {
       queryClient.setQueryData(["private-fund-assets", datasetId], next);
       if (deletedIds.includes(selectedAssetId)) setSelectedAssetId("");
+      if (deletedIds.includes(sidePanelAssetId)) setSidePanelAssetId("");
       void Promise.all([
         workflowQuery.refetch(),
         queryClient.invalidateQueries({ queryKey: ["private-fund-project", datasetId] }),
@@ -885,6 +981,179 @@ export function PrivateFundResearchWorkbench({
     );
   }
 
+  const renderAssetContent = (asset: PrivateFundAsset, compact = false) => {
+    const node = asset.sourceKind.startsWith("research_node")
+      ? workflow.nodes.find((candidate) => candidate.nodeId === asset.sourceId)
+      : undefined;
+    const memoUrl =
+      (asset.assetType === "memo" || asset.assetType === "report") &&
+      asset.storedPath &&
+      ["pdf", "html"].includes(asset.format.toLowerCase())
+        ? `/v1/private-fund/dataset/memo/file?path=${encodeURIComponent(asset.storedPath)}`
+        : null;
+    const documentUrl =
+      asset.assetType === "document" && asset.format.toLowerCase() === "pdf"
+        ? `/v1/private-fund/dataset/document/file?${new URLSearchParams({
+            dataset_id: datasetId,
+            file_name: asset.title,
+          })}`
+        : null;
+    const documentSource: PdfSourceSelection | null =
+      asset.assetType === "document" &&
+      ["xlsx", "xls", "xlsm", "csv"].includes(asset.format.toLowerCase())
+        ? {
+            kind: "excel",
+            label: asset.title,
+            workbookName: asset.title,
+            datasetId,
+          }
+        : null;
+    const outline = [
+      ...new Set(
+        node
+          ? [
+              ...node.contentBlocks.flatMap((block) => [
+                ...(block.title ? [block.title] : []),
+                ...(block.type === "markdown" ? extractMarkdownOutline(block.markdown) : []),
+              ]),
+              ...extractMarkdownOutline(node.latestOutput),
+            ]
+          : extractMarkdownOutline(asset.contentMarkdown),
+      ),
+    ].slice(0, 8);
+    const embeddedPreviewClass = cn(
+      "w-full rounded-lg border border-[var(--pf-line)] bg-white",
+      compact ? "h-[calc(100vh-12rem)] min-h-[420px]" : "h-[68vh] min-h-[520px]",
+    );
+
+    return (
+      <article className={compact ? "w-full" : "mx-auto w-full max-w-4xl"}>
+        {!compact ? (
+          <div>
+            <p className="text-xs font-medium text-[var(--pf-ink-muted)]">
+              {asset.displayLabel}
+              {asset.versionNo ? ` · v${asset.versionNo}` : ""}
+            </p>
+            <h3 className="mt-2 text-base font-semibold">{asset.title}</h3>
+          </div>
+        ) : null}
+        {asset.summary ? (
+          <p
+            className={cn(
+              "text-xs leading-5 text-[var(--pf-ink-secondary)]",
+              compact ? "mb-3" : "mt-3",
+            )}
+          >
+            {asset.summary}
+          </p>
+        ) : null}
+        {compact && outline.length > 0 ? (
+          <nav
+            aria-label={`${asset.title}目录`}
+            className="mb-3 border-y border-[var(--pf-line)] py-2"
+          >
+            <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-[var(--pf-ink-muted)]">
+              <ListTree className="size-3" />
+              内容目录
+            </p>
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+              {outline.map((heading) => (
+                <button
+                  className="shrink-0 rounded-md bg-[var(--pf-panel-subtle)] px-2 py-1 text-[10px] font-medium text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-accent-soft)] hover:text-[var(--pf-accent-ink)]"
+                  key={heading}
+                  onClick={() => scrollToPreviewHeading(heading)}
+                  type="button"
+                >
+                  {heading}
+                </button>
+              ))}
+            </div>
+          </nav>
+        ) : null}
+        {node ? (
+          <div className={cn("min-w-0 overflow-x-auto", !compact && "mt-4")}>
+            <Suspense
+              fallback={
+                <div
+                  className="h-28 animate-pulse rounded-xl bg-[var(--pf-panel-subtle)] motion-reduce:animate-none"
+                  aria-label="正在加载笔记内容"
+                />
+              }
+            >
+              <RichNodeContent
+                blocks={node.contentBlocks}
+                evidenceSources={node.evidenceSources}
+                fallbackMarkdown={node.latestOutput}
+              />
+            </Suspense>
+          </div>
+        ) : memoUrl && asset.format.toLowerCase() === "pdf" ? (
+          <iframe
+            className={cn(embeddedPreviewClass, !compact && "mt-4")}
+            src={memoUrl}
+            title={`${asset.title} PDF 预览`}
+          />
+        ) : memoUrl && asset.format.toLowerCase() === "html" ? (
+          <>
+            <div className={cn("flex justify-end gap-1", compact ? "mb-2" : "mb-2 mt-4")}>
+              <a
+                aria-label={`下载 ${asset.title}`}
+                className="flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
+                download
+                href={memoUrl}
+                title="下载"
+              >
+                <Download className="size-3.5" />
+              </a>
+              <a
+                aria-label={`打开原文件 ${asset.title}`}
+                className="flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
+                href={memoUrl}
+                rel="noreferrer"
+                target="_blank"
+                title="打开原文件"
+              >
+                <ExternalLink className="size-3.5" />
+              </a>
+            </div>
+            <iframe
+              className={embeddedPreviewClass}
+              sandbox=""
+              src={memoUrl}
+              title={`${asset.title} HTML 预览`}
+            />
+          </>
+        ) : documentUrl ? (
+          <iframe
+            className={cn(embeddedPreviewClass, !compact && "mt-4")}
+            src={documentUrl}
+            title={`${asset.title} PDF 预览`}
+          />
+        ) : documentSource ? (
+          <div className={cn(embeddedPreviewClass, !compact && "mt-4", "overflow-hidden")}>
+            <PdfSourcePanel selection={documentSource} />
+          </div>
+        ) : asset.assetType === "document" ? (
+          <ExtractedDocumentPreview datasetId={datasetId} fileName={asset.title} />
+        ) : asset.contentMarkdown ? (
+          <FilePathAwareMessageResponse
+            className={cn(
+              "text-sm leading-6 text-[var(--pf-ink-secondary)] [&_a]:font-medium [&_a]:text-[var(--pf-accent-ink)] [&_blockquote]:border-[var(--pf-line-strong)] [&_blockquote]:bg-[var(--pf-panel-subtle)] [&_blockquote]:px-3 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_table]:text-xs",
+              !compact && "mt-4",
+            )}
+            breaks
+          >
+            {asset.contentMarkdown}
+          </FilePathAwareMessageResponse>
+        ) : (
+          <p className="mt-4 rounded-lg border border-dashed p-3 text-xs text-[var(--pf-ink-muted)]">
+            该资料保留原文件位置，分析时由 Agent 通过数据集检索工具读取。
+          </p>
+        )}
+      </article>
+    );
+  };
+
   const renderLibraryPanel = (view: WorkspaceView, compact = false) => {
     const assetsForView =
       view === "sources"
@@ -933,10 +1202,116 @@ export function PrivateFundResearchWorkbench({
         onDeleteAssets={(assetIds) =>
           deleteAssetsMutation.mutateAsync(assetIds).then(() => undefined)
         }
-        onOpenAsset={openAsset}
+        onOpenAsset={compact && SIDE_PANEL_VIEWS.has(view) ? openSidePanelAsset : openAsset}
+        onOpenMemoHistory={view === "memos" ? openMemoHistory : undefined}
         onSetContext={(assetIds) => contextMutation.mutateAsync(assetIds).then(() => undefined)}
         title={view === "sources" ? "资料" : view === "memos" ? "Memo" : "笔记"}
       />
+    );
+  };
+
+  const renderSidePanelAssetDetail = () => {
+    if (!sidePanelAsset) return null;
+    const listLabel = sidePanelView === "notes" ? "笔记" : "Memo";
+    const updatedLabel = formatPreviewDate(sidePanelAsset.updatedAt ?? sidePanelAsset.createdAt);
+    const previewNode = sidePanelAsset.sourceKind.startsWith("research_node")
+      ? workflow.nodes.find((node) => node.nodeId === sidePanelAsset.sourceId)
+      : undefined;
+    const sourceCount = previewNode?.evidenceSources?.length ?? assetSourceCount(sidePanelAsset);
+
+    return (
+      <div
+        className="flex min-h-0 flex-1 flex-col animate-in fade-in slide-in-from-right-2 duration-200"
+        data-testid="private-fund-side-asset-detail"
+      >
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--pf-line)] px-2">
+          <button
+            aria-label={`返回${listLabel}列表`}
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-subtle)]"
+            onClick={() => setSidePanelAssetId("")}
+            type="button"
+          >
+            <ArrowLeft size={15} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-xs font-semibold">{sidePanelAsset.title}</h3>
+            <p className="truncate text-[11px] text-[var(--pf-ink-muted)]">
+              {sidePanelAsset.displayLabel || sidePanelAsset.assetType}
+              {sidePanelAsset.versionNo ? ` · v${sidePanelAsset.versionNo}` : ""}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center">
+            <button
+              aria-label={`上一条${listLabel}`}
+              className="flex size-8 items-center justify-center rounded-lg text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-subtle)] disabled:opacity-30"
+              disabled={sidePanelAssetIndex <= 0}
+              onClick={() => moveSidePanelPreview(-1)}
+              title={`上一条${listLabel}`}
+              type="button"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              aria-label={`下一条${listLabel}`}
+              className="flex size-8 items-center justify-center rounded-lg text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-subtle)] disabled:opacity-30"
+              disabled={
+                sidePanelAssetIndex < 0 || sidePanelAssetIndex >= sidePanelAssets.length - 1
+              }
+              onClick={() => moveSidePanelPreview(1)}
+              title={`下一条${listLabel}`}
+              type="button"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+          <label
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] font-medium text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
+            title="加入问题上下文"
+          >
+            <input
+              aria-label={`将${sidePanelAsset.title}加入问题上下文`}
+              checked={contextAssetIds.includes(sidePanelAsset.assetId)}
+              className="size-3.5 accent-[var(--pf-accent)]"
+              disabled={contextMutation.isPending}
+              onChange={() => toggleContextAsset(sidePanelAsset.assetId)}
+              type="checkbox"
+            />
+            上下文
+          </label>
+          <button
+            aria-label={`在主工作区展开 ${sidePanelAsset.title}`}
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-subtle)]"
+            onClick={() => {
+              setSidePanelAssetId("");
+              openAsset(sidePanelAsset);
+            }}
+            title="在主工作区展开"
+            type="button"
+          >
+            <Maximize2 size={14} />
+          </button>
+        </div>
+        <div
+          className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--pf-line)] bg-[var(--pf-panel-subtle)]/55 px-3 py-1.5 text-[10px] text-[var(--pf-ink-muted)]"
+          data-testid="asset-preview-metadata"
+        >
+          <span className="font-medium text-[var(--pf-ink-secondary)]">
+            {sidePanelAsset.format.toUpperCase()}
+          </span>
+          {updatedLabel ? (
+            <time dateTime={sidePanelAsset.updatedAt ?? sidePanelAsset.createdAt ?? undefined}>
+              更新于 {updatedLabel}
+            </time>
+          ) : null}
+          <span>来源 {sourceCount} 条</span>
+          <span className="ml-auto tabular-nums">
+            {sidePanelAssetIndex + 1} / {sidePanelAssets.length}
+          </span>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4" ref={sidePreviewScrollRef}>
+          {renderAssetContent(sidePanelAsset, true)}
+        </div>
+      </div>
     );
   };
 
@@ -977,78 +1352,19 @@ export function PrivateFundResearchWorkbench({
             </label>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <article className="mx-auto w-full max-w-4xl">
-              <div>
-                <p className="text-xs font-medium text-[var(--pf-ink-muted)]">
-                  {selectedAsset.displayLabel}
-                  {selectedAsset.versionNo ? ` · v${selectedAsset.versionNo}` : ""}
-                </p>
-                <h3 className="mt-2 text-base font-semibold">{selectedAsset.title}</h3>
-              </div>
-              <p className="mt-3 text-xs leading-5 text-[var(--pf-ink-secondary)]">
-                {selectedAsset.summary}
-              </p>
-              {selectedNode ? (
-                <div className="mt-4 min-w-0 overflow-x-auto">
-                  <Suspense
-                    fallback={
-                      <div
-                        className="h-28 animate-pulse rounded-xl bg-[var(--pf-panel-subtle)] motion-reduce:animate-none"
-                        aria-label="正在加载笔记内容"
-                      />
-                    }
-                  >
-                    <RichNodeContent
-                      blocks={selectedNode.contentBlocks}
-                      evidenceSources={selectedNode.evidenceSources}
-                      fallbackMarkdown={selectedNode.latestOutput}
-                    />
-                  </Suspense>
-                </div>
-              ) : selectedMemoUrl && selectedAsset.format.toLowerCase() === "pdf" ? (
-                <iframe
-                  className="mt-4 h-[68vh] min-h-[520px] w-full rounded-xl border border-[var(--pf-line)] bg-white"
-                  src={selectedMemoUrl}
-                  title={`${selectedAsset.title} PDF 预览`}
-                />
-              ) : selectedMemoUrl && selectedAsset.format.toLowerCase() === "html" ? (
-                <iframe
-                  className="mt-4 h-[68vh] min-h-[520px] w-full rounded-xl border border-[var(--pf-line)] bg-white"
-                  sandbox=""
-                  src={selectedMemoUrl}
-                  title={`${selectedAsset.title} HTML 预览`}
-                />
-              ) : selectedDocumentUrl ? (
-                <iframe
-                  className="mt-4 h-[68vh] min-h-[520px] w-full rounded-xl border border-[var(--pf-line)] bg-white"
-                  src={selectedDocumentUrl}
-                  title={`${selectedAsset.title} PDF 预览`}
-                />
-              ) : selectedDocumentSource ? (
-                <div className="mt-4 h-[68vh] min-h-[520px] overflow-hidden rounded-xl border border-[var(--pf-line)] bg-white">
-                  <PdfSourcePanel selection={selectedDocumentSource} />
-                </div>
-              ) : selectedAsset.assetType === "document" ? (
-                <ExtractedDocumentPreview datasetId={datasetId} fileName={selectedAsset.title} />
-              ) : selectedAsset.contentMarkdown ? (
-                <FilePathAwareMessageResponse
-                  breaks
-                  className="mt-4 text-sm leading-6 text-[var(--pf-ink-secondary)] [&_a]:font-medium [&_a]:text-[var(--pf-accent-ink)] [&_blockquote]:border-[var(--pf-line-strong)] [&_blockquote]:bg-[var(--pf-panel-subtle)] [&_blockquote]:px-3 [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_table]:text-xs"
-                >
-                  {selectedAsset.contentMarkdown}
-                </FilePathAwareMessageResponse>
-              ) : (
-                <p className="mt-4 rounded-lg border border-dashed p-3 text-xs text-[var(--pf-ink-muted)]">
-                  该资料保留原文件位置，分析时由 Agent 通过数据集检索工具读取。
-                </p>
-              )}
-            </article>
+            {renderAssetContent(selectedAsset)}
           </div>
         </div>
       );
     }
     if (mainShowsChat) return chat;
-    if (workspaceView === "history") return <PrivateFundHistoryPanel datasetId={datasetId} />;
+    if (workspaceView === "history")
+      return (
+        <PrivateFundHistoryPanel
+          datasetId={datasetId}
+          initialSeriesId={historySeriesId || undefined}
+        />
+      );
     if (workspaceView === "valuation")
       return <PrivateFundValuationTrackingPanel datasetId={datasetId} />;
     if (workspaceView === "tracking") return <PrivateFundTrackingPanel datasetId={datasetId} />;
@@ -1262,21 +1578,35 @@ export function PrivateFundResearchWorkbench({
                     }
                   }}
                 />
-                <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--pf-line)] px-3">
-                  <h2 className="text-xs font-semibold tracking-wide text-[var(--pf-ink)]">
-                    {sidePanelView === "notes" ? "笔记" : "Memo"}
-                  </h2>
-                  <button
-                    type="button"
-                    className="rounded-md px-2 py-1 text-[11px] font-medium text-[var(--pf-ink-muted)] transition-colors hover:bg-[var(--pf-panel-subtle)] hover:text-[var(--pf-ink)]"
-                    onClick={() => setIdePanelOpen(false)}
-                  >
-                    收起
-                  </button>
+                <div
+                  aria-hidden={sidePanelAsset ? true : undefined}
+                  className={cn("flex min-h-0 flex-1 flex-col", sidePanelAsset && "hidden")}
+                >
+                  <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--pf-line)] px-3">
+                    <h2 className="flex items-center gap-1.5 text-xs font-semibold text-[var(--pf-ink)]">
+                      <span>{sidePanelView === "notes" ? "笔记" : "Memo"}</span>
+                      <span
+                        aria-hidden="true"
+                        className="min-w-5 rounded bg-[var(--pf-panel-subtle)] px-1.5 py-0.5 text-center text-[10px] font-medium tabular-nums text-[var(--pf-ink-muted)]"
+                      >
+                        {sidePanelAssetCount}
+                      </span>
+                    </h2>
+                    <button
+                      aria-label="收起侧栏"
+                      title="收起侧栏"
+                      type="button"
+                      className="flex size-7 items-center justify-center rounded-md text-[var(--pf-ink-muted)] transition-colors hover:bg-[var(--pf-panel-subtle)] hover:text-[var(--pf-ink)]"
+                      onClick={() => setIdePanelOpen(false)}
+                    >
+                      <PanelRightClose className="size-3.5" />
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    {renderLibraryPanel(sidePanelView, true)}
+                  </div>
                 </div>
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  {renderLibraryPanel(sidePanelView, true)}
-                </div>
+                {renderSidePanelAssetDetail()}
               </>
             ) : null}
           </aside>

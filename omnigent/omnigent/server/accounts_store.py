@@ -29,6 +29,7 @@ Schema:
 from __future__ import annotations
 
 import time
+import uuid
 
 from sqlalchemy import and_, delete, exists, select, update
 from sqlalchemy.exc import IntegrityError
@@ -54,6 +55,7 @@ def _to_account(row: SqlUser) -> Account:
         created_at=row.created_at,
         last_login_at=row.last_login_at,
         has_password=row.password_hash is not None,
+        data_namespace=row.data_namespace,
     )
 
 
@@ -123,6 +125,7 @@ class SqlAlchemyAccountStore:
                 is_admin=is_admin,
                 password_hash=password_hash,
                 created_at=now,
+                data_namespace=str(uuid.uuid4()),
             )
             session.add(row)
             try:
@@ -134,6 +137,24 @@ class SqlAlchemyAccountStore:
                 # callers handle uniqueness violation in one place.
                 raise ValueError(f"user {user_id!r} already exists") from exc
             return _to_account(row)
+
+    def get_or_create_data_namespace(self, user_id: str) -> str:
+        """Return the immutable filesystem namespace for a user."""
+        with self._session() as session:
+            row = session.get(SqlUser, user_id)
+            if row is None:
+                raise KeyError(user_id)
+            if not row.data_namespace:
+                row.data_namespace = str(uuid.uuid4())
+                session.flush()
+            return row.data_namespace
+
+    def get_user_id_by_data_namespace(self, data_namespace: str) -> str | None:
+        """Resolve the account that owns an immutable data namespace."""
+        with self._session() as session:
+            return session.execute(
+                select(SqlUser.id).where(SqlUser.data_namespace == data_namespace)
+            ).scalar_one_or_none()
 
     def get_user(self, user_id: str) -> Account | None:
         """Look up a user by id. Returns ``None`` if missing."""

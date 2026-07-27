@@ -42,7 +42,13 @@ function compact(value: string, limit = 560): string {
   return normalized.length > limit ? `${normalized.slice(0, limit)}…` : normalized;
 }
 
-export function PrivateFundHistoryPanel({ datasetId }: { datasetId: string }) {
+export function PrivateFundHistoryPanel({
+  datasetId,
+  initialSeriesId,
+}: {
+  datasetId: string;
+  initialSeriesId?: string;
+}) {
   const trackingQuery = usePrivateFundTracking(datasetId);
   const [seriesId, setSeriesId] = useState("");
   const [fromVersionId, setFromVersionId] = useState("");
@@ -66,8 +72,20 @@ export function PrivateFundHistoryPanel({ datasetId }: { datasetId: string }) {
   );
 
   useEffect(() => {
-    if (!seriesId && data?.memoSeries[0]) setSeriesId(data.memoSeries[0].seriesId);
-  }, [data?.memoSeries, seriesId]);
+    if (!data?.memoSeries.length) return;
+    setSeriesId((current) => {
+      if (
+        initialSeriesId &&
+        data.memoSeries.some((series) => series.seriesId === initialSeriesId)
+      ) {
+        return initialSeriesId;
+      }
+      if (current && data.memoSeries.some((series) => series.seriesId === current)) {
+        return current;
+      }
+      return data.memoSeries[0].seriesId;
+    });
+  }, [data?.memoSeries, initialSeriesId]);
 
   useEffect(() => {
     if (!versions.length) {

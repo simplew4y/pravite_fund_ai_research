@@ -97,3 +97,101 @@ async def test_timer_firing_posts_hidden_meta_message() -> None:
             ],
         },
     }
+
+
+@pytest.mark.asyncio
+async def test_repeating_timer_cancel_stops_future_firings() -> None:
+    """A repeating timer stops immediately after a same-session cancel."""
+    recorder = _TimerPostRecorder()
+    transport = httpx.MockTransport(recorder)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://server") as server_client:
+        output = await execute_tool(
+            tool_name="sys_timer_set",
+            arguments=json.dumps({"seconds": 0.05, "repeat": True, "note": "repeat"}),
+            conversation_id="conv_repeat",
+            server_client=server_client,
+        )
+        result = json.loads(output)
+        await asyncio.wait_for(recorder.post_seen.wait(), timeout=1.0)
+
+        cancelled = json.loads(
+            await execute_tool(
+                tool_name="sys_timer_cancel",
+                arguments=json.dumps({"timer_id": result["timer_id"]}),
+                conversation_id="conv_repeat",
+                server_client=server_client,
+            )
+        )
+        count_at_cancel = len(recorder.posts)
+        await asyncio.sleep(0.15)
+
+    assert cancelled == {"timer_id": result["timer_id"], "status": "cancelled"}
+    assert count_at_cancel == 1
+    assert len(recorder.posts) == count_at_cancel
+
+
+@pytest.mark.asyncio
+async def test_timer_cancel_is_scoped_to_owning_session() -> None:
+    """One session cannot cancel another session's active timer."""
+    recorder = _TimerPostRecorder()
+    transport = httpx.MockTransport(recorder)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://server") as server_client:
+        output = await execute_tool(
+            tool_name="sys_timer_set",
+            arguments=json.dumps({"seconds": 30, "repeat": False}),
+            conversation_id="conv_owner",
+            server_client=server_client,
+        )
+        timer_id = json.loads(output)["timer_id"]
+
+        wrong_session = json.loads(
+            await execute_tool(
+                tool_name="sys_timer_cancel",
+                arguments=json.dumps({"timer_id": timer_id}),
+                conversation_id="conv_other",
+                server_client=server_client,
+            )
+        )
+        owner = json.loads(
+            await execute_tool(
+                tool_name="sys_timer_cancel",
+                arguments=json.dumps({"timer_id": timer_id}),
+                conversation_id="conv_owner",
+                server_client=server_client,
+            )
+        )
+
+    assert wrong_session == {"timer_id": timer_id, "status": "not_found"}
+    assert owner == {"timer_id": timer_id, "status": "cancelled"}
+    assert recorder.posts == []
+
+
+@pytest.mark.asyncio
+async def test_completed_one_shot_timer_cannot_fire_or_cancel_twice() -> None:
+    """A one-shot timer unregisters after its single hidden wake event."""
+    recorder = _TimerPostRecorder()
+    transport = httpx.MockTransport(recorder)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://server") as server_client:
+        output = await execute_tool(
+            tool_name="sys_timer_set",
+            arguments=json.dumps({"seconds": 0, "note": "once"}),
+            conversation_id="conv_once",
+            server_client=server_client,
+        )
+        timer_id = json.loads(output)["timer_id"]
+        await asyncio.wait_for(recorder.post_seen.wait(), timeout=1.0)
+        await asyncio.sleep(0.05)
+        cancelled = json.loads(
+            await execute_tool(
+                tool_name="sys_timer_cancel",
+                arguments=json.dumps({"timer_id": timer_id}),
+                conversation_id="conv_once",
+                server_client=server_client,
+            )
+        )
+
+    assert len(recorder.posts) == 1
+    assert cancelled == {"timer_id": timer_id, "status": "not_found"}
