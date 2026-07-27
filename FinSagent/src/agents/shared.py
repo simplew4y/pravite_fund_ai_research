@@ -377,17 +377,18 @@ async def retrieve_evidence(
 
     # ── Auto-derive collection_db from rag config ──────────────────
     if not collection_db:
+        lg.info("[cascade] auto-derive: rag type=%s has_config=%s",
+                type(rag).__name__, hasattr(rag, "config"))
         datasets_cfg = getattr(rag, "config", {}).get("datasets", {})
         root_dir = datasets_cfg.get("root_dir", "")
         active = datasets_cfg.get("active_dataset", "")
+        lg.info("[cascade] auto-derive: root_dir=%s active=%s", root_dir, active)
         if root_dir and active:
             candidate = os.path.join(root_dir, active, "meta", "collection.sqlite3")
+            lg.info("[cascade] auto-derive: candidate=%s exists=%s",
+                    candidate, os.path.exists(candidate))
             if os.path.exists(candidate):
                 collection_db = candidate
-                lg.info(
-                    "[retrieve_evidence] auto-derived collection_db=%s",
-                    collection_db,
-                )
 
     lg.info("[retrieve_evidence] agent=%s db=%s", agent, collection_db or "(none)")
 
