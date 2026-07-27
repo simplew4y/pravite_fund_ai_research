@@ -1894,7 +1894,7 @@ async def _auto_create_pi_terminal(
     """
     from omnigent.conversation_browser import conversation_url
     from omnigent.inner.datamodel import OSEnvSpec, TerminalEnvSpec
-    from omnigent.pi_native import resolve_pi_executable
+    from omnigent.pi_native import PI_NATIVE_ORCHESTRATOR_PROMPT, resolve_pi_executable
     from omnigent.pi_native_bridge import (
         PI_NATIVE_CONFIG_ENV_VAR,
         clear_inbox,
@@ -1918,6 +1918,15 @@ async def _auto_create_pi_terminal(
     auth_factory = _make_auth_token_factory()
     auth_token = auth_factory() if auth_factory is not None else None
     auth_headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+    resolved_prompt_spec = _unwrap_resolved_spec(agent_spec)
+    configured_prompt = getattr(resolved_prompt_spec, "instructions", None)
+    pi_system_prompt = PI_NATIVE_ORCHESTRATOR_PROMPT
+    if (
+        isinstance(configured_prompt, str)
+        and configured_prompt.strip()
+        and configured_prompt.strip() != PI_NATIVE_ORCHESTRATOR_PROMPT.strip()
+    ):
+        pi_system_prompt = f"{configured_prompt.strip()}\n\n{PI_NATIVE_ORCHESTRATOR_PROMPT}"
     # Build the Omnigent tool surface (sys_* tools) the Pi extension registers
     # via pi.registerTool. Reuses the same schema set the claude-native /
     # codex-native relay advertises, gated by the session's spec. Each tool's
@@ -1945,6 +1954,7 @@ async def _auto_create_pi_terminal(
         conversation_url=conversation_url(launch_config.server_url, session_id),
         auth_headers=auth_headers,
         tools=pi_tools,
+        system_prompt=pi_system_prompt,
     )
     pi_command = resolve_pi_executable()
     # Rebuild the local Pi session JSONL from committed Omnigent items so a
@@ -1968,6 +1978,14 @@ async def _auto_create_pi_terminal(
         PI_NATIVE_CONFIG_ENV_VAR: str(config),
         "OMNIGENT_PI_NATIVE_BRIDGE_DIR": str(bridge_dir),
     }
+    # pi-memory supplies durable Markdown memory and optional qmd search. Keep
+    # the storage project-scoped (shared by all Pi sessions and Git worktrees)
+    # instead of session-scoped like the bridge JSONL, so a new Pi session can
+    # recall prior decisions without leaking memories into unrelated projects.
+    from omnigent.pi_native_memory import PI_MEMORY_PACKAGE, prepare_pi_memory_env
+
+    pi_env.update(prepare_pi_memory_env(launch_config.workspace))
+    managed_pi_agent_dir = bridge_dir / "pi-agent"
     # Route the runner-owned Pi process through the provider configured by
     # ``omnigent setup`` (Databricks gateway / API key), so a separate
     # ``pi /login`` isn't required — the parity codex-native/claude-native
@@ -1989,9 +2007,33 @@ async def _auto_create_pi_terminal(
         spec_model = _pi_native_model_from_spec(agent_spec)
         provider = resolve_pi_native_provider(model=spec_model)
         if provider is not None:
-            cred_env, cred_args = pi_native_provider_launch(bridge_dir / "pi-agent", provider)
+            cred_env, cred_args = pi_native_provider_launch(
+                managed_pi_agent_dir,
+                provider,
+                required_packages=(PI_MEMORY_PACKAGE,),
+            )
             pi_env.update(cred_env)
             pi_args.extend(cred_args)
+    # A user-pinned provider/model or a deployment without an Omnigent provider
+    # still needs the same extension package and managed config. Copying ambient
+    # auth/models into this dir preserves Pi's existing login without mutating
+    # the global ~/.pi/agent files.
+    if "PI_CODING_AGENT_DIR" not in pi_env:
+        from omnigent.inner.pi_settings import prepare_managed_pi_agent_dir
+        from omnigent.pi_native_credentials import PI_CODING_AGENT_DIR_ENV_VAR
+
+        prepare_managed_pi_agent_dir(
+            managed_pi_agent_dir,
+            required_packages=(PI_MEMORY_PACKAGE,),
+            isolate_resources=True,
+        )
+        pi_env[PI_CODING_AGENT_DIR_ENV_VAR] = str(managed_pi_agent_dir)
+    # pi-memory still imports deprecated @mariozechner peer names. Preseed the
+    # isolated npm tree with the maintained pi-ai alias and the narrow,
+    # reviewed coding-agent compatibility shim before Pi resolves packages.
+    from omnigent.pi_native_memory import prepare_pi_memory_package_manifest
+
+    prepare_pi_memory_package_manifest(managed_pi_agent_dir)
     # Inherit the agent's os_env so its sandbox (e.g. ``type: none``),
     # egress_rules and env_passthrough are honoured. Without ``sandbox`` here
     # and ``parent_os_env`` below, launch_required_terminal falls back to

@@ -28,6 +28,7 @@ from omnigent.spec import load, materialize_bundle
 _BUILDERS = [
     ("_build_claude_native_bundle", "config.yaml", False),
     ("_build_codex_native_bundle", "codex-native-ui.yaml", False),
+    ("_build_pi_native_bundle", "config.yaml", False),
     ("_build_kiro_native_bundle", "kiro-native-ui.yaml", False),
     ("_build_debby_bundle", "config.yaml", True),
     ("_build_polly_bundle", "config.yaml", True),
@@ -123,6 +124,48 @@ def test_claude_native_bundle_loads_private_fund_surface(tmp_path: Path) -> None
         "private_fund_watch_upsert",
         "private_fund_alert_acknowledge",
     }
+
+
+def test_pi_native_bundle_is_global_orchestrator_with_research_memory(
+    tmp_path: Path,
+) -> None:
+    """The built-in Pi agent opts into orchestration and evidence-safe research."""
+    spec = load(
+        app._build_pi_native_bundle(),
+        dest=tmp_path / "pi-native-bundle",
+        expand_env=False,
+    )
+
+    assert spec.spawn is True
+    assert spec.async_enabled is True
+    assert spec.timers is True
+    assert spec.agent_session_sharing.value == "none"
+    assert {skill.name for skill in spec.skills} == {
+        "private-fund-memo",
+        "private-fund-knowledge-base",
+        "private-fund-node",
+        "private-fund-report",
+        "private-fund-report-update",
+        "private-fund-valuation-impacts",
+        "private-fund-valuation-metrics",
+    }
+    assert {tool.name for tool in spec.tools.builtins} >= {
+        "private_fund_dataset_status",
+        "private_fund_dataset_search",
+        "private_fund_source_detail",
+        "private_fund_dataset_memo",
+        "private_fund_equity_report_generate",
+        "private_fund_equity_report_status",
+        "private_fund_equity_report_get",
+        "private_fund_research_context",
+        "private_fund_research_node_save",
+        "private_fund_history_compare",
+        "private_fund_tracking_list",
+        "private_fund_watch_upsert",
+        "private_fund_alert_acknowledge",
+    }
+    assert spec.instructions is not None
+    assert "Memory is not an investment evidence source" in " ".join(spec.instructions.split())
 
 
 @pytest.mark.parametrize(("builder", "spec_entry", "shipped_example"), _BUILDERS)

@@ -52,6 +52,42 @@ _SESSION_LABELS = {
     _WRAPPER_LABEL_KEY: _WRAPPER_LABEL_VALUE,
 }
 
+PI_NATIVE_PRIVATE_FUND_TOOLS: tuple[str, ...] = (
+    "private_fund_dataset_status",
+    "private_fund_dataset_search",
+    "private_fund_source_detail",
+    "private_fund_dataset_memo",
+    "private_fund_equity_report_generate",
+    "private_fund_equity_report_status",
+    "private_fund_equity_report_get",
+    "private_fund_research_context",
+    "private_fund_research_node_save",
+    "private_fund_history_compare",
+    "private_fund_tracking_list",
+    "private_fund_watch_upsert",
+    "private_fund_alert_acknowledge",
+)
+
+PI_NATIVE_ORCHESTRATOR_PROMPT = """\
+You are the top-level Pi orchestrator for this workspace.
+
+Use the Omnigent session, agent, async, timer, terminal, operating-system, and
+policy tools to inspect the whole authorized workspace, delegate bounded work,
+track long-running tasks, and verify results before reporting completion.
+Prefer parallel child sessions for independent work, but keep one coherent
+plan and close children that are no longer needed.
+
+Use the memory_* and scratchpad tools for durable operating context, decisions,
+preferences, and handoff notes across Pi sessions. Memory is not an investment
+evidence source: never turn a remembered claim into a fund-research fact.
+For research claims, load the relevant private-fund skill and use the
+private_fund_* tools. Preserve evidence_id and lineage, distinguish sourced
+facts from inference, and let the structured dataset remain canonical.
+
+Respect Omnigent policy decisions and the user's authorization boundary. Do
+not publish/share sessions or broaden access unless the user explicitly asks.
+"""
+
 
 @dataclass(frozen=True)
 class NativePiLaunch:
@@ -166,20 +202,28 @@ def run_pi_native(
 
 def _materialize_pi_agent_spec(tmpdir: Path) -> Path:
     """
-    Write the terminal-first agent spec used by ``omnigent pi``.
+    Write the terminal-first agent bundle used by ``omnigent pi``.
 
-    :param tmpdir: Temporary directory for the generated YAML file.
-    :returns: Path to the generated YAML spec.
+    :param tmpdir: Temporary directory for the generated agent bundle.
+    :returns: Path to the generated bundle directory.
     """
-    yaml_path = tmpdir / "pi-native-ui.yaml"
+    agent_dir = tmpdir / _AGENT_NAME
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    yaml_path = agent_dir / "config.yaml"
     raw: dict[str, Any] = {
+        "spec_version": 1,
         "name": _AGENT_NAME,
-        "prompt": (
-            "Pi is running in the session terminal. Web UI messages are "
-            "forwarded into that Pi process through the native extension bridge."
-        ),
-        "executor": {"harness": "pi-native"},
+        "description": "Global Pi orchestrator with durable project memory.",
+        "instructions": PI_NATIVE_ORCHESTRATOR_PROMPT,
+        "executor": {
+            "type": "omnigent",
+            "config": {"harness": "pi-native"},
+        },
+        "tools": {"builtins": list(PI_NATIVE_PRIVATE_FUND_TOOLS)},
+        "async": True,
+        "timers": True,
         "spawn": True,
+        "agent_session_sharing": "none",
         "os_env": {
             "type": "caller_process",
             "cwd": ".",
@@ -198,7 +242,9 @@ def _materialize_pi_agent_spec(tmpdir: Path) -> Path:
         },
     }
     yaml_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
-    return yaml_path
+    skill_source = Path(__file__).parent / "resources" / "private_fund_skills"
+    shutil.copytree(skill_source, agent_dir / "skills", dirs_exist_ok=True)
+    return agent_dir
 
 
 def _run_with_remote_server(

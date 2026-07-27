@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -491,16 +491,28 @@ def write_pi_models_config(agent_dir: Path, provider: PiProviderConfig) -> Path:
 
 
 def pi_native_provider_launch(
-    agent_dir: Path, provider: PiProviderConfig
+    agent_dir: Path,
+    provider: PiProviderConfig,
+    *,
+    required_packages: Sequence[str] = (),
 ) -> tuple[dict[str, str], list[str]]:
     """Write the managed config and return the launch env + CLI args for Pi.
 
     :param agent_dir: The managed Pi config dir for this session.
     :param provider: The resolved provider config.
+    :param required_packages: Pinned Pi packages to add without replacing the
+        user's configured packages.
     :returns: ``(env, args)`` — the env vars to merge into the terminal spec
         (relocating Pi's config dir) and the ``--provider``/``--model`` args to
         append to the Pi command.
     """
+    from omnigent.inner.pi_settings import prepare_managed_pi_agent_dir
+
+    prepare_managed_pi_agent_dir(
+        agent_dir,
+        required_packages=required_packages,
+        isolate_resources=bool(required_packages),
+    )
     write_pi_models_config(agent_dir, provider)
     env = {PI_CODING_AGENT_DIR_ENV_VAR: str(agent_dir)}
     args = ["--provider", provider.provider_id, "--model", provider.model]

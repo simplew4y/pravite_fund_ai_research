@@ -85,3 +85,65 @@ def test_prepare_managed_pi_agent_dir_deep_merges_nested_overlay(tmp_path: Path)
         "enabled": True,
         "reserveTokens": 8192,
     }
+
+
+def test_prepare_managed_pi_agent_dir_preserves_settings_and_requires_package(
+    tmp_path: Path,
+) -> None:
+    """Required packages append without replacing global or session settings."""
+    global_agent = tmp_path / "global-agent"
+    global_agent.mkdir()
+    (global_agent / "npm").mkdir()
+    (global_agent / "settings.json").write_text(
+        json.dumps(
+            {
+                "packages": [
+                    "npm:@team/global-tools",
+                    {"source": "npm:pi-memory@0.4.0", "skills": []},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    (managed / "settings.json").write_text(
+        json.dumps({"theme": "light"}),
+        encoding="utf-8",
+    )
+
+    prepare_managed_pi_agent_dir(
+        managed,
+        global_agent_dir=global_agent,
+        required_packages=("npm:pi-memory@0.4.0",),
+        isolate_resources=True,
+    )
+
+    written = json.loads((managed / "settings.json").read_text(encoding="utf-8"))
+    assert written["theme"] == "light"
+    assert written["packages"] == [
+        "npm:@team/global-tools",
+        {"source": "npm:pi-memory@0.4.0", "skills": []},
+    ]
+    assert not (managed / "npm").exists()
+
+
+def test_prepare_managed_pi_agent_dir_copies_ambient_config_once(tmp_path: Path) -> None:
+    """Managed Pi keeps ambient login/models without overwriting local state."""
+    global_agent = tmp_path / "global-agent"
+    global_agent.mkdir()
+    (global_agent / "auth.json").write_text('{"token":"ambient"}', encoding="utf-8")
+    (global_agent / "models.json").write_text('{"providers":{"ambient":{}}}', encoding="utf-8")
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    (managed / "auth.json").write_text('{"token":"session"}', encoding="utf-8")
+
+    prepare_managed_pi_agent_dir(
+        managed,
+        global_agent_dir=global_agent,
+    )
+
+    assert json.loads((managed / "auth.json").read_text(encoding="utf-8")) == {"token": "session"}
+    assert json.loads((managed / "models.json").read_text(encoding="utf-8")) == {
+        "providers": {"ambient": {}}
+    }
