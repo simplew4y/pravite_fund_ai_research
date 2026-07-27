@@ -53,10 +53,26 @@ class LocalEmbeddings:
         from sentence_transformers import SentenceTransformer
 
         logger.info("Loading embedding model %s on %s ...", self.model_name, self.device)
-        self._model = SentenceTransformer(
-            self.model_name,
-            device=self.device,
-        )
+        # Set offline env vars so SentenceTransformer doesn't re-check remote
+        old_offline = os.environ.get("TRANSFORMERS_OFFLINE")
+        old_hf_offline = os.environ.get("HF_HUB_OFFLINE")
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        try:
+            self._model = SentenceTransformer(
+                self.model_name,
+                device=self.device,
+            )
+        finally:
+            # Restore env vars so other code (e.g. LLM calls via API) stays unaffected
+            if old_offline is None:
+                os.environ.pop("TRANSFORMERS_OFFLINE", None)
+            else:
+                os.environ["TRANSFORMERS_OFFLINE"] = old_offline
+            if old_hf_offline is None:
+                os.environ.pop("HF_HUB_OFFLINE", None)
+            else:
+                os.environ["HF_HUB_OFFLINE"] = old_hf_offline
         logger.info("Embedding model loaded.")
 
     # ------------------------------------------------------------------

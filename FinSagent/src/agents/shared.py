@@ -392,7 +392,7 @@ async def retrieve_evidence(
     lg.info("[retrieve_evidence] agent=%s db=%s", agent, collection_db or "(none)")
 
     # Cascade helper — only created when a valid db is available
-    from data_ingestion.cascade_retriever import CascadeRetriever, should_skip_rag
+    from utils.cascade_retriever import CascadeRetriever, should_skip_rag
     _c: Optional["CascadeRetriever"] = None
     if collection_db and os.path.exists(collection_db):
         _c = CascadeRetriever(collection_db)
