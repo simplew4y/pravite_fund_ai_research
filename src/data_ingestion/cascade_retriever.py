@@ -40,6 +40,36 @@ def _extract_money_keywords(text: str) -> List[str]:
     return found
 
 
+def _extract_modifiers(query: str, money_kws: List[str]) -> List[str]:
+    """Extract non-financial 'modifier' words from query that qualify metrics.
+
+    Example: "阳光电源储能毛利率" → money_kws=["毛利率"]
+             modifiers=["阳光电源", "储能"]  (NOT in money_kws)
+    These modifiers tell us which *specific* metric the user wants.
+    """
+    import unicodedata
+    words = set()
+    # Remove the money keywords from the query to get remaining modifiers
+    remaining = query
+    for kw in sorted(money_kws, key=len, reverse=True):
+        remaining = remaining.replace(kw, "")
+    # Remove common entities that are too generic
+    stop_words = {"的", "了", "是", "在", "有", "和", "就", "不", "人", "都",
+                  "一", "个", "上", "也", "很", "到", "说", "要", "去", "你",
+                  "会", "着", "没有", "看", "好", "自己", "这"}
+    remaining = remaining.strip()
+    # CJK bigrams (2+ char sequences)
+    for ch in remaining:
+        if unicodedata.category(ch).startswith("Lo") and ch not in stop_words:
+            words.add(ch)
+    # English/numeric tokens
+    for token in re.findall(r"[a-zA-Z0-9.]+", remaining):
+        t = token.strip()
+        if t and t not in stop_words:
+            words.add(t.lower())
+    return [w for w in words if w]
+
+
 def _extract_all_keywords(text: str) -> List[str]:
     """Extract all meaningful search terms from query.
     
@@ -127,10 +157,13 @@ class CascadeRetriever:
                 continue
 
             if rows:
+                # Extract matched metric_names for confidence check
+                matched_names = [dict(r).get(metric_col, "") for r in rows]
                 return {
                     "type": "dci_metric",
                     "query": query,
                     "chunks": self._metric_rows_to_chunks(rows, metric_col, value_col, text_col, unit_col),
+                    "matched_metric_names": matched_names,
                     "final_chunks": True,
                     "pre_rerank_chunks": [],
                     "time_info": [],
@@ -226,13 +259,42 @@ class CascadeRetriever:
 
 
 def should_skip_rag(cascade_result: Optional[Dict[str, Any]], agent: str) -> bool:
-    """Decide whether DCI result is good enough to bypass RAG."""
+    """Decide whether DCI result is good enough to bypass RAG.
+
+    For ``dci_metric`` hits, applies a **modifier confidence check**:
+    the matched metric_name must share at least one non-financial modifier
+    word with the user query, or we fall through to RAG.
+    """
     if cascade_result is None:
         return False
 
-    # metric_facts exact match → always skip
+    # metric_facts exact match → skip only if confidence is high
     if cascade_result.get("type") == "dci_metric":
-        return True
+        query = cascade_result.get("query", "")
+        money_kws = _extract_money_keywords(query)
+        modifiers = _extract_modifiers(query, money_kws)
+        matched_names = cascade_result.get("matched_metric_names", [])
+
+        # If there are no specific modifiers in the query, the metric
+        # keyword match alone is sufficient (e.g. "毛利率是多少？")
+        if not modifiers:
+            return True
+
+        # Check if any matched metric_name contains a query modifier
+        for name in matched_names:
+            name_lower = name.lower()
+            for mod in modifiers:
+                if mod.lower() in name_lower:
+                    return True  # high confidence — modifier found in metric name
+
+        # No modifier matched → low confidence, let RAG try
+        logger.info(
+            "[cascade] dci_metric low confidence for '%s': "
+            "query modifiers=%s not found in matched metrics=%s "
+            "— falling through to RAG",
+            query, modifiers, matched_names,
+        )
+        return False
 
     # keyword grep: ≤3 chunks → skip for everyone
     chunks = cascade_result.get("chunks", [])
