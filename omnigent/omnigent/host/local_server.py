@@ -631,7 +631,7 @@ def _spawn_local_server(port: int) -> _SpawnedLocalServer:
     # (header↔accounts changes the owner). Deployed multi-user servers never
     # set this, preserving the W2-class host-hijack boundary.
     child_env["OMNIGENT_LOCAL_SINGLE_USER"] = "1"
-    _accounts_mode = resolve_auth_source() == "accounts"
+    _accounts_mode = resolve_auth_source() in {"accounts", "cloud_accounts"}
     if _accounts_mode:
         if "OMNIGENT_ACCOUNTS_COOKIE_SECRET" not in os.environ:
             from omnigent.server.accounts_secret import (

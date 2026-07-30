@@ -336,7 +336,7 @@ class UnifiedAuthProvider(AuthProvider):
         """
         if self._source == "oidc":
             return "/auth/login"
-        if self._source == "accounts":
+        if self._source in ("accounts", "cloud_accounts"):
             return "/login"
         return None
 
@@ -354,13 +354,13 @@ class UnifiedAuthProvider(AuthProvider):
             handshake (both are ``HTTPConnection``).
         :returns: Authenticated user ID, or ``None`` (→ 401).
         """
-        if self._source in ("oidc", "accounts"):
+        if self._source in ("oidc", "accounts", "cloud_accounts"):
             return self._check_cookie(request)
         return self._check_header(request)
 
     def mint_internal_bearer_token(self, user_id: str) -> str | None:
         """Mint a 24-hour Accounts/OIDC bearer for a session runner."""
-        if self._source not in ("oidc", "accounts"):
+        if self._source not in ("oidc", "accounts", "cloud_accounts"):
             return None
         cookie_config = (
             self._oidc_config if self._source == "oidc" else self._accounts_config
@@ -538,13 +538,15 @@ def create_auth_provider() -> AuthProvider:
     """
     source = resolve_auth_source()
 
-    if source not in ("header", "oidc", "accounts"):
+    if source not in ("header", "oidc", "accounts", "cloud_accounts"):
         raise RuntimeError(
-            f"Unknown OMNIGENT_AUTH_PROVIDER={source!r}. Valid: 'header', 'oidc', 'accounts'"
+            f"Unknown OMNIGENT_AUTH_PROVIDER={source!r}. Valid: 'header', 'oidc', "
+            "'accounts', 'cloud_accounts'"
         )
 
     oidc_config: OIDCConfig | None = None
     accounts_config: AccountsConfig | None = None
+    cloud_config = None
     if source == "oidc":
         from omnigent.server.oidc import OIDCConfig
 
@@ -558,12 +560,20 @@ def create_auth_provider() -> AuthProvider:
         from omnigent.server.accounts_config import AccountsConfig
 
         accounts_config = AccountsConfig.from_env()
+    elif source == "cloud_accounts":
+        from omnigent.server.cloud_accounts_config import CloudAccountsConfig
 
-    return UnifiedAuthProvider(
+        cloud_config = CloudAccountsConfig.from_env()
+        accounts_config = cloud_config.accounts
+
+    provider = UnifiedAuthProvider(
         source=source,
         oidc_config=oidc_config,
         accounts_config=accounts_config,
     )
+    if source == "cloud_accounts":
+        provider._cloud_accounts_config = cloud_config
+    return provider
 
 
 # Backwards-compatible re-export of forward-referenced config

@@ -3132,7 +3132,7 @@ def server(
     # set this explicitly.
     from omnigent.server.auth import resolve_auth_source
 
-    if resolve_auth_source() == "accounts":
+    if resolve_auth_source() in {"accounts", "cloud_accounts"}:
         from omnigent.server.accounts_secret import load_or_generate_cookie_secret
 
         os.environ.setdefault(
@@ -3150,7 +3150,10 @@ def server(
     account_store = None
     from omnigent.server.auth import UnifiedAuthProvider as _UAP
 
-    if isinstance(auth_provider, _UAP) and auth_provider._source == "accounts":
+    if isinstance(auth_provider, _UAP) and auth_provider._source in {
+        "accounts",
+        "cloud_accounts",
+    }:
         from omnigent.server.accounts_store import SqlAlchemyAccountStore
 
         account_store = SqlAlchemyAccountStore(db_uri)

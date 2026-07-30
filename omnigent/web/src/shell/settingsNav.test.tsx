@@ -60,6 +60,17 @@ describe("settingsNavGroups", () => {
     expect(withAccounts[0]).toBe("account");
   });
 
+  it("shows user feedback only for cloud accounts", () => {
+    const localIds = settingsNavGroups(true, false, false, false)
+      .flatMap((group) => group.items)
+      .map((item) => item.id);
+    const cloudIds = settingsNavGroups(true, false, false, true)
+      .flatMap((group) => group.items)
+      .map((item) => item.id);
+    expect(localIds).not.toContain("feedback");
+    expect(cloudIds).toContain("feedback");
+  });
+
   it("includes the Local CLI section only in the desktop shell", () => {
     const ids = (isDesktop: boolean) =>
       settingsNavGroups(false, isDesktop)

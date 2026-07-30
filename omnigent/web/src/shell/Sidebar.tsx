@@ -123,6 +123,7 @@ import { isConversationUnseen } from "@/hooks/useUnseenConversations";
 import { cn } from "@/lib/utils";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
 import {
+  accountDisplayName,
   clearUserScopedBrowserState,
   getMe,
   logout,
@@ -244,12 +245,6 @@ function ArchivedToast() {
 /** Fire the post-archive toast. Hoisted so it isn't a render-scoped closure. */
 function showArchivedToast() {
   showToast(<ArchivedToast />);
-}
-
-function maskedAccountId(value: string): string {
-  const [name, domain] = value.split("@");
-  if (!domain) return value.length > 3 ? `${value.slice(0, 2)}***` : value;
-  return `${name.slice(0, 1)}***@${domain}`;
 }
 
 export function Sidebar({
@@ -741,17 +736,17 @@ export function Sidebar({
                     aria-label="用户菜单"
                   >
                     <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
-                      {account.id.slice(0, 1).toUpperCase()}
+                      {accountDisplayName(account).slice(0, 1).toUpperCase()}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-left text-sm max-md:hidden">
-                      {maskedAccountId(account.id)}
+                      {accountDisplayName(account)}
                     </span>
                     <ChevronRightIcon className="size-3.5 text-muted-foreground max-md:hidden" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="start" className="w-56">
                   <div className="px-2 py-1.5">
-                    <p className="truncate text-sm font-medium">{maskedAccountId(account.id)}</p>
+                    <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
                     <p className="text-xs text-muted-foreground">个人投研空间</p>
                   </div>
                   <DropdownMenuSeparator />

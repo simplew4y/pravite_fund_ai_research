@@ -58,6 +58,7 @@ function rememberUsername(value: string): void {
 
 export function LoginPage() {
   const info = useServerInfo();
+  const cloudAccounts = info !== "loading" && info.cloud_accounts_enabled;
   const openRegistration = info !== "loading" && info.registration_mode === "open";
   const [params] = useSearchParams();
   // `return_to` is set by both identity.ts (on 401 redirect) and the
@@ -112,7 +113,9 @@ export function LoginPage() {
     setSubmitting(true);
     setError(null);
 
-    const result = await loginRequest({ username, password });
+    const result = await loginRequest(
+      cloudAccounts ? { email: username, password } : { username, password },
+    );
     if (result.ok) {
       clearUserScopedBrowserState();
       rememberUsername(username);
@@ -144,19 +147,19 @@ export function LoginPage() {
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="login-username" className="text-sm font-medium leading-none">
-              {openRegistration ? "邮箱" : "用户名"}
+              {cloudAccounts || openRegistration ? "邮箱" : "用户名"}
             </label>
             <Input
               id="login-username"
-              aria-label={openRegistration ? "Email" : "Username"}
-              type={openRegistration ? "email" : "text"}
-              autoComplete={openRegistration ? "email" : "username"}
+              aria-label={cloudAccounts || openRegistration ? "Email" : "Username"}
+              type={cloudAccounts || openRegistration ? "email" : "text"}
+              autoComplete={cloudAccounts || openRegistration ? "email" : "username"}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={submitting}
               required
             />
-            {!openRegistration && <p className="text-xs text-muted-foreground">
+            {!cloudAccounts && !openRegistration && <p className="text-xs text-muted-foreground">
               On a fresh install your username is your machine login (the output of{" "}
               <code className="font-mono">whoami</code>), unless an admin set a different one.
             </p>}
@@ -204,7 +207,7 @@ export function LoginPage() {
               注册
             </Link>
           </p>
-        ) : <p className="text-center text-xs text-muted-foreground">
+        ) : cloudAccounts ? null : <p className="text-center text-xs text-muted-foreground">
           On a fresh install the initial admin password was printed to the server's stderr and saved
           to{" "}
           <code className="rounded bg-muted px-1 py-0.5 font-mono">

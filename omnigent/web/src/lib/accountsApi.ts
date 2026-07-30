@@ -18,15 +18,16 @@
 
 /** Body of POST /auth/login. */
 export interface LoginRequest {
-  username: string;
+  username?: string;
+  email?: string;
   password: string;
 }
 
 /** Successful login response — token is also set as a cookie. */
 export interface LoginSuccess {
   ok: true;
-  user: { id: string; is_admin: boolean };
-  token: string;
+  user: CurrentAccount;
+  token?: string;
   expires_in: number;
 }
 
@@ -45,8 +46,71 @@ export type LoginResult = LoginSuccess | LoginFailure;
 export interface CurrentAccount {
   id: string;
   is_admin: boolean;
-  created_at: number | null;
-  last_login_at: number | null;
+  is_platform_admin?: boolean;
+  email?: string;
+  nick_name?: string | null;
+  status?: string;
+  data_namespace?: string;
+  balance_cny?: string;
+  created_at?: number | string | null;
+  last_login_at?: number | string | null;
+}
+
+export interface PlatformUsageSummary {
+  request_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  charged_amount_cny: string;
+}
+
+export interface PlatformUsageResponse {
+  items: Array<{
+    id: string;
+    provider: string;
+    model: string;
+    status: string;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    charged_amount_cny: string;
+    started_at: string;
+  }>;
+  summary: PlatformUsageSummary;
+  page: number;
+  page_size: number;
+}
+
+export interface BalanceRecord {
+  id: string;
+  record_type: string;
+  amount_cny: string;
+  balance_after_cny: string;
+  note: string | null;
+  created_at: string;
+}
+
+export interface FeedbackEntry {
+  id: string;
+  feedback_number: number;
+  feedback_type: string;
+  title: string;
+  content: string;
+  rating: number | null;
+  status: string;
+  contact_allowed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FeedbackCreateRequest {
+  feedback_type: "bug" | "experience" | "feature" | "answer_quality" | "other";
+  title: string;
+  content: string;
+  rating: number | null;
+  contact_allowed: boolean;
+  client_platform?: string;
+  client_version?: string;
 }
 
 /**
@@ -83,17 +147,13 @@ export async function login(body: LoginRequest): Promise<LoginResult> {
   // The route returns 401 for both unknown-user and wrong-password.
   // Surface the server's message when it's a 4xx, generic for 5xx.
   let message = "Login failed.";
-  if (res.status >= 500) {
-    message = "Server error. Try again in a moment.";
-  } else {
-    try {
-      const data = (await res.json()) as { error?: string };
-      if (data.error) {
-        message = data.error;
-      }
-    } catch {
-      // Body wasn't JSON; keep the generic message.
+  try {
+    const data = (await res.json()) as { error?: string; message?: string };
+    if (data.message || data.error) {
+      message = data.message ?? data.error ?? message;
     }
+  } catch {
+    if (res.status >= 500) message = "Server error. Try again in a moment.";
   }
   return { ok: false, error: message, status: res.status };
 }
@@ -116,16 +176,18 @@ export async function logout(): Promise<void> {
 
 export function clearUserScopedBrowserState(): void {
   try {
-    const keys = Array.from({ length: window.localStorage.length }, (_, index) =>
-      window.localStorage.key(index),
-    ).filter((key): key is string => Boolean(key));
-    for (const key of keys) {
-      if (
-        key.startsWith("omnigent.privateFund") ||
-        key.startsWith("omnigent:") ||
-        key.startsWith("omnigent.")
-      ) {
-        window.localStorage.removeItem(key);
+    for (const storage of [window.localStorage, window.sessionStorage]) {
+      const keys = Array.from({ length: storage.length }, (_, index) =>
+        storage.key(index),
+      ).filter((key): key is string => Boolean(key));
+      for (const key of keys) {
+        if (
+          key.startsWith("omnigent.privateFund") ||
+          key.startsWith("omnigent:") ||
+          key.startsWith("omnigent.")
+        ) {
+          storage.removeItem(key);
+        }
       }
     }
   } catch {
@@ -162,7 +224,61 @@ export interface RegisterRequest {
   invite?: string;
   username?: string;
   email?: string;
+  code?: string;
+  nick_name?: string | null;
   password: string;
+}
+
+/** Mask an account email before showing it in shared or shoulder-visible UI. */
+export function maskedAccountEmail(value: string): string {
+  const [name, domain] = value.split("@");
+  if (!domain) return value.length > 3 ? `${value.slice(0, 2)}***` : value;
+  return `${name.slice(0, 1)}***@${domain}`;
+}
+
+/** Prefer a user nickname and otherwise fall back to a masked email or ID. */
+export function accountDisplayName(account: CurrentAccount): string {
+  const nickname = account.nick_name?.trim();
+  return nickname || maskedAccountEmail(account.email ?? account.id);
+}
+
+export type RegistrationCodeResult =
+  | { ok: true; expires_in: number; resend_after: number }
+  | { ok: false; error: string; status: number };
+
+/** Request a four-digit email code from the cloud accounts service. */
+export async function sendRegistrationCode(email: string): Promise<RegistrationCodeResult> {
+  try {
+    const res = await fetch("/auth/register/send-code", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = (await res.json().catch(() => null)) as
+      | {
+          ok?: boolean;
+          expires_in?: number;
+          resend_after?: number;
+          error?: string;
+          code?: string;
+          message?: string;
+        }
+      | null;
+    if (res.ok) {
+      return {
+        ok: true,
+        expires_in: data?.expires_in ?? 600,
+        resend_after: data?.resend_after ?? 60,
+      };
+    }
+    return {
+      ok: false,
+      error: data?.message ?? data?.error ?? data?.code ?? "验证码发送失败。",
+      status: res.status,
+    };
+  } catch {
+    return { ok: false, error: "无法连接到账户服务。", status: 0 };
+  }
 }
 
 /**
@@ -190,16 +306,17 @@ export async function register(body: RegisterRequest): Promise<LoginResult> {
     const data = (await res.json()) as Omit<LoginSuccess, "ok">;
     return { ok: true, ...data };
   }
-  let message = "Registration failed.";
-  if (res.status >= 500) {
-    message = "Server error. Try again in a moment.";
-  } else {
-    try {
-      const data = (await res.json()) as { error?: string };
-      if (data.error) message = data.error;
-    } catch {
-      // pass
-    }
+  let message = "账户注册失败。";
+  try {
+    const data = (await res.json()) as {
+      error?: string;
+      code?: string;
+      message?: string;
+      detail?: string;
+    };
+    message = data.message ?? data.detail ?? data.error ?? data.code ?? message;
+  } catch {
+    if (res.status >= 500) message = "账户服务暂时不可用，请稍后重试。";
   }
   return { ok: false, error: message, status: res.status };
 }
@@ -244,12 +361,58 @@ export async function changePassword(body: ChangePasswordRequest): Promise<Chang
   }
   let message = "Could not change password.";
   try {
-    const data = (await res.json()) as { error?: string };
-    if (data.error) message = data.error;
+    const data = (await res.json()) as { error?: string; message?: string; detail?: string };
+    message = data.message ?? data.detail ?? data.error ?? message;
   } catch {
     // pass
   }
   return { ok: false, error: message };
+}
+
+async function readJsonOrNull<T>(path: string): Promise<T | null> {
+  try {
+    const res = await fetch(path, { cache: "no-store" });
+    return res.ok ? ((await res.json()) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getPlatformUsage(): Promise<PlatformUsageResponse | null> {
+  return readJsonOrNull<PlatformUsageResponse>("/v1/account/usage?page=1&page_size=10");
+}
+
+export async function getBalanceRecords(): Promise<BalanceRecord[]> {
+  const data = await readJsonOrNull<{ items: BalanceRecord[] }>(
+    "/v1/account/balance-records?page=1&page_size=10",
+  );
+  return data?.items ?? [];
+}
+
+export async function getFeedback(): Promise<FeedbackEntry[]> {
+  const data = await readJsonOrNull<{ items: FeedbackEntry[] }>(
+    "/v1/account/feedback?page=1&page_size=50",
+  );
+  return data?.items ?? [];
+}
+
+export async function createFeedback(
+  body: FeedbackCreateRequest,
+): Promise<{ ok: true; feedback: FeedbackEntry } | { ok: false; error: string }> {
+  try {
+    const res = await fetch("/v1/account/feedback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return { ok: true, feedback: (await res.json()) as FeedbackEntry };
+    const data = (await res.json().catch(() => null)) as
+      | { message?: string; detail?: string }
+      | null;
+    return { ok: false, error: data?.message ?? data?.detail ?? "提交反馈失败" };
+  } catch {
+    return { ok: false, error: "无法连接到服务" };
+  }
 }
 
 /** Body of POST /auth/setup (first-run admin claim). */

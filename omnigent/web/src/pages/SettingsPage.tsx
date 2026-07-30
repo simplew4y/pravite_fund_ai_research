@@ -27,6 +27,7 @@ import {
   KeyRoundIcon,
   Loader2Icon,
   LogOutIcon,
+  MessageSquareTextIcon,
   ShieldCheckIcon,
   Trash2Icon,
   UserCogIcon,
@@ -38,6 +39,7 @@ import { Link } from "@/lib/routing";
 import { PageScroll } from "@/components/PageScroll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
@@ -55,7 +57,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { KeyboardShortcutsList } from "@/components/KeyboardShortcutsDialog";
-import { changePassword, type CurrentAccount, getMe, logout } from "@/lib/accountsApi";
+import {
+  accountDisplayName,
+  changePassword,
+  clearUserScopedBrowserState,
+  createFeedback,
+  type BalanceRecord,
+  type CurrentAccount,
+  type FeedbackEntry,
+  getBalanceRecords,
+  getFeedback,
+  getMe,
+  getPlatformUsage,
+  logout,
+  maskedAccountEmail,
+  type PlatformUsageResponse,
+} from "@/lib/accountsApi";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
 import {
   type Conversation,
@@ -99,6 +116,9 @@ export function SettingsPage() {
       {section === "appearance" && <AppearanceSection />}
       {section === "shortcuts" && <ShortcutsSection />}
       {section === "account" && accountsEnabled && <AccountSection />}
+      {section === "feedback" && info !== "loading" && info.cloud_accounts_enabled && (
+        <FeedbackSection />
+      )}
       {section === "archived" && <ArchivedSection />}
       {section === "cli" && isElectronShell() && <LocalCliSection />}
       {section === "llm" && llmEnabled && <LlmProviderSection />}
@@ -512,7 +532,11 @@ function LocalCliSection() {
 }
 
 function AccountSection() {
+  const info = useServerInfo();
+  const cloudAccounts = info !== "loading" && info.cloud_accounts_enabled;
   const [me, setMe] = useState<CurrentAccount | null | "unknown">("unknown");
+  const [usage, setUsage] = useState<PlatformUsageResponse | null>(null);
+  const [balanceRecords, setBalanceRecords] = useState<BalanceRecord[]>([]);
 
   // Change-password dialog state (lifted verbatim from the old AccountMenu).
   const [pwOpen, setPwOpen] = useState(false);
@@ -524,11 +548,23 @@ function AccountSection() {
   const [pwDone, setPwDone] = useState(false);
 
   useEffect(() => {
-    void (async () => setMe(await getMe()))();
-  }, []);
+    void (async () => {
+      const account = await getMe();
+      setMe(account);
+      if (cloudAccounts && account !== null) {
+        const [nextUsage, nextRecords] = await Promise.all([
+          getPlatformUsage(),
+          getBalanceRecords(),
+        ]);
+        setUsage(nextUsage);
+        setBalanceRecords(nextRecords);
+      }
+    })();
+  }, [cloudAccounts]);
 
   const onSignOut = useCallback(async () => {
     await logout();
+    clearUserScopedBrowserState();
     // Hard navigation so the chat store / react-query cache reset.
     window.location.href = "/login";
   }, []);
@@ -552,6 +588,10 @@ function AccountSection() {
     const result = await changePassword({ old_password: oldPw, new_password: newPw });
     setPwBusy(false);
     if (result.ok) {
+      if (cloudAccounts) {
+        window.location.href = "/login?password=changed";
+        return;
+      }
       setPwDone(true);
       setOldPw("");
       setNewPw("");
@@ -559,7 +599,7 @@ function AccountSection() {
     } else {
       setPwError(result.error);
     }
-  }, [oldPw, newPw, confirmPw]);
+  }, [oldPw, newPw, confirmPw, cloudAccounts]);
 
   if (me === "unknown" || me === null) {
     return <Section title="Account">{null}</Section>;
@@ -574,15 +614,78 @@ function AccountSection() {
           </span>
           <div className="min-w-0">
             <div className="truncate font-medium">
-              {me.id}
-              {me.is_admin && (
+              {accountDisplayName(me)}
+              {me.is_platform_admin && (
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  (平台管理员)
+                </span>
+              )}
+              {!cloudAccounts && me.is_admin && (
                 <span className="ml-1 text-xs font-normal text-muted-foreground">(admin)</span>
               )}
             </div>
+            {me.email && me.nick_name && (
+              <div className="truncate text-sm text-muted-foreground">
+                {maskedAccountEmail(me.email)}
+              </div>
+            )}
           </div>
         </div>
 
-        {me.is_admin && (
+        {cloudAccounts && (
+          <div className="space-y-4 border-y border-border py-5">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="text-xs text-muted-foreground">平台账户余额</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">
+                  ¥{Number(me.balance_cny ?? 0).toFixed(2)}
+                </div>
+              </div>
+              <div className="text-right text-xs text-muted-foreground">
+                本机 BYOK 模型调用不扣除此余额
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+              <PlatformMetric label="平台调用" value={formatInteger(usage?.summary.request_count)} />
+              <PlatformMetric label="输入 Token" value={formatInteger(usage?.summary.prompt_tokens)} />
+              <PlatformMetric label="输出 Token" value={formatInteger(usage?.summary.completion_tokens)} />
+              <PlatformMetric
+                label="累计费用"
+                value={`¥${Number(usage?.summary.charged_amount_cny ?? 0).toFixed(2)}`}
+              />
+            </div>
+            <div>
+              <div className="mb-2 text-xs font-medium text-muted-foreground">最近余额变动</div>
+              {balanceRecords.length === 0 ? (
+                <p className="text-sm text-muted-foreground">暂无余额变动</p>
+              ) : (
+                <div className="divide-y divide-border border-y border-border">
+                  {balanceRecords.slice(0, 5).map((record) => (
+                    <div key={record.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                      <div className="min-w-0">
+                        <div className="truncate">{record.note || record.record_type}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(record.created_at).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right tabular-nums">
+                        <div className={Number(record.amount_cny) >= 0 ? "text-emerald-600" : ""}>
+                          {Number(record.amount_cny) >= 0 ? "+" : ""}
+                          ¥{Number(record.amount_cny).toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          余额 ¥{Number(record.balance_after_cny).toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!cloudAccounts && me.is_admin && (
           <div className="flex flex-col gap-1">
             <Button asChild variant="ghost" className="w-full justify-start gap-2">
               <Link to="/members">
@@ -700,6 +803,207 @@ function AccountSection() {
       </Dialog>
     </Section>
   );
+}
+
+function formatInteger(value: number | undefined): string {
+  return new Intl.NumberFormat("zh-CN").format(value ?? 0);
+}
+
+function PlatformMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-0.5 font-medium tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function FeedbackSection() {
+  const info = useServerInfo();
+  const [feedbackType, setFeedbackType] = useState<
+    "bug" | "experience" | "feature" | "answer_quality" | "other"
+  >("experience");
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [rating, setRating] = useState<number | null>(null);
+  const [contactAllowed, setContactAllowed] = useState(true);
+  const [history, setHistory] = useState<FeedbackEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+
+  const loadHistory = useCallback(async () => {
+    setLoading(true);
+    setHistory(await getFeedback());
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  const submit = useCallback(async () => {
+    setSubmitting(true);
+    setMessage(null);
+    const result = await createFeedback({
+      feedback_type: feedbackType,
+      title: title.trim(),
+      content: content.trim(),
+      rating,
+      contact_allowed: contactAllowed,
+      client_platform: navigator.platform || "web",
+      client_version: info === "loading" ? undefined : info.server_version ?? undefined,
+    });
+    setSubmitting(false);
+    if (!result.ok) {
+      setMessage({ kind: "error", text: result.error });
+      return;
+    }
+    setTitle("");
+    setContent("");
+    setRating(null);
+    setMessage({ kind: "ok", text: `反馈 #${result.feedback.feedback_number} 已提交` });
+    await loadHistory();
+  }, [contactAllowed, content, feedbackType, info, loadHistory, rating, title]);
+
+  return (
+    <Section
+      title="用户反馈"
+      description="告诉我们哪里不顺手，或你希望工作台下一步支持什么。"
+    >
+      <div className="flex max-w-3xl flex-col gap-7">
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="feedback-type">反馈类型</label>
+              <Select value={feedbackType} onValueChange={(value) => setFeedbackType(value as typeof feedbackType)}>
+                <SelectTrigger id="feedback-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="experience">使用体验</SelectItem>
+                  <SelectItem value="bug">问题报告</SelectItem>
+                  <SelectItem value="feature">功能建议</SelectItem>
+                  <SelectItem value="answer_quality">回答质量</SelectItem>
+                  <SelectItem value="other">其他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="feedback-title">标题</label>
+              <Input
+                id="feedback-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                maxLength={240}
+                required
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" htmlFor="feedback-content">详细内容</label>
+            <Textarea
+              id="feedback-content"
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              className="min-h-32 resize-y"
+              maxLength={20_000}
+              required
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">评分（可选）</span>
+              {[1, 2, 3, 4, 5].map((value) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="icon"
+                  variant={rating === value ? "default" : "outline"}
+                  className="size-8"
+                  aria-label={`${value} 分`}
+                  onClick={() => setRating(rating === value ? null : value)}
+                >
+                  {value}
+                </Button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={contactAllowed}
+                onChange={(event) => setContactAllowed(event.target.checked)}
+                className="size-4"
+              />
+              允许通过账户邮箱联系我
+            </label>
+          </div>
+          {message && (
+            <div
+              role="status"
+              className={cn(
+                "rounded-md border px-3 py-2 text-sm",
+                message.kind === "ok"
+                  ? "border-emerald-500/40 text-emerald-700"
+                  : "border-destructive/40 text-destructive",
+              )}
+            >
+              {message.text}
+            </div>
+          )}
+          <Button
+            type="submit"
+            disabled={submitting || title.trim().length < 2 || content.trim().length < 2}
+            className="gap-2"
+          >
+            {submitting ? <Loader2Icon className="size-4 animate-spin" /> : <MessageSquareTextIcon className="size-4" />}
+            提交反馈
+          </Button>
+        </form>
+
+        <div>
+          <h3 className="mb-2 text-sm font-medium">我的反馈</h3>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">正在加载...</p>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-muted-foreground">还没有提交过反馈</p>
+          ) : (
+            <div className="divide-y divide-border border-y border-border">
+              {history.map((entry) => (
+                <div key={entry.id} className="flex items-start justify-between gap-4 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">
+                      #{entry.feedback_number} {entry.title}
+                    </div>
+                    <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                      {entry.content}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right text-xs text-muted-foreground">
+                    <div>{feedbackStatusLabel(entry.status)}</div>
+                    <div>{new Date(entry.created_at).toLocaleDateString()}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function feedbackStatusLabel(status: string): string {
+  return ({
+    open: "待处理",
+    processing: "处理中",
+    resolved: "已解决",
+    closed: "已关闭",
+  } as Record<string, string>)[status] ?? status;
 }
 
 function ArchivedSection() {

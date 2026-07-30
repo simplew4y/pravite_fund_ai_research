@@ -11,6 +11,7 @@ import {
   ArrowLeftIcon,
   BotIcon,
   KeyboardIcon,
+  MessageSquareTextIcon,
   PaletteIcon,
   PanelRightOpenIcon,
   TerminalIcon,
@@ -27,6 +28,7 @@ export type SettingsSectionId =
   | "appearance"
   | "shortcuts"
   | "account"
+  | "feedback"
   | "archived"
   | "cli"
   | "llm";
@@ -35,6 +37,7 @@ const SECTION_IDS: readonly SettingsSectionId[] = [
   "appearance",
   "shortcuts",
   "account",
+  "feedback",
   "archived",
   "cli",
   "llm",
@@ -61,6 +64,7 @@ export function settingsNavGroups(
   accountsEnabled: boolean,
   isDesktop: boolean,
   llmEnabled = false,
+  cloudAccountsEnabled = false,
 ): SettingsNavGroup[] {
   const general: SettingsNavItem[] = [
     { id: "appearance", label: "Appearance", icon: PaletteIcon },
@@ -70,6 +74,13 @@ export function settingsNavGroups(
     // Account leads the group when present — it's the most-visited section
     // on accounts deploys.
     general.unshift({ id: "account", label: "Account", icon: UserCogIcon });
+    if (cloudAccountsEnabled) {
+      general.splice(1, 0, {
+        id: "feedback",
+        label: "用户反馈",
+        icon: MessageSquareTextIcon,
+      });
+    }
   }
   const groups: SettingsNavGroup[] = [];
   // Desktop (Local CLI) leads when present — it's the shell-specific section a
@@ -130,11 +141,17 @@ export function SettingsSidebarBody({
 }) {
   const info = useServerInfo();
   const accountsEnabled = info !== "loading" && info.accounts_enabled;
+  const cloudAccountsEnabled = info !== "loading" && info.cloud_accounts_enabled === true;
   const llmEnabled =
     supportsDesktopLlmConfiguration() ||
     (info !== "loading" && info.llm_configuration_enabled);
   const { section } = useSettingsRoute();
-  const groups = settingsNavGroups(accountsEnabled, isElectronShell(), llmEnabled);
+  const groups = settingsNavGroups(
+    accountsEnabled,
+    isElectronShell(),
+    llmEnabled,
+    cloudAccountsEnabled,
+  );
 
   return (
     <>

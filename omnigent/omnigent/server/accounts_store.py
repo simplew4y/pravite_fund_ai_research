@@ -138,6 +138,47 @@ class SqlAlchemyAccountStore:
                 raise ValueError(f"user {user_id!r} already exists") from exc
             return _to_account(row)
 
+    def upsert_cloud_user(
+        self,
+        user_id: str,
+        data_namespace: str,
+        *,
+        logged_in_at: int,
+    ) -> Account:
+        """Create or refresh a cloud identity without granting local admin rights.
+
+        The cloud UUID and namespace are immutable identity coordinates. A namespace
+        already owned by a different local user is rejected instead of reassigning
+        that user's on-device files.
+        """
+        with self._session() as session:
+            owner = session.execute(
+                select(SqlUser.id).where(SqlUser.data_namespace == data_namespace)
+            ).scalar_one_or_none()
+            if owner is not None and owner != user_id:
+                raise ValueError("cloud data namespace is already owned by another local user")
+
+            row = session.get(SqlUser, user_id)
+            if row is None:
+                row = SqlUser(
+                    id=user_id,
+                    is_admin=False,
+                    password_hash=None,
+                    created_at=logged_in_at,
+                    last_login_at=logged_in_at,
+                    data_namespace=data_namespace,
+                )
+                session.add(row)
+            else:
+                if row.data_namespace and row.data_namespace != data_namespace:
+                    raise ValueError("cloud user namespace does not match the local identity")
+                row.data_namespace = data_namespace
+                row.last_login_at = logged_in_at
+                row.password_hash = None
+                row.is_admin = False
+            session.flush()
+            return _to_account(row)
+
     def get_or_create_data_namespace(self, user_id: str) -> str:
         """Return the immutable filesystem namespace for a user."""
         with self._session() as session:

@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useLocation, useNavigate } from "@/lib/routing";
@@ -26,6 +27,16 @@ import {
   type LlmProviderConfig,
 } from "@/lib/llmConfigApi";
 import { supportsDesktopLlmConfiguration } from "@/lib/nativeBridge";
+
+const LLM_CONFIG_PROMPT_DISMISSED_KEY = "omnigent.llmConfigPrompt.dismissed";
+
+function readPromptDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(LLM_CONFIG_PROMPT_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 interface LlmConfigContextValue {
   enabled: boolean;
@@ -53,6 +64,7 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<LlmProviderConfig | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [promptOpen, setPromptOpen] = useState(false);
+  const promptDismissedRef = useRef(readPromptDismissed());
   const [applyStatus, setApplyStatus] = useState<LlmApplyStatus>({
     busy: false,
     applying: false,
@@ -70,7 +82,12 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
     const next = await getLlmConfig();
     setConfig(next);
     setLoading(false);
-    if (next && !next.configured && !location.pathname.includes("/settings/llm")) {
+    if (
+      next &&
+      !next.configured &&
+      !promptDismissedRef.current &&
+      !location.pathname.includes("/settings/llm")
+    ) {
       setPromptOpen(true);
     }
   }, [enabled, location.pathname]);
@@ -89,9 +106,19 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
   const requireConfiguration = useCallback(() => {
     if (!enabled || (!loading && config === null) || config?.configured) return true;
     if (loading || applyStatus.applying) return false;
-    setPromptOpen(true);
+    if (!promptDismissedRef.current) setPromptOpen(true);
     return false;
   }, [applyStatus.applying, config, enabled, loading]);
+
+  const dismissPromptForSession = useCallback(() => {
+    try {
+      window.localStorage.setItem(LLM_CONFIG_PROMPT_DISMISSED_KEY, "1");
+    } catch {
+      // The in-memory state still suppresses repeat prompts for this page.
+    }
+    promptDismissedRef.current = true;
+    setPromptOpen(false);
+  }, []);
 
   const contextValue = useMemo(
     () => ({ enabled, config, applyStatus, loading, requireConfiguration, refresh }),
@@ -110,7 +137,7 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPromptOpen(false)}>
+            <Button variant="ghost" onClick={dismissPromptForSession}>
               稍后
             </Button>
             <Button

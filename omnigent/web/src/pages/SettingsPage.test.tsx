@@ -15,7 +15,17 @@ const mocks = vi.hoisted(() => ({
   archiveMutate: vi.fn(),
   deleteMutate: vi.fn(),
   accountsEnabled: true,
-  me: { id: "alice", is_admin: false } as { id: string; is_admin: boolean } | null,
+  me: {
+    id: "alice",
+    is_admin: false,
+    email: "alice@example.com",
+    nick_name: null,
+  } as {
+    id: string;
+    is_admin: boolean;
+    email?: string;
+    nick_name?: string | null;
+  } | null,
   conversations: [] as Conversation[],
   llmConfig: {
     preset: "dashscope",
@@ -39,11 +49,15 @@ vi.mock("@/lib/embedded", () => ({ useIsEmbedded: () => false }));
 vi.mock("@/lib/CapabilitiesContext", () => ({
   useServerInfo: () => ({ accounts_enabled: mocks.accountsEnabled }),
 }));
-vi.mock("@/lib/accountsApi", () => ({
-  getMe: () => Promise.resolve(mocks.me),
-  logout: vi.fn(),
-  changePassword: vi.fn(),
-}));
+vi.mock("@/lib/accountsApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/accountsApi")>();
+  return {
+    ...actual,
+    getMe: () => Promise.resolve(mocks.me),
+    logout: vi.fn(),
+    changePassword: vi.fn(),
+  };
+});
 vi.mock("@/hooks/useConversations", () => ({
   useConversations: () => ({
     data: { pages: [{ data: mocks.conversations }] },
@@ -99,7 +113,12 @@ beforeEach(() => {
   mocks.deleteMutate.mockReset();
   mocks.theme = "system";
   mocks.accountsEnabled = true;
-  mocks.me = { id: "alice", is_admin: false };
+  mocks.me = {
+    id: "alice",
+    is_admin: false,
+    email: "alice@example.com",
+    nick_name: null,
+  };
   mocks.conversations = [];
   mocks.refreshLlm.mockReset();
   mocks.testLlm.mockReset();
@@ -122,7 +141,7 @@ describe("SettingsPage", () => {
   it("defaults bare /settings to Account when accounts is on, else Appearance", async () => {
     // Accounts on → Account leads, so /settings lands on it.
     renderPage("/settings");
-    await waitFor(() => expect(screen.getByText("alice")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("a***@example.com")).toBeInTheDocument());
 
     // Accounts off → no Account section; default falls back to Appearance.
     cleanup();
@@ -133,13 +152,13 @@ describe("SettingsPage", () => {
 
   it("renders the Account section at /settings/account when auth is enabled", async () => {
     renderPage("/settings/account");
-    await waitFor(() => expect(screen.getByText("alice")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("a***@example.com")).toBeInTheDocument());
 
     // With accounts off, the section renders nothing even at its URL.
     cleanup();
     mocks.accountsEnabled = false;
     renderPage("/settings/account");
-    expect(screen.queryByText("alice")).toBeNull();
+    expect(screen.queryByText("a***@example.com")).toBeNull();
   });
 
   it("lists archived sessions and unarchives on click", () => {

@@ -32,11 +32,6 @@ const queryClient = new QueryClient({
 // conversation is created server-side).
 initChatStore(queryClient);
 
-// Discover the current user identity from the server. Once resolved,
-// all subsequent fetch calls include X-Forwarded-Email so session
-// routes know who's making the request.
-void resolveIdentity();
-
 // Mirror the iOS shell's native bar footprints into the inset CSS variables.
 // No-op off the iOS shell (the inset vars stay at their env()-only defaults).
 initNativeInsets();
@@ -69,6 +64,9 @@ const _bootProbe: Promise<ServerInfo> = Promise.race([
 ]);
 
 void _bootProbe.then((info) => {
+  // Resolve capabilities first so cloud-account mode verifies identity against
+  // the BFF instead of trusting a stale local session cookie after startup.
+  void resolveIdentity();
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <CapabilitiesProvider info={info}>
