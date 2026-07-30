@@ -6,6 +6,7 @@ import json
 import os
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 import jwt
@@ -14,8 +15,10 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from omnigent.server.user_llm_config_store import UserLlmConfig, UserLlmConfigStore
+from omnigent.server.user_model_routing_store import UserModelRoutingStore
 
 TOKEN_AUDIENCE = "omnigent-private-fund-llm"
+PLATFORM_MAX_OUTPUT_TOKENS = 32000
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 
@@ -71,6 +74,45 @@ def _target_model(config: UserLlmConfig) -> str:
     return config.model if "/" in config.model else f"{config.provider}/{config.model}"
 
 
+@dataclass(frozen=True)
+class _ModelTarget:
+    source: str
+    model: str
+    api_base: str
+    api_key: str
+    max_output_tokens: int | None = None
+
+
+def _normalize_payload(payload: dict[str, Any], target: _ModelTarget) -> None:
+    """Apply provider limits without changing BYOK request semantics."""
+    limit = target.max_output_tokens
+    if limit is None:
+        return
+    for key in ("max_tokens", "max_completion_tokens"):
+        value = payload.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > limit:
+            payload[key] = limit
+
+
+def _provider_error_status(exc: Exception, source: str) -> tuple[int, str]:
+    raw_status = getattr(exc, "status_code", None)
+    try:
+        status = int(raw_status)
+    except (TypeError, ValueError):
+        status = 502
+    if source != "platform":
+        return 502, "自有 API 调用失败"
+    if status == 402:
+        return 402, "当前可用额度不足，请等待正在进行的模型请求完成或补充余额。"
+    if status == 429:
+        return 429, "平台模型当前请求较多，请稍后再试。"
+    if status in {401, 403}:
+        return 401, "平台模型访问凭证已失效，请重新登录后再试。"
+    if status in {502, 503, 504}:
+        return 503, "平台模型服务暂时不可用，请稍后再试。"
+    return 502, "平台模型调用失败"
+
+
 def _dump(value: Any) -> dict[str, Any]:
     if hasattr(value, "model_dump"):
         return value.model_dump(exclude_none=True)
@@ -111,6 +153,7 @@ def _require_config(store: UserLlmConfigStore, user_id: str) -> UserLlmConfig:
 def create_user_llm_gateway_router(storage_location: str) -> APIRouter:
     router = APIRouter()
     store: UserLlmConfigStore | None = None
+    routing_store: UserModelRoutingStore | None = None
 
     def config_store() -> UserLlmConfigStore:
         nonlocal store
@@ -118,26 +161,71 @@ def create_user_llm_gateway_router(storage_location: str) -> APIRouter:
             store = UserLlmConfigStore(storage_location)
         return store
 
+    def model_routing_store() -> UserModelRoutingStore:
+        nonlocal routing_store
+        if routing_store is None:
+            routing_store = UserModelRoutingStore(storage_location)
+        return routing_store
+
+    def resolve_target(user_id: str) -> _ModelTarget:
+        config = config_store().get(user_id)
+        byok_configured = config is not None and config.configured
+        routing = model_routing_store().get(
+            user_id,
+            byok_configured=byok_configured,
+        )
+        if routing.source == "platform":
+            if not routing.platform_token_valid():
+                raise HTTPException(
+                    status_code=409,
+                    detail="平台模型访问凭证缺失或已过期，请重新准备模型服务。",
+                )
+            return _ModelTarget(
+                source="platform",
+                # The cloud gateway exposes Chat Completions, not OpenAI's
+                # Responses API. ``custom_openai`` keeps LiteLLM's Anthropic
+                # message/tool conversion while routing to /chat/completions.
+                model="custom_openai/private-fund-default",
+                api_base=routing.platform_gateway_base_url,
+                api_key=routing.platform_token,
+                max_output_tokens=PLATFORM_MAX_OUTPUT_TOKENS,
+            )
+        config = _require_config(config_store(), user_id)
+        return _ModelTarget(
+            source="byok",
+            model=_target_model(config),
+            api_base=config.base_url,
+            api_key=config.api_key,
+        )
+
+    def provider_error(exc: Exception, target: _ModelTarget) -> HTTPException:
+        status, summary = _provider_error_status(exc, target.source)
+        sanitized = str(exc).replace(target.api_key, "[redacted]")
+        return HTTPException(
+            status_code=status,
+            detail=f"{summary}: {sanitized[:800]}",
+        )
+
     @router.post("/v1/messages", response_model=None)
     async def anthropic_messages(request: Request) -> JSONResponse | StreamingResponse:
         user_id = _decode_user(request)
-        config = _require_config(config_store(), user_id)
+        target = resolve_target(user_id)
         payload = await request.json()
         payload.pop("model", None)
+        _normalize_payload(payload, target)
         stream = bool(payload.get("stream"))
         try:
             import litellm
 
             _install_anthropic_usage_only_chunk_compatibility()
             result = await litellm.anthropic_messages(
-                model=_target_model(config),
-                api_base=config.base_url,
-                api_key=config.api_key,
+                model=target.model,
+                api_base=target.api_base,
+                api_key=target.api_key,
                 **payload,
             )
         except Exception as exc:
-            detail = str(exc).replace(config.api_key, "[redacted]")
-            raise HTTPException(status_code=502, detail=detail[:1000]) from exc
+            raise provider_error(exc, target) from exc
         if not stream:
             return JSONResponse(_dump(result))
 
@@ -159,22 +247,22 @@ def create_user_llm_gateway_router(storage_location: str) -> APIRouter:
     @router.post("/v1/chat/completions", response_model=None)
     async def chat_completions(request: Request) -> JSONResponse | StreamingResponse:
         user_id = _decode_user(request)
-        config = _require_config(config_store(), user_id)
+        target = resolve_target(user_id)
         payload = await request.json()
         payload.pop("model", None)
+        _normalize_payload(payload, target)
         stream = bool(payload.get("stream"))
         try:
             import litellm
 
             result = await litellm.acompletion(
-                model=_target_model(config),
-                api_base=config.base_url,
-                api_key=config.api_key,
+                model=target.model,
+                api_base=target.api_base,
+                api_key=target.api_key,
                 **payload,
             )
         except Exception as exc:
-            detail = str(exc).replace(config.api_key, "[redacted]")
-            raise HTTPException(status_code=502, detail=detail[:1000]) from exc
+            raise provider_error(exc, target) from exc
         if not stream:
             return JSONResponse(_dump(result))
 

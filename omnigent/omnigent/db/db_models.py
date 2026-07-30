@@ -166,6 +166,28 @@ class SqlUserLlmConfig(Base):
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class SqlUserModelRouting(Base):
+    """User-scoped choice between the platform model and a personal API."""
+
+    __tablename__ = "user_model_routing"
+
+    user_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    platform_token_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
+    platform_token_expires_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    platform_gateway_base_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("source IN ('platform', 'byok')", name="ck_user_model_routing_source"),
+    )
+
+
 class SqlAccountToken(Base):
     """
     SQLAlchemy model for the ``account_tokens`` table.

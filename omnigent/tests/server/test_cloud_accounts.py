@@ -21,7 +21,11 @@ from omnigent.server.routes.cloud_accounts import create_cloud_accounts_router
 
 
 @pytest.fixture
-def cloud_store(tmp_path: Path) -> SqlAlchemyAccountStore:
+def cloud_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> SqlAlchemyAccountStore:
+    monkeypatch.setenv("OMNIGENT_USER_SECRETS_KEY", secrets.token_hex(32))
     db_url = f"sqlite:///{tmp_path}/cloud-accounts.db"
     get_or_create_engine(db_url)
     return SqlAlchemyAccountStore(db_url)
@@ -147,6 +151,39 @@ def test_cloud_login_keeps_tokens_out_of_frontend_and_local_db(
     assert shadow.is_admin is False
 
 
+def test_cloud_profile_update_returns_public_user_and_keeps_tokens_server_side(
+    monkeypatch: pytest.MonkeyPatch,
+    cloud_config: CloudAccountsConfig,
+    cloud_store: SqlAlchemyAccountStore,
+) -> None:
+    def handler(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        if url.endswith("/api/v1/auth/login"):
+            return httpx.Response(200, json=_token_payload())
+        assert method == "PATCH"
+        assert url.endswith("/api/v1/me/profile")
+        assert kwargs["headers"]["authorization"] == "Bearer cloud-access-secret"
+        assert kwargs["json"] == {"nick_name": "新昵称"}
+        return httpx.Response(200, json={**_user(), "nick_name": "新昵称"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_async_client(handler))
+    with TestClient(_app(cloud_config, cloud_store)) as client:
+        logged_in = client.post(
+            "/auth/login",
+            json={"email": "researcher@example.com", "password": "password123"},
+        )
+        assert logged_in.status_code == 200
+        updated = client.patch(
+            "/auth/users/me/profile",
+            json={"nick_name": "  新昵称  "},
+        )
+
+    assert updated.status_code == 200
+    assert updated.json()["nick_name"] == "新昵称"
+    assert updated.json()["email"] == "researcher@example.com"
+    assert "cloud-access-secret" not in updated.text
+    assert "cloud-refresh-secret" not in updated.text
+
+
 def test_cloud_registration_proxies_code_and_creates_shadow_session(
     monkeypatch: pytest.MonkeyPatch,
     cloud_config: CloudAccountsConfig,
@@ -242,6 +279,67 @@ def test_cloud_account_proxy_uses_bearer_without_exposing_it(
     assert usage.json()["summary"]["total_tokens"] == 0
     assert "cloud-access-secret" not in usage.text
     assert len(calls) == 2
+
+
+def test_platform_model_prepare_keeps_gateway_token_server_side(
+    monkeypatch: pytest.MonkeyPatch,
+    cloud_config: CloudAccountsConfig,
+    cloud_store: SqlAlchemyAccountStore,
+) -> None:
+    monkeypatch.setenv("OMNIGENT_USER_SECRETS_KEY", secrets.token_hex(32))
+
+    def handler(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        if url.endswith("/auth/login"):
+            return httpx.Response(200, json=_token_payload())
+        assert kwargs["headers"]["authorization"] == "Bearer cloud-access-secret"
+        if method == "GET" and url.endswith("/api/v1/me"):
+            return httpx.Response(200, json=_user())
+        if method == "GET" and url.endswith("/api/v1/models"):
+            return httpx.Response(
+                200,
+                json={
+                    "object": "list",
+                    "available": True,
+                    "default_model": "private-fund-default",
+                    "data": [
+                        {
+                            "id": "private-fund-default",
+                            "display_name": "Qwen3 Max",
+                            "provider": "dashscope",
+                            "input_price_cny_per_million": "3.200000",
+                            "output_price_cny_per_million": "12.800000",
+                        }
+                    ],
+                },
+            )
+        assert method == "POST"
+        assert url.endswith("/api/v1/model-access-token")
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "pfm_server-only-secret",
+                "expires_in": 604800,
+                "gateway_base_url": "https://cloud.example.test/gateway/v1",
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_async_client(handler))
+    with TestClient(_app(cloud_config, cloud_store)) as client:
+        assert (
+            client.post(
+                "/auth/login",
+                json={"email": _user()["email"], "password": "password123"},
+            ).status_code
+            == 200
+        )
+        response = client.post("/v1/private-fund/model-service/prepare")
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "platform"
+    assert response.json()["ready"] is True
+    assert response.json()["platform"]["models"][0]["displayName"] == "Qwen3 Max"
+    assert response.json()["platform"]["balanceCny"] == "12.500000"
+    assert "pfm_server-only-secret" not in response.text
 
 
 def test_disabled_cloud_account_clears_both_session_cookies(

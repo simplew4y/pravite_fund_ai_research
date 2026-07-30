@@ -20,8 +20,8 @@ describe("account display helpers", () => {
     expect(accountDisplayName(account({ nick_name: "  张三  " }))).toBe("张三");
   });
 
-  it("uses a masked email when the nickname is empty", () => {
-    expect(accountDisplayName(account({ nick_name: " " }))).toBe("r***@example.com");
+  it("uses the full email when the nickname is empty", () => {
+    expect(accountDisplayName(account({ nick_name: " " }))).toBe("researcher@example.com");
   });
 
   it("masks a non-email account identifier", () => {

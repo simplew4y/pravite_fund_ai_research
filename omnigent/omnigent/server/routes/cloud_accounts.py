@@ -13,7 +13,9 @@ import platform
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from decimal import Decimal, InvalidOperation
+from typing import Any, Literal
+from urllib.parse import urlparse
 
 import httpx
 from cryptography.hazmat.primitives import hashes
@@ -28,6 +30,8 @@ from omnigent.server.auth import UnifiedAuthProvider
 from omnigent.server.cloud_accounts_config import CloudAccountsConfig
 from omnigent.server.oidc import mint_session_cookie
 from omnigent.server.routes.accounts_auth import _clear_session_cookie, _set_session_cookie
+from omnigent.server.user_llm_config_store import UserLlmConfigStore
+from omnigent.server.user_model_routing_store import UserModelRoutingStore
 
 _logger = logging.getLogger(__name__)
 _TOKEN_COOKIE_TTL_SECONDS = 30 * 24 * 3600
@@ -54,6 +58,10 @@ class CloudChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=1024)
 
 
+class CloudUpdateProfileRequest(BaseModel):
+    nick_name: str | None = Field(default=None, max_length=120)
+
+
 class CloudFeedbackRequest(BaseModel):
     feedback_type: str = Field(min_length=1, max_length=32)
     title: str = Field(min_length=2, max_length=240)
@@ -62,6 +70,10 @@ class CloudFeedbackRequest(BaseModel):
     contact_allowed: bool = True
     client_platform: str | None = Field(default=None, max_length=32)
     client_version: str | None = Field(default=None, max_length=64)
+
+
+class CloudModelSourceRequest(BaseModel):
+    source: Literal["platform", "byok"]
 
 
 @dataclass(frozen=True)
@@ -165,6 +177,8 @@ def create_cloud_accounts_router(
     config: CloudAccountsConfig = auth_provider._cloud_accounts_config
     cipher = _TokenCipher(config.cookie_secret)
     router = APIRouter()
+    byok_store = UserLlmConfigStore(account_store.storage_location)
+    routing_store = UserModelRoutingStore(account_store.storage_location)
     refresh_locks: dict[str, asyncio.Lock] = {}
     refresh_replay: dict[str, tuple[float, _CloudTokenBundle, dict[str, Any]]] = {}
 
@@ -354,6 +368,7 @@ def create_cloud_accounts_router(
     ) -> Response:
         response = proxy_response(upstream, bundle, refreshed_user=refreshed_user)
         if upstream.status_code in {401, 403}:
+            routing_store.clear_platform_access(bundle.user_id)
             clear_cookies(response)
         return response
 
@@ -484,6 +499,7 @@ def create_cloud_accounts_router(
     async def logout(request: Request) -> Response:
         bundle = read_bundle(request)
         if bundle is not None:
+            routing_store.clear_platform_access(bundle.user_id)
             with contextlib.suppress(RuntimeError):
                 await cloud_request(
                     "POST",
@@ -524,6 +540,39 @@ def create_cloud_accounts_router(
             set_local_session(response, user["id"])
         return response
 
+    @router.patch("/auth/users/me/profile")
+    async def update_profile(body: CloudUpdateProfileRequest, request: Request) -> Response:
+        nick_name = body.nick_name.strip() if body.nick_name else None
+        try:
+            upstream, bundle, refreshed_user = await authorized_request(
+                request,
+                "PATCH",
+                "me/profile",
+                json_body={"nick_name": nick_name or None},
+            )
+        except RuntimeError:
+            return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")
+        if upstream is None or bundle is None:
+            response = _cloud_error(401, "not_authenticated", "登录状态已失效")
+            clear_cookies(response)
+            return response
+        if upstream.status_code != 200:
+            return proxy_authenticated_response(
+                upstream,
+                bundle,
+                refreshed_user=refreshed_user,
+            )
+        try:
+            user = _cloud_user(_safe_json(upstream))
+            persist_shadow(user)
+        except (KeyError, TypeError, ValueError):
+            return _cloud_error(502, "invalid_cloud_response", "云端账户服务返回了无效数据")
+        response = JSONResponse(user, headers={"Cache-Control": "private, no-store"})
+        set_cloud_cookie(response, bundle)
+        if refreshed_user is not None:
+            set_local_session(response, user["id"])
+        return response
+
     @router.post("/auth/users/me/password")
     async def change_password(body: CloudChangePasswordRequest, request: Request) -> Response:
         try:
@@ -541,6 +590,7 @@ def create_cloud_accounts_router(
             return response
         response = proxy_authenticated_response(upstream, bundle)
         if upstream.status_code < 300:
+            routing_store.clear_platform_access(bundle.user_id)
             clear_cookies(response)
         return response
 
@@ -570,6 +620,328 @@ def create_cloud_accounts_router(
             upstream,
             bundle,
             refreshed_user=refreshed_user,
+        )
+
+    def byok_public(user_id: str) -> dict[str, Any]:
+        from omnigent.server import private_fund_llm_config as llm_config
+
+        stored = byok_store.get(user_id)
+        if stored is None:
+            return {
+                "preset": "custom",
+                "provider": "custom_openai",
+                "baseUrl": "",
+                "model": "",
+                "hasApiKey": False,
+                "maskedApiKey": "",
+                "configured": False,
+            }
+        return {
+            "preset": stored.preset,
+            "provider": stored.provider,
+            "baseUrl": stored.base_url,
+            "model": stored.model,
+            "hasApiKey": bool(stored.api_key),
+            "maskedApiKey": llm_config.mask_api_key(stored.api_key),
+            "configured": stored.configured,
+        }
+
+    def normalized_models(payload: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+        def positive_int(value: Any) -> int:
+            try:
+                return max(0, int(value or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        raw_models = payload.get("data")
+        if not isinstance(raw_models, list):
+            return [], ""
+        models: list[dict[str, Any]] = []
+        for item in raw_models:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            models.append(
+                {
+                    "id": str(item["id"]),
+                    "displayName": str(item.get("display_name") or item["id"]),
+                    "provider": str(item.get("provider") or "platform"),
+                    "inputPriceCnyPerMillion": str(
+                        item.get("input_price_cny_per_million") or "0.000000"
+                    ),
+                    "outputPriceCnyPerMillion": str(
+                        item.get("output_price_cny_per_million") or "0.000000"
+                    ),
+                    "defaultMaxTokens": positive_int(item.get("default_max_tokens")),
+                    "maxOutputTokens": positive_int(item.get("max_output_tokens")),
+                }
+            )
+        default_model = str(payload.get("default_model") or "")
+        if not default_model and models:
+            default_model = str(models[0]["id"])
+        return models, default_model
+
+    async def cloud_model_context(
+        request: Request,
+    ) -> (
+        tuple[dict[str, Any], dict[str, Any], _CloudTokenBundle, dict[str, Any] | None] | Response
+    ):
+        stale_bundle = read_bundle(request)
+        try:
+            me_response, me_bundle, refreshed_user = await authorized_request(
+                request,
+                "GET",
+                "me",
+            )
+            models_response, models_bundle, models_refreshed_user = await authorized_request(
+                request,
+                "GET",
+                "models",
+            )
+        except RuntimeError:
+            return _cloud_error(503, "cloud_service_unavailable", "云端模型服务暂时不可用")
+        if me_response is None or me_bundle is None:
+            if stale_bundle is not None:
+                routing_store.clear_platform_access(stale_bundle.user_id)
+            response = _cloud_error(401, "not_authenticated", "登录状态已失效")
+            clear_cookies(response)
+            return response
+        if models_response is None or models_bundle is None:
+            if stale_bundle is not None:
+                routing_store.clear_platform_access(stale_bundle.user_id)
+            response = _cloud_error(401, "not_authenticated", "登录状态已失效")
+            clear_cookies(response)
+            return response
+        if me_response.status_code != 200:
+            return proxy_authenticated_response(
+                me_response,
+                me_bundle,
+                refreshed_user=refreshed_user,
+            )
+        if models_response.status_code != 200:
+            return proxy_authenticated_response(
+                models_response,
+                models_bundle,
+                refreshed_user=models_refreshed_user,
+            )
+        try:
+            user = _cloud_user(_safe_json(me_response))
+        except (KeyError, TypeError, ValueError):
+            return _cloud_error(502, "invalid_cloud_response", "云端账户服务返回了无效数据")
+        models_payload = _safe_json(models_response)
+        if models_payload is None:
+            return _cloud_error(502, "invalid_cloud_response", "云端模型服务返回了无效数据")
+        persist_shadow(user)
+        return (
+            user,
+            models_payload,
+            models_bundle,
+            models_refreshed_user or refreshed_user,
+        )
+
+    def model_service_state(
+        user: dict[str, Any],
+        models_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        user_id = str(user["id"])
+        byok = byok_public(user_id)
+        routing = routing_store.get(user_id, byok_configured=bool(byok["configured"]))
+        models, default_model = normalized_models(models_payload)
+        available = bool(models_payload.get("available", True) and models and default_model)
+        try:
+            balance = Decimal(str(user.get("balance_cny") or "0"))
+            if not balance.is_finite():
+                balance = Decimal("0")
+        except (InvalidOperation, ValueError):
+            balance = Decimal("0")
+
+        reason: str | None = None
+        detail: str | None = None
+        ready = False
+        active_label = ""
+        if routing.source == "byok":
+            ready = bool(byok["configured"])
+            active_label = str(byok.get("model") or "自有 API")
+            if not ready:
+                reason = "byok_not_configured"
+                detail = "请先配置并验证自己的模型 API。"
+        else:
+            selected = next((item for item in models if item["id"] == default_model), None)
+            active_label = str((selected or {}).get("displayName") or default_model or "平台模型")
+            if not available:
+                reason = "platform_unavailable"
+                detail = "平台模型服务暂时不可用。"
+            elif balance <= 0:
+                reason = "insufficient_balance"
+                detail = "平台账户余额不足，请查看账户或切换到自有 API。"
+            elif not routing.platform_token_valid():
+                reason = "platform_access_required"
+                detail = "平台模型访问凭证需要刷新。"
+            else:
+                ready = True
+
+        return {
+            "userId": user_id,
+            "source": routing.source,
+            "ready": ready,
+            "reason": reason,
+            "detail": detail,
+            "activeLabel": active_label,
+            "platform": {
+                "available": available,
+                "balanceCny": str(user.get("balance_cny") or "0.000000"),
+                "defaultModel": default_model,
+                "models": models,
+                "tokenExpiresAt": routing.platform_token_expires_at,
+            },
+            "byok": byok,
+        }
+
+    def model_json_response(
+        state: dict[str, Any],
+        bundle: _CloudTokenBundle,
+        refreshed_user: dict[str, Any] | None,
+    ) -> JSONResponse:
+        response = JSONResponse(state, headers={"Cache-Control": "private, no-store"})
+        set_cloud_cookie(response, bundle)
+        if refreshed_user is not None:
+            set_local_session(response, refreshed_user["id"])
+        return response
+
+    async def prepare_platform_access(
+        request: Request,
+        user: dict[str, Any],
+        models_payload: dict[str, Any],
+        bundle: _CloudTokenBundle,
+        refreshed_user: dict[str, Any] | None,
+    ) -> Response:
+        state = model_service_state(user, models_payload)
+        if state["source"] != "platform":
+            return model_json_response(state, bundle, refreshed_user)
+        if state["reason"] not in {None, "platform_access_required"}:
+            return model_json_response(state, bundle, refreshed_user)
+        user_id = str(user["id"])
+        routing = routing_store.get(
+            user_id,
+            byok_configured=bool(state["byok"]["configured"]),
+        )
+        if routing.platform_token_valid(minimum_ttl_seconds=3600):
+            return model_json_response(state, bundle, refreshed_user)
+        try:
+            token_response, token_bundle, token_refreshed_user = await authorized_request(
+                request,
+                "POST",
+                "model-access-token",
+            )
+        except RuntimeError:
+            state.update(
+                ready=False,
+                reason="platform_unavailable",
+                detail="无法获取平台模型访问凭证，请稍后重试。",
+            )
+            return model_json_response(state, bundle, refreshed_user)
+        if token_response is None or token_bundle is None:
+            response = _cloud_error(401, "not_authenticated", "登录状态已失效")
+            routing_store.clear_platform_access(user_id)
+            clear_cookies(response)
+            return response
+        token_payload = _safe_json(token_response)
+        if token_response.status_code != 200 or token_payload is None:
+            state.update(
+                ready=False,
+                reason="platform_unavailable",
+                detail="平台模型访问凭证签发失败，请稍后重试。",
+            )
+            return model_json_response(
+                state,
+                token_bundle,
+                token_refreshed_user or refreshed_user,
+            )
+        token = str(token_payload.get("access_token") or "")
+        try:
+            expires_in = int(token_payload.get("expires_in") or 0)
+        except (TypeError, ValueError):
+            expires_in = 0
+        gateway_base_url = str(token_payload.get("gateway_base_url") or "").rstrip("/")
+        parsed = urlparse(gateway_base_url)
+        if (
+            not token.startswith("pfm_")
+            or expires_in <= 0
+            or parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+        ):
+            state.update(
+                ready=False,
+                reason="platform_unavailable",
+                detail="平台模型访问凭证格式无效。",
+            )
+            return model_json_response(
+                state,
+                token_bundle,
+                token_refreshed_user or refreshed_user,
+            )
+        routing_store.save_platform_access(
+            user_id,
+            token=token,
+            expires_at=int(time.time()) + expires_in,
+            gateway_base_url=gateway_base_url,
+            byok_configured=bool(state["byok"]["configured"]),
+        )
+        prepared = model_service_state(user, models_payload)
+        return model_json_response(
+            prepared,
+            token_bundle,
+            token_refreshed_user or refreshed_user,
+        )
+
+    @router.get("/v1/private-fund/model-service")
+    async def get_model_service(request: Request) -> Response:
+        context = await cloud_model_context(request)
+        if isinstance(context, Response):
+            return context
+        user, models_payload, bundle, refreshed_user = context
+        return model_json_response(
+            model_service_state(user, models_payload),
+            bundle,
+            refreshed_user,
+        )
+
+    @router.put("/v1/private-fund/model-service/source")
+    async def set_model_source(body: CloudModelSourceRequest, request: Request) -> Response:
+        context = await cloud_model_context(request)
+        if isinstance(context, Response):
+            return context
+        user, models_payload, bundle, refreshed_user = context
+        byok = byok_public(str(user["id"]))
+        routing_store.set_source(
+            str(user["id"]),
+            body.source,
+            byok_configured=bool(byok["configured"]),
+        )
+        state = model_service_state(user, models_payload)
+        if body.source == "platform":
+            return await prepare_platform_access(
+                request,
+                user,
+                models_payload,
+                bundle,
+                refreshed_user,
+            )
+        return model_json_response(state, bundle, refreshed_user)
+
+    @router.post("/v1/private-fund/model-service/prepare")
+    async def prepare_model_service(request: Request) -> Response:
+        context = await cloud_model_context(request)
+        if isinstance(context, Response):
+            return context
+        user, models_payload, bundle, refreshed_user = context
+        return await prepare_platform_access(
+            request,
+            user,
+            models_payload,
+            bundle,
+            refreshed_user,
         )
 
     @router.get("/v1/account/usage")

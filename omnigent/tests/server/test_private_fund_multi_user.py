@@ -19,9 +19,11 @@ from omnigent.server.private_fund_tenant import (
 from omnigent.server.user_llm_config_store import UserLlmConfig, UserLlmConfigStore
 from omnigent.server.user_llm_gateway import (
     _install_anthropic_usage_only_chunk_compatibility,
+    _provider_error_status,
     create_user_llm_gateway_router,
     issue_user_llm_token,
 )
+from omnigent.server.user_model_routing_store import UserModelRoutingStore
 
 
 @pytest.fixture
@@ -125,6 +127,94 @@ def test_user_model_keys_are_encrypted_and_gateway_forces_saved_model(
     assert captured["api_key"] == "sk-alice-secret-value"
 
 
+def test_platform_model_token_is_encrypted_and_gateway_never_falls_back_to_byok(
+    monkeypatch: pytest.MonkeyPatch,
+    account_db: tuple[str, SqlAlchemyAccountStore],
+) -> None:
+    db_url, _store = account_db
+    master_key = bytes(range(32))
+    monkeypatch.setenv("OMNIGENT_USER_SECRETS_KEY", master_key.hex())
+    configs = UserLlmConfigStore(db_url, master_key=master_key)
+    configs.save(
+        "alice@example.com",
+        UserLlmConfig(
+            preset="custom",
+            provider="openai",
+            base_url="https://byok.example.test/v1",
+            model="byok-model",
+            api_key="sk-byok-secret",
+        ),
+    )
+    routing = UserModelRoutingStore(db_url, master_key=master_key)
+    routing.save_platform_access(
+        "alice@example.com",
+        token="pfm_platform-secret-value",
+        expires_at=4_102_444_800,
+        gateway_base_url="https://cloud.example.test/gateway/v1",
+        byok_configured=True,
+    )
+    routing.set_source("alice@example.com", "platform", byok_configured=True)
+
+    sqlite_path = Path(db_url.removeprefix("sqlite:///"))
+    with sqlite3.connect(sqlite_path) as conn:
+        ciphertext = conn.execute(
+            "SELECT platform_token_ciphertext FROM user_model_routing WHERE user_id = ?",
+            ("alice@example.com",),
+        ).fetchone()[0]
+    assert "pfm_platform-secret-value" not in ciphertext
+
+    captured: dict[str, object] = {}
+
+    async def fake_completion(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {
+            "id": "response-platform",
+            "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+        }
+
+    monkeypatch.setattr("litellm.acompletion", fake_completion)
+    app = FastAPI()
+    app.include_router(create_user_llm_gateway_router(db_url), prefix="/llm")
+    token = issue_user_llm_token("alice@example.com", "conv-platform")
+    with TestClient(app) as client:
+        response = client.post(
+            "/llm/v1/chat/completions",
+            headers={"authorization": f"Bearer {token}"},
+            json={
+                "model": "ignored",
+                "messages": [{"role": "user", "content": "hello"}],
+                "max_tokens": 32_000,
+            },
+        )
+
+    assert response.status_code == 200
+    assert captured["model"] == "custom_openai/private-fund-default"
+    assert captured["api_base"] == "https://cloud.example.test/gateway/v1"
+    assert captured["api_key"] == "pfm_platform-secret-value"
+    assert captured["max_tokens"] == 32000
+
+    routing.clear_platform_access("alice@example.com")
+    captured.clear()
+    with TestClient(app) as client:
+        expired = client.post(
+            "/llm/v1/chat/completions",
+            headers={"authorization": f"Bearer {token}"},
+            json={"model": "ignored", "messages": [{"role": "user", "content": "again"}]},
+        )
+    assert expired.status_code == 409
+    assert captured == {}
+
+
+def test_platform_insufficient_balance_mentions_active_requests() -> None:
+    error = RuntimeError("insufficient_available_balance")
+    error.status_code = 402  # type: ignore[attr-defined]
+
+    status, detail = _provider_error_status(error, "platform")
+
+    assert status == 402
+    assert detail == "当前可用额度不足，请等待正在进行的模型请求完成或补充余额。"
+
+
 async def test_gateway_preserves_openai_usage_only_stream_chunk() -> None:
     """DashScope's final empty-choices usage chunk survives adaptation."""
     from litellm.llms.anthropic.experimental_pass_through.adapters.streaming_iterator import (
@@ -156,9 +246,7 @@ async def test_gateway_preserves_openai_usage_only_stream_chunk() -> None:
     events = [event async for event in stream]
 
     usage_events = [
-        event
-        for event in events
-        if event.get("type") == "message_delta" and event.get("usage")
+        event for event in events if event.get("type") == "message_delta" and event.get("usage")
     ]
     assert usage_events
     assert usage_events[-1]["usage"]["input_tokens"] == 12

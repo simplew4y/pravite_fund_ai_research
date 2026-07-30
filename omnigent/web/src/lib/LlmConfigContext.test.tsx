@@ -23,7 +23,7 @@ import { LlmConfigProvider, useLlmConfiguration } from "./LlmConfigContext";
 
 function ConfigurationProbe() {
   const { requireConfiguration } = useLlmConfiguration();
-  return <button onClick={() => requireConfiguration()}>Check model</button>;
+  return <button onClick={() => void requireConfiguration()}>Check model</button>;
 }
 
 function renderProvider(path: string) {
@@ -38,6 +38,7 @@ function renderProvider(path: string) {
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.sessionStorage.clear();
   mocks.getConfig.mockReset();
   mocks.getApplyStatus.mockReset();
   mocks.getConfig.mockResolvedValue({
@@ -68,6 +69,6 @@ describe("LlmConfigProvider configuration prompt", () => {
     expect(screen.queryByText("尚未配置模型服务")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Check model" }));
-    expect(screen.queryByText("尚未配置模型服务")).toBeNull();
+    expect(await screen.findByText("尚未配置模型服务")).toBeInTheDocument();
   });
 });

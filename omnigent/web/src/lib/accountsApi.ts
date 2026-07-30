@@ -87,7 +87,25 @@ export interface BalanceRecord {
   amount_cny: string;
   balance_after_cny: string;
   note: string | null;
+  llm_usage_id?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  model_display_name?: string | null;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
   created_at: string;
+}
+
+export type BalanceRecordPeriod = "all" | "week" | "month";
+
+export interface BalanceRecordPage {
+  items: BalanceRecord[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  period: BalanceRecordPeriod;
 }
 
 export interface FeedbackEntry {
@@ -177,9 +195,9 @@ export async function logout(): Promise<void> {
 export function clearUserScopedBrowserState(): void {
   try {
     for (const storage of [window.localStorage, window.sessionStorage]) {
-      const keys = Array.from({ length: storage.length }, (_, index) =>
-        storage.key(index),
-      ).filter((key): key is string => Boolean(key));
+      const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index)).filter(
+        (key): key is string => Boolean(key),
+      );
       for (const key of keys) {
         if (
           key.startsWith("omnigent.privateFund") ||
@@ -236,11 +254,13 @@ export function maskedAccountEmail(value: string): string {
   return `${name.slice(0, 1)}***@${domain}`;
 }
 
-/** Prefer a user nickname and otherwise fall back to a masked email or ID. */
+/** Prefer a user nickname and otherwise fall back to the full email or ID. */
 export function accountDisplayName(account: CurrentAccount): string {
   const nickname = account.nick_name?.trim();
-  return nickname || maskedAccountEmail(account.email ?? account.id);
+  return nickname || account.email || account.id;
 }
+
+export const ACCOUNT_UPDATED_EVENT = "omnigent:account-updated";
 
 export type RegistrationCodeResult =
   | { ok: true; expires_in: number; resend_after: number }
@@ -254,16 +274,14 @@ export async function sendRegistrationCode(email: string): Promise<RegistrationC
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email }),
     });
-    const data = (await res.json().catch(() => null)) as
-      | {
-          ok?: boolean;
-          expires_in?: number;
-          resend_after?: number;
-          error?: string;
-          code?: string;
-          message?: string;
-        }
-      | null;
+    const data = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      expires_in?: number;
+      resend_after?: number;
+      error?: string;
+      code?: string;
+      message?: string;
+    } | null;
     if (res.ok) {
       return {
         ok: true,
@@ -369,6 +387,36 @@ export async function changePassword(body: ChangePasswordRequest): Promise<Chang
   return { ok: false, error: message };
 }
 
+export async function updateAccountProfile(
+  nickName: string | null,
+): Promise<{ ok: true; account: CurrentAccount } | { ok: false; error: string }> {
+  try {
+    const res = await fetch("/auth/users/me/profile", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nick_name: nickName }),
+    });
+    if (res.ok) {
+      const account = (await res.json()) as CurrentAccount;
+      window.dispatchEvent(
+        new CustomEvent<CurrentAccount>(ACCOUNT_UPDATED_EVENT, { detail: account }),
+      );
+      return { ok: true, account };
+    }
+    const data = (await res.json().catch(() => null)) as {
+      message?: string;
+      detail?: string;
+      error?: string;
+    } | null;
+    return {
+      ok: false,
+      error: data?.message ?? data?.detail ?? data?.error ?? "保存昵称失败",
+    };
+  } catch {
+    return { ok: false, error: "无法连接到服务" };
+  }
+}
+
 async function readJsonOrNull<T>(path: string): Promise<T | null> {
   try {
     const res = await fetch(path, { cache: "no-store" });
@@ -382,11 +430,16 @@ export function getPlatformUsage(): Promise<PlatformUsageResponse | null> {
   return readJsonOrNull<PlatformUsageResponse>("/v1/account/usage?page=1&page_size=10");
 }
 
-export async function getBalanceRecords(): Promise<BalanceRecord[]> {
-  const data = await readJsonOrNull<{ items: BalanceRecord[] }>(
-    "/v1/account/balance-records?page=1&page_size=10",
-  );
-  return data?.items ?? [];
+export function getBalanceRecords(
+  page = 1,
+  period: BalanceRecordPeriod = "all",
+): Promise<BalanceRecordPage | null> {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: "10",
+    period,
+  });
+  return readJsonOrNull<BalanceRecordPage>(`/v1/account/balance-records?${params.toString()}`);
 }
 
 export async function getFeedback(): Promise<FeedbackEntry[]> {
@@ -406,9 +459,10 @@ export async function createFeedback(
       body: JSON.stringify(body),
     });
     if (res.ok) return { ok: true, feedback: (await res.json()) as FeedbackEntry };
-    const data = (await res.json().catch(() => null)) as
-      | { message?: string; detail?: string }
-      | null;
+    const data = (await res.json().catch(() => null)) as {
+      message?: string;
+      detail?: string;
+    } | null;
     return { ok: false, error: data?.message ?? data?.detail ?? "提交反馈失败" };
   } catch {
     return { ok: false, error: "无法连接到服务" };

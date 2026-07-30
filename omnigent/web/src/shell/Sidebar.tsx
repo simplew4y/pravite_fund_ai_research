@@ -15,6 +15,7 @@ import {
   AlertTriangleIcon,
   ArchiveIcon,
   ArchiveRestoreIcon,
+  BotIcon,
   CheckIcon,
   CheckIcon as CheckMarkIcon,
   ChevronRightIcon,
@@ -123,6 +124,7 @@ import { isConversationUnseen } from "@/hooks/useUnseenConversations";
 import { cn } from "@/lib/utils";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
 import {
+  ACCOUNT_UPDATED_EVENT,
   accountDisplayName,
   clearUserScopedBrowserState,
   getMe,
@@ -133,9 +135,7 @@ import { useResizableSidebar } from "@/hooks/useResizableSidebar";
 import { useSessionSwitchHotkey } from "@/hooks/useSessionSwitchHotkey";
 import { usePinnedSessionHotkeys } from "@/hooks/usePinnedSessionHotkeys";
 import { absoluteTime, relativeTime } from "@/lib/relativeTime";
-import {
-  usePrivateFundProjects,
-} from "@/hooks/usePrivateFundProjects";
+import { usePrivateFundProjects } from "@/hooks/usePrivateFundProjects";
 import {
   ACTIVE_PRIVATE_FUND_PROJECT_CHANGED_EVENT,
   PRIVATE_FUND_DATASET_ID_LABEL_KEY,
@@ -267,6 +267,14 @@ export function Sidebar({
       void getMe().then(setAccount);
     }
   }, [serverInfo]);
+
+  useEffect(() => {
+    const onAccountUpdated = (event: Event) => {
+      setAccount((event as CustomEvent<CurrentAccount>).detail);
+    };
+    window.addEventListener(ACCOUNT_UPDATED_EVENT, onAccountUpdated);
+    return () => window.removeEventListener(ACCOUNT_UPDATED_EVENT, onAccountUpdated);
+  }, []);
 
   const signOut = useCallback(async () => {
     await logout();
@@ -593,7 +601,7 @@ export function Sidebar({
                 privateFundWorkspace && "private-fund-brand text-[16px] tracking-[-0.02em]",
               )}
             >
-              {privateFundWorkspace ? "投研工作台" : "finsagent"}
+              投研工作台
             </Link>
             <div className="flex items-center gap-1">
               <ThemeToggle />
@@ -747,13 +755,21 @@ export function Sidebar({
                 <DropdownMenuContent side="top" align="start" className="w-56">
                   <div className="px-2 py-1.5">
                     <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
-                    <p className="text-xs text-muted-foreground">个人投研空间</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {account.email || "个人投研空间"}
+                    </p>
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link to="/settings/account">
                       <UserRoundIcon className="size-4" />
-                      账户设置
+                      账户
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/settings/llm">
+                      <BotIcon className="size-4" />
+                      模型服务
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
@@ -773,32 +789,34 @@ export function Sidebar({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-            <Button
-              asChild
-              variant="ghost"
-              className={cn(
-                "gap-2 text-sm",
-                // Desktop: full-width row with label, matching New session /
-                // Inbox. Mobile: a small round icon-only button with its own
-                // surface (border + solid bg + shadow) so it reads as a
-                // floating control over the scrolling list beneath it.
-                "md:w-full md:justify-start",
-                "max-md:size-9 max-md:justify-center max-md:rounded-full max-md:border max-md:border-border max-md:bg-card-solid max-md:p-0 max-md:shadow-sm",
-              )}
-              data-testid="settings-button"
-            >
-              {/* No onNavClick here: on mobile the sidebar is a full-screen
+              <Button
+                asChild
+                variant="ghost"
+                className={cn(
+                  "gap-2 text-sm",
+                  // Desktop: full-width row with label, matching New session /
+                  // Inbox. Mobile: a small round icon-only button with its own
+                  // surface (border + solid bg + shadow) so it reads as a
+                  // floating control over the scrolling list beneath it.
+                  "md:w-full md:justify-start",
+                  "max-md:size-9 max-md:justify-center max-md:rounded-full max-md:border max-md:border-border max-md:bg-card-solid max-md:p-0 max-md:shadow-sm",
+                )}
+                data-testid="settings-button"
+              >
+                {/* No onNavClick here: on mobile the sidebar is a full-screen
               overlay, and entering settings swaps it to the section list
               (SettingsSidebarBody). Closing the overlay would skip that list
               and drop straight onto the default section's content 鈥?instead we
               keep it open so mobile lands on the section list, then tapping a
               section (which DOES use onNavClick) closes it to show content. */}
-              <Link to="/settings" aria-label="Settings">
-                <SettingsIcon className="size-4 text-muted-foreground" />
-                {/* Label is desktop-only; the icon stands alone on mobile. */}
-                <span className="max-md:hidden">{privateFundWorkspace ? "设置" : "Settings"}</span>
-              </Link>
-            </Button>
+                <Link to="/settings" aria-label="Settings">
+                  <SettingsIcon className="size-4 text-muted-foreground" />
+                  {/* Label is desktop-only; the icon stands alone on mobile. */}
+                  <span className="max-md:hidden">
+                    {privateFundWorkspace ? "设置" : "Settings"}
+                  </span>
+                </Link>
+              </Button>
             )}
           </div>
         </>

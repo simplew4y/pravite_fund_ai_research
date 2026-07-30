@@ -1,7 +1,7 @@
 // Tests for the Settings nav model + sidebar body (settingsNav).
 //
 // Covers the mobile-specific behavior: keyboard shortcuts is hidden on mobile
-// (max-md:hidden), and "Back to finsagent" does NOT close the sidebar overlay
+// (max-md:hidden), and "Back" does NOT close the sidebar overlay
 // on a plain tap (no onNavClick) so mobile lands back on the conversation list
 // instead of the homepage. Section links still close it.
 
@@ -69,6 +69,8 @@ describe("settingsNavGroups", () => {
       .map((item) => item.id);
     expect(localIds).not.toContain("feedback");
     expect(cloudIds).toContain("feedback");
+    expect(localIds).not.toContain("platform-usage");
+    expect(cloudIds).toContain("platform-usage");
   });
 
   it("includes the Local CLI section only in the desktop shell", () => {
@@ -98,12 +100,12 @@ describe("SettingsSidebarBody", () => {
     expect(screen.getByTestId("settings-nav-archived").className).not.toContain("max-md:hidden");
   });
 
-  it("does NOT close the sidebar when 'Back to finsagent' is tapped", () => {
+  it("does NOT close the sidebar when 'Back' is tapped", () => {
     // No onNavClick on the back link: on mobile the overlay stays open so the
     // sidebar swaps back to the conversation list rather than closing onto the
     // homepage behind it.
     const { onNavClick } = renderBody();
-    fireEvent.click(screen.getByRole("link", { name: /Back to finsagent/ }));
+    fireEvent.click(screen.getByRole("link", { name: "Back" }));
     expect(onNavClick).not.toHaveBeenCalled();
   });
 
