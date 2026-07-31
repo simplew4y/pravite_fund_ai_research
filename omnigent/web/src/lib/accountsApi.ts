@@ -108,6 +108,14 @@ export interface BalanceRecordPage {
   period: BalanceRecordPeriod;
 }
 
+export interface FeedbackAttachment {
+  id: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+}
+
 export interface FeedbackEntry {
   id: string;
   feedback_number: number;
@@ -117,6 +125,7 @@ export interface FeedbackEntry {
   rating: number | null;
   status: string;
   contact_allowed: boolean;
+  attachments?: FeedbackAttachment[];
   created_at: string;
   updated_at: string;
 }
@@ -130,6 +139,17 @@ export interface FeedbackCreateRequest {
   client_platform?: string;
   client_version?: string;
 }
+
+export interface FeedbackFailure {
+  ok: false;
+  error: string;
+  status: number;
+  requestId?: string;
+}
+
+export type FeedbackListResult = { ok: true; items: FeedbackEntry[] } | FeedbackFailure;
+
+export type FeedbackCreateResult = { ok: true; feedback: FeedbackEntry } | FeedbackFailure;
 
 /**
  * POST /auth/login — verify username + password, set the session
@@ -417,6 +437,57 @@ export async function updateAccountProfile(
   }
 }
 
+interface ApiErrorPayload {
+  message?: unknown;
+  detail?: unknown;
+  error?: unknown;
+  code?: unknown;
+  request_id?: unknown;
+}
+
+function errorText(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (!Array.isArray(value)) return undefined;
+  const messages = value
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object" && "msg" in item) {
+        const message = (item as { msg?: unknown }).msg;
+        return typeof message === "string" ? message : undefined;
+      }
+      return undefined;
+    })
+    .filter((item): item is string => Boolean(item));
+  return messages.length > 0 ? messages.join("; ") : undefined;
+}
+
+async function readFeedbackFailure(response: Response, fallback: string): Promise<FeedbackFailure> {
+  const data = (await response.json().catch(() => null)) as ApiErrorPayload | null;
+  const message =
+    errorText(data?.message) ??
+    errorText(data?.detail) ??
+    errorText(data?.error) ??
+    errorText(data?.code) ??
+    fallback;
+  const requestId = errorText(data?.request_id) ?? errorText(response.headers.get("X-Request-ID"));
+  const diagnostic = requestId
+    ? `HTTP ${response.status}, request ${requestId}`
+    : `HTTP ${response.status}`;
+  return {
+    ok: false,
+    error: `${message} (${diagnostic})`,
+    status: response.status,
+    ...(requestId ? { requestId } : {}),
+  };
+}
+
+function feedbackConnectionFailure(): FeedbackFailure {
+  return {
+    ok: false,
+    error: "\u65e0\u6cd5\u8fde\u63a5\u5230\u670d\u52a1",
+    status: 0,
+  };
+}
 async function readJsonOrNull<T>(path: string): Promise<T | null> {
   try {
     const res = await fetch(path, { cache: "no-store" });
@@ -442,30 +513,63 @@ export function getBalanceRecords(
   return readJsonOrNull<BalanceRecordPage>(`/v1/account/balance-records?${params.toString()}`);
 }
 
-export async function getFeedback(): Promise<FeedbackEntry[]> {
-  const data = await readJsonOrNull<{ items: FeedbackEntry[] }>(
-    "/v1/account/feedback?page=1&page_size=50",
-  );
-  return data?.items ?? [];
+export async function getFeedback(): Promise<FeedbackListResult> {
+  try {
+    const response = await fetch("/v1/account/feedback?page=1&page_size=50", {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return readFeedbackFailure(response, "\u52a0\u8f7d\u53cd\u9988\u8bb0\u5f55\u5931\u8d25");
+    }
+    const data = (await response.json()) as { items?: unknown };
+    if (!Array.isArray(data.items)) {
+      return {
+        ok: false,
+        error: "\u53cd\u9988\u670d\u52a1\u8fd4\u56de\u4e86\u65e0\u6548\u6570\u636e (HTTP 502)",
+        status: 502,
+      };
+    }
+    return { ok: true, items: data.items as FeedbackEntry[] };
+  } catch {
+    return feedbackConnectionFailure();
+  }
 }
 
 export async function createFeedback(
   body: FeedbackCreateRequest,
-): Promise<{ ok: true; feedback: FeedbackEntry } | { ok: false; error: string }> {
+  attachments: File[] = [],
+): Promise<FeedbackCreateResult> {
   try {
-    const res = await fetch("/v1/account/feedback", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) return { ok: true, feedback: (await res.json()) as FeedbackEntry };
-    const data = (await res.json().catch(() => null)) as {
-      message?: string;
-      detail?: string;
-    } | null;
-    return { ok: false, error: data?.message ?? data?.detail ?? "提交反馈失败" };
+    let response: Response;
+    if (attachments.length > 0) {
+      const form = new FormData();
+      form.append("metadata", JSON.stringify(body));
+      attachments.forEach((file) => form.append("files", file, file.name));
+      response = await fetch("/v1/account/feedback/with-attachments", {
+        method: "POST",
+        body: form,
+      });
+    } else {
+      response = await fetch("/v1/account/feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+    if (!response.ok) {
+      return readFeedbackFailure(response, "\u63d0\u4ea4\u53cd\u9988\u5931\u8d25");
+    }
+    const feedback = (await response.json()) as FeedbackEntry;
+    if (!feedback || typeof feedback.feedback_number !== "number") {
+      return {
+        ok: false,
+        error: "\u53cd\u9988\u670d\u52a1\u8fd4\u56de\u4e86\u65e0\u6548\u6570\u636e (HTTP 502)",
+        status: 502,
+      };
+    }
+    return { ok: true, feedback };
   } catch {
-    return { ok: false, error: "无法连接到服务" };
+    return feedbackConnectionFailure();
   }
 }
 
