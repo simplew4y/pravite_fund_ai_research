@@ -178,12 +178,12 @@ export function RegisterPage() {
                     autoComplete="one-time-code"
                     value={code}
                     onChange={(event) =>
-                      setCode(event.target.value.replace(/\D/g, "").slice(0, 4))
+                      setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
                     }
                     disabled={submitting}
-                    pattern="\d{4}"
-                    maxLength={4}
-                    placeholder="4 位数字"
+                    pattern="\d{6}"
+                    maxLength={6}
+                    placeholder="6 位数字"
                     required
                   />
                   {codeSent && (
@@ -257,7 +257,7 @@ export function RegisterPage() {
               disabled={
                 submitting ||
                 identity.trim().length === 0 ||
-                (cloudRegistration && code.length !== 4) ||
+                (cloudRegistration && code.length !== 6) ||
                 password.length < MIN_PASSWORD_LENGTH
               }
             >

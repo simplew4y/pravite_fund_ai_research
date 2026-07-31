@@ -66,6 +66,7 @@ export function LoginPage() {
   // paths — never a fully-qualified URL — to prevent open-redirect.
   const returnTo = sanitizeReturnTo(params.get("return_to"));
   const magicError = params.get("magic"); // "expired" | "missing" | null
+  const passwordStatus = params.get("password");
 
   const [username, setUsername] = useState(readLastUsername);
   const [password, setPassword] = useState("");
@@ -181,6 +182,12 @@ export function LoginPage() {
             />
           </div>
 
+          {passwordStatus === "reset" || passwordStatus === "changed" ? (
+            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+              密码已更新，请使用新密码登录。
+            </div>
+          ) : null}
+
           {error !== null && (
             <div
               role="alert"
@@ -200,14 +207,27 @@ export function LoginPage() {
           </Button>
         </form>
 
-        {openRegistration ? (
-          <p className="text-center text-sm text-muted-foreground">
-            还没有账户？{" "}
-            <Link to="/register" className="font-medium text-foreground hover:underline">
-              注册
-            </Link>
-          </p>
-        ) : cloudAccounts ? null : <p className="text-center text-xs text-muted-foreground">
+        {openRegistration || cloudAccounts ? (
+          <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
+            {openRegistration && (
+              <span>
+                还没有账户？{" "}
+                <Link to="/register" className="font-medium text-foreground hover:underline">
+                  注册
+                </Link>
+              </span>
+            )}
+            {!openRegistration ? <span /> : null}
+            {cloudAccounts && (
+              <Link
+                to="/forgot-password"
+                className="font-medium text-foreground hover:underline"
+              >
+                忘记密码
+              </Link>
+            )}
+          </div>
+        ) : <p className="text-center text-xs text-muted-foreground">
           On a fresh install the initial admin password was printed to the server's stderr and saved
           to{" "}
           <code className="rounded bg-muted px-1 py-0.5 font-mono">

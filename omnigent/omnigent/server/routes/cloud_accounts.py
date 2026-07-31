@@ -48,13 +48,18 @@ class CloudRegistrationEmailRequest(BaseModel):
 
 
 class CloudRegistrationRequest(CloudRegistrationEmailRequest):
-    code: str = Field(pattern=r"^\d{4}$")
+    code: str = Field(pattern=r"^\d{6}$")
     password: str = Field(min_length=8, max_length=1024)
     nick_name: str | None = Field(default=None, max_length=120)
 
 
 class CloudChangePasswordRequest(BaseModel):
-    old_password: str = Field(min_length=1, max_length=1024)
+    code: str = Field(pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=1024)
+
+
+class CloudPasswordResetRequest(CloudRegistrationEmailRequest):
+    code: str = Field(pattern=r"^\d{6}$")
     new_password: str = Field(min_length=8, max_length=1024)
 
 
@@ -471,6 +476,50 @@ def create_cloud_accounts_router(
         set_cloud_cookie(response, bundle)
         return response
 
+    @router.post("/auth/password/reset/send-code")
+    async def send_password_reset_code(body: CloudRegistrationEmailRequest) -> Response:
+        try:
+            upstream = await cloud_request(
+                "POST",
+                "auth/password/reset/send-code",
+                json_body={"email": body.email.strip().lower()},
+            )
+        except RuntimeError:
+            return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")
+        payload = _safe_json(upstream)
+        if payload is None:
+            return _cloud_error(502, "invalid_cloud_response", "云端账户服务返回了无效数据")
+        return JSONResponse(
+            status_code=upstream.status_code,
+            content=payload,
+            headers={"Cache-Control": "private, no-store"},
+        )
+
+    @router.post("/auth/password/reset")
+    async def reset_password(body: CloudPasswordResetRequest) -> Response:
+        try:
+            upstream = await cloud_request(
+                "POST",
+                "auth/password/reset",
+                json_body={
+                    "email": body.email.strip().lower(),
+                    "code": body.code,
+                    "new_password": body.new_password,
+                },
+            )
+        except RuntimeError:
+            return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")
+        if upstream.status_code == 204:
+            response: Response = Response(status_code=204)
+            clear_cookies(response)
+            return response
+        payload = _safe_json(upstream)
+        return JSONResponse(
+            status_code=upstream.status_code,
+            content=payload or {"error": "invalid_cloud_response"},
+            headers={"Cache-Control": "private, no-store"},
+        )
+
     @router.post("/auth/refresh")
     async def refresh(request: Request) -> Response:
         bundle = read_bundle(request)
@@ -572,6 +621,26 @@ def create_cloud_accounts_router(
         if refreshed_user is not None:
             set_local_session(response, user["id"])
         return response
+
+    @router.post("/auth/users/me/password/send-code")
+    async def send_change_password_code(request: Request) -> Response:
+        try:
+            upstream, bundle, refreshed_user = await authorized_request(
+                request,
+                "POST",
+                "me/change-password/send-code",
+            )
+        except RuntimeError:
+            return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")
+        if upstream is None or bundle is None:
+            response = _cloud_error(401, "not_authenticated", "登录状态已失效")
+            clear_cookies(response)
+            return response
+        return proxy_authenticated_response(
+            upstream,
+            bundle,
+            refreshed_user=refreshed_user,
+        )
 
     @router.post("/auth/users/me/password")
     async def change_password(body: CloudChangePasswordRequest, request: Request) -> Response:

@@ -339,24 +339,28 @@ export async function register(body: RegisterRequest): Promise<LoginResult> {
   return { ok: false, error: message, status: res.status };
 }
 
-/** Body of POST /auth/users/me/password (self-serve password change). */
-export interface ChangePasswordRequest {
+/** Body used by native Accounts deployments for self-serve password changes. */
+export interface LocalChangePasswordRequest {
   old_password: string;
   new_password: string;
 }
 
-/** Result of a self-serve password change. */
+export interface CloudChangePasswordRequest {
+  code: string;
+  new_password: string;
+}
+
+export type ChangePasswordRequest = LocalChangePasswordRequest | CloudChangePasswordRequest;
+
+/** Result of a self-serve password change or password reset. */
 export type ChangePasswordResult = { ok: true } | { ok: false; error: string };
 
 /**
  * POST /auth/users/me/password — change the signed-in user's own password.
  *
- * Requires the current password (the server re-verifies it). Returns
- * 204 on success. Maps the server's status codes to user-facing
- * messages: 401 → wrong current password, 400 → account has no
- * password (header/OIDC identity), 5xx → server error.
- *
- * :param body: ``{old_password, new_password}``.
+ * Native Accounts deployments require the current password. Cloud Accounts
+ * deployments require a six-digit email verification code. Returns 204 on
+ * success in either mode.
  * :returns: ``{ok: true}`` or ``{ok: false, error}``.
  */
 export async function changePassword(body: ChangePasswordRequest): Promise<ChangePasswordResult> {
@@ -385,6 +389,79 @@ export async function changePassword(body: ChangePasswordRequest): Promise<Chang
     // pass
   }
   return { ok: false, error: message };
+}
+
+export async function sendChangePasswordCode(): Promise<RegistrationCodeResult> {
+  return sendAccountCode("/auth/users/me/password/send-code");
+}
+
+export async function sendPasswordResetCode(email: string): Promise<RegistrationCodeResult> {
+  return sendAccountCode("/auth/password/reset/send-code", { email });
+}
+
+export interface PasswordResetRequest {
+  email: string;
+  code: string;
+  new_password: string;
+}
+
+export async function resetPassword(body: PasswordResetRequest): Promise<ChangePasswordResult> {
+  try {
+    const res = await fetch("/auth/password/reset", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return { ok: true };
+    return { ok: false, error: await accountErrorMessage(res, "验证码无效或已过期。") };
+  } catch {
+    return { ok: false, error: "无法连接到账户服务。" };
+  }
+}
+
+async function sendAccountCode(
+  path: string,
+  body?: Record<string, string>,
+): Promise<RegistrationCodeResult> {
+  try {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = (await res.clone().json().catch(() => null)) as {
+      expires_in?: number;
+      resend_after?: number;
+    } | null;
+    if (res.ok) {
+      return {
+        ok: true,
+        expires_in: data?.expires_in ?? 300,
+        resend_after: data?.resend_after ?? 60,
+      };
+    }
+    return {
+      ok: false,
+      error: await accountErrorMessage(res, "验证码发送失败。"),
+      status: res.status,
+    };
+  } catch {
+    return { ok: false, error: "无法连接到账户服务。", status: 0 };
+  }
+}
+
+async function accountErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = (await res.json()) as {
+      error?: string;
+      code?: string;
+      message?: string;
+      detail?: string;
+    };
+    return data.message ?? data.detail ?? data.error ?? data.code ?? fallback;
+  } catch {
+    return res.status >= 500 ? "账户服务暂时不可用，请稍后重试。" : fallback;
+  }
 }
 
 export async function updateAccountProfile(

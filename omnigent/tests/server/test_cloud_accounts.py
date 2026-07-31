@@ -197,12 +197,12 @@ def test_cloud_registration_proxies_code_and_creates_shadow_session(
             assert kwargs["json"] == {"email": "researcher@example.com"}
             return httpx.Response(
                 202,
-                json={"ok": True, "expires_in": 600, "resend_after": 60},
+                json={"ok": True, "expires_in": 300, "resend_after": 60},
             )
         assert url.endswith("/api/v1/auth/register")
         assert kwargs["json"] == {
             "email": "researcher@example.com",
-            "code": "0123",
+            "code": "012345",
             "password": "password123",
             "nick_name": "Researcher",
         }
@@ -218,7 +218,7 @@ def test_cloud_registration_proxies_code_and_creates_shadow_session(
             "/auth/register",
             json={
                 "email": "Researcher@Example.com",
-                "code": "0123",
+                "code": "012345",
                 "password": "password123",
                 "nick_name": " Researcher ",
             },
@@ -235,6 +235,97 @@ def test_cloud_registration_proxies_code_and_creates_shadow_session(
     assert shadow is not None
     assert shadow.data_namespace == _user()["data_namespace"]
     assert len(calls) == 2
+
+
+def test_cloud_password_reset_proxies_only_required_fields_and_clears_cookies(
+    monkeypatch: pytest.MonkeyPatch,
+    cloud_config: CloudAccountsConfig,
+    cloud_store: SqlAlchemyAccountStore,
+) -> None:
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def handler(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        calls.append((method, url, kwargs))
+        if url.endswith("/api/v1/auth/password/reset/send-code"):
+            assert kwargs["json"] == {"email": "researcher@example.com"}
+            return httpx.Response(
+                202,
+                json={"ok": True, "expires_in": 300, "resend_after": 60},
+            )
+        assert url.endswith("/api/v1/auth/password/reset")
+        assert kwargs["json"] == {
+            "email": "researcher@example.com",
+            "code": "123456",
+            "new_password": "new-password",
+        }
+        return httpx.Response(204)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_async_client(handler))
+    with TestClient(_app(cloud_config, cloud_store)) as client:
+        sent = client.post(
+            "/auth/password/reset/send-code",
+            json={"email": " Researcher@Example.com "},
+        )
+        reset = client.post(
+            "/auth/password/reset",
+            json={
+                "email": " Researcher@Example.com ",
+                "code": "123456",
+                "new_password": "new-password",
+            },
+        )
+
+    assert sent.status_code == 202
+    assert reset.status_code == 204
+    assert len(calls) == 2
+    deleted = reset.headers.get_list("set-cookie")
+    assert any(
+        value.startswith(f"{cloud_config.session_cookie_name}=") and "Max-Age=0" in value
+        for value in deleted
+    )
+    assert any(
+        value.startswith(f"{cloud_config.token_cookie_name}=") and "Max-Age=0" in value
+        for value in deleted
+    )
+
+
+def test_cloud_change_password_uses_code_and_invalidates_local_session(
+    monkeypatch: pytest.MonkeyPatch,
+    cloud_config: CloudAccountsConfig,
+    cloud_store: SqlAlchemyAccountStore,
+) -> None:
+    def handler(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        if url.endswith("/api/v1/auth/login"):
+            return httpx.Response(200, json=_token_payload())
+        assert kwargs["headers"]["authorization"] == "Bearer cloud-access-secret"
+        if url.endswith("/api/v1/me/change-password/send-code"):
+            assert method == "POST"
+            return httpx.Response(
+                202,
+                json={"ok": True, "expires_in": 300, "resend_after": 60},
+            )
+        assert method == "POST"
+        assert url.endswith("/api/v1/me/change-password")
+        assert kwargs["json"] == {"code": "123456", "new_password": "new-password"}
+        return httpx.Response(204)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_async_client(handler))
+    with TestClient(_app(cloud_config, cloud_store)) as client:
+        logged_in = client.post(
+            "/auth/login",
+            json={"email": "researcher@example.com", "password": "password123"},
+        )
+        assert logged_in.status_code == 200
+        sent = client.post("/auth/users/me/password/send-code")
+        changed = client.post(
+            "/auth/users/me/password",
+            json={"code": "123456", "new_password": "new-password"},
+        )
+
+    assert sent.status_code == 202
+    assert changed.status_code == 204
+    deleted = changed.headers.get_list("set-cookie")
+    assert any("Max-Age=0" in value for value in deleted)
 
 
 def test_cloud_account_proxy_uses_bearer_without_exposing_it(

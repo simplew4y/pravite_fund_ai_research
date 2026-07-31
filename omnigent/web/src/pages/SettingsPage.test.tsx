@@ -60,6 +60,8 @@ const mocks = vi.hoisted(() => ({
   },
   balanceRequest: vi.fn(),
   updateProfile: vi.fn(),
+  sendPasswordCode: vi.fn(),
+  changePassword: vi.fn(),
   conversations: [] as Conversation[],
   llmConfig: {
     preset: "dashscope",
@@ -100,7 +102,8 @@ vi.mock("@/lib/accountsApi", async (importOriginal) => {
     },
     updateAccountProfile: (nickName: string | null) => mocks.updateProfile(nickName),
     logout: vi.fn(),
-    changePassword: vi.fn(),
+    sendChangePasswordCode: () => mocks.sendPasswordCode(),
+    changePassword: (body: unknown) => mocks.changePassword(body),
   };
 });
 vi.mock("@/hooks/useConversations", () => ({
@@ -214,6 +217,8 @@ beforeEach(() => {
   };
   mocks.balanceRequest.mockReset();
   mocks.updateProfile.mockReset();
+  mocks.sendPasswordCode.mockReset();
+  mocks.changePassword.mockReset();
   mocks.modelSource = "platform";
   mocks.updateProfile.mockImplementation((nickName: string | null) =>
     Promise.resolve({
@@ -221,6 +226,8 @@ beforeEach(() => {
       account: { ...mocks.me, nick_name: nickName },
     }),
   );
+  mocks.sendPasswordCode.mockResolvedValue({ ok: true, expires_in: 300, resend_after: 60 });
+  mocks.changePassword.mockResolvedValue({ ok: true });
   mocks.conversations = [];
   mocks.refreshLlm.mockReset();
   mocks.setLlmSource.mockReset();
@@ -281,6 +288,34 @@ describe("SettingsPage", () => {
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "保存昵称" }));
     await waitFor(() => expect(mocks.updateProfile).toHaveBeenLastCalledWith(null));
+  });
+
+  it("changes a cloud account password with a six-digit email code", async () => {
+    mocks.cloudAccounts = true;
+    renderPage("/settings/account");
+
+    fireEvent.click(await screen.findByRole("button", { name: "修改密码" }));
+    expect(screen.getByDisplayValue("alice@example.com")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "发送验证码" }));
+    await waitFor(() => expect(mocks.sendPasswordCode).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByPlaceholderText("6 位邮箱验证码"), {
+      target: { value: "12a3456" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("新密码"), {
+      target: { value: "new-password" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("确认新密码"), {
+      target: { value: "new-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+    await waitFor(() =>
+      expect(mocks.changePassword).toHaveBeenCalledWith({
+        code: "123456",
+        new_password: "new-password",
+      }),
+    );
   });
 
   it("labels BYOK as custom and marks the active model source", () => {

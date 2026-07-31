@@ -84,7 +84,7 @@ beforeEach(() => {
   });
   vi.mocked(accountsApi.sendRegistrationCode).mockResolvedValue({
     ok: true,
-    expires_in: 600,
+    expires_in: 300,
     resend_after: 60,
   });
 });
@@ -171,7 +171,7 @@ describe("RegisterPage", () => {
     expect(screen.getByText(/验证码已发送/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/verification code/i), {
-      target: { value: "12a34" },
+      target: { value: "12a3456" },
     });
     fireEvent.change(screen.getByLabelText(/nickname/i), {
       target: { value: " Cloud Researcher " },
@@ -187,7 +187,7 @@ describe("RegisterPage", () => {
     await waitFor(() =>
       expect(accountsApi.register).toHaveBeenCalledWith({
         email: "cloud@example.com",
-        code: "1234",
+        code: "123456",
         password: "longenough",
         nick_name: "Cloud Researcher",
       }),

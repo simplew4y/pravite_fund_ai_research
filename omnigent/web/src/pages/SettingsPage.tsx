@@ -77,6 +77,7 @@ import {
   getMe,
   getPlatformUsage,
   logout,
+  sendChangePasswordCode,
   type PlatformUsageResponse,
   updateAccountProfile,
 } from "@/lib/accountsApi";
@@ -693,11 +694,23 @@ function AccountSection() {
   // Change-password dialog state (lifted verbatim from the old AccountMenu).
   const [pwOpen, setPwOpen] = useState(false);
   const [oldPw, setOldPw] = useState("");
+  const [pwCode, setPwCode] = useState("");
+  const [pwCodeSent, setPwCodeSent] = useState(false);
+  const [pwSendingCode, setPwSendingCode] = useState(false);
+  const [pwResendSeconds, setPwResendSeconds] = useState(0);
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwDone, setPwDone] = useState(false);
+
+  useEffect(() => {
+    if (pwResendSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setPwResendSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [pwResendSeconds]);
 
   useEffect(() => {
     void (async () => {
@@ -738,12 +751,30 @@ function AccountSection() {
 
   const resetPwForm = useCallback(() => {
     setOldPw("");
+    setPwCode("");
+    setPwCodeSent(false);
+    setPwSendingCode(false);
+    setPwResendSeconds(0);
     setNewPw("");
     setConfirmPw("");
     setPwError(null);
     setPwDone(false);
     setPwBusy(false);
   }, []);
+
+  const onSendPasswordCode = useCallback(async () => {
+    if (pwSendingCode) return;
+    setPwSendingCode(true);
+    setPwError(null);
+    const result = await sendChangePasswordCode();
+    setPwSendingCode(false);
+    if (!result.ok) {
+      setPwError(result.error);
+      return;
+    }
+    setPwCodeSent(true);
+    setPwResendSeconds(result.resend_after);
+  }, [pwSendingCode]);
 
   const onSubmitPassword = useCallback(async () => {
     if (newPw !== confirmPw) {
@@ -752,10 +783,15 @@ function AccountSection() {
     }
     setPwBusy(true);
     setPwError(null);
-    const result = await changePassword({ old_password: oldPw, new_password: newPw });
+    const result = await changePassword(
+      cloudAccounts
+        ? { code: pwCode, new_password: newPw }
+        : { old_password: oldPw, new_password: newPw },
+    );
     setPwBusy(false);
     if (result.ok) {
       if (cloudAccounts) {
+        clearUserScopedBrowserState();
         window.location.href = "/login?password=changed";
         return;
       }
@@ -766,7 +802,7 @@ function AccountSection() {
     } else {
       setPwError(result.error);
     }
-  }, [oldPw, newPw, confirmPw, cloudAccounts]);
+  }, [oldPw, pwCode, newPw, confirmPw, cloudAccounts]);
 
   if (me === "unknown" || me === null) {
     return <Section title="账户">{null}</Section>;
@@ -928,7 +964,11 @@ function AccountSection() {
           <DialogHeader>
             <DialogTitle>修改密码</DialogTitle>
             <DialogDescription>
-              {pwDone ? "密码已修改。" : "请输入当前密码，并设置一个新密码。"}
+              {pwDone
+                ? "密码已修改。"
+                : cloudAccounts
+                  ? `验证码将发送到 ${me.email ?? "当前账户邮箱"}。`
+                  : "请输入当前密码，并设置一个新密码。"}
             </DialogDescription>
           </DialogHeader>
 
@@ -940,21 +980,60 @@ function AccountSection() {
                 void onSubmitPassword();
               }}
             >
-              <Input
-                type="password"
-                autoComplete="current-password"
-                placeholder="当前密码"
-                value={oldPw}
-                onChange={(e) => setOldPw(e.target.value)}
-                disabled={pwBusy}
-                required
-              />
+              {cloudAccounts ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input value={me.email ?? ""} readOnly aria-label="账户邮箱" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="shrink-0"
+                      disabled={pwSendingCode || pwBusy || pwResendSeconds > 0}
+                      onClick={() => void onSendPasswordCode()}
+                    >
+                      {pwSendingCode
+                        ? "发送中..."
+                        : pwResendSeconds > 0
+                          ? `${pwResendSeconds}s`
+                          : pwCodeSent
+                            ? "重新发送"
+                            : "发送验证码"}
+                    </Button>
+                  </div>
+                  {pwCodeSent && (
+                    <Input
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="6 位邮箱验证码"
+                      value={pwCode}
+                      onChange={(event) =>
+                        setPwCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
+                      pattern="\d{6}"
+                      maxLength={6}
+                      disabled={pwBusy}
+                      required
+                    />
+                  )}
+                </div>
+              ) : (
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="当前密码"
+                  value={oldPw}
+                  onChange={(e) => setOldPw(e.target.value)}
+                  disabled={pwBusy}
+                  required
+                />
+              )}
               <Input
                 type="password"
                 autoComplete="new-password"
                 placeholder="新密码"
                 value={newPw}
                 onChange={(e) => setNewPw(e.target.value)}
+                minLength={8}
                 disabled={pwBusy}
                 required
               />
@@ -964,6 +1043,7 @@ function AccountSection() {
                 placeholder="确认新密码"
                 value={confirmPw}
                 onChange={(e) => setConfirmPw(e.target.value)}
+                minLength={8}
                 disabled={pwBusy}
                 required
               />
@@ -979,7 +1059,10 @@ function AccountSection() {
                 <Button
                   type="submit"
                   disabled={
-                    pwBusy || oldPw.length === 0 || newPw.length === 0 || confirmPw.length === 0
+                    pwBusy ||
+                    newPw.length < 8 ||
+                    confirmPw.length === 0 ||
+                    (cloudAccounts ? !pwCodeSent || pwCode.length !== 6 : oldPw.length === 0)
                   }
                 >
                   {pwBusy ? "Changing…" : "Change password"}
