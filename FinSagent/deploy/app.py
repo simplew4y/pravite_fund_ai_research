@@ -1326,8 +1326,10 @@ async def get_metadata(collection_name: str, doc_id: str):
 # 会话持久化相关路由（独立模块）
 # ============================================================
 from session_routes import router as session_router
+from memory_routes import router as memory_router
 
 app.include_router(session_router)
+app.include_router(memory_router)
 
 
 # ============================================================

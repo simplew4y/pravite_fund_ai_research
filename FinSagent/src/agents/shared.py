@@ -12,7 +12,7 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from utils.chunk_utils import dedupe_chunks, get_chunk_source_id
 from tools.finnhub import (
@@ -338,12 +338,36 @@ async def rewrite_for_agent(
     return [question]
 
 
+def _cascade_to_evidence(
+    query: str, cascade_result: dict, agent: str,
+) -> tuple:
+    """Convert a CascadeRetriever result into the _(query, context, chunks, time_info, pre_rerank, ok) tuple."""
+    chunks = cascade_result.get("chunks", [])
+    context_lines = []
+    for c in chunks:
+        src = c.get("metadata", {}).get("source_ref", "")
+        ct = c.get("metadata", {}).get("content_type", "")
+        label = f"[{ct}] {src}" if src else f"[{ct}]"
+        context_lines.append(f"{label}: {c.get('page_content', '')}")
+    context = "\n".join(context_lines)
+    return (query, context, chunks, [], chunks, True)
+
+
 async def retrieve_evidence(
     rag: Any, sub_queries: List[str], query_time: datetime, agent: str,
     run_id: str = "", log_dir: str = "",
+    collection_db: str = "",
 ) -> List[Dict[str, Any]]:
     """
     Run retrieval concurrently and produce Evidence-like dicts.
+
+    When *collection_db* points at a valid collection.sqlite3 the function
+    applies a **cascade** — DCI metric / keyword grep → RAG — so simple
+    numeric queries skip the expensive embedding round‑trip.
+
+    If *collection_db* is not passed, it is auto-derived from the rag
+    config's ``datasets.root_dir`` + ``datasets.active_dataset``:
+      ``{root_dir}/{active_dataset}/meta/collection.sqlite3``
     """
     loop = asyncio.get_event_loop()
     lg = get_run_logger(run_id, log_dir, agent) if run_id and log_dir else logger
@@ -351,9 +375,46 @@ async def retrieve_evidence(
     if not getattr(rag, "retrieve", None):
         raise ValueError("RAG instance missing in state; retrieval cannot proceed.")
 
-    lg.info("[retrieve_evidence] agent=%s", agent)
+    # ── Auto-derive collection_db from rag config ──────────────────
+    if not collection_db:
+        lg.info("[cascade] auto-derive: rag type=%s has_config=%s",
+                type(rag).__name__, hasattr(rag, "config"))
+        datasets_cfg = getattr(rag, "config", {}).get("datasets", {})
+        root_dir = datasets_cfg.get("root_dir", "")
+        active = datasets_cfg.get("active_dataset", "")
+        lg.info("[cascade] auto-derive: root_dir=%s active=%s", root_dir, active)
+        if root_dir and active:
+            candidate = os.path.join(root_dir, active, "meta", "collection.sqlite3")
+            lg.info("[cascade] auto-derive: candidate=%s exists=%s",
+                    candidate, os.path.exists(candidate))
+            if os.path.exists(candidate):
+                collection_db = candidate
+
+    lg.info("[retrieve_evidence] agent=%s db=%s", agent, collection_db or "(none)")
+
+    # Cascade helper — only created when a valid db is available
+    from utils.cascade_retriever import CascadeRetriever, should_skip_rag
+    _c: Optional["CascadeRetriever"] = None
+    if collection_db and os.path.exists(collection_db):
+        _c = CascadeRetriever(collection_db)
 
     def _run(query: str):
+        nonlocal _c
+        # ── DCI cascade (skip RAG for simple queries) ──────────────
+        if _c is not None:
+            # Step 1 — metric_facts exact match
+            r1 = _c.search_metric(query)
+            if should_skip_rag(r1, agent):
+                lg.info("[cascade] DCI metric hit for '%s' — skipping RAG", query)
+                return _cascade_to_evidence(query, r1, agent)
+
+            # Step 2 — chunks LIKE grep
+            r2 = _c.search_keyword(query)
+            if should_skip_rag(r2, agent):
+                lg.info("[cascade] DCI keyword hit for '%s' — skipping RAG", query)
+                return _cascade_to_evidence(query, r2, agent)
+
+        # ── Step 3 — full RAG (existing logic) ─────────────────────
         try:
             retrieve_kwargs = {}
             # if agent == "general":

@@ -1,0 +1,250 @@
+[
+  {
+    "idx": 1,
+    "feature": "single_hop_exact",
+    "question": "极氪2024年毛利率是多少？",
+    "setup": {
+      "sessions": [
+        {"id": "zk_daily", "turns": [
+          {"q": "极氪2024年毛利率是多少？", "a": "15.2%，同比+1.8pct",
+           "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%", "period": "FY2024"}],
+           "citations": [{"doc_id": "zk_2024.pdf", "page": 92, "display": "年报.pdf p92"}]}
+        ]}
+      ]
+    },
+    "assertions": {
+      "min_results": 1,
+      "top_tier": "exact",
+      "content_contains": ["15.2%", "极氪", "FY2024"]
+    }
+  },
+  {
+    "idx": 2,
+    "feature": "single_hop_semantic",
+    "question": "极氪的盈利能力怎么样？",
+    "setup": {
+      "embedding": true,
+      "sessions": [
+        {"id": "zk_profit", "turns": [
+          {"q": "极氪毛利率变化趋势？", "a": "从13.5%提升到15.2%",
+           "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%", "period": "FY2024"}]}
+        ]}
+      ]
+    },
+    "assertions": {
+      "min_results": 1,
+      "content_contains": ["极氪", "15.2%"],
+      "has_semantic_tier": true
+    }
+  },
+  {
+    "idx": 3,
+    "feature": "multi_hop_version",
+    "question": "我们之前聊过极氪毛利率，那个数据是最新版吗？",
+    "setup": {
+      "sessions": [
+        {"id": "zk_v1", "turns": [
+          {"q": "极氪毛利率初值？", "a": "15.2%",
+           "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%", "period": "FY2024"}]}
+        ]},
+        {"id": "zk_v2", "turns": [
+          {"q": "极氪毛利率修正？", "a": "14.8%（中报口径）",
+           "facts": [{"entity": "极氪", "metric": "毛利率", "value": "14.8%", "period": "FY2024"}]}
+        ]}
+      ]
+    },
+    "assertions": {
+      "min_results": 2,
+      "content_contains": ["15.2%", "14.8%"],
+      "versions": [1, 2],
+      "v1_superseded": true,
+      "v2_not_superseded": true
+    }
+  },
+  {
+    "idx": 4,
+    "feature": "multi_hop_session",
+    "question": "蔚来毛利率呢？",
+    "setup": {
+      "sessions": [
+        {"id": "compare_analysis", "turns": [
+          {"q": "极氪毛利率多少？", "a": "15.2%"},
+          {"q": "蔚来毛利率呢？", "a": "12.1%",
+           "facts": [{"entity": "蔚来", "metric": "毛利率", "value": "12.1%", "period": "FY2024"}]}
+        ]}
+      ]
+    },
+    "assertions": {
+      "min_results": 1,
+      "content_contains": ["蔚来", "12.1%"],
+      "session_id": "compare_analysis",
+      "score_gt": 1.0
+    }
+  },
+  {
+    "idx": 5,
+    "feature": "citation_tracking",
+    "question": "这个毛利率数据是从财务数据看到的吗？",
+    "setup": {
+      "sessions": [
+        {"id": "zk_cited", "turns": [
+          {"q": "极氪毛利率年报数据？", "a": "15.2%",
+           "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%", "period": "FY2024"}],
+           "citations": [{"doc_id": "zk_2024.pdf", "page": 92, "display": "年报.pdf p92"}]}
+        ]}
+      ]
+    },
+    "assertions": {
+      "fact_citations": {"min": 1, "has_doc": "zk_2024.pdf"}
+    }
+  },
+  {
+    "idx": 6,
+    "feature": "citation_tracking_multi",
+    "question": "之前讨论极氪毛利率的时候，引用的原文来源在哪？",
+    "setup": {
+      "sessions": [
+        {"id": "zk_multi_cit", "turns": [
+          {"q": "极氪毛利率年报数据？", "a": "15.2%",
+           "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%"}],
+           "citations": [
+             {"doc_id": "zk_2024.pdf", "page": 92, "display": "年报.pdf p92"},
+             {"doc_id": "zk_half.pdf", "page": 45, "display": "中报.pdf p45"}
+           ]}
+        ]}
+      ]
+    },
+    "assertions": {
+      "fact_citations": {"min": 2, "has_doc": "zk_2024.pdf"}
+    }
+  },
+  {
+    "idx": 7,
+    "feature": "global_memory",
+    "question": "我之前说过我喜欢先看数据再看分析，记得吗？",
+    "setup": {
+      "global_memory": [
+        {"key": "workflow_preference", "value": "先看数据再看分析", "category": "preference"},
+        {"key": "compare_peers", "value": "要求对比同行", "category": "habit"}
+      ]
+    },
+    "assertions": {
+      "global_memory_text_contains": ["先看数据", "workflow_preference"],
+      "memory_context_auto_inject": true
+    }
+  },
+  {
+    "idx": 8,
+    "feature": "cross_session",
+    "question": "比亚迪毛利率和极氪比怎么样？",
+    "setup": {
+      "sessions": [
+        {"id": "zk_comp", "turns": [
+          {"q": "极氪毛利率？", "a": "15.2%",
+           "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%", "period": "FY2024"}]}
+        ]},
+        {"id": "byd_comp", "turns": [
+          {"q": "比亚迪毛利率？", "a": "17.1%",
+           "facts": [{"entity": "比亚迪", "metric": "毛利率", "value": "17.1%", "period": "FY2024"}]}
+        ]}
+      ]
+    },
+    "assertions": {
+      "min_results": 2,
+      "entities_found": ["极氪", "比亚迪"]
+    }
+  },
+  {
+    "idx": 9,
+    "feature": "session_message_content",
+    "question": "帮我查一下极氪销量的最新数据",
+    "setup": {
+      "sessions": [
+        {"id": "zk_chain", "turns": [
+          {"q": "极氪销量多少？", "a": "222,123辆"},
+          {"q": "那毛利率呢？", "a": "15.2%"}
+        ]}
+      ]
+    },
+    "assertions": {
+      "session_messages_count": 4,
+      "in_session_content": {"session_id": "zk_chain", "contains": ["销量", "222"]}
+    }
+  },
+  {
+    "idx": 10,
+    "feature": "analyst_isolation",
+    "question": "分析师A和B各自关注的毛利率数据分别是什么？",
+    "setup": {
+      "analysts": [
+        {"id": "analyst_a", "project": "proj_zk",
+         "sessions": [{"id": "a_session", "turns": [{"q": "极氪毛利率？", "a": "15.2%",
+           "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%"}]}]}]},
+        {"id": "analyst_b", "project": "proj_nio",
+         "sessions": [{"id": "b_session", "turns": [{"q": "蔚来毛利率？", "a": "12.1%",
+           "facts": [{"entity": "蔚来", "metric": "毛利率", "value": "12.1%"}]}]}]}
+      ]
+    },
+    "assertions": {
+      "analyst_a_facts": 1,
+      "analyst_b_facts": 1,
+      "project_a_facts": 1,
+      "project_b_facts": 1
+    }
+  },
+  {
+    "idx": 11,
+    "feature": "empty_no_match",
+    "question": "无意义的测试字符串123xyz",
+    "setup": {},
+    "assertions": {
+      "retrieve_results": 0,
+      "prompt_empty": true
+    }
+  },
+  {
+    "idx": 12,
+    "feature": "global_retrieve",
+    "question": "给我把所有毛利率相关的事实列一个表格",
+    "setup": {
+      "sessions": [
+        {"id": "zk_g", "turns": [{"q": "极氪毛利率？", "a": "15.2%", "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%"}]}]},
+        {"id": "nio_g", "turns": [{"q": "蔚来毛利率？", "a": "12.1%", "facts": [{"entity": "蔚来", "metric": "毛利率", "value": "12.1%"}]}]},
+        {"id": "byd_g", "turns": [{"q": "比亚迪毛利率？", "a": "17.1%", "facts": [{"entity": "比亚迪", "metric": "毛利率", "value": "17.1%"}]}]}
+      ]
+    },
+    "assertions": {
+      "min_results": 3,
+      "entities_found": ["极氪", "蔚来", "比亚迪"]
+    }
+  },
+  {
+    "idx": 13,
+    "feature": "prompt_injection_format",
+    "question": "提示词注入格式检查",
+    "setup": {
+      "sessions": [
+        {"id": "prompt_test", "turns": [{"q": "极氪毛利率？", "a": "15.2%", "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%"}]}]}
+      ]
+    },
+    "assertions": {
+      "prompt_starts_with": "[Related History]",
+      "prompt_has_marker": true,
+      "prompt_has_value": "15.2%"
+    }
+  },
+  {
+    "idx": 14,
+    "feature": "persistence",
+    "question": "重启后数据不丢",
+    "setup": {
+      "sessions": [
+        {"id": "persist_s", "turns": [{"q": "极氪毛利率？", "a": "15.2%", "facts": [{"entity": "极氪", "metric": "毛利率", "value": "15.2%"}]}]}
+      ]
+    },
+    "assertions": {
+      "facts_survive_restart": true,
+      "messages_survive_restart": true
+    }
+  }
+]

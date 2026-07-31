@@ -4,6 +4,14 @@
 # chroma, ts_chroma, bm25_index and table_chroma are required under `persist_directory`
 persist_directory: "/root/autodl-tmp/database_20250220"
 
+# --- Cascade / DCI collection path (auto-derived from datasets config) ---
+# The CascadeRetriever reads collection.sqlite3 from:
+#   {datasets.root_dir}/{datasets.active_dataset}/meta/collection.sqlite3
+# Configure both keys below; set active_dataset to the name you use.
+datasets:
+  root_dir: "/path/to/your/project/output/private_fund_datasets"
+  active_dataset: "your_dataset_name"
+
 embeddings_model_name: "BAAI/bge-m3"
 embedding_backend: "vllm"
 embedding_vllm_url: "http://127.0.0.1:5433/v1/embeddings"
