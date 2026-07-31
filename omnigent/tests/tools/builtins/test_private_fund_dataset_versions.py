@@ -146,6 +146,146 @@ def test_delete_project_removes_managed_workspace_and_clears_active_state(
         )
 
 
+def test_create_project_generates_internal_dataset_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "datasets"
+    monkeypatch.setattr(private_fund_pdf, "_dataset_workspace_root", lambda: workspace)
+
+    first = private_fund_pdf._create_project_row(
+        private_fund_pdf.CreateProjectRequest(name="阳光电源")
+    )
+    second = private_fund_pdf._create_project_row(
+        private_fund_pdf.CreateProjectRequest(name="阳光电源")
+    )
+
+    assert first["dataset_id"].startswith("dataset_")
+    assert second["dataset_id"].startswith("dataset_")
+    assert first["dataset_id"] != second["dataset_id"]
+    assert first["name"] == second["name"] == "阳光电源"
+
+
+def test_update_project_syncs_document_and_valuation_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "datasets"
+    monkeypatch.setattr(private_fund_pdf, "_dataset_workspace_root", lambda: workspace)
+    project = private_fund_pdf._create_project_row(
+        private_fund_pdf.CreateProjectRequest(
+            name="阳光电源",
+            dataset_id="sungrow",
+            company_name="阳光电源",
+        )
+    )
+    collection_db = Path(project["dataset_root"]) / "meta" / "collection.sqlite3"
+    collection_db.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(collection_db) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE documents (
+                doc_id TEXT PRIMARY KEY,
+                dataset_id TEXT NOT NULL,
+                company_name TEXT,
+                company_ticker TEXT
+            );
+            CREATE TABLE valuation_model_series (
+                series_id TEXT PRIMARY KEY,
+                dataset_id TEXT NOT NULL,
+                company_name TEXT,
+                company_ticker TEXT,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO documents VALUES ('doc-1', 'sungrow', '阳光电源', '');
+            INSERT INTO valuation_model_series
+            VALUES ('series-1', 'sungrow', '阳光电源', '', '');
+            """
+        )
+
+    payload = private_fund_pdf._update_project(
+        "sungrow",
+        private_fund_pdf.UpdateProjectRequest(
+            name="阳光电源研究",
+            company_name="阳光电源股份有限公司",
+            company_ticker="300274.sz",
+        ),
+    )
+
+    assert payload["project"]["dataset_id"] == "sungrow"
+    assert payload["project"]["name"] == "阳光电源研究"
+    assert payload["project"]["company_ticker"] == "300274.SZ"
+    with sqlite3.connect(collection_db) as conn:
+        assert conn.execute(
+            "SELECT company_name, company_ticker FROM documents WHERE doc_id='doc-1'"
+        ).fetchone() == ("阳光电源股份有限公司", "300274.SZ")
+        assert conn.execute(
+            """
+            SELECT company_name, company_ticker
+            FROM valuation_model_series
+            WHERE series_id='series-1'
+            """
+        ).fetchone() == ("阳光电源股份有限公司", "300274.SZ")
+
+
+def test_update_project_route_queues_actual_data_refresh_when_ticker_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refresh_calls: list[tuple[Path, str, str, bool]] = []
+    monkeypatch.setattr(
+        private_fund_pdf,
+        "_update_project",
+        lambda _dataset_id, _request: {
+            "project": {"dataset_id": "sungrow", "company_ticker": "300274"},
+            "previous_company_ticker": "",
+        },
+    )
+    monkeypatch.setattr(
+        private_fund_pdf,
+        "_collection_db_path",
+        lambda _dataset_id: tmp_path / "collection.sqlite3",
+    )
+
+    def enqueue_refresh(
+        collection_db: Path,
+        dataset_id: str,
+        *,
+        source_id: str,
+        requeue_failed: bool,
+    ) -> dict[str, str]:
+        refresh_calls.append((collection_db, dataset_id, source_id, requeue_failed))
+        return {"job_id": "refresh-1"}
+
+    monkeypatch.setattr(
+        private_fund_pdf.private_fund_valuation_tracking,
+        "enqueue_context_refresh",
+        enqueue_refresh,
+    )
+    router = private_fund_pdf.create_private_fund_pdf_router()
+    endpoint = next(
+        route.endpoint
+        for route in router.routes
+        if route.path == "/private-fund/projects/{dataset_id}" and "PATCH" in route.methods
+    )
+
+    payload = endpoint(
+        "sungrow",
+        private_fund_pdf.UpdateProjectRequest(
+            name="阳光电源",
+            company_name="阳光电源",
+            company_ticker="300274",
+        ),
+    )
+
+    assert payload["valuation_refresh_job"] == {"job_id": "refresh-1"}
+    assert len(refresh_calls) == 1
+    assert refresh_calls[0][0] == tmp_path / "collection.sqlite3"
+    assert refresh_calls[0][1] == "sungrow"
+    assert refresh_calls[0][2].startswith("project-identity-")
+    assert refresh_calls[0][3] is True
+
+
 def _make_store(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

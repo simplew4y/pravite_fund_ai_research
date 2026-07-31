@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 
 import { PrivateFundCreateProjectDialog } from "@/components/private-fund/PrivateFundCreateProjectDialog";
+import { PrivateFundEditProjectDialog } from "@/components/private-fund/PrivateFundEditProjectDialog";
 import { PrivateFundGlobalUploadDialog } from "@/components/private-fund/PrivateFundGlobalUploadDialog";
 import { PrivateFundUploadDialog } from "@/components/private-fund/PrivateFundUploadDialog";
 import { usePrivateFundDocumentUpload } from "@/components/private-fund/usePrivateFundDocumentUpload";
@@ -429,6 +430,7 @@ export function PrivateFundCorpusSection({
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [editProjectOpen, setEditProjectOpen] = useState(false);
   const [projectDeleteOpen, setProjectDeleteOpen] = useState(false);
   const [sourceDeleteOpen, setSourceDeleteOpen] = useState(false);
   const [folderDeleteTarget, setFolderDeleteTarget] = useState<PrivateFundSourceFolder | null>(
@@ -766,6 +768,11 @@ export function PrivateFundCorpusSection({
         onOpenChange={setCreateProjectOpen}
         onCreated={(created) => switchProject(created.datasetId)}
       />
+      <PrivateFundEditProjectDialog
+        open={editProjectOpen}
+        project={project}
+        onOpenChange={setEditProjectOpen}
+      />
       <PrivateFundUploadDialog {...upload.dialogProps} />
       <PrivateFundGlobalUploadDialog
         open={globalUpload.open}
@@ -1020,6 +1027,11 @@ export function PrivateFundCorpusSection({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem disabled={!project} onClick={() => setEditProjectOpen(true)}>
+              <PencilIcon className="size-3.5" />
+              编辑项目信息
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={() => setProjectDeleteOpen(true)}

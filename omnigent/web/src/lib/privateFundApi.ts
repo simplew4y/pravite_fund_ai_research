@@ -2517,6 +2517,28 @@ export async function deletePrivateFundProject(datasetId: string): Promise<void>
   );
 }
 
+export async function updatePrivateFundProject(
+  datasetId: string,
+  input: {
+    name: string;
+    companyName?: string;
+    companyTicker?: string;
+  },
+): Promise<PrivateFundProject> {
+  const body = await jsonOrThrow<{ project: ProjectWire }>(
+    await authenticatedFetch(`/v1/private-fund/projects/${encodeURIComponent(datasetId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: input.name,
+        company_name: input.companyName ?? "",
+        company_ticker: input.companyTicker ?? "",
+      }),
+    }),
+  );
+  return projectFromWire(body.project);
+}
+
 export async function getPrivateFundAssets(datasetId: string): Promise<PrivateFundAssetCatalog> {
   const payload = await jsonOrThrow<AssetCatalogWire>(
     await authenticatedFetch(`/v1/private-fund/projects/${encodeURIComponent(datasetId)}/assets`),
@@ -2590,7 +2612,6 @@ export async function deletePrivateFundAssets(
 
 export async function createPrivateFundProject(input: {
   name: string;
-  datasetId?: string;
   companyName?: string;
   companyTicker?: string;
 }): Promise<PrivateFundProject> {
@@ -2600,7 +2621,6 @@ export async function createPrivateFundProject(input: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: input.name,
-        dataset_id: input.datasetId,
         company_name: input.companyName ?? "",
         company_ticker: input.companyTicker ?? "",
       }),

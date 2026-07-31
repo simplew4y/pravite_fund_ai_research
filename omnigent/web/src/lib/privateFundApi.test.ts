@@ -32,6 +32,7 @@ import {
   updatePrivateFundAlert,
   updatePrivateFundValuationAlert,
   updatePrivateFundValuationWatchRule,
+  updatePrivateFundProject,
   writePrivateFundResearchMode,
 } from "./privateFundApi";
 
@@ -1185,6 +1186,48 @@ describe("private-fund document classification", () => {
       companyTicker: "300274.SZ",
       companyConfidence: 0.96,
     });
+  });
+});
+
+describe("private-fund project updates", () => {
+  it("updates editable project identity fields while keeping dataset id in the route", async () => {
+    vi.mocked(authenticatedFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          project: {
+            dataset_id: "dataset_internal_id",
+            name: "阳光电源研究",
+            status: "completed",
+            company_name: "阳光电源",
+            company_ticker: "300274",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const updated = await updatePrivateFundProject("dataset_internal_id", {
+      name: "阳光电源研究",
+      companyName: "阳光电源",
+      companyTicker: "300274",
+    });
+
+    expect(updated).toMatchObject({
+      datasetId: "dataset_internal_id",
+      name: "阳光电源研究",
+      companyTicker: "300274",
+    });
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      "/v1/private-fund/projects/dataset_internal_id",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "阳光电源研究",
+          company_name: "阳光电源",
+          company_ticker: "300274",
+        }),
+      }),
+    );
   });
 });
 
