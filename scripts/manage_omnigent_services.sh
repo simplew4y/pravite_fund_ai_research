@@ -88,6 +88,7 @@ configure_agent_runtime() {
   export OMNIGENT_ACCOUNTS_BASE_URL="${OMNIGENT_ACCOUNTS_BASE_URL:-http://127.0.0.1:6768}"
   export OMNIGENT_CLOUD_BACKEND_URL="${OMNIGENT_CLOUD_BACKEND_URL:-https://capoo.fun/private_fund/backend}"
   export OMNIGENT_CLOUD_REQUEST_TIMEOUT_SECONDS="${OMNIGENT_CLOUD_REQUEST_TIMEOUT_SECONDS:-10}"
+  export OMNIGENT_CLOUD_UPLOAD_TIMEOUT_SECONDS="${OMNIGENT_CLOUD_UPLOAD_TIMEOUT_SECONDS:-180}"
   export OMNIGENT_CLOUD_REGISTRATION_ENABLED="${OMNIGENT_CLOUD_REGISTRATION_ENABLED:-1}"
   export OMNIGENT_LOCAL_SINGLE_USER="${OMNIGENT_LOCAL_SINGLE_USER:-0}"
   export OMNIGENT_SHARED_HOST_ID="${OMNIGENT_SHARED_HOST_ID:-host_private_fund_service}"
@@ -358,7 +359,13 @@ attach_stack() {
 command_name="${1:-}"
 case "$command_name" in
   start) start_stack ;;
-  stop) require_runtime; stop_stack ;;
+  stop)
+    if ! command -v tmux >/dev/null 2>&1; then
+      echo "Missing required command: tmux" >&2
+      exit 1
+    fi
+    stop_stack
+    ;;
   restart) require_runtime; stop_stack; start_stack ;;
   status) require_runtime; status_stack ;;
   logs) require_runtime; logs_stack ;;

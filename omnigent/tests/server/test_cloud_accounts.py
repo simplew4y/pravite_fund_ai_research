@@ -372,6 +372,82 @@ def test_cloud_account_proxy_uses_bearer_without_exposing_it(
     assert len(calls) == 2
 
 
+def test_feedback_attachment_upload_and_download_stay_behind_bff(
+    monkeypatch: pytest.MonkeyPatch,
+    cloud_config: CloudAccountsConfig,
+    cloud_store: SqlAlchemyAccountStore,
+) -> None:
+    feedback_id = "24b35a61-9e86-4bf5-862b-51b8ef4a62e2"
+    attachment_id = "f9208839-c077-43b9-9c43-4ea11916a52d"
+    png = b"\x89PNG\r\n\x1a\nfeedback-image"
+
+    def handler(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        if url.endswith("/api/v1/auth/login"):
+            return httpx.Response(200, json=_token_payload())
+        assert kwargs["headers"]["authorization"] == "Bearer cloud-access-secret"
+        if url.endswith("/api/v1/feedback/with-attachments"):
+            assert method == "POST"
+            metadata = __import__("json").loads(kwargs["data"]["metadata"])
+            assert metadata["title"] == "上传截图"
+            assert metadata["client_platform"]
+            upload = kwargs["files"][0]
+            assert upload[0] == "files"
+            assert upload[1][0] == "截图.png"
+            assert upload[1][1].read() == png
+            return httpx.Response(
+                201,
+                json={
+                    "id": feedback_id,
+                    "feedback_number": 1,
+                    "title": "上传截图",
+                    "attachments": [
+                        {
+                            "id": attachment_id,
+                            "original_filename": "截图.png",
+                            "content_type": "image/png",
+                            "size_bytes": len(png),
+                            "created_at": "2026-07-31T00:00:00+00:00",
+                        }
+                    ],
+                },
+            )
+        assert method == "GET"
+        assert url.endswith(f"/api/v1/feedback/{feedback_id}/attachments/{attachment_id}")
+        return httpx.Response(
+            200,
+            content=png,
+            headers={
+                "content-type": "application/octet-stream",
+                "content-disposition": "attachment; filename=feedback.png",
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_async_client(handler))
+    with TestClient(_app(cloud_config, cloud_store)) as client:
+        assert (
+            client.post(
+                "/auth/login",
+                json={"email": _user()["email"], "password": "password123"},
+            ).status_code
+            == 200
+        )
+        created = client.post(
+            "/v1/account/feedback/with-attachments",
+            data={
+                "metadata": '{"feedback_type":"bug","title":"上传截图",'
+                '"content":"详情描述","contact_allowed":true}'
+            },
+            files={"files": ("截图.png", png, "image/png")},
+        )
+        downloaded = client.get(f"/v1/account/feedback/{feedback_id}/attachments/{attachment_id}")
+
+    assert created.status_code == 201
+    assert created.json()["attachments"][0]["original_filename"] == "截图.png"
+    assert downloaded.status_code == 200
+    assert downloaded.content == png
+    assert downloaded.headers["x-content-type-options"] == "nosniff"
+
+
 def test_platform_model_prepare_keeps_gateway_token_server_side(
     monkeypatch: pytest.MonkeyPatch,
     cloud_config: CloudAccountsConfig,

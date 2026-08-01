@@ -258,7 +258,7 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
             </Button>
             <Button
               onClick={() => {
-                setPromptOpen(false);
+                dismissPromptForSession();
                 navigate(promptTarget);
               }}
             >
