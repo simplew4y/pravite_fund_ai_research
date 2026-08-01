@@ -17,6 +17,7 @@ class CloudAccountsConfig:
     backend_url: str
     request_timeout_seconds: float
     registration_enabled: bool = True
+    upload_timeout_seconds: float = 180.0
 
     @property
     def cookie_secret(self) -> bytes:
@@ -57,6 +58,12 @@ class CloudAccountsConfig:
             raise RuntimeError("OMNIGENT_CLOUD_REQUEST_TIMEOUT_SECONDS must be a number") from exc
         if timeout <= 0 or timeout > 120:
             raise RuntimeError("OMNIGENT_CLOUD_REQUEST_TIMEOUT_SECONDS must be between 0 and 120")
+        try:
+            upload_timeout = float(os.environ.get("OMNIGENT_CLOUD_UPLOAD_TIMEOUT_SECONDS", "180"))
+        except ValueError as exc:
+            raise RuntimeError("OMNIGENT_CLOUD_UPLOAD_TIMEOUT_SECONDS must be a number") from exc
+        if upload_timeout <= 0 or upload_timeout > 600:
+            raise RuntimeError("OMNIGENT_CLOUD_UPLOAD_TIMEOUT_SECONDS must be between 0 and 600")
         registration_enabled = os.environ.get(
             "OMNIGENT_CLOUD_REGISTRATION_ENABLED", "1"
         ).strip().lower() not in {"0", "false", "no", "off"}
@@ -65,4 +72,5 @@ class CloudAccountsConfig:
             backend_url=backend_url,
             request_timeout_seconds=timeout,
             registration_enabled=registration_enabled,
+            upload_timeout_seconds=upload_timeout,
         )

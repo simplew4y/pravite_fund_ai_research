@@ -14,15 +14,15 @@ import time
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
 import httpx
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, File, Form, Request, UploadFile
+from pydantic import BaseModel, Field, ValidationError
 from starlette.responses import JSONResponse, Response
 
 from omnigent.server.accounts_store import SqlAlchemyAccountStore
@@ -68,7 +68,7 @@ class CloudUpdateProfileRequest(BaseModel):
 
 
 class CloudFeedbackRequest(BaseModel):
-    feedback_type: str = Field(min_length=1, max_length=32)
+    feedback_type: Literal["bug", "experience", "feature", "answer_quality", "other"]
     title: str = Field(min_length=2, max_length=240)
     content: str = Field(min_length=2, max_length=20_000)
     rating: int | None = Field(default=None, ge=1, le=5)
@@ -196,14 +196,20 @@ def create_cloud_accounts_router(
         *,
         token: str | None = None,
         json_body: dict[str, Any] | None = None,
+        form_data: dict[str, str] | None = None,
+        files: list[tuple[str, tuple[str, Any, str]]] | None = None,
         params: dict[str, Any] | None = None,
+        request_id: str | None = None,
+        timeout_seconds: float | None = None,
     ) -> httpx.Response:
         headers = {"accept": "application/json"}
         if token:
             headers["authorization"] = f"Bearer {token}"
+        if request_id:
+            headers["X-Request-ID"] = request_id
         try:
             async with httpx.AsyncClient(
-                timeout=config.request_timeout_seconds,
+                timeout=timeout_seconds or config.request_timeout_seconds,
                 follow_redirects=False,
             ) as client:
                 return await client.request(
@@ -211,6 +217,8 @@ def create_cloud_accounts_router(
                     cloud_url(path),
                     headers=headers,
                     json=json_body,
+                    data=form_data,
+                    files=files,
                     params=params,
                 )
         except (httpx.TimeoutException, httpx.NetworkError) as exc:
@@ -321,6 +329,11 @@ def create_cloud_accounts_router(
         params: dict[str, Any] | None = None,
     ) -> tuple[httpx.Response | None, _CloudTokenBundle | None, dict[str, Any] | None]:
         bundle = read_bundle(request)
+        request_id = (
+            request.headers.get("X-Request-ID")
+            or getattr(request.state, "request_id", None)
+            or str(uuid.uuid4())
+        )
         if bundle is None:
             return None, None, None
         response = await cloud_request(
@@ -329,6 +342,7 @@ def create_cloud_accounts_router(
             token=bundle.access_token,
             json_body=json_body,
             params=params,
+            request_id=request_id,
         )
         if response.status_code != 401:
             return response, bundle, None
@@ -342,7 +356,56 @@ def create_cloud_accounts_router(
             token=fresh.access_token,
             json_body=json_body,
             params=params,
+            request_id=request_id,
         )
+        return response, fresh, user
+
+    async def authorized_upload_request(
+        request: Request,
+        metadata: str,
+        uploads: list[UploadFile],
+    ) -> tuple[httpx.Response | None, _CloudTokenBundle | None, dict[str, Any] | None]:
+        bundle = read_bundle(request)
+        request_id = (
+            request.headers.get("X-Request-ID")
+            or getattr(request.state, "request_id", None)
+            or str(uuid.uuid4())
+        )
+        if bundle is None:
+            return None, None, None
+
+        async def send(token: str) -> httpx.Response:
+            for upload in uploads:
+                await upload.seek(0)
+            files = [
+                (
+                    "files",
+                    (
+                        upload.filename or "attachment",
+                        upload.file,
+                        upload.content_type or "application/octet-stream",
+                    ),
+                )
+                for upload in uploads
+            ]
+            return await cloud_request(
+                "POST",
+                "feedback/with-attachments",
+                token=token,
+                form_data={"metadata": metadata},
+                files=files,
+                request_id=request_id,
+                timeout_seconds=config.upload_timeout_seconds,
+            )
+
+        response = await send(bundle.access_token)
+        if response.status_code != 401:
+            return response, bundle, None
+        refreshed = await refresh_bundle(bundle)
+        if refreshed is None:
+            return None, None, None
+        fresh, user = refreshed
+        response = await send(fresh.access_token)
         return response, fresh, user
 
     def proxy_response(
@@ -355,10 +418,24 @@ def create_cloud_accounts_router(
             response: Response = Response(status_code=204)
         else:
             payload = _safe_json(upstream)
+            headers = {"Cache-Control": "private, no-store"}
+            request_id = upstream.headers.get("X-Request-ID")
+            if request_id:
+                headers["X-Request-ID"] = request_id
+            if payload is None:
+                _logger.warning(
+                    "Cloud account proxy received non-JSON status %s",
+                    upstream.status_code,
+                )
+                payload = {
+                    "code": "invalid_cloud_response",
+                    "error": "invalid_cloud_response",
+                    "message": "Cloud account service returned an invalid response",
+                }
             response = JSONResponse(
                 status_code=upstream.status_code,
-                content=payload or {"error": "invalid_cloud_response"},
-                headers={"Cache-Control": "private, no-store"},
+                content=payload,
+                headers=headers,
             )
         set_cloud_cookie(response, bundle)
         if refreshed_user is not None:
@@ -375,6 +452,31 @@ def create_cloud_accounts_router(
         if upstream.status_code in {401, 403}:
             routing_store.clear_platform_access(bundle.user_id)
             clear_cookies(response)
+        return response
+
+    def proxy_authenticated_file_response(
+        upstream: httpx.Response,
+        bundle: _CloudTokenBundle,
+        *,
+        refreshed_user: dict[str, Any] | None = None,
+    ) -> Response:
+        headers = {
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        }
+        for name in ("content-disposition", "x-request-id"):
+            value = upstream.headers.get(name)
+            if value:
+                headers[name] = value
+        response = Response(
+            content=upstream.content,
+            status_code=upstream.status_code,
+            media_type=upstream.headers.get("content-type", "application/octet-stream"),
+            headers=headers,
+        )
+        set_cloud_cookie(response, bundle)
+        if refreshed_user is not None:
+            set_local_session(response, refreshed_user["id"])
         return response
 
     @router.post("/auth/login")
@@ -1030,5 +1132,77 @@ def create_cloud_accounts_router(
         payload = body.model_dump()
         payload["client_platform"] = payload["client_platform"] or platform.system().lower()
         return await account_proxy(request, "POST", "feedback", body=payload)
+
+    @router.post("/v1/account/feedback/with-attachments")
+    async def feedback_create_with_attachments(
+        request: Request,
+        metadata: Annotated[str, Form()],
+        files: Annotated[list[UploadFile], File()],
+    ) -> Response:
+        if len(files) > 3:
+            return _cloud_error(413, "too_many_feedback_attachments", "附件最多上传 3 个")
+        allowed_extensions = {".docx", ".pdf", ".png", ".jpg", ".jpeg"}
+        total_bytes = 0
+        for upload in files:
+            extension = os.path.splitext(upload.filename or "")[1].lower()
+            if extension not in allowed_extensions:
+                return _cloud_error(
+                    415,
+                    "unsupported_attachment_type",
+                    "仅支持 .docx、.pdf、.png、.jpg 和 .jpeg 文件",
+                )
+            if upload.size is not None:
+                if upload.size > 50 * 1024 * 1024:
+                    return _cloud_error(413, "attachment_too_large", "单个附件不能超过 50MB")
+                total_bytes += upload.size
+        if total_bytes > 150 * 1024 * 1024:
+            return _cloud_error(
+                413,
+                "feedback_attachments_too_large",
+                "附件总大小不能超过 150MB",
+            )
+        try:
+            body = CloudFeedbackRequest.model_validate_json(metadata)
+        except ValidationError:
+            return _cloud_error(422, "invalid_feedback_metadata", "反馈内容格式无效")
+        payload = body.model_dump()
+        payload["client_platform"] = payload["client_platform"] or platform.system().lower()
+        normalized_metadata = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        try:
+            upstream, bundle, refreshed_user = await authorized_upload_request(
+                request,
+                normalized_metadata,
+                files,
+            )
+        except RuntimeError:
+            return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")
+        if upstream is None or bundle is None:
+            response = _cloud_error(401, "not_authenticated", "登录状态已失效")
+            clear_cookies(response)
+            return response
+        return proxy_authenticated_response(
+            upstream,
+            bundle,
+            refreshed_user=refreshed_user,
+        )
+
+    @router.get("/v1/account/feedback/{feedback_id}/attachments/{attachment_id}")
+    async def feedback_attachment_download(
+        feedback_id: uuid.UUID,
+        attachment_id: uuid.UUID,
+        request: Request,
+    ) -> Response:
+        path = f"feedback/{feedback_id}/attachments/{attachment_id}"
+        try:
+            upstream, bundle, refreshed_user = await authorized_request(request, "GET", path)
+        except RuntimeError:
+            return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")
+        if upstream is None or bundle is None:
+            response = _cloud_error(401, "not_authenticated", "登录状态已失效")
+            clear_cookies(response)
+            return response
+        if upstream.status_code != 200:
+            return proxy_authenticated_response(upstream, bundle, refreshed_user=refreshed_user)
+        return proxy_authenticated_file_response(upstream, bundle, refreshed_user=refreshed_user)
 
     return router

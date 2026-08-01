@@ -19,7 +19,7 @@
  *   list. Not clickable; each row reveals Delete / Unarchive on hover.
  */
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircleIcon,
   ArchiveRestoreIcon,
@@ -27,6 +27,8 @@ import {
   CheckCircle2Icon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CloudUploadIcon,
+  FileIcon,
   KeyRoundIcon,
   Loader2Icon,
   LogOutIcon,
@@ -1300,6 +1302,16 @@ function PlatformMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+const FEEDBACK_ATTACHMENT_EXTENSIONS = new Set(["docx", "pdf", "png", "jpg", "jpeg"]);
+const FEEDBACK_ATTACHMENT_MAX_FILES = 3;
+const FEEDBACK_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
+const FEEDBACK_ATTACHMENT_MAX_TOTAL_BYTES = 150 * 1024 * 1024;
+
+function formatAttachmentSize(size: number): string {
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / 1024 / 1024).toFixed(2)} MB`;
+}
+
 function FeedbackSection() {
   const info = useServerInfo();
   const [feedbackType, setFeedbackType] = useState<
@@ -1309,14 +1321,24 @@ function FeedbackSection() {
   const [content, setContent] = useState("");
   const [rating, setRating] = useState<number | null>(null);
   const [contactAllowed, setContactAllowed] = useState(true);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [history, setHistory] = useState<FeedbackEntry[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
-    setHistory(await getFeedback());
+    setHistoryError(null);
+    const result = await getFeedback();
+    if (result.ok) {
+      setHistory(result.items);
+    } else {
+      setHistory([]);
+      setHistoryError(result.error);
+    }
     setLoading(false);
   }, []);
 
@@ -1324,18 +1346,69 @@ function FeedbackSection() {
     void loadHistory();
   }, [loadHistory]);
 
+  const addAttachments = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList) return;
+      setMessage(null);
+      const next = [...attachments];
+      for (const file of Array.from(fileList)) {
+        if (
+          next.some(
+            (item) =>
+              item.name === file.name &&
+              item.size === file.size &&
+              item.lastModified === file.lastModified,
+          )
+        ) {
+          continue;
+        }
+        if (next.length >= FEEDBACK_ATTACHMENT_MAX_FILES) {
+          setMessage({ kind: "error", text: "附件最多上传 3 个" });
+          return;
+        }
+        const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+        if (!FEEDBACK_ATTACHMENT_EXTENSIONS.has(extension)) {
+          setMessage({
+            kind: "error",
+            text: "仅支持 .docx、.pdf、.png、.jpg 和 .jpeg 文件",
+          });
+          return;
+        }
+        if (file.size === 0) {
+          setMessage({ kind: "error", text: `${file.name} 是空文件，不能上传` });
+          return;
+        }
+        if (file.size > FEEDBACK_ATTACHMENT_MAX_BYTES) {
+          setMessage({ kind: "error", text: `${file.name} 超过 50MB` });
+          return;
+        }
+        next.push(file);
+      }
+      const totalBytes = next.reduce((sum, file) => sum + file.size, 0);
+      if (totalBytes > FEEDBACK_ATTACHMENT_MAX_TOTAL_BYTES) {
+        setMessage({ kind: "error", text: "附件总大小不能超过 150MB" });
+        return;
+      }
+      setAttachments(next);
+    },
+    [attachments],
+  );
+
   const submit = useCallback(async () => {
     setSubmitting(true);
     setMessage(null);
-    const result = await createFeedback({
-      feedback_type: feedbackType,
-      title: title.trim(),
-      content: content.trim(),
-      rating,
-      contact_allowed: contactAllowed,
-      client_platform: navigator.platform || "web",
-      client_version: info === "loading" ? undefined : (info.server_version ?? undefined),
-    });
+    const result = await createFeedback(
+      {
+        feedback_type: feedbackType,
+        title: title.trim(),
+        content: content.trim(),
+        rating,
+        contact_allowed: contactAllowed,
+        client_platform: navigator.platform || "web",
+        client_version: info === "loading" ? undefined : (info.server_version ?? undefined),
+      },
+      attachments,
+    );
     setSubmitting(false);
     if (!result.ok) {
       setMessage({ kind: "error", text: result.error });
@@ -1344,9 +1417,11 @@ function FeedbackSection() {
     setTitle("");
     setContent("");
     setRating(null);
+    setAttachments([]);
+    if (attachmentInputRef.current) attachmentInputRef.current.value = "";
     setMessage({ kind: "ok", text: `反馈 #${result.feedback.feedback_number} 已提交` });
     await loadHistory();
-  }, [contactAllowed, content, feedbackType, info, loadHistory, rating, title]);
+  }, [attachments, contactAllowed, content, feedbackType, info, loadHistory, rating, title]);
 
   return (
     <Section title="用户反馈" description="告诉我们哪里不顺手，或你希望工作台下一步支持什么。">
@@ -1404,6 +1479,69 @@ function FeedbackSection() {
               maxLength={20_000}
               required
             />
+          </div>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-medium">附件上传：</span>
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                className="sr-only"
+                accept=".docx,.pdf,.png,.jpg,.jpeg"
+                multiple
+                disabled={submitting || attachments.length >= FEEDBACK_ATTACHMENT_MAX_FILES}
+                aria-describedby="feedback-attachment-help"
+                onChange={(event) => {
+                  addAttachments(event.currentTarget.files);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                disabled={submitting || attachments.length >= FEEDBACK_ATTACHMENT_MAX_FILES}
+                onClick={() => attachmentInputRef.current?.click()}
+              >
+                <CloudUploadIcon className="size-4" />
+                附件上传
+              </Button>
+            </div>
+            <p id="feedback-attachment-help" className="text-sm text-muted-foreground">
+              文件格式（.docx、.pdf、.png、.jpg、.jpeg），单个文件不超过 50MB，最多 3 个
+            </p>
+            {attachments.length > 0 && (
+              <div className="grid gap-2" aria-label="已选择的附件">
+                {attachments.map((file) => (
+                  <div
+                    key={`${file.name}-${file.size}-${file.lastModified}`}
+                    className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2"
+                  >
+                    <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm" title={file.name}>
+                        {file.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatAttachmentSize(file.size)}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={submitting}
+                      aria-label={`移除附件 ${file.name}`}
+                      onClick={() =>
+                        setAttachments((current) => current.filter((item) => item !== file))
+                      }
+                    >
+                      <XIcon className="size-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -1463,19 +1601,47 @@ function FeedbackSection() {
           <h3 className="mb-2 text-sm font-medium">我的反馈</h3>
           {loading ? (
             <p className="text-sm text-muted-foreground">正在加载...</p>
+          ) : historyError ? (
+            <div role="alert" className="flex items-center gap-3 text-sm text-destructive">
+              <span>{historyError}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadHistory()}>
+                重试
+              </Button>
+            </div>
           ) : history.length === 0 ? (
             <p className="text-sm text-muted-foreground">还没有提交过反馈</p>
           ) : (
             <div className="divide-y divide-border border-y border-border">
               {history.map((entry) => (
                 <div key={entry.id} className="flex items-start justify-between gap-4 py-3">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">
                       #{entry.feedback_number} {entry.title}
                     </div>
                     <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                       {entry.content}
                     </div>
+                    {(entry.attachments?.length ?? 0) > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {entry.attachments?.map((attachment) => (
+                          <a
+                            key={attachment.id}
+                            href={`/v1/account/feedback/${entry.id}/attachments/${attachment.id}`}
+                            download={attachment.original_filename}
+                            className="inline-flex max-w-full items-center gap-1.5 rounded border px-2 py-1 text-xs text-primary hover:bg-muted"
+                            title={`下载 ${attachment.original_filename}`}
+                          >
+                            <FileIcon className="size-3.5 shrink-0" />
+                            <span className="max-w-48 truncate">
+                              {attachment.original_filename}
+                            </span>
+                            <span className="shrink-0 text-muted-foreground">
+                              {formatAttachmentSize(attachment.size_bytes)}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="shrink-0 text-right text-xs text-muted-foreground">
                     <div>{feedbackStatusLabel(entry.status)}</div>
