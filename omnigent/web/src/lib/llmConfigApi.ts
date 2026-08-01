@@ -32,15 +32,22 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T | nul
   }
 }
 
-export async function getLlmConfig(): Promise<LlmProviderConfig | null> {
-  if (supportsDesktopLlmConfiguration()) return getNativeLlmConfig();
+export function shouldUseNativeLlmConfiguration(preferServer = false): boolean {
+  return supportsDesktopLlmConfiguration() && !preferServer;
+}
+
+export async function getLlmConfig(
+  preferServer = false,
+): Promise<LlmProviderConfig | null> {
+  if (shouldUseNativeLlmConfiguration(preferServer)) return getNativeLlmConfig();
   return requestJson<LlmProviderConfig>("/v1/private-fund/llm-config");
 }
 
 export async function testLlmConfig(
   config: LlmProviderInput,
+  preferServer = false,
 ): Promise<LlmConnectionTestResult> {
-  if (supportsDesktopLlmConfiguration()) return testNativeLlmConfig(config);
+  if (shouldUseNativeLlmConfiguration(preferServer)) return testNativeLlmConfig(config);
   return (
     (await requestJson<LlmConnectionTestResult>("/v1/private-fund/llm-config/test", {
       method: "POST",
@@ -50,8 +57,11 @@ export async function testLlmConfig(
   );
 }
 
-export async function saveLlmConfig(config: LlmProviderInput): Promise<LlmSaveResult> {
-  if (supportsDesktopLlmConfiguration()) return saveNativeLlmConfig(config);
+export async function saveLlmConfig(
+  config: LlmProviderInput,
+  preferServer = false,
+): Promise<LlmSaveResult> {
+  if (shouldUseNativeLlmConfiguration(preferServer)) return saveNativeLlmConfig(config);
   return (
     (await requestJson<LlmSaveResult>("/v1/private-fund/llm-config", {
       method: "PUT",
@@ -61,8 +71,8 @@ export async function saveLlmConfig(config: LlmProviderInput): Promise<LlmSaveRe
   );
 }
 
-export async function getLlmApplyStatus(): Promise<LlmApplyStatus> {
-  if (supportsDesktopLlmConfiguration()) return getNativeLlmApplyStatus();
+export async function getLlmApplyStatus(preferServer = false): Promise<LlmApplyStatus> {
+  if (shouldUseNativeLlmConfiguration(preferServer)) return getNativeLlmApplyStatus();
   return (
     (await requestJson<LlmApplyStatus>("/v1/private-fund/llm-config/status")) ?? {
       busy: false,
@@ -73,7 +83,8 @@ export async function getLlmApplyStatus(): Promise<LlmApplyStatus> {
 
 export function onLlmApplyStatusChanged(
   callback: (status: LlmApplyStatus) => void,
+  preferServer = false,
 ): () => void {
-  if (!supportsDesktopLlmConfiguration()) return () => {};
+  if (!shouldUseNativeLlmConfiguration(preferServer)) return () => {};
   return onNativeLlmApplyStatusChanged(callback);
 }

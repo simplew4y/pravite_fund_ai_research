@@ -7,6 +7,7 @@
 
 "use strict";
 
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -122,6 +123,56 @@ function loadDesktopEnv() {
   return merged;
 }
 
+function validHexSecret(value) {
+  return typeof value === "string" && /^[0-9a-f]{64,}$/i.test(value);
+}
+
+/**
+ * Load or create the internal credentials used by the bundled accounts stack.
+ * Upstream model API keys are stored separately and never enter this file.
+ *
+ * @param {string} configHome
+ * @param {boolean} [persist]
+ */
+function loadOrCreateRuntimeSecrets(configHome, persist = true) {
+  const target = path.join(configHome, "runtime-secrets.json");
+  if (persist) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(target, "utf8"));
+      if (
+        validHexSecret(parsed.cookieSecret) &&
+        validHexSecret(parsed.userSecretsKey) &&
+        validHexSecret(parsed.sharedHostToken)
+      ) {
+        return parsed;
+      }
+    } catch {
+      // First launch or an invalid file: replace it atomically below.
+    }
+  }
+
+  const secrets = {
+    cookieSecret: crypto.randomBytes(32).toString("hex"),
+    userSecretsKey: crypto.randomBytes(32).toString("hex"),
+    sharedHostToken: crypto.randomBytes(32).toString("hex"),
+  };
+  if (!persist) return secrets;
+
+  fs.mkdirSync(configHome, { recursive: true });
+  const temporary = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(secrets, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  fs.renameSync(temporary, target);
+  try {
+    fs.chmodSync(target, 0o600);
+  } catch {
+    // Windows ACLs remain the effective protection when chmod is unavailable.
+  }
+  return secrets;
+}
+
 /**
  * Environment block for stack children (server/host/workers/litellm).
  * Prefers build-injected values; falls back to safe local defaults.
@@ -133,9 +184,11 @@ function buildStackEnv(extra = {}) {
   const fileEnv = loadDesktopEnv();
   const app = electronApp();
   let userData = path.join(runtimeRoot(), "userData");
+  let persistRuntimeSecrets = false;
   if (app && typeof app.getPath === "function") {
     try {
       userData = app.getPath("userData");
+      persistRuntimeSecrets = true;
     } catch {
       // app not ready — keep fallback
     }
@@ -144,7 +197,7 @@ function buildStackEnv(extra = {}) {
   const configHome = path.join(userData, "config");
   const pythonCache = path.join(userData, "pycache", "python312");
   const projectRoot = path.join(runtimeRoot(), "project");
-  const datasetWorkspace = path.join(dataDir, "private_fund_datasets");
+  const userDataRoot = path.join(dataDir, "users");
 
   const litellmHost = fileEnv.LITELLM_HOST || "127.0.0.1";
   const litellmPort = fileEnv.LITELLM_PORT || String(DEFAULT_LITELLM_PORT);
@@ -152,6 +205,14 @@ function buildStackEnv(extra = {}) {
   const serverPort = fileEnv.OMNIGENT_SERVER_PORT || String(DEFAULT_SERVER_PORT);
   const litellmUrl = `http://${litellmHost}:${litellmPort}`;
   const serverUrl = `http://${serverHost}:${serverPort}`;
+  const setting = (name, fallback = "") =>
+    extra[name] ?? fileEnv[name] ?? process.env[name] ?? fallback;
+  const authEnabled = setting("OMNIGENT_AUTH_ENABLED", "1");
+  const accountsEnabled =
+    authEnabled === "1" && setting("OMNIGENT_AUTH_PROVIDER", "accounts") === "accounts";
+  const runtimeSecrets = accountsEnabled
+    ? loadOrCreateRuntimeSecrets(configHome, persistRuntimeSecrets)
+    : null;
 
   const model =
     extra.LITELLM_TARGET_MODEL_NAME ||
@@ -164,9 +225,48 @@ function buildStackEnv(extra = {}) {
     ...process.env,
     ...fileEnv,
     ...extra,
-    OMNIGENT_AUTH_ENABLED: fileEnv.OMNIGENT_AUTH_ENABLED || "0",
-    OMNIGENT_LOCAL_SINGLE_USER: fileEnv.OMNIGENT_LOCAL_SINGLE_USER || "1",
-    OMNIGENT_NO_UPDATE_CHECK: fileEnv.OMNIGENT_NO_UPDATE_CHECK || "1",
+    OMNIGENT_AUTH_ENABLED: authEnabled,
+    OMNIGENT_AUTH_PROVIDER: setting("OMNIGENT_AUTH_PROVIDER", "accounts"),
+    OMNIGENT_ACCOUNTS_ENABLED: setting("OMNIGENT_ACCOUNTS_ENABLED", "1"),
+    OMNIGENT_ACCOUNTS_REGISTRATION_MODE: setting(
+      "OMNIGENT_ACCOUNTS_REGISTRATION_MODE",
+      "open",
+    ),
+    OMNIGENT_ACCOUNTS_BASE_URL: setting("OMNIGENT_ACCOUNTS_BASE_URL", serverUrl),
+    OMNIGENT_ACCOUNTS_COOKIE_SECRET: setting(
+      "OMNIGENT_ACCOUNTS_COOKIE_SECRET",
+      runtimeSecrets?.cookieSecret || "",
+    ),
+    OMNIGENT_USER_SECRETS_KEY: setting(
+      "OMNIGENT_USER_SECRETS_KEY",
+      runtimeSecrets?.userSecretsKey || "",
+    ),
+    OMNIGENT_SHARED_HOST_ID: setting(
+      "OMNIGENT_SHARED_HOST_ID",
+      "host_private_fund_service",
+    ),
+    OMNIGENT_SHARED_HOST_NAME: setting(
+      "OMNIGENT_SHARED_HOST_NAME",
+      "private-fund-service",
+    ),
+    OMNIGENT_SHARED_HOST_TOKEN: setting(
+      "OMNIGENT_SHARED_HOST_TOKEN",
+      runtimeSecrets?.sharedHostToken || "",
+    ),
+    OMNIGENT_HOST_ID: setting("OMNIGENT_HOST_ID", "host_private_fund_service"),
+    OMNIGENT_HOST_NAME: setting("OMNIGENT_HOST_NAME", "private-fund-service"),
+    OMNIGENT_HOST_TOKEN: setting(
+      "OMNIGENT_HOST_TOKEN",
+      runtimeSecrets?.sharedHostToken || "",
+    ),
+    OMNIGENT_INTERNAL_LLM_GATEWAY_URL: setting(
+      "OMNIGENT_INTERNAL_LLM_GATEWAY_URL",
+      `${serverUrl}/internal/private-fund/llm`,
+    ),
+    OMNIGENT_LOCAL_SINGLE_USER: accountsEnabled
+      ? "0"
+      : setting("OMNIGENT_LOCAL_SINGLE_USER", "1"),
+    OMNIGENT_NO_UPDATE_CHECK: setting("OMNIGENT_NO_UPDATE_CHECK", "1"),
     OMNIGENT_WS_ALLOWED_ORIGINS:
       fileEnv.OMNIGENT_WS_ALLOWED_ORIGINS ||
       `${serverUrl},http://localhost:${serverPort},http://127.0.0.1:${serverPort}`,
@@ -178,8 +278,9 @@ function buildStackEnv(extra = {}) {
       process.env.PYTHONPYCACHEPREFIX ||
       pythonCache,
     PRIVATE_FUND_PROJECT_ROOT: fileEnv.PRIVATE_FUND_PROJECT_ROOT || projectRoot,
+    PRIVATE_FUND_USER_DATA_ROOT: setting("PRIVATE_FUND_USER_DATA_ROOT", userDataRoot),
     PRIVATE_FUND_DATASET_WORKSPACE:
-      fileEnv.PRIVATE_FUND_DATASET_WORKSPACE || datasetWorkspace,
+      setting("PRIVATE_FUND_DATASET_WORKSPACE", userDataRoot),
     ANTHROPIC_BASE_URL: managedLlm ? litellmUrl : fileEnv.ANTHROPIC_BASE_URL || litellmUrl,
     ANTHROPIC_AUTH_TOKEN:
       managedLlm
@@ -328,6 +429,7 @@ module.exports = {
   runtimeRoot,
   parseEnvFile,
   loadDesktopEnv,
+  loadOrCreateRuntimeSecrets,
   buildStackEnv,
   stackEndpoints,
   nativeRuntimeLayout,

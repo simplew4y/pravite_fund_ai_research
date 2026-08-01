@@ -58,6 +58,33 @@ describe("desktop_mode", () => {
     assert.equal(env.PYTHONPYCACHEPREFIX, custom);
   });
 
+  it("persists stable internal account credentials outside the runtime", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pf-desktop-secrets-"));
+    const first = desktop.loadOrCreateRuntimeSecrets(dir);
+    const second = desktop.loadOrCreateRuntimeSecrets(dir);
+    assert.deepEqual(second, first);
+    for (const value of Object.values(first)) {
+      assert.match(value, /^[0-9a-f]{64}$/);
+    }
+    const text = fs.readFileSync(path.join(dir, "runtime-secrets.json"), "utf8");
+    assert.doesNotMatch(text, /apiKey|api_key/);
+  });
+
+  it("buildStackEnv enables isolated accounts data and a shared managed host", () => {
+    const env = desktop.buildStackEnv({
+      OMNIGENT_AUTH_ENABLED: "1",
+      OMNIGENT_AUTH_PROVIDER: "accounts",
+    });
+    const expectedRoot = path.join(desktop.runtimeRoot(), "userData", "data", "users");
+    assert.equal(env.OMNIGENT_LOCAL_SINGLE_USER, "0");
+    assert.equal(env.OMNIGENT_ACCOUNTS_REGISTRATION_MODE, "open");
+    assert.equal(env.PRIVATE_FUND_USER_DATA_ROOT, expectedRoot);
+    assert.equal(env.PRIVATE_FUND_DATASET_WORKSPACE, expectedRoot);
+    assert.equal(env.OMNIGENT_HOST_ID, env.OMNIGENT_SHARED_HOST_ID);
+    assert.equal(env.OMNIGENT_HOST_TOKEN, env.OMNIGENT_SHARED_HOST_TOKEN);
+    assert.match(env.OMNIGENT_USER_SECRETS_KEY, /^[0-9a-f]{64}$/);
+  });
+
   it("describes the Windows native runtime layout", () => {
     const root = path.join("C:\\", "runtime");
     const layout = desktop.nativeRuntimeLayout("win32", root);

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import os
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -34,6 +35,13 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def user_data_root() -> Path:
+    configured = os.environ.get("PRIVATE_FUND_USER_DATA_ROOT", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (project_root() / "output" / "users").resolve()
+
+
 def current_tenant() -> PrivateFundTenantContext | None:
     return _current_tenant.get()
 
@@ -52,7 +60,7 @@ def build_tenant_context_from_namespace(
     user_id: str,
     namespace: str,
 ) -> PrivateFundTenantContext:
-    user_root = (project_root() / "output" / "users" / namespace).resolve()
+    user_root = (user_data_root() / namespace).resolve()
     dataset_root = user_root / "private_fund_datasets"
     knowledge_base_root = user_root / "knowledge_base"
     cache_root = user_root / "cache"
