@@ -15,7 +15,53 @@ const mocks = vi.hoisted(() => ({
   archiveMutate: vi.fn(),
   deleteMutate: vi.fn(),
   accountsEnabled: true,
-  me: { id: "alice", is_admin: false } as { id: string; is_admin: boolean } | null,
+  cloudAccounts: false,
+  me: {
+    id: "alice",
+    is_admin: false,
+    email: "alice@example.com",
+    nick_name: null,
+  } as {
+    id: string;
+    is_admin: boolean;
+    email?: string;
+    nick_name?: string | null;
+    balance_cny?: string;
+  } | null,
+  platformUsage: {
+    items: [],
+    summary: {
+      request_count: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      charged_amount_cny: "0.000000",
+    },
+    page: 1,
+    page_size: 10,
+  },
+  balanceRecords: {
+    items: [] as Array<{
+      id: string;
+      record_type: string;
+      amount_cny: string;
+      balance_after_cny: string;
+      note: string | null;
+      model_display_name?: string | null;
+      prompt_tokens?: number | null;
+      completion_tokens?: number | null;
+      created_at: string;
+    }>,
+    page: 1,
+    page_size: 10,
+    total: 0,
+    total_pages: 0,
+    period: "all" as "all" | "week" | "month",
+  },
+  balanceRequest: vi.fn(),
+  updateProfile: vi.fn(),
+  sendPasswordCode: vi.fn(),
+  changePassword: vi.fn(),
   conversations: [] as Conversation[],
   llmConfig: {
     preset: "dashscope",
@@ -27,7 +73,9 @@ const mocks = vi.hoisted(() => ({
     configured: true,
   },
   llmApplyStatus: { busy: false, applying: false },
+  modelSource: "platform" as "platform" | "byok",
   refreshLlm: vi.fn(),
+  setLlmSource: vi.fn(),
   testLlm: vi.fn(),
   saveLlm: vi.fn(),
 }));
@@ -37,13 +85,27 @@ vi.mock("next-themes", () => ({
 }));
 vi.mock("@/lib/embedded", () => ({ useIsEmbedded: () => false }));
 vi.mock("@/lib/CapabilitiesContext", () => ({
-  useServerInfo: () => ({ accounts_enabled: mocks.accountsEnabled }),
+  useServerInfo: () => ({
+    accounts_enabled: mocks.accountsEnabled,
+    cloud_accounts_enabled: mocks.cloudAccounts,
+  }),
 }));
-vi.mock("@/lib/accountsApi", () => ({
-  getMe: () => Promise.resolve(mocks.me),
-  logout: vi.fn(),
-  changePassword: vi.fn(),
-}));
+vi.mock("@/lib/accountsApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/accountsApi")>();
+  return {
+    ...actual,
+    getMe: () => Promise.resolve(mocks.me),
+    getPlatformUsage: () => Promise.resolve(mocks.platformUsage),
+    getBalanceRecords: (page: number, period: "all" | "week" | "month") => {
+      mocks.balanceRequest(page, period);
+      return Promise.resolve({ ...mocks.balanceRecords, page, period });
+    },
+    updateAccountProfile: (nickName: string | null) => mocks.updateProfile(nickName),
+    logout: vi.fn(),
+    sendChangePasswordCode: () => mocks.sendPasswordCode(),
+    changePassword: (body: unknown) => mocks.changePassword(body),
+  };
+});
 vi.mock("@/hooks/useConversations", () => ({
   useConversations: () => ({
     data: { pages: [{ data: mocks.conversations }] },
@@ -55,11 +117,38 @@ vi.mock("@/hooks/useConversations", () => ({
 vi.mock("@/lib/LlmConfigContext", () => ({
   useLlmConfiguration: () => ({
     enabled: true,
+    cloudAccounts: mocks.cloudAccounts,
     config: mocks.llmConfig,
+    modelService: mocks.cloudAccounts
+      ? {
+          userId: "alice",
+          source: mocks.modelSource,
+          ready: true,
+          activeLabel: "Qwen3 Max",
+          platform: {
+            available: true,
+            balanceCny: "12.500000",
+            defaultModel: "private-fund-default",
+            models: [
+              {
+                id: "private-fund-default",
+                displayName: "Qwen3 Max",
+                provider: "dashscope",
+                inputPriceCnyPerMillion: "3.200000",
+                outputPriceCnyPerMillion: "12.800000",
+                defaultMaxTokens: 0,
+                maxOutputTokens: 0,
+              },
+            ],
+          },
+          byok: mocks.llmConfig,
+        }
+      : null,
     applyStatus: mocks.llmApplyStatus,
     loading: false,
     requireConfiguration: () => true,
     refresh: mocks.refreshLlm,
+    setSource: mocks.setLlmSource,
   }),
 }));
 vi.mock("@/lib/llmConfigApi", () => ({
@@ -99,9 +188,49 @@ beforeEach(() => {
   mocks.deleteMutate.mockReset();
   mocks.theme = "system";
   mocks.accountsEnabled = true;
-  mocks.me = { id: "alice", is_admin: false };
+  mocks.cloudAccounts = false;
+  mocks.me = {
+    id: "alice",
+    is_admin: false,
+    email: "alice@example.com",
+    nick_name: null,
+  };
+  mocks.platformUsage = {
+    items: [],
+    summary: {
+      request_count: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      charged_amount_cny: "0.000000",
+    },
+    page: 1,
+    page_size: 10,
+  };
+  mocks.balanceRecords = {
+    items: [],
+    page: 1,
+    page_size: 10,
+    total: 0,
+    total_pages: 0,
+    period: "all",
+  };
+  mocks.balanceRequest.mockReset();
+  mocks.updateProfile.mockReset();
+  mocks.sendPasswordCode.mockReset();
+  mocks.changePassword.mockReset();
+  mocks.modelSource = "platform";
+  mocks.updateProfile.mockImplementation((nickName: string | null) =>
+    Promise.resolve({
+      ok: true,
+      account: { ...mocks.me, nick_name: nickName },
+    }),
+  );
+  mocks.sendPasswordCode.mockResolvedValue({ ok: true, expires_in: 300, resend_after: 60 });
+  mocks.changePassword.mockResolvedValue({ ok: true });
   mocks.conversations = [];
   mocks.refreshLlm.mockReset();
+  mocks.setLlmSource.mockReset();
   mocks.testLlm.mockReset();
   mocks.saveLlm.mockReset();
   mocks.testLlm.mockResolvedValue({ ok: true });
@@ -122,7 +251,7 @@ describe("SettingsPage", () => {
   it("defaults bare /settings to Account when accounts is on, else Appearance", async () => {
     // Accounts on → Account leads, so /settings lands on it.
     renderPage("/settings");
-    await waitFor(() => expect(screen.getByText("alice")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("alice@example.com")).not.toHaveLength(0));
 
     // Accounts off → no Account section; default falls back to Appearance.
     cleanup();
@@ -133,13 +262,125 @@ describe("SettingsPage", () => {
 
   it("renders the Account section at /settings/account when auth is enabled", async () => {
     renderPage("/settings/account");
-    await waitFor(() => expect(screen.getByText("alice")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("alice@example.com")).not.toHaveLength(0));
+    expect(screen.getByRole("heading", { name: "账户" })).toBeInTheDocument();
 
     // With accounts off, the section renders nothing even at its URL.
     cleanup();
     mocks.accountsEnabled = false;
     renderPage("/settings/account");
-    expect(screen.queryByText("alice")).toBeNull();
+    expect(screen.queryByText("alice@example.com")).toBeNull();
+  });
+
+  it("updates and clears the cloud account nickname", async () => {
+    mocks.cloudAccounts = true;
+    renderPage("/settings/account");
+
+    fireEvent.click(await screen.findByRole("button", { name: "编辑昵称" }));
+    let input = screen.getByLabelText("昵称");
+    fireEvent.change(input, { target: { value: "  研究员小王  " } });
+    fireEvent.click(screen.getByRole("button", { name: "保存昵称" }));
+    await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledWith("研究员小王"));
+    expect(await screen.findByText("昵称已保存")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑昵称" }));
+    input = screen.getByLabelText("昵称");
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存昵称" }));
+    await waitFor(() => expect(mocks.updateProfile).toHaveBeenLastCalledWith(null));
+  });
+
+  it("changes a cloud account password with a six-digit email code", async () => {
+    mocks.cloudAccounts = true;
+    renderPage("/settings/account");
+
+    fireEvent.click(await screen.findByRole("button", { name: "修改密码" }));
+    expect(screen.getByDisplayValue("alice@example.com")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "发送验证码" }));
+    await waitFor(() => expect(mocks.sendPasswordCode).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByPlaceholderText("6 位邮箱验证码"), {
+      target: { value: "12a3456" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("新密码"), {
+      target: { value: "new-password" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("确认新密码"), {
+      target: { value: "new-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+    await waitFor(() =>
+      expect(mocks.changePassword).toHaveBeenCalledWith({
+        code: "123456",
+        new_password: "new-password",
+      }),
+    );
+  });
+
+  it("labels BYOK as custom and marks the active model source", () => {
+    mocks.cloudAccounts = true;
+    renderPage("/settings/llm");
+
+    const platformSource = screen.getByRole("radio", { name: /平台模型.*启用/ });
+    expect(platformSource).toHaveAttribute("aria-checked", "true");
+    expect(within(platformSource).getByText("启用")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "自定义" })).toBeInTheDocument();
+    expect(screen.queryByText("自有 API")).toBeNull();
+  });
+
+  it("shows only settled platform charges with model and token details", async () => {
+    mocks.cloudAccounts = true;
+    mocks.me = {
+      id: "alice",
+      is_admin: false,
+      email: "alice@example.com",
+      nick_name: null,
+      balance_cny: "19.895453",
+    };
+    mocks.platformUsage = {
+      items: [],
+      summary: {
+        request_count: 1,
+        prompt_tokens: 32_263,
+        completion_tokens: 102,
+        total_tokens: 32_365,
+        charged_amount_cny: "0.104547",
+      },
+      page: 1,
+      page_size: 10,
+    };
+    mocks.balanceRecords = {
+      items: [
+        {
+          id: "usage-1",
+          record_type: "usage",
+          amount_cny: "-0.104547",
+          balance_after_cny: "19.895453",
+          note: "dashscope/private-fund-default",
+          model_display_name: "Qwen3 Max",
+          prompt_tokens: 32_263,
+          completion_tokens: 102,
+          created_at: "2026-07-30T17:59:20Z",
+        },
+      ],
+      page: 1,
+      page_size: 10,
+      total: 1,
+      total_pages: 1,
+      period: "all",
+    };
+
+    renderPage("/settings/platform-usage");
+
+    expect(await screen.findByText("Qwen3 Max 模型调用")).toBeInTheDocument();
+    expect(screen.getByText("32,263 输入 Token · 102 输出 Token")).toBeInTheDocument();
+    expect(screen.getByText("-¥0.10")).toBeInTheDocument();
+    expect(screen.queryByText("gateway:succeeded")).toBeNull();
+    expect(screen.getByText("32,365")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "近一周" }));
+    await waitFor(() => expect(mocks.balanceRequest).toHaveBeenLastCalledWith(1, "week"));
   });
 
   it("lists archived sessions and unarchives on click", () => {
@@ -185,6 +426,20 @@ describe("SettingsPage", () => {
 
     expect(screen.getByDisplayValue("sk-bab*****************d2")).toBeInTheDocument();
     expect(screen.queryByDisplayValue("sk-replacement")).toBeNull();
+  });
+
+  it("shows live platform model pricing and balance in cloud account mode", async () => {
+    mocks.cloudAccounts = true;
+    renderPage("/settings/llm");
+
+    expect(await screen.findByText("Qwen3 Max")).toBeInTheDocument();
+    expect(screen.getByText("¥12.50")).toBeInTheDocument();
+    expect(screen.getByText(/¥3.20 \/ 百万/)).toBeInTheDocument();
+    expect(screen.getByText(/¥12.80 \/ 百万/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看平台用量" })).toHaveAttribute(
+      "href",
+      "/settings/platform-usage",
+    );
   });
 
   it("keeps credentials scoped to the saved provider when switching presets", async () => {

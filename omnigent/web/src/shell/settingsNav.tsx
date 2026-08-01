@@ -10,7 +10,9 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   BotIcon,
+  ChartNoAxesCombinedIcon,
   KeyboardIcon,
+  MessageSquareTextIcon,
   PaletteIcon,
   PanelRightOpenIcon,
   TerminalIcon,
@@ -27,6 +29,8 @@ export type SettingsSectionId =
   | "appearance"
   | "shortcuts"
   | "account"
+  | "platform-usage"
+  | "feedback"
   | "archived"
   | "cli"
   | "llm";
@@ -35,6 +39,8 @@ const SECTION_IDS: readonly SettingsSectionId[] = [
   "appearance",
   "shortcuts",
   "account",
+  "platform-usage",
+  "feedback",
   "archived",
   "cli",
   "llm",
@@ -61,6 +67,7 @@ export function settingsNavGroups(
   accountsEnabled: boolean,
   isDesktop: boolean,
   llmEnabled = false,
+  cloudAccountsEnabled = false,
 ): SettingsNavGroup[] {
   const general: SettingsNavItem[] = [
     { id: "appearance", label: "Appearance", icon: PaletteIcon },
@@ -69,14 +76,33 @@ export function settingsNavGroups(
   if (accountsEnabled) {
     // Account leads the group when present — it's the most-visited section
     // on accounts deploys.
-    general.unshift({ id: "account", label: "Account", icon: UserCogIcon });
+    general.unshift({ id: "account", label: "账户", icon: UserCogIcon });
+    if (cloudAccountsEnabled) {
+      general.splice(1, 0, {
+        id: "llm",
+        label: "模型服务",
+        icon: BotIcon,
+      });
+      general.splice(2, 0, {
+        id: "platform-usage",
+        label: "平台用量",
+        icon: ChartNoAxesCombinedIcon,
+      });
+      general.splice(3, 0, {
+        id: "feedback",
+        label: "用户反馈",
+        icon: MessageSquareTextIcon,
+      });
+    }
   }
   const groups: SettingsNavGroup[] = [];
   // Desktop (Local CLI) leads when present — it's the shell-specific section a
   // desktop user is most likely here to change.
-  if (isDesktop || llmEnabled) {
+  if (isDesktop || (llmEnabled && !cloudAccountsEnabled)) {
     const desktopItems: SettingsNavItem[] = [];
-    if (llmEnabled) desktopItems.push({ id: "llm", label: "模型服务", icon: BotIcon });
+    if (llmEnabled && !cloudAccountsEnabled) {
+      desktopItems.push({ id: "llm", label: "模型服务", icon: BotIcon });
+    }
     if (isDesktop) desktopItems.push({ id: "cli", label: "Local CLI", icon: TerminalIcon });
     groups.push({
       title: "Desktop",
@@ -118,8 +144,8 @@ export function useSettingsRoute(): { inSettings: boolean; section: SettingsSect
 
 /**
  * Settings nav rendered INSIDE the sidebar card (replacing the conversation
- * list on /settings). Keeps the card chrome — a top row with "Back to
- * finsagent" and the same collapse control the conversations view uses.
+ * list on /settings). Keeps the card chrome — a top row with "Back" and the
+ * same collapse control the conversations view uses.
  */
 export function SettingsSidebarBody({
   onNavClick,
@@ -130,11 +156,16 @@ export function SettingsSidebarBody({
 }) {
   const info = useServerInfo();
   const accountsEnabled = info !== "loading" && info.accounts_enabled;
+  const cloudAccountsEnabled = info !== "loading" && info.cloud_accounts_enabled === true;
   const llmEnabled =
-    supportsDesktopLlmConfiguration() ||
-    (info !== "loading" && info.llm_configuration_enabled);
+    supportsDesktopLlmConfiguration() || (info !== "loading" && info.llm_configuration_enabled);
   const { section } = useSettingsRoute();
-  const groups = settingsNavGroups(accountsEnabled, isElectronShell(), llmEnabled);
+  const groups = settingsNavGroups(
+    accountsEnabled,
+    isElectronShell(),
+    llmEnabled,
+    cloudAccountsEnabled,
+  );
 
   return (
     <>
@@ -148,7 +179,7 @@ export function SettingsSidebarBody({
           card), so dropping it changes nothing there. */}
           <Link to="/">
             <ArrowLeftIcon className="size-4" />
-            Back to finsagent
+            Back
           </Link>
         </Button>
         <Tooltip>

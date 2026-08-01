@@ -121,6 +121,35 @@ describe("getCurrentUserId", () => {
 });
 
 describe("authenticatedFetch", () => {
+  it("refreshes a cloud session once and retries the original request", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockJsonResponse({
+        accounts_enabled: true,
+        cloud_accounts_enabled: true,
+        login_url: "/login",
+        needs_setup: false,
+      }),
+    );
+    const capabilities = await import("./capabilities");
+    await capabilities.resolveServerInfo();
+
+    fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: "cloud-user" }));
+    const { resolveIdentity, authenticatedFetch } = await import("./identity");
+    await resolveIdentity();
+    expect(fetchMock.mock.calls[1][0]).toBe("/auth/me");
+
+    fetchMock
+      .mockResolvedValueOnce(mockJsonResponse({}, { ok: false, status: 401 }))
+      .mockResolvedValueOnce(mockJsonResponse({ ok: true }))
+      .mockResolvedValueOnce(mockJsonResponse({ data: [] }));
+
+    const response = await authenticatedFetch("/v1/sessions");
+
+    expect(response.ok).toBe(true);
+    expect(fetchMock.mock.calls[3][0]).toBe("/auth/refresh");
+    expect(fetchMock.mock.calls[4][0]).toBe("/v1/sessions");
+  });
+
   it("injects X-Forwarded-Email header once the identity is resolved", async () => {
     fetchMock.mockResolvedValueOnce(mockJsonResponse({ user_id: "alice" }));
     const { resolveIdentity, authenticatedFetch } = await import("./identity");

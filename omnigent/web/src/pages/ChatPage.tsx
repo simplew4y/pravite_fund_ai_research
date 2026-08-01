@@ -38,7 +38,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { userColor, userColorTint, userInitials } from "@/lib/userBadge";
-import { useNavigate, useParams, useSearchParams } from "@/lib/routing";
+import { Link, useNavigate, useParams, useSearchParams } from "@/lib/routing";
 import { isImeCompositionKeyEvent } from "@/lib/ime";
 import {
   Conversation,
@@ -633,7 +633,11 @@ export function ChatPage() {
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const privateFundShell = usePrivateFundShell();
-  const { requireConfiguration } = useLlmConfiguration();
+  const {
+    requireConfiguration,
+    modelService,
+    refresh: refreshModelService,
+  } = useLlmConfiguration();
   // Optional first message handed off by the landing composer through the
   // shared chatStore (keyed by conversation id), not router state — router state
   // doesn't survive the embed's host-provided routing. Consumed read-once
@@ -758,6 +762,16 @@ export function ChatPage() {
   useRefreshSessionStateOnRunnerOnline(urlConvId, runnerOnline);
   // OR'd into "Working…" so cross-client turns surface a shimmer.
   const sessionStatus = useChatStore((s) => s.sessionStatus);
+  const modelCallWasWorkingRef = useRef(false);
+  useEffect(() => {
+    if (computeIsWorking(sessionStatus)) {
+      modelCallWasWorkingRef.current = true;
+      return;
+    }
+    if (!modelCallWasWorkingRef.current) return;
+    modelCallWasWorkingRef.current = false;
+    if (modelService?.source === "platform") void refreshModelService();
+  }, [modelService?.source, refreshModelService, sessionStatus]);
   const loadingConversation = useChatStore((s) => s.loadingConversation);
   const conversationLoadError = useChatStore((s) => s.conversationLoadError);
   const boundAgentId = useChatStore((s) => s.boundAgentId);
@@ -897,10 +911,15 @@ export function ChatPage() {
     // re-check to narrow the types for send()/the template literal. The
     // predicate already guarantees these, so this never fires at runtime.
     if (initialPrompt === null || !agentId || !urlConvId) return;
-    if (!requireConfiguration()) return;
     initialPromptSentForConvRef.current = urlConvId;
-    const { send, sendSlashCommand } = useChatStore.getState();
-    dispatchInitialPrompt(initialPrompt.prompt, agentId, send, sendSlashCommand);
+    void (async () => {
+      if (!(await requireConfiguration())) {
+        initialPromptSentForConvRef.current = null;
+        return;
+      }
+      const { send, sendSlashCommand } = useChatStore.getState();
+      dispatchInitialPrompt(initialPrompt.prompt, agentId, send, sendSlashCommand);
+    })();
   }, [initialPrompt, urlConvId, loadingConversation, agentId, requireConfiguration]);
 
   // Open state owned here (not inside MainAgentSurface) so the dialog
@@ -1156,8 +1175,8 @@ export function ChatPage() {
   const isUnreachable =
     !sandboxLaunching && (liveness.kind === "host_offline" || liveness.kind === "local_stranded");
 
-  function onSend(text: string, files?: File[]) {
-    if (!requireConfiguration()) return;
+  async function onSend(text: string, files?: File[]) {
+    if (!(await requireConfiguration())) return;
     if (!agentId) return;
     // An unbound coding clone (fork-source label) needs a directory before
     // it can run: open the picker and stash this message to replay after
@@ -1187,8 +1206,8 @@ export function ChatPage() {
     });
   }
 
-  function onSendSlashCommand(name: string, args: string) {
-    if (!requireConfiguration()) return;
+  async function onSendSlashCommand(name: string, args: string) {
+    if (!(await requireConfiguration())) return;
     if (!agentId) return;
     // Slash commands aren't replayed (an edge), but still route an unbound
     // coding clone to the directory picker so it isn't a dead end.
@@ -3888,6 +3907,7 @@ function ComposerStatusLine({
   privateFundResearchMode: PrivateFundResearchMode | null;
   onPrivateFundResearchModeChange: (mode: PrivateFundResearchMode) => void;
 }) {
+  const { cloudAccounts, modelService } = useLlmConfiguration();
   const conversationId = useChatStore((s) => s.conversationId);
   const contextWindow = useChatStore((s) => s.contextWindow);
   const tokensUsed = useChatStore((s) => s.tokensUsed);
@@ -3907,6 +3927,7 @@ function ComposerStatusLine({
   const showHarness = !privateFundPresentation && !!conversationId && harnessLabel !== null;
   const showPrivateFundProject = !!conversationId && privateFundProjectLabel !== null;
   const showPrivateFundTokenUsage = showPrivateFundProject;
+  const showModelService = showPrivateFundProject && cloudAccounts && modelService !== null;
   const showPlanMode = !privateFundPresentation && !!conversationId && codexPlanMode;
   const showGoal = !privateFundPresentation && !!conversationId && codexGoal != null;
   // contextWindow > 0: the SSE path validates it but the snapshot path doesn't, and 0/0 → "NaN%".
@@ -3993,6 +4014,20 @@ function ComposerStatusLine({
             onChange={onPrivateFundResearchModeChange}
             testId="composer-private-fund-research-mode"
           />
+        )}
+        {showModelService && modelService && (
+          <Link
+            to="/settings/llm"
+            data-testid="composer-model-service"
+            className={cn(
+              "hidden max-w-48 truncate text-xs transition-colors hover:text-foreground sm:inline",
+              modelService.ready ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300",
+            )}
+            title={modelService.detail || "打开模型服务设置"}
+          >
+            {modelService.source === "platform" ? "平台模型" : "自定义"} ·{" "}
+            {modelService.reason === "insufficient_balance" ? "余额不足" : modelService.activeLabel}
+          </Link>
         )}
         {showPrivateFundTokenUsage && (
           <PrivateFundConversationTokenUsageIndicator

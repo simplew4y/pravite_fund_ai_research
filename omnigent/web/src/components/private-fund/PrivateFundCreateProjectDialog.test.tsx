@@ -62,9 +62,7 @@ describe("PrivateFundCreateProjectDialog", () => {
     fireEvent.change(screen.getByLabelText("研究项目名称"), {
       target: { value: "阳光电源新项目" },
     });
-    fireEvent.change(screen.getByLabelText("研究项目 Dataset ID"), {
-      target: { value: "sungrow-new" },
-    });
+    expect(screen.queryByLabelText("研究项目 Dataset ID")).toBeNull();
     fireEvent.change(screen.getByLabelText("研究项目公司名称"), {
       target: { value: "阳光电源" },
     });
@@ -76,7 +74,6 @@ describe("PrivateFundCreateProjectDialog", () => {
     await waitFor(() =>
       expect(createPrivateFundProject).toHaveBeenCalledWith({
         name: "阳光电源新项目",
-        datasetId: "sungrow-new",
         companyName: "阳光电源",
         companyTicker: "300274",
       }),

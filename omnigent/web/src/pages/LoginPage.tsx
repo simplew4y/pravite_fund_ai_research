@@ -58,6 +58,7 @@ function rememberUsername(value: string): void {
 
 export function LoginPage() {
   const info = useServerInfo();
+  const cloudAccounts = info !== "loading" && info.cloud_accounts_enabled;
   const openRegistration = info !== "loading" && info.registration_mode === "open";
   const [params] = useSearchParams();
   // `return_to` is set by both identity.ts (on 401 redirect) and the
@@ -65,6 +66,7 @@ export function LoginPage() {
   // paths — never a fully-qualified URL — to prevent open-redirect.
   const returnTo = sanitizeReturnTo(params.get("return_to"));
   const magicError = params.get("magic"); // "expired" | "missing" | null
+  const passwordStatus = params.get("password");
 
   const [username, setUsername] = useState(readLastUsername);
   const [password, setPassword] = useState("");
@@ -112,7 +114,9 @@ export function LoginPage() {
     setSubmitting(true);
     setError(null);
 
-    const result = await loginRequest({ username, password });
+    const result = await loginRequest(
+      cloudAccounts ? { email: username, password } : { username, password },
+    );
     if (result.ok) {
       clearUserScopedBrowserState();
       rememberUsername(username);
@@ -144,19 +148,19 @@ export function LoginPage() {
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="login-username" className="text-sm font-medium leading-none">
-              {openRegistration ? "邮箱" : "用户名"}
+              {cloudAccounts || openRegistration ? "邮箱" : "用户名"}
             </label>
             <Input
               id="login-username"
-              aria-label={openRegistration ? "Email" : "Username"}
-              type={openRegistration ? "email" : "text"}
-              autoComplete={openRegistration ? "email" : "username"}
+              aria-label={cloudAccounts || openRegistration ? "Email" : "Username"}
+              type={cloudAccounts || openRegistration ? "email" : "text"}
+              autoComplete={cloudAccounts || openRegistration ? "email" : "username"}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={submitting}
               required
             />
-            {!openRegistration && <p className="text-xs text-muted-foreground">
+            {!cloudAccounts && !openRegistration && <p className="text-xs text-muted-foreground">
               On a fresh install your username is your machine login (the output of{" "}
               <code className="font-mono">whoami</code>), unless an admin set a different one.
             </p>}
@@ -178,6 +182,12 @@ export function LoginPage() {
             />
           </div>
 
+          {passwordStatus === "reset" || passwordStatus === "changed" ? (
+            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+              密码已更新，请使用新密码登录。
+            </div>
+          ) : null}
+
           {error !== null && (
             <div
               role="alert"
@@ -197,13 +207,26 @@ export function LoginPage() {
           </Button>
         </form>
 
-        {openRegistration ? (
-          <p className="text-center text-sm text-muted-foreground">
-            还没有账户？{" "}
-            <Link to="/register" className="font-medium text-foreground hover:underline">
-              注册
-            </Link>
-          </p>
+        {openRegistration || cloudAccounts ? (
+          <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
+            {openRegistration && (
+              <span>
+                还没有账户？{" "}
+                <Link to="/register" className="font-medium text-foreground hover:underline">
+                  注册
+                </Link>
+              </span>
+            )}
+            {!openRegistration ? <span /> : null}
+            {cloudAccounts && (
+              <Link
+                to="/forgot-password"
+                className="font-medium text-foreground hover:underline"
+              >
+                忘记密码
+              </Link>
+            )}
+          </div>
         ) : <p className="text-center text-xs text-muted-foreground">
           On a fresh install the initial admin password was printed to the server's stderr and saved
           to{" "}

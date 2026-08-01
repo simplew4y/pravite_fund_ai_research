@@ -1816,9 +1816,14 @@ def create_app(
         """
         from omnigent.server.auth import UnifiedAuthProvider
 
-        accounts_enabled = (
-            isinstance(auth_provider, UnifiedAuthProvider) and auth_provider._source == "accounts"
+        auth_source = (
+            auth_provider._source
+            if isinstance(auth_provider, UnifiedAuthProvider)
+            else None
         )
+        cloud_accounts_enabled = auth_source == "cloud_accounts"
+        accounts_enabled = auth_source in {"accounts", "cloud_accounts"}
+        local_accounts_enabled = auth_source == "accounts"
         login_url = getattr(auth_provider, "login_url", None)
         # needs_setup drives the SPA's first-run "Create admin" form:
         # true only in accounts mode while no password-having account
@@ -1828,10 +1833,12 @@ def create_app(
         # boolean about whether setup is pending, not a secret.
         needs_setup = False
         registration_mode = (
-            auth_provider._accounts_config.registration_mode if accounts_enabled else None
+            auth_provider._accounts_config.registration_mode if local_accounts_enabled else None
         )
+        if cloud_accounts_enabled and auth_provider._cloud_accounts_config.registration_enabled:
+            registration_mode = "open"
         if (
-            accounts_enabled
+            local_accounts_enabled
             and account_store is not None
             and registration_mode != "open"
         ):
@@ -1879,6 +1886,7 @@ def create_app(
             smart_routing_enabled = False
         return {
             "accounts_enabled": accounts_enabled,
+            "cloud_accounts_enabled": cloud_accounts_enabled,
             "login_url": login_url,
             "needs_setup": needs_setup,
             "registration_mode": registration_mode,
@@ -2283,6 +2291,17 @@ def create_app(
                 ),
                 prefix="/auth",
                 tags=["auth"],
+            )
+        elif (
+            isinstance(auth_provider, UnifiedAuthProvider)
+            and auth_provider._source == "cloud_accounts"
+            and account_store is not None
+        ):
+            from omnigent.server.routes.cloud_accounts import create_cloud_accounts_router
+
+            app.include_router(
+                create_cloud_accounts_router(auth_provider, account_store),
+                tags=["cloud_accounts"],
             )
         else:
             from omnigent.server.routes.auth import create_auth_router

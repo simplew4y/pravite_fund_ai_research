@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useLocation, useNavigate } from "@/lib/routing";
@@ -25,34 +26,65 @@ import {
   type LlmApplyStatus,
   type LlmProviderConfig,
 } from "@/lib/llmConfigApi";
+import {
+  getModelServiceState,
+  prepareModelService,
+  setModelServiceSource,
+  type ModelServiceSource,
+  type ModelServiceState,
+} from "@/lib/modelServiceApi";
 import { supportsDesktopLlmConfiguration } from "@/lib/nativeBridge";
+
+const LLM_CONFIG_PROMPT_DISMISSED_PREFIX = "omnigent.llmConfigPrompt.dismissed:";
+
+function promptDismissedKey(userId: string): string {
+  return `${LLM_CONFIG_PROMPT_DISMISSED_PREFIX}${userId}`;
+}
+
+function readPromptDismissed(userId: string): boolean {
+  try {
+    return window.sessionStorage.getItem(promptDismissedKey(userId)) === "1";
+  } catch {
+    return false;
+  }
+}
 
 interface LlmConfigContextValue {
   enabled: boolean;
+  cloudAccounts: boolean;
   config: LlmProviderConfig | null;
+  modelService: ModelServiceState | null;
   applyStatus: LlmApplyStatus;
   loading: boolean;
-  requireConfiguration: () => boolean;
+  requireConfiguration: () => Promise<boolean>;
+  setSource: (source: ModelServiceSource) => Promise<ModelServiceState | null>;
   refresh: () => Promise<void>;
 }
 
 const LlmConfigContext = createContext<LlmConfigContextValue>({
   enabled: false,
+  cloudAccounts: false,
   config: null,
+  modelService: null,
   applyStatus: { busy: false, applying: false },
   loading: false,
-  requireConfiguration: () => true,
+  requireConfiguration: async () => true,
+  setSource: async () => null,
   refresh: async () => {},
 });
 
 export function LlmConfigProvider({ children }: { children: ReactNode }) {
   const serverInfo = useServerInfo();
+  const cloudAccounts = serverInfo !== "loading" && serverInfo.cloud_accounts_enabled === true;
   const enabled =
+    cloudAccounts ||
     supportsDesktopLlmConfiguration() ||
     (serverInfo !== "loading" && serverInfo.llm_configuration_enabled);
   const [config, setConfig] = useState<LlmProviderConfig | null>(null);
+  const [modelService, setModelService] = useState<ModelServiceState | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [promptOpen, setPromptOpen] = useState(false);
+  const promptDismissedRef = useRef(readPromptDismissed("local"));
   const [applyStatus, setApplyStatus] = useState<LlmApplyStatus>({
     busy: false,
     applying: false,
@@ -60,42 +92,155 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const rememberState = useCallback((state: ModelServiceState) => {
+    setModelService(state);
+    setConfig(state.byok);
+    promptDismissedRef.current = readPromptDismissed(state.userId);
+  }, []);
+
+  const maybeOpenAutomaticPrompt = useCallback(
+    (state: ModelServiceState) => {
+      if (
+        !state.ready &&
+        !promptDismissedRef.current &&
+        !location.pathname.includes("/settings/llm")
+      ) {
+        setPromptOpen(true);
+      }
+    },
+    [location.pathname],
+  );
+
   const refresh = useCallback(async () => {
     if (!enabled) {
       setConfig(null);
+      setModelService(null);
       setLoading(false);
       return;
     }
     setLoading(true);
+    if (cloudAccounts) {
+      try {
+        let next = await getModelServiceState();
+        if (next.source === "platform" && next.reason === "platform_access_required") {
+          const prepared = await prepareModelService();
+          if (prepared.state) next = prepared.state;
+        }
+        rememberState(next);
+        maybeOpenAutomaticPrompt(next);
+      } catch {
+        setModelService(null);
+        setConfig(null);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     const next = await getLlmConfig();
     setConfig(next);
+    setModelService(null);
     setLoading(false);
-    if (next && !next.configured && !location.pathname.includes("/settings/llm")) {
+    if (
+      next &&
+      !next.configured &&
+      !promptDismissedRef.current &&
+      !location.pathname.includes("/settings/llm")
+    ) {
       setPromptOpen(true);
     }
-  }, [enabled, location.pathname]);
+  }, [cloudAccounts, enabled, location.pathname, maybeOpenAutomaticPrompt, rememberState]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || cloudAccounts) return;
     void getLlmApplyStatus().then(setApplyStatus);
     const unsubscribe = onLlmApplyStatusChanged(setApplyStatus);
     return unsubscribe;
-  }, [enabled]);
+  }, [cloudAccounts, enabled]);
 
-  const requireConfiguration = useCallback(() => {
-    if (!enabled || (!loading && config === null) || config?.configured) return true;
+  const requireConfiguration = useCallback(async () => {
+    if (!enabled) return true;
+    if (cloudAccounts) {
+      setLoading(true);
+      const prepared = await prepareModelService();
+      setLoading(false);
+      if (prepared.state) rememberState(prepared.state);
+      if (prepared.ready) return true;
+      setPromptOpen(true);
+      return false;
+    }
+    if ((!loading && config === null) || config?.configured) return true;
     if (loading || applyStatus.applying) return false;
     setPromptOpen(true);
     return false;
-  }, [applyStatus.applying, config, enabled, loading]);
+  }, [applyStatus.applying, cloudAccounts, config, enabled, loading, rememberState]);
+
+  const setSource = useCallback(
+    async (source: ModelServiceSource) => {
+      if (!cloudAccounts) return null;
+      setLoading(true);
+      try {
+        const next = await setModelServiceSource(source);
+        rememberState(next);
+        return next;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [cloudAccounts, rememberState],
+  );
+
+  const dismissPromptForSession = useCallback(() => {
+    const userId = modelService?.userId ?? "local";
+    try {
+      window.sessionStorage.setItem(promptDismissedKey(userId), "1");
+    } catch {
+      // The in-memory state still suppresses repeat prompts for this login session.
+    }
+    promptDismissedRef.current = true;
+    setPromptOpen(false);
+  }, [modelService?.userId]);
+
+  const promptTitle = !cloudAccounts
+    ? "尚未配置模型服务"
+    : modelService?.reason === "insufficient_balance"
+      ? "平台余额不足"
+      : modelService?.reason === "platform_unavailable"
+        ? "平台模型暂时不可用"
+        : modelService?.source === "byok"
+          ? "尚未配置自定义模型"
+          : "模型服务尚未就绪";
+  const promptDescription = modelService?.detail ?? "请先完成模型服务配置，之后即可开始投研问答。";
+  const promptTarget =
+    modelService?.reason === "insufficient_balance" ? "/settings/platform-usage" : "/settings/llm";
+  const promptAction = modelService?.reason === "insufficient_balance" ? "查看账户" : "前往设置";
 
   const contextValue = useMemo(
-    () => ({ enabled, config, applyStatus, loading, requireConfiguration, refresh }),
-    [applyStatus, config, enabled, loading, requireConfiguration, refresh],
+    () => ({
+      enabled,
+      cloudAccounts,
+      config,
+      modelService,
+      applyStatus,
+      loading,
+      requireConfiguration,
+      setSource,
+      refresh,
+    }),
+    [
+      applyStatus,
+      cloudAccounts,
+      config,
+      enabled,
+      loading,
+      modelService,
+      refresh,
+      requireConfiguration,
+      setSource,
+    ],
   );
 
   return (
@@ -104,22 +249,20 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
       <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>尚未配置模型服务</DialogTitle>
-            <DialogDescription>
-              请先配置模型供应商、API Key 和模型名称，完成后即可开始投研问答。
-            </DialogDescription>
+            <DialogTitle>{promptTitle}</DialogTitle>
+            <DialogDescription>{promptDescription}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setPromptOpen(false)}>
+            <Button variant="ghost" onClick={dismissPromptForSession}>
               稍后
             </Button>
             <Button
               onClick={() => {
                 setPromptOpen(false);
-                navigate("/settings/llm");
+                navigate(promptTarget);
               }}
             >
-              前往设置
+              {promptAction}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3546,7 +3546,7 @@ def _start_local_server(
     # must NOT mint an accounts cookie secret (those modes never read it).
     from omnigent.server.auth import resolve_auth_source
 
-    _accounts_mode = resolve_auth_source() == "accounts"
+    _accounts_mode = resolve_auth_source() in {"accounts", "cloud_accounts"}
     if _accounts_mode:
         if "OMNIGENT_ACCOUNTS_COOKIE_SECRET" not in os.environ:
             child_env["OMNIGENT_ACCOUNTS_COOKIE_SECRET"] = secrets.token_hex(32)

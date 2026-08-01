@@ -241,6 +241,12 @@ class CreateProjectRequest(BaseModel):
     company_ticker: str | None = ""
 
 
+class UpdateProjectRequest(BaseModel):
+    name: str
+    company_name: str | None = ""
+    company_ticker: str | None = ""
+
+
 class RunProjectPipelineRequest(BaseModel):
     reset: bool = False
     recursive: bool = True
@@ -2295,8 +2301,12 @@ def _create_project_row(
     name = request.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Project name is required.")
-    dataset_id = _safe_dataset_id(request.dataset_id or name)
     workspace = _dataset_workspace_root()
+    dataset_id = (
+        _safe_dataset_id(request.dataset_id)
+        if request.dataset_id
+        else f"dataset_{secrets.token_hex(10)}"
+    )
     dataset_root = _project_dataset_root(dataset_id, workspace)
     uploads_dir = _project_uploads_dir(dataset_id, workspace)
     now = _now_iso()
@@ -2351,6 +2361,67 @@ def _create_project_row(
         conn.commit()
         row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
     return _project_payload(row)
+
+
+def _update_project(dataset_id: str, request: UpdateProjectRequest) -> dict[str, Any]:
+    current = _require_project_row(dataset_id)
+    name = request.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required.")
+    company_name = str(request.company_name or "").strip()
+    company_ticker = (
+        unicodedata.normalize("NFKC", str(request.company_ticker or "")).strip().upper()
+    )
+    now = _now_iso()
+
+    with _connect_global_registry() as conn:
+        conn.execute(
+            """
+            UPDATE datasets
+            SET name = ?, company_name = ?, company_ticker = ?, updated_at = ?
+            WHERE dataset_id = ?
+            """,
+            (name, company_name, company_ticker, now, dataset_id),
+        )
+        conn.commit()
+
+    collection_db = _collection_db_path(dataset_id)
+    if collection_db.exists():
+        with sqlite3.connect(str(collection_db), timeout=30) as conn:
+            tables = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            if "documents" in tables:
+                columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(documents)")}
+                if {"company_name", "company_ticker"}.issubset(columns):
+                    conn.execute(
+                        """
+                        UPDATE documents
+                        SET company_name = ?, company_ticker = ?
+                        WHERE dataset_id = ?
+                        """,
+                        (company_name, company_ticker, dataset_id),
+                    )
+            if "valuation_model_series" in tables:
+                conn.execute(
+                    """
+                    UPDATE valuation_model_series
+                    SET company_name = ?, company_ticker = ?, updated_at = ?
+                    WHERE dataset_id = ?
+                    """,
+                    (company_name, company_ticker, now, dataset_id),
+                )
+            conn.commit()
+
+    updated = _require_project_row(dataset_id)
+    return {
+        "project": _project_payload(updated),
+        "previous_company_name": str(current["company_name"] or ""),
+        "previous_company_ticker": str(current["company_ticker"] or ""),
+    }
 
 
 def _seed_uploads_from_raw(dataset_id: str) -> Path:
@@ -4402,6 +4473,25 @@ def create_private_fund_pdf_router(
         )
         project = _attach_project_token_usage([_project_payload(row)], usage_by_dataset)[0]
         return {"project": project, "files": _project_files_payload(dataset_id)}
+
+    @router.patch("/private-fund/projects/{dataset_id}")
+    def update_project(dataset_id: str, request: UpdateProjectRequest) -> dict[str, Any]:
+        payload = _update_project(dataset_id, request)
+        project = payload["project"]
+        ticker_changed = (
+            str(payload.get("previous_company_ticker") or "")
+            != str(project.get("company_ticker") or "")
+        )
+        if ticker_changed and project.get("company_ticker"):
+            payload["valuation_refresh_job"] = (
+                private_fund_valuation_tracking.enqueue_context_refresh(
+                    _collection_db_path(dataset_id),
+                    dataset_id,
+                    source_id=f"project-identity-{_now_iso()}",
+                    requeue_failed=True,
+                )
+            )
+        return payload
 
     @router.delete("/private-fund/projects/{dataset_id}")
     def delete_project(dataset_id: str) -> dict[str, Any]:

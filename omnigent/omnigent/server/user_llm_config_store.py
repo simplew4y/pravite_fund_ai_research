@@ -26,7 +26,7 @@ class UserLlmConfig:
         return bool(self.base_url and self.model and self.api_key)
 
 
-def _master_key_from_env() -> bytes:
+def master_key_from_env() -> bytes:
     raw = os.environ.get("OMNIGENT_USER_SECRETS_KEY", "").strip()
     if not raw:
         raise RuntimeError("OMNIGENT_USER_SECRETS_KEY is required in multi-user mode")
@@ -46,7 +46,7 @@ class UserLlmConfigStore:
     def __init__(self, storage_location: str, master_key: bytes | None = None) -> None:
         self._engine = get_or_create_engine(storage_location)
         self._session = make_managed_session_maker(self._engine)
-        self._aes = AESGCM(master_key or _master_key_from_env())
+        self._aes = AESGCM(master_key or master_key_from_env())
 
     @staticmethod
     def _aad(user_id: str) -> bytes:

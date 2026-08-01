@@ -17,6 +17,9 @@ const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default:
 const RegisterPage = lazy(() =>
   import("@/pages/RegisterPage").then((m) => ({ default: m.RegisterPage })),
 );
+const ForgotPasswordPage = lazy(() =>
+  import("@/pages/ForgotPasswordPage").then((m) => ({ default: m.ForgotPasswordPage })),
+);
 const MembersPage = lazy(() =>
   import("@/pages/MembersPage").then((m) => ({ default: m.MembersPage })),
 );
@@ -117,7 +120,12 @@ function App({ basename }: AppProps = {}) {
         {info.accounts_enabled && (
           <>
             <Route path={`${prefix}/login`} element={<LoginPage />} />
-            <Route path={`${prefix}/register`} element={<RegisterPage />} />
+            {info.cloud_accounts_enabled && (
+              <Route path={`${prefix}/forgot-password`} element={<ForgotPasswordPage />} />
+            )}
+            {(!info.cloud_accounts_enabled || info.registration_mode === "open") && (
+              <Route path={`${prefix}/register`} element={<RegisterPage />} />
+            )}
           </>
         )}
         <Route path={`${prefix}/approve/:sessionId/:elicitationId`} element={<ApprovePage />} />
@@ -143,7 +151,7 @@ function App({ basename }: AppProps = {}) {
               defaults to Appearance. */}
           <Route path={`${prefix}/settings`} element={<SettingsPage />} />
           <Route path={`${prefix}/settings/:section`} element={<SettingsPage />} />
-          {info.accounts_enabled && (
+          {info.accounts_enabled && !info.cloud_accounts_enabled && (
             <>
               <Route path={`${prefix}/members`} element={<MembersPage />} />
               <Route path={`${prefix}/policies`} element={<PoliciesPage />} />

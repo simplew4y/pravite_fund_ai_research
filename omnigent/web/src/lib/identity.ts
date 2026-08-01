@@ -1,7 +1,8 @@
 /**
  * User identity discovery and request header injection.
  *
- * On app load, calls ``GET /v1/me`` to discover the current user.
+ * On app load, calls ``GET /v1/me`` to discover the current user, or
+ * ``GET /auth/me`` in cloud-account mode to verify the cloud session too.
  * All subsequent API calls use ``authenticatedFetch`` which injects
  * the ``X-Forwarded-Email`` header so session routes know who's
  * making the request.
@@ -15,7 +16,7 @@
  * into a login redirect.
  */
 
-import { getCachedServerInfo } from "./capabilities";
+import { getCachedServerInfo, resolveServerInfo } from "./capabilities";
 import { getOmnigentHostConfig, hostFetch } from "./host";
 
 // Single-user sentinel from `GET /v1/me` (server's RESERVED_USER_LOCAL);
@@ -31,6 +32,25 @@ let _resolvePromise: Promise<string | null> | null = null;
 // Hardcoding "/login" here previously sent OIDC users to an accounts
 // password form that had no connection to their IdP.
 let _serverLoginUrl: string | null = null;
+let cloudRefreshPromise: Promise<boolean> | null = null;
+
+async function refreshCloudSession(): Promise<boolean> {
+  if (cloudRefreshPromise !== null) return cloudRefreshPromise;
+  cloudRefreshPromise = (async () => {
+    try {
+      const response = await hostFetch("/auth/refresh", {
+        method: "POST",
+        cache: "no-store",
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  })().finally(() => {
+    cloudRefreshPromise = null;
+  });
+  return cloudRefreshPromise;
+}
 
 /**
  * Whether the current page IS the login or register page, so we
@@ -46,7 +66,12 @@ let _serverLoginUrl: string | null = null;
  */
 function _isOnLoginPath(): boolean {
   const path = window.location.pathname;
-  return path === "/login" || path === "/register" || path.startsWith("/auth/login");
+  return (
+    path === "/login" ||
+    path === "/register" ||
+    path === "/forgot-password" ||
+    path.startsWith("/auth/login")
+  );
 }
 
 /**
@@ -61,8 +86,17 @@ export async function resolveIdentity(): Promise<string | null> {
   if (_resolvePromise) return _resolvePromise;
   _resolvePromise = (async () => {
     try {
-      const res = await hostFetch("/v1/me");
+      const serverInfo = getCachedServerInfo();
+      const cloudAccounts = serverInfo?.cloud_accounts_enabled === true;
+      const identityPath = cloudAccounts ? "/auth/me" : "/v1/me";
+      let res = await hostFetch(identityPath, { cache: "no-store" });
       if (res.status === 401) {
+        const info = serverInfo ?? (await resolveServerInfo());
+        if (info.cloud_accounts_enabled === true && (await refreshCloudSession())) {
+          res = await hostFetch(identityPath, { cache: "no-store" });
+        }
+      }
+      if (res.status === 401 || (cloudAccounts && res.status === 403)) {
         // OIDC / accounts mode: server requires authentication.
         // Redirect to the login URL provided in the response body —
         // unless we're already there (avoid an infinite reload loop
@@ -72,13 +106,14 @@ export async function resolveIdentity(): Promise<string | null> {
             user_id: null;
             login_url?: string;
           };
-          if (data.login_url) {
-            _serverLoginUrl = data.login_url;
+          const loginUrl = data.login_url ?? serverInfo?.login_url;
+          if (loginUrl) {
+            _serverLoginUrl = loginUrl;
             if (!_isOnLoginPath()) {
               const returnTo = encodeURIComponent(
                 window.location.pathname + window.location.search,
               );
-              window.location.href = `${data.login_url}?return_to=${returnTo}`;
+              window.location.href = `${loginUrl}?return_to=${returnTo}`;
               return null;
             }
           }
@@ -87,8 +122,8 @@ export async function resolveIdentity(): Promise<string | null> {
         }
       }
       if (res.ok) {
-        const data = (await res.json()) as { user_id: string | null };
-        _currentUserId = data.user_id;
+        const data = (await res.json()) as { id?: string; user_id?: string | null };
+        _currentUserId = cloudAccounts ? (data.id ?? null) : (data.user_id ?? null);
       }
     } catch {
       // Server unreachable — leave as null.
@@ -141,11 +176,28 @@ export async function authenticatedFetch(
   // URL change. Without no-store the browser may serve a stale
   // cached response — e.g. one captured before an elicitation was
   // published — causing the ApprovalCard to vanish on navigate-back.
-  const res = await hostFetch(typeof input === "string" ? input : input.toString(), {
+  const requestUrl = typeof input === "string" ? input : input.toString();
+  let res = await hostFetch(requestUrl, {
     ...init,
     headers,
     cache: "no-store",
   });
+
+  if (
+    res.status === 401 &&
+    getCachedServerInfo()?.cloud_accounts_enabled === true &&
+    !requestUrl.includes("/auth/") &&
+    !requestUrl.includes("/v1/me")
+  ) {
+    const refreshed = await refreshCloudSession();
+    if (refreshed) {
+      res = await hostFetch(requestUrl, {
+        ...init,
+        headers,
+        cache: "no-store",
+      });
+    }
+  }
 
   if (
     // When embedded, the host owns auth (e.g. cookie/session via
@@ -153,8 +205,8 @@ export async function authenticatedFetch(
     // trigger web's standalone OIDC redirect.
     !getOmnigentHostConfig().fetcher &&
     res.status === 401 &&
-    !input.toString().includes("/v1/me") &&
-    !input.toString().includes("/auth/") &&
+    !requestUrl.includes("/v1/me") &&
+    !requestUrl.includes("/auth/") &&
     !_isOnLoginPath()
   ) {
     // Session expired or cookie invalid — redirect to login IFF the

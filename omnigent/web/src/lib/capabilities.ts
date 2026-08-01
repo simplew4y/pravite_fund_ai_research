@@ -23,6 +23,7 @@ import { hostFetch } from "./host";
 /** Shape of the response from ``GET /v1/info``. */
 export interface ServerInfo {
   accounts_enabled: boolean;
+  cloud_accounts_enabled?: boolean;
   login_url: string | null;
   /**
    * True when accounts mode is on but no admin has been claimed yet —
@@ -76,6 +77,7 @@ export interface ServerInfo {
 /** Sentinel used when the probe fails — accounts is off, no login URL. */
 const _OFF: ServerInfo = {
   accounts_enabled: false,
+  cloud_accounts_enabled: false,
   login_url: null,
   needs_setup: false,
   registration_mode: null,
@@ -111,6 +113,7 @@ export async function resolveServerInfo(): Promise<ServerInfo> {
         const data = (await res.json()) as Partial<ServerInfo>;
         _cached = {
           accounts_enabled: data.accounts_enabled === true,
+          cloud_accounts_enabled: data.cloud_accounts_enabled === true,
           login_url: typeof data.login_url === "string" ? data.login_url : null,
           needs_setup: data.needs_setup === true,
           registration_mode:

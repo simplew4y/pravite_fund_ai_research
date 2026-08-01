@@ -12,56 +12,65 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { showToast } from "@/components/ui/toast";
 import {
-  activatePrivateFundProject,
-  createPrivateFundProject,
   type PrivateFundProject,
+  updatePrivateFundProject,
 } from "@/lib/privateFundApi";
 
-export type PrivateFundCreateProjectDialogProps = {
+export type PrivateFundEditProjectDialogProps = {
   open: boolean;
+  project: PrivateFundProject | null | undefined;
   onOpenChange: (open: boolean) => void;
-  onCreated: (project: PrivateFundProject) => void;
 };
 
-export function PrivateFundCreateProjectDialog({
+export function PrivateFundEditProjectDialog({
   open,
+  project,
   onOpenChange,
-  onCreated,
-}: PrivateFundCreateProjectDialogProps) {
+}: PrivateFundEditProjectDialogProps) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [companyTicker, setCompanyTicker] = useState("");
 
   useEffect(() => {
-    if (!open) return;
-    setName("");
-    setCompanyName("");
-    setCompanyTicker("");
-  }, [open]);
+    if (!open || !project) return;
+    setName(project.name);
+    setCompanyName(project.companyName ?? "");
+    setCompanyTicker(project.companyTicker ?? "");
+  }, [open, project]);
 
   const mutation = useMutation({
-    mutationFn: async () => {
-      const project = await createPrivateFundProject({
+    mutationFn: () => {
+      const tickerChanged =
+        companyTicker.trim().toUpperCase() !== (project!.companyTicker ?? "").trim().toUpperCase();
+      return updatePrivateFundProject(project!.datasetId, {
         name: name.trim(),
         companyName: companyName.trim(),
         companyTicker: companyTicker.trim(),
-      });
-      await activatePrivateFundProject(project.datasetId);
-      return project;
+      }).then((updated) => ({ updated, tickerChanged }));
     },
-    onSuccess: (project) => {
-      void queryClient.invalidateQueries({ queryKey: ["private-fund-projects"] });
-      void queryClient.invalidateQueries({ queryKey: ["private-fund-project", project.datasetId] });
-      onCreated(project);
+    onSuccess: async ({ updated, tickerChanged }) => {
+      queryClient.setQueryData<{ project: PrivateFundProject; files: unknown[] }>(
+        ["private-fund-project", updated.datasetId],
+        (current: { project: PrivateFundProject; files: unknown[] } | undefined) =>
+          current ? { ...current, project: updated } : current,
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["private-fund-projects"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["private-fund-valuation-tracking", updated.datasetId],
+        }),
+      ]);
       onOpenChange(false);
+      showToast(tickerChanged ? "项目信息已更新，正在刷新真实数据" : "研究项目信息已更新");
     },
   });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (name.trim() && !mutation.isPending) mutation.mutate();
+    if (project && name.trim() && !mutation.isPending) mutation.mutate();
   };
 
   return (
@@ -72,7 +81,7 @@ export function PrivateFundCreateProjectDialog({
       }}
     >
       <DialogContent
-        aria-label="新建研究项目"
+        aria-label="编辑研究项目"
         className="sm:max-w-md"
         showCloseButton={!mutation.isPending}
         onEscapeKeyDown={(event) => {
@@ -84,9 +93,9 @@ export function PrivateFundCreateProjectDialog({
       >
         <form className="contents" onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>新建研究项目</DialogTitle>
+            <DialogTitle>编辑研究项目</DialogTitle>
             <DialogDescription>
-              创建后直接进入统一研究工作台，再从左侧资料来源上传并索引文档。
+              修改项目与公司信息。股票代码用于查询行情和真实财务数据。
             </DialogDescription>
           </DialogHeader>
 
@@ -95,7 +104,7 @@ export function PrivateFundCreateProjectDialog({
               <span className="text-xs font-medium">项目名称</span>
               <Input
                 autoFocus
-                aria-label="研究项目名称"
+                aria-label="编辑研究项目名称"
                 onChange={(event) => setName(event.target.value)}
                 placeholder="例如：阳光电源"
                 value={name}
@@ -105,7 +114,7 @@ export function PrivateFundCreateProjectDialog({
               <label className="block space-y-1.5">
                 <span className="text-xs font-medium">公司名称（可选）</span>
                 <Input
-                  aria-label="研究项目公司名称"
+                  aria-label="编辑研究项目公司名称"
                   onChange={(event) => setCompanyName(event.target.value)}
                   placeholder="公司全称"
                   value={companyName}
@@ -114,7 +123,7 @@ export function PrivateFundCreateProjectDialog({
               <label className="block space-y-1.5">
                 <span className="text-xs font-medium">股票代码（可选）</span>
                 <Input
-                  aria-label="研究项目股票代码"
+                  aria-label="编辑研究项目股票代码"
                   onChange={(event) => setCompanyTicker(event.target.value)}
                   placeholder="例如：300274"
                   value={companyTicker}
@@ -122,8 +131,13 @@ export function PrivateFundCreateProjectDialog({
               </label>
             </div>
             {mutation.error ? (
-              <p className="rounded-lg border border-[var(--pf-line)] bg-[var(--pf-danger-soft)] px-3 py-2 text-xs text-[var(--pf-danger-ink)]">
-                {mutation.error instanceof Error ? mutation.error.message : "创建研究项目失败"}
+              <p
+                className="rounded-lg border border-[var(--pf-line)] bg-[var(--pf-danger-soft)] px-3 py-2 text-xs text-[var(--pf-danger-ink)]"
+                role="alert"
+              >
+                {mutation.error instanceof Error
+                  ? mutation.error.message
+                  : "更新研究项目失败"}
               </p>
             ) : null}
           </div>
@@ -137,9 +151,9 @@ export function PrivateFundCreateProjectDialog({
             >
               取消
             </Button>
-            <Button disabled={!name.trim() || mutation.isPending} type="submit">
+            <Button disabled={!project || !name.trim() || mutation.isPending} type="submit">
               {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-              创建并进入工作台
+              保存
             </Button>
           </DialogFooter>
         </form>
