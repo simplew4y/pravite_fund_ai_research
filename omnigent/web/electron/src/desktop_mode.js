@@ -128,7 +128,7 @@ function validHexSecret(value) {
 }
 
 /**
- * Load or create the internal credentials used by the bundled accounts stack.
+ * Load or create the internal credentials used by bundled account providers.
  * Upstream model API keys are stored separately and never enter this file.
  *
  * @param {string} configHome
@@ -208,9 +208,10 @@ function buildStackEnv(extra = {}) {
   const setting = (name, fallback = "") =>
     extra[name] ?? fileEnv[name] ?? process.env[name] ?? fallback;
   const authEnabled = setting("OMNIGENT_AUTH_ENABLED", "1");
-  const accountsEnabled =
-    authEnabled === "1" && setting("OMNIGENT_AUTH_PROVIDER", "accounts") === "accounts";
-  const runtimeSecrets = accountsEnabled
+  const authProvider = setting("OMNIGENT_AUTH_PROVIDER", "cloud_accounts");
+  const isolatedAccountsEnabled =
+    authEnabled === "1" && ["accounts", "cloud_accounts"].includes(authProvider);
+  const runtimeSecrets = isolatedAccountsEnabled
     ? loadOrCreateRuntimeSecrets(configHome, persistRuntimeSecrets)
     : null;
 
@@ -226,13 +227,29 @@ function buildStackEnv(extra = {}) {
     ...fileEnv,
     ...extra,
     OMNIGENT_AUTH_ENABLED: authEnabled,
-    OMNIGENT_AUTH_PROVIDER: setting("OMNIGENT_AUTH_PROVIDER", "accounts"),
+    OMNIGENT_AUTH_PROVIDER: authProvider,
     OMNIGENT_ACCOUNTS_ENABLED: setting("OMNIGENT_ACCOUNTS_ENABLED", "1"),
     OMNIGENT_ACCOUNTS_REGISTRATION_MODE: setting(
       "OMNIGENT_ACCOUNTS_REGISTRATION_MODE",
       "open",
     ),
     OMNIGENT_ACCOUNTS_BASE_URL: setting("OMNIGENT_ACCOUNTS_BASE_URL", serverUrl),
+    OMNIGENT_CLOUD_BACKEND_URL: setting(
+      "OMNIGENT_CLOUD_BACKEND_URL",
+      "https://capoo.fun/private_fund/backend",
+    ),
+    OMNIGENT_CLOUD_REQUEST_TIMEOUT_SECONDS: setting(
+      "OMNIGENT_CLOUD_REQUEST_TIMEOUT_SECONDS",
+      "10",
+    ),
+    OMNIGENT_CLOUD_UPLOAD_TIMEOUT_SECONDS: setting(
+      "OMNIGENT_CLOUD_UPLOAD_TIMEOUT_SECONDS",
+      "180",
+    ),
+    OMNIGENT_CLOUD_REGISTRATION_ENABLED: setting(
+      "OMNIGENT_CLOUD_REGISTRATION_ENABLED",
+      "1",
+    ),
     OMNIGENT_ACCOUNTS_COOKIE_SECRET: setting(
       "OMNIGENT_ACCOUNTS_COOKIE_SECRET",
       runtimeSecrets?.cookieSecret || "",
@@ -263,7 +280,7 @@ function buildStackEnv(extra = {}) {
       "OMNIGENT_INTERNAL_LLM_GATEWAY_URL",
       `${serverUrl}/internal/private-fund/llm`,
     ),
-    OMNIGENT_LOCAL_SINGLE_USER: accountsEnabled
+    OMNIGENT_LOCAL_SINGLE_USER: isolatedAccountsEnabled
       ? "0"
       : setting("OMNIGENT_LOCAL_SINGLE_USER", "1"),
     OMNIGENT_NO_UPDATE_CHECK: setting("OMNIGENT_NO_UPDATE_CHECK", "1"),

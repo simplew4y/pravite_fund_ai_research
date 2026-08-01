@@ -85,6 +85,25 @@ describe("desktop_mode", () => {
     assert.match(env.OMNIGENT_USER_SECRETS_KEY, /^[0-9a-f]{64}$/);
   });
 
+  it("buildStackEnv enables cloud accounts and email registration for releases", () => {
+    const env = desktop.buildStackEnv({
+      OMNIGENT_AUTH_ENABLED: "1",
+      OMNIGENT_AUTH_PROVIDER: "cloud_accounts",
+      OMNIGENT_CLOUD_BACKEND_URL: "https://capoo.fun/private_fund/backend",
+    });
+
+    assert.equal(env.OMNIGENT_AUTH_PROVIDER, "cloud_accounts");
+    assert.equal(env.OMNIGENT_CLOUD_REGISTRATION_ENABLED, "1");
+    assert.equal(
+      env.OMNIGENT_CLOUD_BACKEND_URL,
+      "https://capoo.fun/private_fund/backend",
+    );
+    assert.equal(env.OMNIGENT_LOCAL_SINGLE_USER, "0");
+    assert.match(env.OMNIGENT_ACCOUNTS_COOKIE_SECRET, /^[0-9a-f]{64}$/);
+    assert.match(env.OMNIGENT_USER_SECRETS_KEY, /^[0-9a-f]{64}$/);
+    assert.equal(env.OMNIGENT_HOST_TOKEN, env.OMNIGENT_SHARED_HOST_TOKEN);
+  });
+
   it("describes the Windows native runtime layout", () => {
     const root = path.join("C:\\", "runtime");
     const layout = desktop.nativeRuntimeLayout("win32", root);
