@@ -46,6 +46,15 @@ describe("settingsNavGroups", () => {
     }
   });
 
+  it("always exposes the Skills manager from Settings", () => {
+    for (const accountsEnabled of [false, true]) {
+      const ids = settingsNavGroups(accountsEnabled, false)
+        .flatMap((group) => group.items)
+        .map((item) => item.id);
+      expect(ids).toContain("skills");
+    }
+  });
+
   it("includes Account (leading) only when accounts auth is enabled", () => {
     expect(
       settingsNavGroups(false, false)

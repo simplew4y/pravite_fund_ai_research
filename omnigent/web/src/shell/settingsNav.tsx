@@ -15,6 +15,7 @@ import {
   MessageSquareTextIcon,
   PaletteIcon,
   PanelRightOpenIcon,
+  SparklesIcon,
   TerminalIcon,
   UserCogIcon,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { isElectronShell, supportsDesktopLlmConfiguration } from "@/lib/nativeBr
 import { cn } from "@/lib/utils";
 
 export type SettingsSectionId =
+  | "skills"
   | "appearance"
   | "shortcuts"
   | "account"
@@ -36,6 +38,7 @@ export type SettingsSectionId =
   | "llm";
 
 const SECTION_IDS: readonly SettingsSectionId[] = [
+  "skills",
   "appearance",
   "shortcuts",
   "account",
@@ -70,6 +73,7 @@ export function settingsNavGroups(
   cloudAccountsEnabled = false,
 ): SettingsNavGroup[] {
   const general: SettingsNavItem[] = [
+    { id: "skills", label: "技能 Skills", icon: SparklesIcon },
     { id: "appearance", label: "Appearance", icon: PaletteIcon },
     { id: "shortcuts", label: "Keyboard shortcuts", icon: KeyboardIcon, hideOnMobile: true },
   ];
