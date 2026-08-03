@@ -58,6 +58,18 @@ describe("desktop_mode", () => {
     assert.equal(env.PYTHONPYCACHEPREFIX, custom);
   });
 
+  it("buildStackEnv keeps auth-disabled desktop builds in local single-user mode", () => {
+    const env = desktop.buildStackEnv({
+      OMNIGENT_AUTH_ENABLED: "0",
+      OMNIGENT_AUTH_PROVIDER: "cloud_accounts",
+    });
+
+    assert.equal(env.OMNIGENT_AUTH_PROVIDER, "header");
+    assert.equal(env.OMNIGENT_LOCAL_SINGLE_USER, "1");
+    assert.equal(env.OMNIGENT_ACCOUNTS_COOKIE_SECRET, "");
+    assert.equal(env.OMNIGENT_USER_SECRETS_KEY, "");
+  });
+
   it("persists stable internal account credentials outside the runtime", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pf-desktop-secrets-"));
     const first = desktop.loadOrCreateRuntimeSecrets(dir);

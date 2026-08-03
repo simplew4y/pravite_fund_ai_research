@@ -46,6 +46,30 @@
         "title": "AddCommentRequest",
         "type": "object"
       },
+      "AddResearchAssumptionRequest": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "source_response_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Response Id"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "AddResearchAssumptionRequest",
+        "type": "object"
+      },
       "AgentObject": {
         "description": "API representation of a registered agent.",
         "properties": {
@@ -165,6 +189,24 @@
         "title": "AgentObject",
         "type": "object"
       },
+      "AskPdfRequest": {
+        "properties": {
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 3,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "AskPdfRequest",
+        "type": "object"
+      },
       "Body_update_session_agent_v1_sessions__session_id__agent_put": {
         "properties": {
           "bundle": {
@@ -177,6 +219,40 @@
           "bundle"
         ],
         "title": "Body_update_session_agent_v1_sessions__session_id__agent_put",
+        "type": "object"
+      },
+      "Body_upload_private_fund_files_globally_v1_private_fund_uploads_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_private_fund_files_globally_v1_private_fund_uploads_post",
+        "type": "object"
+      },
+      "Body_upload_project_files_v1_private_fund_projects__dataset_id__files_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_project_files_v1_private_fund_projects__dataset_id__files_post",
         "type": "object"
       },
       "Body_upload_session_file_v1_sessions__session_id__resources_files_post": {
@@ -814,6 +890,60 @@
         "title": "CompactionInProgressEvent",
         "type": "object"
       },
+      "CompleteResearchNodeRequest": {
+        "properties": {
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "output_markdown": {
+            "title": "Output Markdown",
+            "type": "string"
+          },
+          "source_response_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Response Id"
+          },
+          "structured_output": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structured Output"
+          }
+        },
+        "required": [
+          "output_markdown"
+        ],
+        "title": "CompleteResearchNodeRequest",
+        "type": "object"
+      },
       "CompletedEvent": {
         "description": "Terminal event for a successfully completed turn.\n\nCarries the final\n`omnigent.server.schemas.ResponseObject`.",
         "properties": {
@@ -1035,6 +1165,119 @@
         "title": "CreateDirectoryRequest",
         "type": "object"
       },
+      "CreateProjectRequest": {
+        "properties": {
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "title": "Company Name"
+          },
+          "company_ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "title": "Company Ticker"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateProjectRequest",
+        "type": "object"
+      },
+      "CreateResearchReportRequest": {
+        "properties": {
+          "report_type": {
+            "default": "investment_memo",
+            "title": "Report Type",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "CreateResearchReportRequest",
+        "type": "object"
+      },
+      "CreateResearchWatchRuleRequest": {
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "frequency": {
+            "default": "on_ingest",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "min_priority": {
+            "default": "medium",
+            "title": "Min Priority",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": true,
+            "title": "Query",
+            "type": "object"
+          },
+          "target_item_id": {
+            "default": "",
+            "title": "Target Item Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "target_type"
+        ],
+        "title": "CreateResearchWatchRuleRequest",
+        "type": "object"
+      },
       "CreateSessionPolicyRequest": {
         "description": "Request body for `POST /v1/sessions/{session_id}/policies`.",
         "properties": {
@@ -1075,6 +1318,19 @@
         "title": "CreateSessionPolicyRequest",
         "type": "object"
       },
+      "CreateSourceFolderRequest": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateSourceFolderRequest",
+        "type": "object"
+      },
       "CreatedEvent": {
         "description": "Initial event emitted at the start of every streaming response.\n\nCarries the freshly-allocated\n`omnigent.server.schemas.ResponseObject` (status will\nbe `\"queued\"` or `\"in_progress\"` depending on whether the\ntask started immediately).",
         "properties": {
@@ -1106,6 +1362,32 @@
           "response"
         ],
         "title": "CreatedEvent",
+        "type": "object"
+      },
+      "DeleteProjectFilesRequest": {
+        "properties": {
+          "file_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "File Names",
+            "type": "array"
+          }
+        },
+        "title": "DeleteProjectFilesRequest",
+        "type": "object"
+      },
+      "DeleteResearchAssetsRequest": {
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asset Ids",
+            "type": "array"
+          }
+        },
+        "title": "DeleteResearchAssetsRequest",
         "type": "object"
       },
       "ElicitationRequestEvent": {
@@ -1660,6 +1942,21 @@
         "title": "IncompleteEvent",
         "type": "object"
       },
+      "InstallSkillRequest": {
+        "properties": {
+          "marketplaceId": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Marketplaceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "marketplaceId"
+        ],
+        "title": "InstallSkillRequest",
+        "type": "object"
+      },
       "LaunchRunnerRequest": {
         "description": "Request body for `POST /v1/hosts/{host_id}/runners`.",
         "properties": {
@@ -1690,6 +1987,40 @@
           "workspace"
         ],
         "title": "LaunchRunnerRequest",
+        "type": "object"
+      },
+      "LlmConfigInput": {
+        "properties": {
+          "apiKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apikey"
+          },
+          "baseUrl": {
+            "title": "Baseurl",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "preset": {
+            "title": "Preset",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preset",
+          "baseUrl",
+          "model"
+        ],
+        "title": "LlmConfigInput",
         "type": "object"
       },
       "MCPServerSummary": {
@@ -1755,6 +2086,34 @@
           "transport"
         ],
         "title": "MCPServerSummary",
+        "type": "object"
+      },
+      "MemoRequest": {
+        "properties": {
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          }
+        },
+        "title": "MemoRequest",
         "type": "object"
       },
       "MessageData": {
@@ -1886,6 +2245,30 @@
           }
         },
         "title": "ModelUsage",
+        "type": "object"
+      },
+      "MoveSourceFolderFileRequest": {
+        "properties": {
+          "file_name": {
+            "title": "File Name",
+            "type": "string"
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Id"
+          }
+        },
+        "required": [
+          "file_name"
+        ],
+        "title": "MoveSourceFolderFileRequest",
         "type": "object"
       },
       "NativeToolData": {
@@ -2402,6 +2785,56 @@
         "title": "ReasoningTextDeltaEvent",
         "type": "object"
       },
+      "RegisterPdfRequest": {
+        "properties": {
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "\u9633\u5149\u7535\u6e90",
+            "title": "Company Name"
+          },
+          "pdf_path": {
+            "title": "Pdf Path",
+            "type": "string"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "300274",
+            "title": "Ticker"
+          }
+        },
+        "required": [
+          "pdf_path"
+        ],
+        "title": "RegisterPdfRequest",
+        "type": "object"
+      },
+      "RenameSourceFolderRequest": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RenameSourceFolderRequest",
+        "type": "object"
+      },
       "ResourceEventData": {
         "description": "Data payload for a persisted resource lifecycle event.\n\nThese items are written to the conversation store when a\nsession resource is created or deleted, so reconnecting\nclients can discover resource history without replaying the\nlive SSE stream.  The agent loop filters them out of the\nLLM's message context (they are metadata, not conversation\ncontent).",
         "properties": {
@@ -2714,6 +3147,19 @@
         "title": "RetryEvent",
         "type": "object"
       },
+      "RouteGlobalUploadRequest": {
+        "properties": {
+          "dataset_id": {
+            "title": "Dataset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_id"
+        ],
+        "title": "RouteGlobalUploadRequest",
+        "type": "object"
+      },
       "RoutingDecisionData": {
         "description": "Data payload for an intelligent model-router decision item.\n\nEmitted by the runner's per-turn cost advisor at the START of an\nadvised turn (see `omnigent.runner.cost_advisor`) and persisted\nas a display-only transcript item so the model the router chose shows\nin the conversation flow the moment the turn begins. Listed in\n`NON_CONTENT_ITEM_TYPES` so the agent loop's history filter\nskips it \u2014 the brain never sees (or answers) its own router note. The\nrunner's harness-input builder also drops every non\nmessage/function_call type, a second guarantee it stays out of the\nmodel's context.",
         "properties": {
@@ -2752,6 +3198,44 @@
         "title": "RoutingDecisionData",
         "type": "object"
       },
+      "RunProjectPipelineRequest": {
+        "properties": {
+          "recursive": {
+            "default": true,
+            "title": "Recursive",
+            "type": "boolean"
+          },
+          "reset": {
+            "default": false,
+            "title": "Reset",
+            "type": "boolean"
+          }
+        },
+        "title": "RunProjectPipelineRequest",
+        "type": "object"
+      },
+      "RunValuationAgentAnalysisRequest": {
+        "properties": {
+          "base_model_version_id": {
+            "default": "",
+            "title": "Base Model Version Id",
+            "type": "string"
+          },
+          "comparison_model_version_id": {
+            "default": "",
+            "title": "Comparison Model Version Id",
+            "type": "string"
+          },
+          "focus": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Focus",
+            "type": "string"
+          }
+        },
+        "title": "RunValuationAgentAnalysisRequest",
+        "type": "object"
+      },
       "SandboxStatus": {
         "description": "Managed-sandbox launch progress for a `host_type=\"managed\"` session.\n\nCarried on the session snapshot only while the session's\nbackground sandbox launch is in flight or has failed; `None`\nfor sessions without a managed launch and once the launch\nsucceeds (the session then looks like any host-bound session).",
         "properties": {
@@ -2785,6 +3269,70 @@
           "stage"
         ],
         "title": "SandboxStatus",
+        "type": "object"
+      },
+      "SaveResearchAssetRequest": {
+        "properties": {
+          "asset_type": {
+            "default": "information",
+            "title": "Asset Type",
+            "type": "string"
+          },
+          "content_markdown": {
+            "title": "Content Markdown",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source_response_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Response Id"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "content_markdown"
+        ],
+        "title": "SaveResearchAssetRequest",
+        "type": "object"
+      },
+      "SelectResearchNodeRequest": {
+        "properties": {
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id"
+        ],
+        "title": "SelectResearchNodeRequest",
         "type": "object"
       },
       "SendCommentsRequest": {
@@ -4558,6 +5106,16 @@
             "title": "Todos",
             "type": "array"
           },
+          "token_usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "total_cost_usd": {
             "anyOf": [
               {
@@ -5007,6 +5565,18 @@
             "default": null,
             "title": "Sequence Number"
           },
+          "token_usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelUsage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Flat cumulative token buckets for the same session subtree. This is the authoritative aggregate; clients should use it for totals and keep `usage_by_model` as attribution detail. `None` (stripped by `exclude_none`) when no usage was recorded."
+          },
           "total_cost_usd": {
             "anyOf": [
               {
@@ -5097,6 +5667,32 @@
         "title": "SetCodexGoalRequest",
         "type": "object"
       },
+      "SetResearchAssetContextRequest": {
+        "properties": {
+          "asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asset Ids",
+            "type": "array"
+          }
+        },
+        "title": "SetResearchAssetContextRequest",
+        "type": "object"
+      },
+      "SetResearchContextRequest": {
+        "properties": {
+          "node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Node Ids",
+            "type": "array"
+          }
+        },
+        "title": "SetResearchContextRequest",
+        "type": "object"
+      },
       "SkillSummary": {
         "description": "Safe subset of a discovered skill for API exposure.\n\nSurfaces the skill name and one-line description so clients\n(e.g. the web composer's slash-command menu) can list which\nskills the session has access to. The full skill `content`\nis intentionally omitted \u2014 it's only loaded server-side when\nthe harness invokes the skill, and it can be large.",
         "properties": {
@@ -5164,6 +5760,34 @@
           "arguments"
         ],
         "title": "SlashCommandData",
+        "type": "object"
+      },
+      "StartResearchNodeRequest": {
+        "properties": {
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name"
+          },
+          "prompt_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Snapshot"
+          }
+        },
+        "title": "StartResearchNodeRequest",
         "type": "object"
       },
       "TerminalCommandData": {
@@ -5458,6 +6082,145 @@
         "title": "UpdateDefaultPolicyRequest",
         "type": "object"
       },
+      "UpdateProjectRequest": {
+        "properties": {
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "title": "Company Name"
+          },
+          "company_ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "",
+            "title": "Company Ticker"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "UpdateProjectRequest",
+        "type": "object"
+      },
+      "UpdateResearchAlertRequest": {
+        "properties": {
+          "snoozed_until": {
+            "default": "",
+            "title": "Snoozed Until",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "UpdateResearchAlertRequest",
+        "type": "object"
+      },
+      "UpdateResearchWatchRuleRequest": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
+          "min_priority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Priority"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "target_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Item Id"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          }
+        },
+        "title": "UpdateResearchWatchRuleRequest",
+        "type": "object"
+      },
       "UpdateSessionPolicyRequest": {
         "additionalProperties": false,
         "description": "Request body for `PATCH /v1/sessions/{session_id}/policies/{policy_id}`.\n\nAll fields are optional; `None` fields are left unchanged.\nUnknown fields (including `type`, which is immutable) are\nrejected with `422`.",
@@ -5640,6 +6403,52 @@
           }
         },
         "title": "UpdateSessionRequest",
+        "type": "object"
+      },
+      "UpdateValuationAlertRequest": {
+        "properties": {
+          "snoozed_until": {
+            "default": "",
+            "title": "Snoozed Until",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "UpdateValuationAlertRequest",
+        "type": "object"
+      },
+      "UpdateValuationWatchRuleRequest": {
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "min_materiality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Materiality"
+          }
+        },
+        "title": "UpdateValuationWatchRuleRequest",
         "type": "object"
       },
       "UpsertMCPServerRequest": {
@@ -6726,6 +7535,3936 @@
         "summary": "List Registry",
         "tags": [
           "policy_registry"
+        ]
+      }
+    },
+    "/v1/private-fund/citations/{citation_id}": {
+      "get": {
+        "operationId": "trace_citation_v1_private_fund_citations__citation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "citation_id",
+            "required": true,
+            "schema": {
+              "title": "Citation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trace Citation V1 Private Fund Citations  Citation Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trace Citation",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/dataset/document/file": {
+      "get": {
+        "operationId": "dataset_document_file_v1_private_fund_dataset_document_file_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "maxLength": 240,
+              "minLength": 1,
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "maxLength": 240,
+              "minLength": 1,
+              "title": "File Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dataset Document File",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/dataset/document/preview": {
+      "get": {
+        "operationId": "dataset_document_preview_v1_private_fund_dataset_document_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "maxLength": 240,
+              "minLength": 1,
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "maxLength": 240,
+              "minLength": 1,
+              "title": "File Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Dataset Document Preview V1 Private Fund Dataset Document Preview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dataset Document Preview",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/dataset/memo/file": {
+      "get": {
+        "operationId": "dataset_memo_file_v1_private_fund_dataset_memo_file_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 4096,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dataset Memo File",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/excel/source/range": {
+      "get": {
+        "operationId": "excel_source_range_v1_private_fund_excel_source_range_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workbook_name",
+            "required": true,
+            "schema": {
+              "maxLength": 240,
+              "minLength": 1,
+              "title": "Workbook Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sheet_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sheet Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dataset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dataset Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_row",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1048576,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Row"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_col",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 16384,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Col"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Excel Source Range V1 Private Fund Excel Source Range Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Excel Source Range",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/llm-config": {
+      "get": {
+        "operationId": "get_config_v1_private_fund_llm_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Config V1 Private Fund Llm Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "private_fund_llm_config"
+        ]
+      },
+      "put": {
+        "operationId": "save_config_v1_private_fund_llm_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmConfigInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Config V1 Private Fund Llm Config Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Config",
+        "tags": [
+          "private_fund_llm_config"
+        ]
+      }
+    },
+    "/v1/private-fund/llm-config/status": {
+      "get": {
+        "operationId": "get_status_v1_private_fund_llm_config_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Status V1 Private Fund Llm Config Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Status",
+        "tags": [
+          "private_fund_llm_config"
+        ]
+      }
+    },
+    "/v1/private-fund/llm-config/test": {
+      "post": {
+        "operationId": "test_config_v1_private_fund_llm_config_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmConfigInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Test Config V1 Private Fund Llm Config Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Config",
+        "tags": [
+          "private_fund_llm_config"
+        ]
+      }
+    },
+    "/v1/private-fund/memo/generate": {
+      "post": {
+        "operationId": "generate_memo_v1_private_fund_memo_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MemoRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Generate Memo V1 Private Fund Memo Generate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Memo",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/memo/{memo_id}/pdf": {
+      "get": {
+        "operationId": "memo_pdf_v1_private_fund_memo__memo_id__pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memo_id",
+            "required": true,
+            "schema": {
+              "title": "Memo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Memo Pdf",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/pdf/ask": {
+      "post": {
+        "operationId": "ask_pdf_v1_private_fund_pdf_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskPdfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ask Pdf V1 Private Fund Pdf Ask Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask Pdf",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/pdf/register": {
+      "post": {
+        "operationId": "register_pdf_v1_private_fund_pdf_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPdfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Register Pdf V1 Private Fund Pdf Register Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Pdf",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/pdf/source/page": {
+      "get": {
+        "operationId": "source_page_v1_private_fund_pdf_source_page_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page_no",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Page No",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "quote",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quote"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pdf_path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pdf Path"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pdf_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pdf Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "evidence_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dataset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Source Page V1 Private Fund Pdf Source Page Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Source Page",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/pdf/source/page-image": {
+      "get": {
+        "operationId": "source_page_image_v1_private_fund_pdf_source_page_image_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page_no",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Page No",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pdf_path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pdf Path"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pdf_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pdf Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "evidence_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dataset_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Source Page Image",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/pdf/status": {
+      "get": {
+        "operationId": "status_v1_private_fund_pdf_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Status V1 Private Fund Pdf Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/pipeline-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_project_pipeline_job_v1_private_fund_pipeline_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Pipeline Job V1 Private Fund Pipeline Jobs  Job Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Pipeline Job",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects": {
+      "get": {
+        "operationId": "list_projects_v1_private_fund_projects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Projects V1 Private Fund Projects Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Projects",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      },
+      "post": {
+        "operationId": "create_project_v1_private_fund_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Project V1 Private Fund Projects Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Project",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}": {
+      "delete": {
+        "operationId": "delete_project_v1_private_fund_projects__dataset_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Project V1 Private Fund Projects  Dataset Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      },
+      "get": {
+        "operationId": "get_project_v1_private_fund_projects__dataset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project V1 Private Fund Projects  Dataset Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      },
+      "patch": {
+        "operationId": "update_project_v1_private_fund_projects__dataset_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Project V1 Private Fund Projects  Dataset Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/activate": {
+      "post": {
+        "operationId": "activate_project_v1_private_fund_projects__dataset_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Activate Project V1 Private Fund Projects  Dataset Id  Activate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Project",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/alerts": {
+      "get": {
+        "operationId": "list_project_alerts_v1_private_fund_projects__dataset_id__alerts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Project Alerts V1 Private Fund Projects  Dataset Id  Alerts Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Alerts",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/alerts/{alert_id}": {
+      "patch": {
+        "operationId": "update_project_alert_v1_private_fund_projects__dataset_id__alerts__alert_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "title": "Alert Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateResearchAlertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Project Alert V1 Private Fund Projects  Dataset Id  Alerts  Alert Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Alert",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/assets": {
+      "get": {
+        "operationId": "get_project_assets_v1_private_fund_projects__dataset_id__assets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Assets V1 Private Fund Projects  Dataset Id  Assets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Assets",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      },
+      "post": {
+        "operationId": "save_project_asset_v1_private_fund_projects__dataset_id__assets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveResearchAssetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Project Asset V1 Private Fund Projects  Dataset Id  Assets Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Project Asset",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/assets/context": {
+      "post": {
+        "operationId": "set_project_asset_context_v1_private_fund_projects__dataset_id__assets_context_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetResearchAssetContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Project Asset Context V1 Private Fund Projects  Dataset Id  Assets Context Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Project Asset Context",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/assets/delete": {
+      "post": {
+        "operationId": "delete_project_assets_v1_private_fund_projects__dataset_id__assets_delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteResearchAssetsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Project Assets V1 Private Fund Projects  Dataset Id  Assets Delete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project Assets",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/files": {
+      "post": {
+        "operationId": "upload_project_files_v1_private_fund_projects__dataset_id__files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_project_files_v1_private_fund_projects__dataset_id__files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Project Files V1 Private Fund Projects  Dataset Id  Files Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Project Files",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/files/delete": {
+      "post": {
+        "operationId": "delete_project_files_v1_private_fund_projects__dataset_id__files_delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteProjectFilesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Project Files V1 Private Fund Projects  Dataset Id  Files Delete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project Files",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/files/{file_name}": {
+      "delete": {
+        "operationId": "delete_project_file_v1_private_fund_projects__dataset_id__files__file_name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "title": "File Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Project File V1 Private Fund Projects  Dataset Id  Files  File Name  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project File",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/memo-comparisons": {
+      "get": {
+        "operationId": "compare_project_memo_versions_v1_private_fund_projects__dataset_id__memo_comparisons_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_version",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "From Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "To Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compare Project Memo Versions V1 Private Fund Projects  Dataset Id  Memo Comparisons Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Project Memo Versions",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/memo-series": {
+      "get": {
+        "operationId": "list_project_memo_series_v1_private_fund_projects__dataset_id__memo_series_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Project Memo Series V1 Private Fund Projects  Dataset Id  Memo Series Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Memo Series",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/pipeline": {
+      "post": {
+        "operationId": "run_project_pipeline_v1_private_fund_projects__dataset_id__pipeline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RunProjectPipelineRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Project Pipeline V1 Private Fund Projects  Dataset Id  Pipeline Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Project Pipeline",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/research-items": {
+      "get": {
+        "operationId": "list_project_research_items_v1_private_fund_projects__dataset_id__research_items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "item_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Project Research Items V1 Private Fund Projects  Dataset Id  Research Items Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Research Items",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/research-items/{item_id}/timeline": {
+      "get": {
+        "operationId": "get_project_research_item_timeline_v1_private_fund_projects__dataset_id__research_items__item_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Research Item Timeline V1 Private Fund Projects  Dataset Id  Research Items  Item Id  Timeline Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Research Item Timeline",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/source-folders": {
+      "get": {
+        "operationId": "get_project_source_folders_v1_private_fund_projects__dataset_id__source_folders_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Source Folders V1 Private Fund Projects  Dataset Id  Source Folders Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Source Folders",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      },
+      "post": {
+        "operationId": "create_project_source_folder_v1_private_fund_projects__dataset_id__source_folders_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSourceFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Project Source Folder V1 Private Fund Projects  Dataset Id  Source Folders Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Project Source Folder",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/source-folders/move-file": {
+      "post": {
+        "operationId": "move_project_source_file_v1_private_fund_projects__dataset_id__source_folders_move_file_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveSourceFolderFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Move Project Source File V1 Private Fund Projects  Dataset Id  Source Folders Move File Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move Project Source File",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/source-folders/{folder_id}": {
+      "delete": {
+        "operationId": "delete_project_source_folder_v1_private_fund_projects__dataset_id__source_folders__folder_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Project Source Folder V1 Private Fund Projects  Dataset Id  Source Folders  Folder Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Project Source Folder",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      },
+      "patch": {
+        "operationId": "rename_project_source_folder_v1_private_fund_projects__dataset_id__source_folders__folder_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameSourceFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Rename Project Source Folder V1 Private Fund Projects  Dataset Id  Source Folders  Folder Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Project Source Folder",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/tracking": {
+      "get": {
+        "operationId": "get_project_tracking_overview_v1_private_fund_projects__dataset_id__tracking_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Tracking Overview V1 Private Fund Projects  Dataset Id  Tracking Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Tracking Overview",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/tracking/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_project_tracking_job_v1_private_fund_projects__dataset_id__tracking_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Tracking Job V1 Private Fund Projects  Dataset Id  Tracking Jobs  Job Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Tracking Job",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/tracking/run": {
+      "post": {
+        "operationId": "run_project_tracking_v1_private_fund_projects__dataset_id__tracking_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Project Tracking V1 Private Fund Projects  Dataset Id  Tracking Run Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Project Tracking",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-agent-analyses/{analysis_id}": {
+      "get": {
+        "operationId": "get_project_valuation_agent_analysis_v1_private_fund_projects__dataset_id__valuation_agent_analyses__analysis_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Valuation Agent Analysis V1 Private Fund Projects  Dataset Id  Valuation Agent Analyses  Analysis Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Valuation Agent Analysis",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-agent-analyses/{analysis_id}/derive-model": {
+      "post": {
+        "operationId": "derive_project_valuation_model_v1_private_fund_projects__dataset_id__valuation_agent_analyses__analysis_id__derive_model_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Derive Project Valuation Model V1 Private Fund Projects  Dataset Id  Valuation Agent Analyses  Analysis Id  Derive Model Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Derive Project Valuation Model",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-alerts/{alert_id}": {
+      "patch": {
+        "operationId": "update_project_valuation_alert_v1_private_fund_projects__dataset_id__valuation_alerts__alert_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "title": "Alert Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateValuationAlertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Project Valuation Alert V1 Private Fund Projects  Dataset Id  Valuation Alerts  Alert Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Valuation Alert",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-derived-models/{derived_model_id}/add-to-resources": {
+      "post": {
+        "operationId": "add_project_valuation_derived_model_to_resources_v1_private_fund_projects__dataset_id__valuation_derived_models__derived_model_id__add_to_resources_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "derived_model_id",
+            "required": true,
+            "schema": {
+              "title": "Derived Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Project Valuation Derived Model To Resources V1 Private Fund Projects  Dataset Id  Valuation Derived Models  Derived Model Id  Add To Resources Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Project Valuation Derived Model To Resources",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-derived-models/{derived_model_id}/file": {
+      "get": {
+        "operationId": "get_project_valuation_derived_model_file_v1_private_fund_projects__dataset_id__valuation_derived_models__derived_model_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "derived_model_id",
+            "required": true,
+            "schema": {
+              "title": "Derived Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Valuation Derived Model File",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-models/{series_id}/agent-analysis": {
+      "post": {
+        "operationId": "run_project_valuation_agent_analysis_v1_private_fund_projects__dataset_id__valuation_models__series_id__agent_analysis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "title": "Series Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunValuationAgentAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Project Valuation Agent Analysis V1 Private Fund Projects  Dataset Id  Valuation Models  Series Id  Agent Analysis Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Project Valuation Agent Analysis",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-models/{series_id}/compare": {
+      "get": {
+        "operationId": "compare_project_valuation_model_versions_v1_private_fund_projects__dataset_id__valuation_models__series_id__compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "title": "Series Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_version",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "From Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "To Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Compare Project Valuation Model Versions V1 Private Fund Projects  Dataset Id  Valuation Models  Series Id  Compare Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Project Valuation Model Versions",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-models/{series_id}/versions/{model_version_id}/overview": {
+      "get": {
+        "operationId": "get_project_valuation_model_overview_v1_private_fund_projects__dataset_id__valuation_models__series_id__versions__model_version_id__overview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "title": "Series Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "model_version_id",
+            "required": true,
+            "schema": {
+              "title": "Model Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Valuation Model Overview V1 Private Fund Projects  Dataset Id  Valuation Models  Series Id  Versions  Model Version Id  Overview Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Valuation Model Overview",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-tracking": {
+      "get": {
+        "operationId": "get_project_valuation_tracking_overview_v1_private_fund_projects__dataset_id__valuation_tracking_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Valuation Tracking Overview V1 Private Fund Projects  Dataset Id  Valuation Tracking Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Valuation Tracking Overview",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-tracking/run": {
+      "post": {
+        "operationId": "run_project_valuation_tracking_v1_private_fund_projects__dataset_id__valuation_tracking_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Project Valuation Tracking V1 Private Fund Projects  Dataset Id  Valuation Tracking Run Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Project Valuation Tracking",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/valuation-watch-rules/{rule_id}": {
+      "patch": {
+        "operationId": "update_project_valuation_watch_rule_v1_private_fund_projects__dataset_id__valuation_watch_rules__rule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateValuationWatchRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Project Valuation Watch Rule V1 Private Fund Projects  Dataset Id  Valuation Watch Rules  Rule Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Valuation Watch Rule",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/watch-rules": {
+      "get": {
+        "operationId": "list_project_watch_rules_v1_private_fund_projects__dataset_id__watch_rules_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Project Watch Rules V1 Private Fund Projects  Dataset Id  Watch Rules Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Watch Rules",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      },
+      "post": {
+        "operationId": "create_project_watch_rule_v1_private_fund_projects__dataset_id__watch_rules_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateResearchWatchRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Project Watch Rule V1 Private Fund Projects  Dataset Id  Watch Rules Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Project Watch Rule",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/watch-rules/{rule_id}": {
+      "patch": {
+        "operationId": "update_project_watch_rule_v1_private_fund_projects__dataset_id__watch_rules__rule_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateResearchWatchRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Project Watch Rule V1 Private Fund Projects  Dataset Id  Watch Rules  Rule Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Project Watch Rule",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow": {
+      "get": {
+        "operationId": "get_project_workflow_v1_private_fund_projects__dataset_id__workflow_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Project Workflow V1 Private Fund Projects  Dataset Id  Workflow Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Project Workflow",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow/context": {
+      "post": {
+        "operationId": "set_project_workflow_context_v1_private_fund_projects__dataset_id__workflow_context_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetResearchContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Project Workflow Context V1 Private Fund Projects  Dataset Id  Workflow Context Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Project Workflow Context",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow/current-node": {
+      "post": {
+        "operationId": "select_project_workflow_node_v1_private_fund_projects__dataset_id__workflow_current_node_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectResearchNodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Select Project Workflow Node V1 Private Fund Projects  Dataset Id  Workflow Current Node Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Select Project Workflow Node",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow/initialize": {
+      "post": {
+        "operationId": "initialize_project_workflow_v1_private_fund_projects__dataset_id__workflow_initialize_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Initialize Project Workflow V1 Private Fund Projects  Dataset Id  Workflow Initialize Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Initialize Project Workflow",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow/nodes/{node_id}/assumptions": {
+      "post": {
+        "operationId": "add_project_workflow_assumption_v1_private_fund_projects__dataset_id__workflow_nodes__node_id__assumptions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddResearchAssumptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Project Workflow Assumption V1 Private Fund Projects  Dataset Id  Workflow Nodes  Node Id  Assumptions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Project Workflow Assumption",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow/nodes/{node_id}/complete": {
+      "post": {
+        "operationId": "complete_project_workflow_node_v1_private_fund_projects__dataset_id__workflow_nodes__node_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteResearchNodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Complete Project Workflow Node V1 Private Fund Projects  Dataset Id  Workflow Nodes  Node Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Project Workflow Node",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow/nodes/{node_id}/start": {
+      "post": {
+        "operationId": "start_project_workflow_node_v1_private_fund_projects__dataset_id__workflow_nodes__node_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StartResearchNodeRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Start Project Workflow Node V1 Private Fund Projects  Dataset Id  Workflow Nodes  Node Id  Start Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Project Workflow Node",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow/nodes/{node_id}/versions": {
+      "get": {
+        "operationId": "list_project_workflow_node_versions_v1_private_fund_projects__dataset_id__workflow_nodes__node_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Project Workflow Node Versions V1 Private Fund Projects  Dataset Id  Workflow Nodes  Node Id  Versions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Workflow Node Versions",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/projects/{dataset_id}/workflow/reports": {
+      "get": {
+        "operationId": "list_project_workflow_reports_v1_private_fund_projects__dataset_id__workflow_reports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Project Workflow Reports V1 Private Fund Projects  Dataset Id  Workflow Reports Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Project Workflow Reports",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      },
+      "post": {
+        "operationId": "create_project_workflow_report_v1_private_fund_projects__dataset_id__workflow_reports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateResearchReportRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Project Workflow Report V1 Private Fund Projects  Dataset Id  Workflow Reports Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Project Workflow Report",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/upload-batches": {
+      "get": {
+        "operationId": "list_private_fund_upload_batches_v1_private_fund_upload_batches_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Private Fund Upload Batches V1 Private Fund Upload Batches Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Private Fund Upload Batches",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/upload-batches/{batch_id}": {
+      "get": {
+        "operationId": "get_private_fund_upload_batch_v1_private_fund_upload_batches__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Private Fund Upload Batch V1 Private Fund Upload Batches  Batch Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Private Fund Upload Batch",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/upload-items": {
+      "get": {
+        "operationId": "list_private_fund_upload_items_v1_private_fund_upload_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "needs_review",
+              "maxLength": 40,
+              "minLength": 1,
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Private Fund Upload Items V1 Private Fund Upload Items Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Private Fund Upload Items",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/upload-items/{item_id}/route": {
+      "post": {
+        "operationId": "route_private_fund_upload_item_v1_private_fund_upload_items__item_id__route_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteGlobalUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Route Private Fund Upload Item V1 Private Fund Upload Items  Item Id  Route Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Private Fund Upload Item",
+        "tags": [
+          "private_fund_pdf"
+        ]
+      }
+    },
+    "/v1/private-fund/uploads": {
+      "post": {
+        "operationId": "upload_private_fund_files_globally_v1_private_fund_uploads_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_private_fund_files_globally_v1_private_fund_uploads_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Private Fund Files Globally V1 Private Fund Uploads Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Private Fund Files Globally",
+        "tags": [
+          "private_fund_pdf"
         ]
       }
     },
@@ -10298,6 +15037,207 @@
         "summary": "Fork Session",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/v1/skills/install": {
+      "post": {
+        "operationId": "install_skill_v1_skills_install_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Install Skill V1 Skills Install Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Install Skill",
+        "tags": [
+          "skill_marketplace"
+        ]
+      }
+    },
+    "/v1/skills/installed": {
+      "get": {
+        "operationId": "list_installed_v1_skills_installed_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Installed V1 Skills Installed Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Installed",
+        "tags": [
+          "skill_marketplace"
+        ]
+      }
+    },
+    "/v1/skills/installed/{install_id}": {
+      "delete": {
+        "operationId": "remove_skill_v1_skills_installed__install_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "install_id",
+            "required": true,
+            "schema": {
+              "title": "Install Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Remove Skill V1 Skills Installed  Install Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Skill",
+        "tags": [
+          "skill_marketplace"
+        ]
+      }
+    },
+    "/v1/skills/marketplace": {
+      "get": {
+        "operationId": "search_marketplace_v1_skills_marketplace_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "financial analysis",
+              "maxLength": 200,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 3,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Search Marketplace V1 Skills Marketplace Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Marketplace",
+        "tags": [
+          "skill_marketplace"
         ]
       }
     }

@@ -107,6 +107,7 @@ import {
   type LlmProviderPreset,
 } from "@/lib/llmConfigApi";
 import { useLlmConfiguration } from "@/lib/LlmConfigContext";
+import { SkillsSettingsSection } from "@/pages/SkillsSettingsSection";
 
 /**
  * Settings content panel. The section nav lives in the sidebar card
@@ -123,6 +124,7 @@ export function SettingsPage() {
 
   return (
     <PageScroll contentClassName="px-8" extraBottom="2.5rem">
+      {section === "skills" && <SkillsSettingsSection />}
       {section === "appearance" && <AppearanceSection />}
       {section === "shortcuts" && <ShortcutsSection />}
       {section === "account" && accountsEnabled && <AccountSection />}

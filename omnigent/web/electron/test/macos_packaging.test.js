@@ -37,6 +37,23 @@ describe("macOS internal packaging", () => {
     assert.match(requirements, /^rich>=13\.9\.4,<14$/m);
   });
 
+  it("ships the cloud accounts login system in the bundled macOS runtime", () => {
+    const assembler = fs.readFileSync(
+      path.join(electronDir, "..", "..", "..", "scripts", "desktop", "assemble_mac_native.sh"),
+      "utf8",
+    );
+    assert.match(assembler, /^OMNIGENT_AUTH_ENABLED=1$/m);
+    assert.match(assembler, /^OMNIGENT_AUTH_PROVIDER=cloud_accounts$/m);
+    assert.match(assembler, /^OMNIGENT_ACCOUNTS_ENABLED=1$/m);
+    assert.match(assembler, /^OMNIGENT_ACCOUNTS_REGISTRATION_MODE=open$/m);
+    assert.match(
+      assembler,
+      /^OMNIGENT_CLOUD_BACKEND_URL=https:\/\/capoo\.fun\/private_fund\/backend$/m,
+    );
+    assert.match(assembler, /^OMNIGENT_CLOUD_REGISTRATION_ENABLED=1$/m);
+    assert.match(assembler, /^OMNIGENT_LOCAL_SINGLE_USER=0$/m);
+  });
+
   it("uses ad-hoc signing without a provisioning profile or notarization", () => {
     assert.equal(config.mac.identity, "-");
     assert.equal(config.mac.provisioningProfile, undefined);

@@ -208,7 +208,10 @@ function buildStackEnv(extra = {}) {
   const setting = (name, fallback = "") =>
     extra[name] ?? fileEnv[name] ?? process.env[name] ?? fallback;
   const authEnabled = setting("OMNIGENT_AUTH_ENABLED", "1");
-  const authProvider = setting("OMNIGENT_AUTH_PROVIDER", "cloud_accounts");
+  const configuredAuthProvider = setting("OMNIGENT_AUTH_PROVIDER", "cloud_accounts");
+  // Python treats an explicit accounts provider as authoritative even when
+  // OMNIGENT_AUTH_ENABLED=0, so bundled single-user builds must force header.
+  const authProvider = authEnabled === "1" ? configuredAuthProvider : "header";
   const isolatedAccountsEnabled =
     authEnabled === "1" && ["accounts", "cloud_accounts"].includes(authProvider);
   const runtimeSecrets = isolatedAccountsEnabled
@@ -280,9 +283,12 @@ function buildStackEnv(extra = {}) {
       "OMNIGENT_INTERNAL_LLM_GATEWAY_URL",
       `${serverUrl}/internal/private-fund/llm`,
     ),
-    OMNIGENT_LOCAL_SINGLE_USER: isolatedAccountsEnabled
-      ? "0"
-      : setting("OMNIGENT_LOCAL_SINGLE_USER", "1"),
+    OMNIGENT_LOCAL_SINGLE_USER:
+      authEnabled !== "1"
+        ? "1"
+        : isolatedAccountsEnabled
+          ? "0"
+          : setting("OMNIGENT_LOCAL_SINGLE_USER", "1"),
     OMNIGENT_NO_UPDATE_CHECK: setting("OMNIGENT_NO_UPDATE_CHECK", "1"),
     OMNIGENT_WS_ALLOWED_ORIGINS:
       fileEnv.OMNIGENT_WS_ALLOWED_ORIGINS ||

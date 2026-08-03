@@ -74,6 +74,7 @@ from omnigent.server.routes.sessions import (
     has_running_sessions,
     set_server_runner_router,
 )
+from omnigent.server.routes.skill_marketplace import create_skill_marketplace_router
 from omnigent.server.routes.terminal_attach import create_terminal_attach_router
 from omnigent.server.ws_origin import WebSocketOriginMiddleware
 from omnigent.stores import (
@@ -2034,6 +2035,14 @@ def create_app(
         ),
         prefix="/v1",
         tags=["private_fund_llm_config"],
+    )
+    app.include_router(
+        create_skill_marketplace_router(
+            auth_provider=auth_provider,
+            account_store=account_store,
+        ),
+        prefix="/v1",
+        tags=["skill_marketplace"],
     )
     if account_store is not None:
         from omnigent.server.user_llm_gateway import create_user_llm_gateway_router
