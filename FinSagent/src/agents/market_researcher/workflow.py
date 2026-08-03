@@ -92,6 +92,7 @@ def build_market_researcher_subgraph() -> Any:
                 run_id=state.get("run_id", ""),
                 log_dir=state.get("log_dir", ""),
                 scope_query=state.get("user_query_raw") or state["original_query"],
+                scope_history=state.get("chat_history", []),
             )
             return {"market_evidence": evidences}
 
@@ -103,6 +104,7 @@ def build_market_researcher_subgraph() -> Any:
             run_id=state.get("run_id", ""),
             log_dir=state.get("log_dir", ""),
             scope_query=state.get("user_query_raw") or state["original_query"],
+            scope_history=state.get("chat_history", []),
         )
         return {"market_evidence": evidences}
 

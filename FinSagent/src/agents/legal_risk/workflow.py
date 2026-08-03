@@ -50,6 +50,7 @@ def build_legal_risk_subgraph() -> Any:
             run_id=state.get("run_id", ""),
             log_dir=state.get("log_dir", ""),
             scope_query=state.get("user_query_raw") or state["original_query"],
+            scope_history=state.get("chat_history", []),
         )
         return {"legal_risk_evidence": evidences}
 

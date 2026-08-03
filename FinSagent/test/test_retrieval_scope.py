@@ -127,6 +127,28 @@ def test_explicit_empty_scope_never_falls_back_to_all_documents(tmp_path: Path) 
     assert retriever.search_keyword("2024 net profit", allowed_doc_ids=[]) is None
 
 
+def test_followup_inherits_nearest_explicit_user_company(tmp_path: Path) -> None:
+    db_path = tmp_path / "collection.sqlite3"
+    _build_collection_db(db_path)
+    retriever = CascadeRetriever(
+        str(db_path),
+        company_aliases={
+            "P911.DE": ["保时捷", "Porsche"],
+            "300274 CH": ["阳光电源", "Sungrow"],
+        },
+    )
+
+    scope = retriever.resolve_scope_with_history(
+        "那 2025 年呢？",
+        ["先介绍阳光电源", "保时捷 2024 年归母净利润是多少？"],
+        dataset_id="test-real",
+    )
+
+    assert scope.explicit_company is True
+    assert scope.source_query == "那 2025 年呢？"
+    assert scope.source_doc_ids == ("porsche-2024",)
+
+
 def test_chunk_scope_distinguishes_unscoped_from_deny_all() -> None:
     chunks = [
         {"page_content": "porsche", "metadata": {"source_doc_id": "porsche-2024"}},

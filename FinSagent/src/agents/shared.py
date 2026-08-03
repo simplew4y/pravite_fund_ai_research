@@ -371,6 +371,7 @@ async def retrieve_evidence(
     run_id: str = "", log_dir: str = "",
     collection_db: str = "",
     scope_query: str = "",
+    scope_history: Optional[List[Dict[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Run retrieval concurrently and produce Evidence-like dicts.
@@ -426,7 +427,16 @@ async def retrieve_evidence(
     scope = None
     if _c is not None:
         effective_scope_query = scope_query or (sub_queries[0] if sub_queries else "")
-        scope = _c.resolve_scope(effective_scope_query, dataset_id=active_dataset)
+        prior_user_queries = [
+            str(message.get("content") or "")
+            for message in (scope_history or [])
+            if str(message.get("role") or "").lower() == "user"
+        ]
+        scope = _c.resolve_scope_with_history(
+            effective_scope_query,
+            prior_user_queries,
+            dataset_id=active_dataset,
+        )
         lg.info(
             "[retrieval_scope] dataset=%s explicit_company=%s source_query=%r source_doc_ids=%s",
             scope.dataset_id,

@@ -179,6 +179,32 @@ class CascadeRetriever:
             dataset_id=dataset_id,
         )
 
+    def resolve_scope_with_history(
+        self,
+        query: str,
+        prior_user_queries: Sequence[str],
+        dataset_id: str = "",
+    ) -> RetrievalScope:
+        """Resolve a follow-up against the nearest explicit user entity.
+
+        Assistant messages are intentionally not accepted here: generated text
+        may mention comparison companies and must never redefine the user's
+        retrieval boundary.
+        """
+        current_scope = self.resolve_scope(query, dataset_id=dataset_id)
+        if current_scope.explicit_company:
+            return current_scope
+        for prior_query in reversed([str(value) for value in prior_user_queries if value]):
+            prior_scope = self.resolve_scope(prior_query, dataset_id=dataset_id)
+            if prior_scope.explicit_company:
+                return RetrievalScope.from_doc_ids(
+                    query,
+                    prior_scope.source_doc_ids,
+                    explicit_company=True,
+                    dataset_id=dataset_id,
+                )
+        return current_scope
+
     @staticmethod
     def _scope_clause(doc_ids: Sequence[str], column: str = "doc_id") -> Tuple[str, List[str]]:
         clean = [str(x) for x in doc_ids if x]
