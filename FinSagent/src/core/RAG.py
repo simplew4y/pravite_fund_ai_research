@@ -173,6 +173,8 @@ class RAG:
         query_time: datetime,
         rerank_topk: int | None = None,
         table_topk: int | None = None,
+        agent: str = "general",
+        allowed_source_doc_ids: List[str] | None = None,
     ) -> Dict[str, Any]:
         """
         完整的 RAG 检索流程
@@ -195,7 +197,10 @@ class RAG:
         retriever = self.rag_manager._retrievers[0]
         date_cutoff = self._effective_date_cutoff(query)
         effective_rerank_topk = self.top_k if rerank_topk is None else rerank_topk
-        chunks = retriever.invoke(query)
+        allowed_ids = set(allowed_source_doc_ids or []) or None
+        chunks = retriever.invoke(
+            query, agent=agent, allowed_source_doc_ids=allowed_ids,
+        )
         chunks = self._filter_chunks_by_cutoff(chunks, date_cutoff)
         chunks = self._backfill_text_chunks_for_cutoff(
             retriever,
@@ -203,13 +208,18 @@ class RAG:
             chunks,
             date_cutoff,
             effective_rerank_topk,
+            agent,
+            allowed_ids,
         )
         effective_table_topk = retriever.table_k if table_topk is None else table_topk
         if table_topk is None and self._is_periodic_finance_query(query):
             finance_table_topk = self._config_int_or_none("finance_table_topk")
             if finance_table_topk is not None:
                 effective_table_topk = max(effective_table_topk, finance_table_topk)
-        table_chunks = retriever.retrieve_tables(query, k=effective_table_topk)
+        table_chunks = retriever.retrieve_tables(
+            query, k=effective_table_topk, agent=agent,
+            allowed_source_doc_ids=allowed_ids,
+        )
         table_chunks = self._filter_chunks_by_cutoff(table_chunks, date_cutoff)
         table_chunks = self._backfill_table_chunks_for_cutoff(
             retriever,
@@ -217,6 +227,8 @@ class RAG:
             table_chunks,
             date_cutoff,
             effective_table_topk,
+            agent,
+            allowed_ids,
         )
         table_chunks = self._prepare_table_chunks(query, table_chunks)
         if effective_table_topk is not None and effective_table_topk > 0:
@@ -305,9 +317,20 @@ class RAG:
         chunk_content_list = [chunk['page_content'] for chunk in chunks]
 
         lock_ctx = self.reranker_lock if self.reranker_lock is not None else contextlib.nullcontext()
-        with lock_ctx, torch.no_grad():
-            reranker_scores = self.reranker.compute_score(pairs, batch_size=12)
-            reranker_scores = torch.sigmoid(torch.tensor(reranker_scores))
+        try:
+            with lock_ctx, torch.no_grad():
+                reranker_logits = self.reranker.compute_score(pairs, batch_size=12)
+                reranker_scores = torch.sigmoid(torch.tensor(reranker_logits))
+            if len(reranker_scores) > 1 and float(torch.max(reranker_scores) - torch.min(reranker_scores)) < 1e-8:
+                logger.warning("Reranker returned flat scores; falling back to retrieval scores")
+                reranker_scores = torch.tensor(
+                    [float(chunk.get("score", 0.0) or 0.0) for chunk in chunks],
+                    dtype=torch.float32,
+                )
+        except Exception as exc:
+            logger.error("Reranker failed; falling back to retrieval scores: %s", exc, exc_info=True)
+            raw_scores = [float(chunk.get("score", 0.0) or 0.0) for chunk in chunks]
+            reranker_scores = torch.tensor(raw_scores, dtype=torch.float32)
 
         # ! disable for colm
         # 时间加权
@@ -653,6 +676,8 @@ class RAG:
         chunks: List[Dict],
         date_cutoff: datetime | None,
         effective_rerank_topk: int | None,
+        agent: str = "general",
+        allowed_source_doc_ids: set[str] | None = None,
     ) -> List[Dict]:
         if date_cutoff is None or not self._config_bool("retrieval_date_cutoff_backfill_enabled", True):
             return chunks
@@ -663,7 +688,9 @@ class RAG:
         if factor <= 1:
             return chunks
         with self._scaled_retriever_limits(retriever, factor):
-            expanded = retriever.invoke(query)
+            expanded = retriever.invoke(
+                query, agent=agent, allowed_source_doc_ids=allowed_source_doc_ids,
+            )
         expanded = self._filter_chunks_by_cutoff(expanded, date_cutoff)
         merged = dedupe_chunks(chunks + expanded)
         if len(merged) > len(chunks):
@@ -684,6 +711,8 @@ class RAG:
         table_chunks: List[Dict],
         date_cutoff: datetime | None,
         target_table_topk: int | None,
+        agent: str = "general",
+        allowed_source_doc_ids: set[str] | None = None,
     ) -> List[Dict]:
         if (
             date_cutoff is None
@@ -700,7 +729,10 @@ class RAG:
         table_count = len(getattr(retriever, "table_metadata", []) or [])
         if table_count > 0:
             expanded_k = min(expanded_k, table_count)
-        expanded = retriever.retrieve_tables(query, k=expanded_k)
+        expanded = retriever.retrieve_tables(
+            query, k=expanded_k, agent=agent,
+            allowed_source_doc_ids=allowed_source_doc_ids,
+        )
         expanded = self._filter_chunks_by_cutoff(expanded, date_cutoff)
         merged = dedupe_chunks(table_chunks + expanded)
         if len(merged) > len(table_chunks):

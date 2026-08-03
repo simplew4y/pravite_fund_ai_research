@@ -72,6 +72,16 @@ class SessionManager:
 
         logger.info(f"SessionManager initialized for session {session_id}")
 
+    def _completion_kwargs(self, kwargs: Dict) -> Dict:
+        prepared = dict(kwargs)
+        if not bool(self.config.get("llm_enable_thinking", False)):
+            extra_body = dict(prepared.get("extra_body") or {})
+            chat_template_kwargs = dict(extra_body.get("chat_template_kwargs") or {})
+            chat_template_kwargs.setdefault("enable_thinking", False)
+            extra_body["chat_template_kwargs"] = chat_template_kwargs
+            prepared["extra_body"] = extra_body
+        return prepared
+
     def add_to_chat_history(self, role: str, content: str):
         """
         添加消息到对话历史
@@ -129,19 +139,13 @@ class SessionManager:
         Returns:
             response: LLM 响应
         """
-        # ! Danger: Must get results for colm. Remove when production.
-        while True:
-            try:
-                return self.llm.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=1.0,
-                    stream=stream,
-                    **kwargs
-                )
-            except Exception as e:
-                logger.warning(f"[Session {self.session_id}] Sync LLM call failed, retrying after wait: {e}", exc_info=True)
-                time.sleep(5)
+        return self.llm.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=temperature,
+            stream=stream,
+            **self._completion_kwargs(kwargs),
+        )
 
     async def call_llm_async(self, messages: List[Dict], temperature: float = 0,
                             stream: bool = False, **kwargs):
@@ -160,9 +164,9 @@ class SessionManager:
         return await self.async_llm.chat.completions.create(
             model=self.model_name,
             messages=messages,
-            temperature=1.0,
+            temperature=temperature,
             stream=stream,
-            **kwargs
+            **self._completion_kwargs(kwargs),
         )
 
     def _load_tools_schema(self) -> List[Dict]:

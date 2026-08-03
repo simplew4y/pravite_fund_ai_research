@@ -49,8 +49,14 @@ except Exception as exc:
     RAGManager = None
     DocumentTriageAgent = None
     CORE_IMPORT_ERROR = exc
-from pdf_research_demo import PdfResearchDemo
-from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+
+try:
+    from pdf_research_demo import PdfResearchDemo
+    from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+except Exception:
+    PdfResearchDemo = None
+    OpenAICompatibleChatClient = None
+    load_llm_config = None
 from utils.session_history_store import SessionHistoryStore
 
 from data_pipeline.ingest_documents_db import (
@@ -178,6 +184,40 @@ def _reset_rag_manager_singleton() -> None:
     RAGManager._embedding_lock = None
 
 
+def _sync_collection_to_chroma(
+    collection_db_path: str,
+    dataset_id: str,
+    documents: list[Any],
+) -> None:
+    """入库完成后：SQLite chunks → Chroma 增量写入 + 重建检索器。"""
+    if RAGManager is None:
+        return
+    import logging
+    logger = logging.getLogger("chroma_bridge")
+    try:
+        from data_ingestion.chroma_bridge import sync_chunks_to_chroma
+        rag_manager = RAGManager()
+        if not hasattr(rag_manager, "_collections") or not rag_manager._collections:
+            logger.warning("RAGManager has no collections; skipping chroma sync")
+            return
+        result = sync_chunks_to_chroma(
+            rag_manager,
+            collection_db_path,
+            collection_name=dataset_id,
+            batch_size=64,
+            dataset_id=dataset_id,
+        )
+        if result["text_chunks"] > 0 or result["table_chunks"] > 0:
+            _reset_rag_manager_singleton()
+            logger.info(
+                "Chroma sync complete (%d text + %d table). RAGManager reset for retriever rebuild.",
+                result["text_chunks"],
+                result["table_chunks"],
+            )
+    except Exception:
+        logger.exception("Chroma sync failed (non-fatal) for dataset %s", dataset_id)
+
+
 def _path_counts_toward_rag_busy(path: str) -> bool:
     """与 chat_service / RAG 相关的路由，用于热重载前等待空闲。"""
     if path.startswith("/chat"):
@@ -214,8 +254,18 @@ def _build_chat_stack() -> Any:
     if ChatService is None or RAGManager is None:
         raise RuntimeError(f"ChatService dependencies unavailable: {CORE_IMPORT_ERROR}")
     config = load_config()
+    active_dataset = str(config.get("datasets", {}).get("active_dataset") or "").strip()
+    configured_collection = str(config.get("collection_name") or "").strip()
+    if not active_dataset:
+        raise ValueError("datasets.active_dataset must be configured")
+    if configured_collection and configured_collection != active_dataset:
+        raise ValueError(
+            "collection_name must equal datasets.active_dataset; "
+            f"got collection_name={configured_collection!r}, active_dataset={active_dataset!r}"
+        )
+    config["collection_name"] = active_dataset
     logger.info("正在初始化 RAG Manager...")
-    collection_name = config.get("collection_name")
+    collection_name = active_dataset
     retrieve_top_k = int(config.get("retrieve_top_k"))
     rag_manager = RAGManager(config, collections={collection_name: retrieve_top_k})
     logger.info("正在初始化 Chat Service...")
@@ -288,6 +338,17 @@ async def lifespan(app: FastAPI):
         else:
             chat_service = _build_chat_stack()
             logger.info("✅ Chat Service 初始化完成")
+
+            # Warm the exact embedding/retriever instances used by requests.
+            try:
+                retriever = chat_service.rag.rag_manager._retrievers[0]
+                retriever.embeddings.embed_query("金融检索预热 warmup")
+                retriever.invoke("金融检索预热 warmup")
+                if retriever.table_faiss_retriever is not None:
+                    retriever.retrieve_tables("金融检索预热 warmup", k=1)
+                logger.info("✅ Embedding 与文本/表格索引预热完成")
+            except Exception as warm_e:
+                logger.warning("Embedding 预热失败（不影响启动）: %s", warm_e)
 
         yield
 
@@ -1180,6 +1241,12 @@ def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
             job_id=job_id,
             classification_llm=classification_llm,
         )
+        # ── SQLite → Chroma 增量同步 ──
+        _sync_collection_to_chroma(
+            result.collection_db_path,
+            result.dataset_id,
+            result.documents,
+        )
         with _private_fund_ingest_jobs_lock:
             _private_fund_ingest_jobs[job_id] = {
                 "job_id": job_id,
@@ -1326,8 +1393,14 @@ async def get_metadata(collection_name: str, doc_id: str):
 # 会话持久化相关路由（独立模块）
 # ============================================================
 from session_routes import router as session_router
+try:
+    from memory_routes import router as memory_router
+except Exception:
+    memory_router = None
 
 app.include_router(session_router)
+if memory_router is not None:
+    app.include_router(memory_router)
 
 
 # ============================================================

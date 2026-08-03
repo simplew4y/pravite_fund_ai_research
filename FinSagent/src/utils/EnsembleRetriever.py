@@ -15,7 +15,7 @@ from .pageindexRetriever import PageIndexRetriever, normalize_doc_key
 
 class EnsembleRetriever:
     """Base class for retriever wrappers that handle document content retrieval"""
-    
+
     def __init__(self, bm25_dir: str,
                  chroma: Chroma,
                  ts_chroma: Chroma,
@@ -112,7 +112,7 @@ class EnsembleRetriever:
                     )
                 else:
                     logger.warning("[EnsembleRetriever] PageIndex enabled but no nodes were loaded.")
-        
+
         if self.table_k > 0 and table_chroma is not None:
             table_docs = table_chroma.get(include=["documents", "embeddings", "metadatas"])
             t_emb = table_docs.get("embeddings")
@@ -142,6 +142,21 @@ class EnsembleRetriever:
             bundle_id = doc_metadata['bundle_id']
             ids = [i for i, metadata in enumerate(self.chunk_metadata) if metadata.get('bundle_id', None) == bundle_id]
         return ids, doc_metadata
+
+    @staticmethod
+    def _source_doc_id(metadata: Optional[Dict]) -> str:
+        metadata = metadata or {}
+        # New collections preserve the SQLite source document id explicitly.
+        # Legacy collections only have doc_id=chunk_id and therefore cannot be
+        # safely company-filtered.
+        return str(metadata.get("source_doc_id") or "")
+
+    def _idx_allowed(self, idx: int, allowed_source_doc_ids: Optional[Set[str]]) -> bool:
+        if idx < 0 or idx >= len(self.chunk_metadata):
+            return False
+        if not allowed_source_doc_ids:
+            return True
+        return self._source_doc_id(self.chunk_metadata[idx]) in allowed_source_doc_ids
 
     def _build_pageindex_doc_map(self) -> Dict[str, List[int]]:
         doc_map: Dict[str, List[int]] = {}
@@ -263,6 +278,8 @@ class EnsembleRetriever:
         k: Optional[int] = None,
         seen_ids: Optional[Set[int]] = None,
         start_bundle_id: int = 0,
+        agent: str = "general",
+        allowed_source_doc_ids: Optional[Set[str]] = None,
     ) -> List[Dict]:
         seen_ids = seen_ids if seen_ids is not None else set()
         chunk_list = []
@@ -272,20 +289,34 @@ class EnsembleRetriever:
         if effective_k <= 0:
             return chunk_list
 
+        allowed_ct = self._content_type_filter(agent)
+
         profiler.start("retrieve_faiss")
-        faiss_ids_list, faiss_scores_list = self.faiss_retriever.invoke([input], 2048)
+        faiss_ids_list, faiss_scores_list = self.faiss_retriever.invoke([input], self.num_chunk)
         faiss_ids, faiss_scores = faiss_ids_list[0], faiss_scores_list[0]
         effective_ids = {idx: score for idx, score in zip(faiss_ids, faiss_scores)}
 
-        for idx, score in zip(faiss_ids[:effective_k], faiss_scores[:effective_k]):
-            if idx in seen_ids:
+        emitted = 0
+        for idx, score in zip(faiss_ids, faiss_scores):
+            if emitted >= effective_k:
+                break
+            if idx in seen_ids or not self._idx_allowed(idx, allowed_source_doc_ids):
                 continue
+            # Agent-based content_type filter
+            if allowed_ct is not None and idx < len(self.chunk_metadata):
+                meta = self.chunk_metadata[idx]
+                if meta and meta.get("content_type") not in allowed_ct:
+                    continue
             seen_ids.add(idx)
             ids, doc_metadata = self._resolve_bundle_ids(idx)
+            ids = [i for i in ids if self._idx_allowed(i, allowed_source_doc_ids)]
+            if not ids:
+                continue
             seen_ids.update(ids)
             ids = self._expand_ids(ids, doc_metadata, effective_ids, seen_ids)
             chunk_list.extend(self._materialize_bundle(ids, score, "FAISS", bundle_cnt))
             bundle_cnt += 1
+            emitted += 1
 
         profiler.end("retrieve_faiss")
         return chunk_list
@@ -295,6 +326,7 @@ class EnsembleRetriever:
         input: str,
         seen_ids: Optional[Set[int]] = None,
         start_bundle_id: int = 0,
+        allowed_source_doc_ids: Optional[Set[str]] = None,
     ) -> List[Dict]:
         seen_ids = seen_ids if seen_ids is not None else set()
         chunk_list = []
@@ -308,10 +340,11 @@ class EnsembleRetriever:
                 title_summary = self.title_summaries[title_idx]
                 chunk_idxs = [idx for idx, metadata in enumerate(self.chunk_metadata) if metadata.get('title_summary', '') == title_summary]
                 for idx in chunk_idxs:
-                    if idx in seen_ids:
+                    if idx in seen_ids or not self._idx_allowed(idx, allowed_source_doc_ids):
                         continue
                     seen_ids.add(idx)
                     ids, _ = self._resolve_bundle_ids(idx)
+                    ids = [i for i in ids if self._idx_allowed(i, allowed_source_doc_ids)]
                     seen_ids.update(ids)
                     chunk_list.extend(self._materialize_bundle(ids, score, "Title Summary", bundle_cnt))
                     bundle_cnt += 1
@@ -320,14 +353,19 @@ class EnsembleRetriever:
         if self.bm25_k > 0 and self.pageindex_mode not in {"replace_bm25", "replace"}:
             profiler.start("retrieve_bm25")
             bm25_ids, bm25_scores = self.bm25_retriever.invoke(input, self.num_chunk)
-            for idx, score in zip(bm25_ids[:self.bm25_k], bm25_scores[:self.bm25_k]):
-                if idx in seen_ids:
+            emitted = 0
+            for idx, score in zip(bm25_ids, bm25_scores):
+                if emitted >= self.bm25_k:
+                    break
+                if idx in seen_ids or not self._idx_allowed(idx, allowed_source_doc_ids):
                     continue
                 seen_ids.add(idx)
                 ids, _ = self._resolve_bundle_ids(idx)
+                ids = [i for i in ids if self._idx_allowed(i, allowed_source_doc_ids)]
                 seen_ids.update(ids)
                 chunk_list.extend(self._materialize_bundle(ids, score, "BM25", bundle_cnt))
                 bundle_cnt += 1
+                emitted += 1
             profiler.end("retrieve_bm25")
 
         return chunk_list
@@ -337,6 +375,7 @@ class EnsembleRetriever:
         input: str,
         seen_ids: Optional[Set[int]] = None,
         start_bundle_id: int = 0,
+        allowed_source_doc_ids: Optional[Set[str]] = None,
     ) -> List[Dict]:
         seen_ids = seen_ids if seen_ids is not None else set()
         chunk_list = []
@@ -357,6 +396,7 @@ class EnsembleRetriever:
                 break
             node = hit.node
             candidate_idxs = self.pageindex_dockey2idxs.get(node.doc_key, [])
+            candidate_idxs = [idx for idx in candidate_idxs if self._idx_allowed(idx, allowed_source_doc_ids)]
             if not candidate_idxs:
                 continue
 
@@ -378,6 +418,7 @@ class EnsembleRetriever:
                     continue
                 seen_ids.add(idx)
                 ids, _ = self._resolve_bundle_ids(idx)
+                ids = [i for i in ids if self._idx_allowed(i, allowed_source_doc_ids)]
                 seen_ids.update(ids)
                 materialized = self._materialize_pageindex_bundle(ids, hit.score, bundle_cnt, node)
                 chunk_list.extend(materialized)
@@ -393,27 +434,55 @@ class EnsembleRetriever:
         profiler.end("retrieve_pageindex")
         profiler.add_metric("retrieved_pageindex", len(chunk_list))
         return chunk_list
-        
+
+    def _content_type_filter(self, agent: str) -> Optional[Set[str]]:
+        """Return content_type values to KEEP for a given agent.
+
+        Returns None to keep all (no filter).
+        """
+        if agent == "quant":
+            # quant: prefer tables and metric facts, skip pure text
+            return {"excel_region_summary", "excel_sheet_summary",
+                    "excel_workbook_summary", "metric_fact", "table"}
+        if agent == "market_researcher":
+            # market_researcher: prefer text, skip raw table region dumps
+            return {"text", "excel_model_section", "pdf_section"}
+        return None  # keep all
+
     @profiler.profile_function(name="retrieve")
     def invoke(
         self,
-        input: str
+        input: str,
+        agent: str = "general",
+        allowed_source_doc_ids: Optional[Set[str]] = None,
     ) -> List[Dict]:
         """Get documents with their content"""
 
         seen_ids = set()
-        chunk_list = self.retrieve_faiss_only(input, seen_ids=seen_ids)
+        chunk_list = self.retrieve_faiss_only(
+            input, agent=agent, seen_ids=seen_ids,
+            allowed_source_doc_ids=allowed_source_doc_ids,
+        )
         next_bundle_id = max([chunk['bundle_id'] for chunk in chunk_list], default=-1) + 1
-        chunk_list.extend(self.retrieve_non_faiss_text(input, seen_ids=seen_ids, start_bundle_id=next_bundle_id))
+        chunk_list.extend(self.retrieve_non_faiss_text(
+            input, seen_ids=seen_ids, start_bundle_id=next_bundle_id,
+            allowed_source_doc_ids=allowed_source_doc_ids,
+        ))
         next_bundle_id = max([chunk['bundle_id'] for chunk in chunk_list], default=-1) + 1
-        chunk_list.extend(self.retrieve_pageindex(input, seen_ids=seen_ids, start_bundle_id=next_bundle_id))
+        chunk_list.extend(self.retrieve_pageindex(
+            input, seen_ids=seen_ids, start_bundle_id=next_bundle_id,
+            allowed_source_doc_ids=allowed_source_doc_ids,
+        ))
 
         if self.table_k > 0 and self.table_faiss_retriever is not None:
             profiler.add_metric("retrieved_chunks", len(chunk_list))
-            
+
         return chunk_list
 
-    def retrieve_tables(self, input: str, k: Optional[int] = None) -> List[Dict]:
+    def retrieve_tables(
+        self, input: str, k: Optional[int] = None, agent: str = "general",
+        allowed_source_doc_ids: Optional[Set[str]] = None,
+    ) -> List[Dict]:
         """
         Retrieve top-K tables independently from text chunks.
         """
@@ -421,12 +490,19 @@ class EnsembleRetriever:
         if effective_k <= 0 or self.table_faiss_retriever is None:
             return []
 
+        allowed_ct = self._content_type_filter(agent)
+
         profiler.start("retrieve_tables")
-        table_ids_list, table_scores_list = self.table_faiss_retriever.invoke([input], effective_k)
+        search_k = len(self.table_metadata) if allowed_source_doc_ids else effective_k
+        table_ids_list, table_scores_list = self.table_faiss_retriever.invoke([input], search_k)
         table_ids, table_scores = table_ids_list[0], table_scores_list[0]
 
         table_chunks = []
-        for local_bundle_id, (idx, score) in enumerate(zip(table_ids, table_scores)):
+        for idx, score in zip(table_ids, table_scores):
+            if idx < 0 or idx >= len(self.table_metadata):
+                continue
+            if allowed_source_doc_ids and self._source_doc_id(self.table_metadata[idx]) not in allowed_source_doc_ids:
+                continue
             caption = self.table_captions[idx]
             # copy metadata so we don't mutate cached objects
             metadata = dict(self.table_metadata[idx]) if idx < len(self.table_metadata) else {}
@@ -451,9 +527,11 @@ class EnsembleRetriever:
                         "content_type": "table"
                     },
                     # bundle_id kept local to tables so downstream logic can keep text ranking untouched
-                    "bundle_id": local_bundle_id
+                    "bundle_id": len(table_chunks)
                 }
             )
+            if len(table_chunks) >= effective_k:
+                break
 
         profiler.end("retrieve_tables")
         profiler.add_metric("retrieved_tables", len(table_chunks))
@@ -462,36 +540,37 @@ class EnsembleRetriever:
     def compute_similarity(self, chunks: List[str], selected_indices: List[int], candidate_index: int) -> List[float]:
         """
         计算 candidate_index 对应 chunk 和 selected_indices 对应 chunks 的相似度（GPU 加速）。
-        
+
         参数:
             chunks (List[str]): 文档块的字符串列表。
             selected_indices (List[int]): 选定的索引列表。
             candidate_index (int): 候选索引。
-            
+
         返回:
             List[float]: candidate_index 对应 chunk 和 selected_indices 对应 chunks 的相似度列表。
         """
         # 将字符串转化为嵌入向量
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if self.embedding_lock is None:
-            embeddings = torch.stack([torch.tensor(self.embeddings.embed_query(chunk), device=device) for chunk in chunks])
+            vectors = self.embeddings.embed_documents(chunks)
         else:
             with self.embedding_lock:
-                embeddings = torch.stack([torch.tensor(self.embeddings.embed_query(chunk), device=device) for chunk in chunks])
-        
+                vectors = self.embeddings.embed_documents(chunks)
+        embeddings = torch.tensor(vectors, device=device)
+
         # 提取 candidate_index 对应的嵌入向量
         candidate_embedding = embeddings[candidate_index].unsqueeze(0)  # 添加 batch 维度
-        
+
         # 提取 selected_indices 对应的嵌入向量
         selected_embeddings = embeddings[selected_indices]
 
         # 归一化嵌入向量
         candidate_embedding = torch.nn.functional.normalize(candidate_embedding, dim=-1)
         selected_embeddings = torch.nn.functional.normalize(selected_embeddings, dim=-1)
-        
+
         # 计算余弦相似度 (使用点积)
         similarity = torch.matmul(selected_embeddings, candidate_embedding.T).squeeze(-1)
-        
+
         return similarity
 
     def compute_similarity_mtx(self, chunks: List[str]) -> torch.Tensor:
@@ -534,7 +613,7 @@ if __name__ == "__main__":
         persist_directory=os.path.join(config['persist_directory'], "ts_chroma"),
         relevance_score_fn="l2" # l2, ip, cosine
     )
-    
+
     bm25_dir = os.path.join(config['persist_directory'], "bm25_index", collection_name)
     retriever = EnsembleRetriever(bm25_dir, chroma, ts_chroma, 10, embeddings,
                                   faiss_k=0, bm25_k=0, faiss_ts_k=10)

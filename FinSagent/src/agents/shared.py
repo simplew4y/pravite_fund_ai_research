@@ -12,7 +12,7 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from utils.chunk_utils import dedupe_chunks, get_chunk_source_id
 from tools.finnhub import (
@@ -89,7 +89,7 @@ Rules:
 - Do not call tools for facts that should come from the internal document evidence when the tool is not clearly necessary.
 - If no tool is needed, return "tool_calls": [].
 - For company/tool inputs that accept a symbol, ticker, or cik, always look up the value from the known ticker symbol catalog when the user mention clearly refers to a catalog company, even if the query uses another language, abbreviation, or common name. Do not guess or invent symbol or CIK values.
-- When a catalog company matches, output the exact catalog symbol or cik in the tool arguments, e.g. use "ZK" and cik "0001954042" for Zeekr, "LOT" and cik "0001962746" for Lotus.
+- When a catalog company matches, output the exact catalog symbol or cik in the tool arguments, e.g. use "NVDA" and cik "0001045810" for NVIDIA.
 - If no catalog company clearly matches and the user did not provide a clear ticker symbol, do not plan tools that require a symbol/ticker.
 - If tool-relevant sub-questions are provided, infer the company subject separately for each sub-question.
 - If multiple companies are mentioned, issue separate tool calls for each company instead of passing a combined phrase like "Apple and Zeekr".
@@ -100,33 +100,33 @@ Rules:
 - Be conservative. If unsure, return no tool calls.
 
 Few-shot examples:
-User: 极氪最近的新闻？
+User: 英伟达最近的新闻？
 Agent: market_researcher
-Output: {{"reason": "Recent company news is directly available from company_news.", "tool_calls": [{{"name": "company_news", "arguments": {{"symbol": "ZK"}}}}]}}
+Output: {{"reason": "Recent company news is directly available from company_news.", "tool_calls": [{{"name": "company_news", "arguments": {{"symbol": "NVDA"}}}}]}}
 
 User: 公司最近有没有高管调整？
 Agent: company_researcher
 Output: {{"reason": "The company is underspecified, so no reliable company_news call can be planned.", "tool_calls": []}}
 
-User: ZK 当前股价、市值和近一个月走势
+User: NVDA 当前股价、市值和近一个月走势
 Agent: quant
-Output: {{"reason": "Current market snapshot and recent price history are directly available from tools.", "tool_calls": [{{"name": "stock_snapshot", "arguments": {{"symbol": "ZK"}}}}, {{"name": "price_history", "arguments": {{"symbol": "ZK", "period": "1mo"}}}}]}}
+Output: {{"reason": "Current market snapshot and recent price history are directly available from tools.", "tool_calls": [{{"name": "stock_snapshot", "arguments": {{"symbol": "NVDA"}}}}, {{"name": "price_history", "arguments": {{"symbol": "NVDA", "period": "1mo"}}}}]}}
 
-User: 极氪在 business combination/proxy 里披露了哪些控制权安排？
+User: 英伟达在 10-K 里披露了哪些治理风险？
 Agent: company_researcher
 Output: {{"reason": "This requires disclosure-level document evidence, not additional tools.", "tool_calls": []}}
 
-User: 极氪最近新闻，以及 business combination 之后的股权结构变化
+User: 英伟达最近新闻，以及 10-K 中披露的股权结构
 Agent: company_researcher
-Output: {{"reason": "Recent news benefits from company_news, while the ownership-structure part should be handled by retrieval.", "tool_calls": [{{"name": "company_news", "arguments": {{"symbol": "ZK"}}}}]}}
+Output: {{"reason": "Recent news benefits from company_news, while the ownership-structure part should be handled by retrieval.", "tool_calls": [{{"name": "company_news", "arguments": {{"symbol": "NVDA"}}}}]}}
 
-User: 极氪 2023 年净利润是多少？
+User: 英伟达 2024 年净利润是多少？
 Agent: quant
-Output: {{"reason": "Net income is directly available from SEC XBRL company concept.", "tool_calls": [{{"name": "sec_company_concept", "arguments": {{"cik": "0001954042", "concept": "NetIncomeLoss"}}}}]}}
+Output: {{"reason": "Net income is directly available from SEC XBRL company concept.", "tool_calls": [{{"name": "sec_company_concept", "arguments": {{"cik": "0001045810", "concept": "NetIncomeLoss"}}}}]}}
 
-User: 极氪的资产负债情况？
+User: 英伟达的资产负债情况？
 Agent: quant
-Output: {{"reason": "Assets and liabilities are directly available from SEC XBRL.", "tool_calls": [{{"name": "sec_company_concept", "arguments": {{"cik": "0001954042", "concept": "Assets"}}}}, {{"name": "sec_company_concept", "arguments": {{"cik": "0001954042", "concept": "Liabilities"}}}}]}}
+Output: {{"reason": "Assets and liabilities are directly available from SEC XBRL.", "tool_calls": [{{"name": "sec_company_concept", "arguments": {{"cik": "0001045810", "concept": "Assets"}}}}, {{"name": "sec_company_concept", "arguments": {{"cik": "0001045810", "concept": "Liabilities"}}}}]}}
 """
 
 ANSWER_EVIDENCE_GUARDRAILS = """
@@ -313,7 +313,14 @@ async def rewrite_for_agent(
         if summaries:
             title_summaries_text = "\n".join(f"- {s}" for s in summaries)
     prompt = prompt_template.format(question=question, history=history_snippet, title_summaries=title_summaries_text)
-    # prompt = f"{prompt.rstrip()}\n{preserve_entities_instruction}"
+    prompt = f"""{prompt.rstrip()}
+
+MANDATORY LOSSLESS REWRITE RULES:
+- Every rewritten sub-query must retain the original company/entity/ticker, time period, metric scope, business segment, exclusions, adjustments and qualifiers that apply to it.
+- Never simplify a qualified metric into its generic parent. For example, keep the full phrase “剔除阶段性影响因素后的实际毛利率”; do not rewrite it as only “毛利率”.
+- Do not introduce a company, document or metric absent from the original question.
+- Include the original question verbatim as the first sub-query.
+"""
     try:
         resp = await session_manager.call_llm_async(
             [{"role": "user", "content": prompt}],
@@ -338,12 +345,42 @@ async def rewrite_for_agent(
     return [question]
 
 
+def _cascade_to_evidence(
+    query: str, cascade_result: dict, agent: str,
+) -> tuple:
+    """Convert a CascadeRetriever result into the _(query, context, chunks, time_info, pre_rerank, ok) tuple."""
+    chunks = cascade_result.get("chunks", [])
+    route = cascade_result.get("type", "dci_unknown")
+    ctx_types = [c.get("metadata", {}).get("content_type", "") for c in chunks[:3]]
+    logger.info(
+        "[retrieve_route] route=%s query=%s agent=%s chunks=%d types=%s",
+        route, query, agent, len(chunks), ctx_types,
+    )
+    context_lines = []
+    for c in chunks:
+        src = c.get("metadata", {}).get("source_ref", "")
+        ct = c.get("metadata", {}).get("content_type", "")
+        label = f"[{ct}] {src}" if src else f"[{ct}]"
+        context_lines.append(f"{label}: {c.get('page_content', '')}")
+    context = "\n".join(context_lines)
+    return (query, context, chunks, [], chunks, True)
+
+
 async def retrieve_evidence(
     rag: Any, sub_queries: List[str], query_time: datetime, agent: str,
     run_id: str = "", log_dir: str = "",
+    collection_db: str = "",
 ) -> List[Dict[str, Any]]:
     """
     Run retrieval concurrently and produce Evidence-like dicts.
+
+    When *collection_db* points at a valid collection.sqlite3 the function
+    applies a **cascade** — DCI metric / keyword grep → RAG — so simple
+    numeric queries skip the expensive embedding round‑trip.
+
+    If *collection_db* is not passed, it is auto-derived from the rag
+    config's ``datasets.root_dir`` + ``datasets.active_dataset``:
+      ``{root_dir}/{active_dataset}/meta/collection.sqlite3``
     """
     loop = asyncio.get_event_loop()
     lg = get_run_logger(run_id, log_dir, agent) if run_id and log_dir else logger
@@ -351,11 +388,83 @@ async def retrieve_evidence(
     if not getattr(rag, "retrieve", None):
         raise ValueError("RAG instance missing in state; retrieval cannot proceed.")
 
-    lg.info("[retrieve_evidence] agent=%s", agent)
+    # ── Auto-derive collection_db from rag config ──────────────────
+    if not collection_db:
+        lg.info("[cascade] auto-derive: rag type=%s has_config=%s",
+                type(rag).__name__, hasattr(rag, "config"))
+        datasets_cfg = getattr(getattr(rag, "rag_manager", None), "_config", {}).get("datasets", {})
+        root_dir = datasets_cfg.get("root_dir", "")
+        active = datasets_cfg.get("active_dataset", "")
+        lg.info("[cascade] auto-derive: root_dir=%s active=%s", root_dir, active)
+        if root_dir and active:
+            candidate = os.path.join(root_dir, active, "meta", "collection.sqlite3")
+            lg.info("[cascade] auto-derive: candidate=%s exists=%s",
+                    candidate, os.path.exists(candidate))
+            if os.path.exists(candidate):
+                collection_db = candidate
+
+    lg.info("[retrieve_evidence] agent=%s db=%s", agent, collection_db or "(none)")
+
+    # Cascade helper — only created when a valid db is available
+    from utils.cascade_retriever import CascadeRetriever, should_skip_rag
+    _c: Optional["CascadeRetriever"] = None
+    rag_config = getattr(getattr(rag, "rag_manager", None), "_config", {}) or {}
+    if collection_db and os.path.exists(collection_db):
+        _c = CascadeRetriever(
+            collection_db,
+            company_aliases=rag_config.get("retrieval_company_aliases", {}),
+        )
 
     def _run(query: str):
+        nonlocal _c
+
+        # Read retrieval mode from config
+        _mode = getattr(getattr(rag, "rag_manager", None), "_config", {}).get(
+            "retrieval_mode", "dci_rag_cascade"
+        )
+
+        # ── DCI cascade ──────────────────────────────────────────────
+        if _c is not None:
+            allowed_doc_ids, scope_explicit = _c.resolve_query_doc_ids(query)
+            lg.info(
+                "[cascade] query scope explicit=%s source_doc_ids=%s",
+                scope_explicit, allowed_doc_ids,
+            )
+            # Step 1 — metric_facts exact match
+            r1 = _c.search_metric(query, allowed_doc_ids=allowed_doc_ids)
+            if r1 is not None:
+                if _mode == "dci_only":
+                    if should_skip_rag(r1, agent):
+                        lg.info("[cascade] dci_only mode — returning scoped metric hit for '%s'", query)
+                        return _cascade_to_evidence(query, r1, agent)
+                    lg.info("[cascade] dci_only mode — rejecting low-confidence metric hit for '%s'", query)
+                if should_skip_rag(r1, agent):
+                    lg.info("[cascade] DCI metric hit for '%s' — skipping RAG", query)
+                    return _cascade_to_evidence(query, r1, agent)
+
+            # Step 2 — chunks LIKE grep
+            r2 = _c.search_keyword(query, allowed_doc_ids=allowed_doc_ids)
+            if r2 is not None:
+                if _mode == "dci_only":
+                    if should_skip_rag(r2, agent):
+                        lg.info("[cascade] dci_only mode — returning scoped keyword hit for '%s'", query)
+                        return _cascade_to_evidence(query, r2, agent)
+                    lg.info("[cascade] dci_only mode — rejecting low-confidence keyword hit for '%s'", query)
+                if should_skip_rag(r2, agent):
+                    lg.info("[cascade] DCI keyword hit for '%s' — skipping RAG", query)
+                    return _cascade_to_evidence(query, r2, agent)
+
+        # ── dci_only: no more fallback ───────────────────────────────
+        if _mode == "dci_only":
+            lg.info("[cascade] dci_only mode — no DCI hits for '%s', returning empty", query)
+            return query, "", [], [], [], True
+
+        # ── Step 3 — full RAG (existing logic) ───────────────────────
         try:
             retrieve_kwargs = {}
+            allowed_doc_ids = None
+            if _c is not None:
+                allowed_doc_ids, _ = _c.resolve_query_doc_ids(query)
             # if agent == "general":
             #     retrieve_kwargs = {
             #         "rerank_topk": rag.top_k * 5,
@@ -364,6 +473,8 @@ async def retrieve_evidence(
             retrieval_result = rag.retrieve(
                 query,
                 query_time,
+                agent=agent,
+                allowed_source_doc_ids=allowed_doc_ids,
                 **retrieve_kwargs,
             )
 

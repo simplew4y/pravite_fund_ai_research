@@ -40,6 +40,17 @@ You should ensure that Subqueries are highly relevant to the issue and your answ
 If you're not sure about the real intent behind the user's question, you can diverge the subquery slightly.
 Your answer needs to fit the topic and highlight key points. Don't just list data. It's best to see through the phenomenon to see the essence.
 
+## Evidence Priority Rules (Cascade Retrieval)
+The system uses a 3-step cascade to find evidence:
+1. **DCI Metric** — SQL metric_facts exact match (highest precision).
+2. **DCI Keyword** — SQL LIKE grep over chunks.
+3. **RAG / Chroma** — Semantic search. Best for trends and context.
+
+For market research questions:
+- Trend/context questions should primarily use RAG chunks.
+- Use DCI Metric results only to cross-validate specific numbers.
+- When RAG finds relevant context, pair it with any available DCI numbers for precision.
+
 Question: {question}
 History:
 {history}
