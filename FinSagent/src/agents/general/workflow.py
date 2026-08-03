@@ -9,6 +9,7 @@ from agents.general.prompts import REWRITE_PROMPT, ANSWER_PROMPT
 
 class GeneralState(TypedDict, total=False):
     original_query: str
+    user_query_raw: str
     chat_history: List[Dict[str, str]]
     session_manager: Any
     rag: Any
@@ -52,6 +53,7 @@ def build_general_subgraph() -> Any:
             "general",
             run_id=state.get("run_id", ""),
             log_dir=state.get("log_dir", ""),
+            scope_query=state.get("user_query_raw") or state["original_query"],
         )
         return {"general_evidence": evidences}
 

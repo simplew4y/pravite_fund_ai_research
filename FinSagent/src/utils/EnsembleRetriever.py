@@ -12,6 +12,7 @@ import time
 from .bm25Retriever import BM25Retriever
 from .faissRetriever import FaissRetriever, EmptyFaissRetriever
 from .pageindexRetriever import PageIndexRetriever, normalize_doc_key
+from .retrieval_scope import metadata_source_doc_id
 
 class EnsembleRetriever:
     """Base class for retriever wrappers that handle document content retrieval"""
@@ -78,19 +79,22 @@ class EnsembleRetriever:
         else:
             self.faiss_retriever = FaissRetriever(emb_main, embeddings, embedding_lock=embedding_lock)
 
-        ts_docs = ts_chroma.get(include=["documents", "embeddings"])
+        ts_docs = ts_chroma.get(include=["documents", "embeddings", "metadatas"])
         ts_docs_list = ts_docs.get("documents") or []
+        ts_metadata = ts_docs.get("metadatas") or []
         ts_emb = ts_docs.get("embeddings")
         if ts_emb is None:
             ts_emb = []
         if len(ts_emb) == 0 or len(ts_docs_list) == 0:
             self.title_summary_faiss_retriever = EmptyFaissRetriever()
             self.title_summaries = []
+            self.title_summary_metadata = []
         else:
             self.title_summary_faiss_retriever = FaissRetriever(
                 ts_emb, embeddings, embedding_lock=embedding_lock
             )
             self.title_summaries = ts_docs_list
+            self.title_summary_metadata = ts_metadata
         self.pageindex_retriever = None
         self.pageindex_dockey2idxs: Dict[str, List[int]] = {}
         if self.pageindex_mode not in {"off", "none", "false", ""}:
@@ -149,12 +153,12 @@ class EnsembleRetriever:
         # New collections preserve the SQLite source document id explicitly.
         # Legacy collections only have doc_id=chunk_id and therefore cannot be
         # safely company-filtered.
-        return str(metadata.get("source_doc_id") or "")
+        return metadata_source_doc_id(metadata)
 
     def _idx_allowed(self, idx: int, allowed_source_doc_ids: Optional[Set[str]]) -> bool:
         if idx < 0 or idx >= len(self.chunk_metadata):
             return False
-        if not allowed_source_doc_ids:
+        if allowed_source_doc_ids is None:
             return True
         return self._source_doc_id(self.chunk_metadata[idx]) in allowed_source_doc_ids
 
@@ -314,6 +318,9 @@ class EnsembleRetriever:
                 continue
             seen_ids.update(ids)
             ids = self._expand_ids(ids, doc_metadata, effective_ids, seen_ids)
+            # Expansion follows prev/next pointers and must not escape the
+            # source-document boundary established for the seed chunk.
+            ids = [i for i in ids if self._idx_allowed(i, allowed_source_doc_ids)]
             chunk_list.extend(self._materialize_bundle(ids, score, "FAISS", bundle_cnt))
             bundle_cnt += 1
             emitted += 1
@@ -334,13 +341,32 @@ class EnsembleRetriever:
 
         if self.faiss_ts_k > 0:
             profiler.start("retrieve_faiss_ts")
-            title_summary_ids, title_summary_scores = self.title_summary_faiss_retriever.invoke([input], self.faiss_ts_k)
+            search_k = len(self.title_summaries) if allowed_source_doc_ids is not None else self.faiss_ts_k
+            title_summary_ids, title_summary_scores = self.title_summary_faiss_retriever.invoke([input], search_k)
             title_summary_ids, title_summary_scores = title_summary_ids[0], title_summary_scores[0]
+            emitted_summaries = 0
             for title_idx, score in zip(title_summary_ids, title_summary_scores):
+                if title_idx < 0 or title_idx >= len(self.title_summaries):
+                    continue
                 title_summary = self.title_summaries[title_idx]
+                title_metadata = (
+                    self.title_summary_metadata[title_idx]
+                    if title_idx < len(self.title_summary_metadata)
+                    else {}
+                )
+                title_source_doc_id = self._source_doc_id(title_metadata)
+                if (
+                    allowed_source_doc_ids is not None
+                    and title_source_doc_id
+                    and title_source_doc_id not in allowed_source_doc_ids
+                ):
+                    continue
                 chunk_idxs = [idx for idx, metadata in enumerate(self.chunk_metadata) if metadata.get('title_summary', '') == title_summary]
+                chunk_idxs = [idx for idx in chunk_idxs if self._idx_allowed(idx, allowed_source_doc_ids)]
+                if not chunk_idxs:
+                    continue
                 for idx in chunk_idxs:
-                    if idx in seen_ids or not self._idx_allowed(idx, allowed_source_doc_ids):
+                    if idx in seen_ids:
                         continue
                     seen_ids.add(idx)
                     ids, _ = self._resolve_bundle_ids(idx)
@@ -348,6 +374,9 @@ class EnsembleRetriever:
                     seen_ids.update(ids)
                     chunk_list.extend(self._materialize_bundle(ids, score, "Title Summary", bundle_cnt))
                     bundle_cnt += 1
+                emitted_summaries += 1
+                if emitted_summaries >= self.faiss_ts_k:
+                    break
             profiler.end("retrieve_faiss_ts")
 
         if self.bm25_k > 0 and self.pageindex_mode not in {"replace_bm25", "replace"}:
@@ -493,7 +522,7 @@ class EnsembleRetriever:
         allowed_ct = self._content_type_filter(agent)
 
         profiler.start("retrieve_tables")
-        search_k = len(self.table_metadata) if allowed_source_doc_ids else effective_k
+        search_k = len(self.table_metadata) if allowed_source_doc_ids is not None else effective_k
         table_ids_list, table_scores_list = self.table_faiss_retriever.invoke([input], search_k)
         table_ids, table_scores = table_ids_list[0], table_scores_list[0]
 
@@ -501,7 +530,10 @@ class EnsembleRetriever:
         for idx, score in zip(table_ids, table_scores):
             if idx < 0 or idx >= len(self.table_metadata):
                 continue
-            if allowed_source_doc_ids and self._source_doc_id(self.table_metadata[idx]) not in allowed_source_doc_ids:
+            if (
+                allowed_source_doc_ids is not None
+                and self._source_doc_id(self.table_metadata[idx]) not in allowed_source_doc_ids
+            ):
                 continue
             caption = self.table_captions[idx]
             # copy metadata so we don't mutate cached objects

@@ -15,6 +15,7 @@ from agents.market_researcher.prompts import REWRITE_PROMPT, ANSWER_PROMPT
 
 class MarketResearcherState(TypedDict, total=False):
     original_query: str
+    user_query_raw: str
     chat_history: List[Dict[str, str]]
     session_manager: Any
     rag: Any
@@ -90,6 +91,7 @@ def build_market_researcher_subgraph() -> Any:
                 "market_researcher",
                 run_id=state.get("run_id", ""),
                 log_dir=state.get("log_dir", ""),
+                scope_query=state.get("user_query_raw") or state["original_query"],
             )
             return {"market_evidence": evidences}
 
@@ -100,6 +102,7 @@ def build_market_researcher_subgraph() -> Any:
             "market_researcher",
             run_id=state.get("run_id", ""),
             log_dir=state.get("log_dir", ""),
+            scope_query=state.get("user_query_raw") or state["original_query"],
         )
         return {"market_evidence": evidences}
 

@@ -370,9 +370,14 @@ async def retrieve_evidence(
     rag: Any, sub_queries: List[str], query_time: datetime, agent: str,
     run_id: str = "", log_dir: str = "",
     collection_db: str = "",
+    scope_query: str = "",
 ) -> List[Dict[str, Any]]:
     """
     Run retrieval concurrently and produce Evidence-like dicts.
+
+    ``scope_query`` must be the original, entity-bearing user question.  Its
+    resolved document boundary is inherited by every rewritten sub-query so a
+    lossy rewrite cannot silently widen retrieval to another company.
 
     When *collection_db* points at a valid collection.sqlite3 the function
     applies a **cascade** — DCI metric / keyword grep → RAG — so simple
@@ -415,8 +420,39 @@ async def retrieve_evidence(
             company_aliases=rag_config.get("retrieval_company_aliases", {}),
         )
 
+    datasets_cfg = rag_config.get("datasets", {}) or {}
+    active_dataset = str(datasets_cfg.get("active_dataset") or "")
+    scope_required = bool(rag_config.get("retrieval_scope_required", False))
+    scope = None
+    if _c is not None:
+        effective_scope_query = scope_query or (sub_queries[0] if sub_queries else "")
+        scope = _c.resolve_scope(effective_scope_query, dataset_id=active_dataset)
+        lg.info(
+            "[retrieval_scope] dataset=%s explicit_company=%s source_query=%r source_doc_ids=%s",
+            scope.dataset_id,
+            scope.explicit_company,
+            scope.source_query,
+            list(scope.source_doc_ids),
+        )
+
+    if scope_required and scope is None:
+        lg.error(
+            "[retrieval_scope] required scope unavailable; refusing unscoped retrieval "
+            "dataset=%s db=%s",
+            active_dataset,
+            collection_db or "(none)",
+        )
+        return []
+
+    if scope_required and scope is not None and not scope.source_doc_ids:
+        lg.error(
+            "[retrieval_scope] dataset=%s resolved no documents; refusing retrieval",
+            active_dataset,
+        )
+        return []
+
     def _run(query: str):
-        nonlocal _c
+        nonlocal _c, scope
 
         # Read retrieval mode from config
         _mode = getattr(getattr(rag, "rag_manager", None), "_config", {}).get(
@@ -425,13 +461,14 @@ async def retrieve_evidence(
 
         # ── DCI cascade ──────────────────────────────────────────────
         if _c is not None:
-            allowed_doc_ids, scope_explicit = _c.resolve_query_doc_ids(query)
-            lg.info(
-                "[cascade] query scope explicit=%s source_doc_ids=%s",
-                scope_explicit, allowed_doc_ids,
-            )
+            allowed_doc_ids = list(scope.source_doc_ids) if scope is not None else []
+            scope_explicit = bool(scope and scope.explicit_company)
             # Step 1 — metric_facts exact match
-            r1 = _c.search_metric(query, allowed_doc_ids=allowed_doc_ids)
+            r1 = _c.search_metric(
+                query,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_explicit=scope_explicit,
+            )
             if r1 is not None:
                 if _mode == "dci_only":
                     if should_skip_rag(r1, agent):
@@ -443,7 +480,11 @@ async def retrieve_evidence(
                     return _cascade_to_evidence(query, r1, agent)
 
             # Step 2 — chunks LIKE grep
-            r2 = _c.search_keyword(query, allowed_doc_ids=allowed_doc_ids)
+            r2 = _c.search_keyword(
+                query,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_explicit=scope_explicit,
+            )
             if r2 is not None:
                 if _mode == "dci_only":
                     if should_skip_rag(r2, agent):
@@ -462,9 +503,7 @@ async def retrieve_evidence(
         # ── Step 3 — full RAG (existing logic) ───────────────────────
         try:
             retrieve_kwargs = {}
-            allowed_doc_ids = None
-            if _c is not None:
-                allowed_doc_ids, _ = _c.resolve_query_doc_ids(query)
+            allowed_doc_ids = list(scope.source_doc_ids) if scope is not None else None
             # if agent == "general":
             #     retrieve_kwargs = {
             #         "rerank_topk": rag.top_k * 5,
@@ -518,6 +557,11 @@ async def retrieve_evidence(
                 "time_info": time_info,
                 "pre_rerank_chunks": pre_rerank_chunks,
                 "pre_rerank_source_ids": [get_chunk_source_id(c) for c in pre_rerank_chunks],
+                "retrieval_scope": {
+                    "dataset_id": scope.dataset_id if scope is not None else "",
+                    "source_doc_ids": list(scope.source_doc_ids) if scope is not None else [],
+                    "explicit_company": bool(scope and scope.explicit_company),
+                },
             }
         )
         lg.info(

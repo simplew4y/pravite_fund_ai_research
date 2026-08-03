@@ -9,6 +9,8 @@ import unicodedata
 from contextlib import contextmanager
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
+from utils.retrieval_scope import RetrievalScope
+
 logger = logging.getLogger(__name__)
 
 NUMERIC_KEYWORDS = {
@@ -167,6 +169,16 @@ class CascadeRetriever:
                 matched.append(doc_id)
         return (list(dict.fromkeys(matched)), True) if matched else (list(dict.fromkeys(all_ids)), False)
 
+    def resolve_scope(self, query: str, dataset_id: str = "") -> RetrievalScope:
+        """Resolve the immutable scope inherited by every rewritten sub-query."""
+        doc_ids, explicit_company = self.resolve_query_doc_ids(query)
+        return RetrievalScope.from_doc_ids(
+            query,
+            doc_ids,
+            explicit_company=explicit_company,
+            dataset_id=dataset_id,
+        )
+
     @staticmethod
     def _scope_clause(doc_ids: Sequence[str], column: str = "doc_id") -> Tuple[str, List[str]]:
         clean = [str(x) for x in doc_ids if x]
@@ -174,12 +186,19 @@ class CascadeRetriever:
             return "1 = 0", []
         return f"{column} IN ({','.join('?' for _ in clean)})", clean
 
-    def search_metric(self, query: str, allowed_doc_ids: Optional[Sequence[str]] = None) -> Optional[Dict[str, Any]]:
+    def search_metric(
+        self,
+        query: str,
+        allowed_doc_ids: Optional[Sequence[str]] = None,
+        scope_explicit: Optional[bool] = None,
+    ) -> Optional[Dict[str, Any]]:
         terms = _metric_terms(query)
         if not terms:
             return None
         resolved_ids, explicit_company = self.resolve_query_doc_ids(query)
         doc_ids = list(allowed_doc_ids) if allowed_doc_ids is not None else resolved_ids
+        if scope_explicit is not None:
+            explicit_company = bool(scope_explicit)
         periods = _extract_periods(query)
         with self._connection() as conn:
             if conn is None:
@@ -221,12 +240,19 @@ class CascadeRetriever:
             "final_chunks": True, "pre_rerank_chunks": [], "time_info": [],
         }
 
-    def search_keyword(self, query: str, allowed_doc_ids: Optional[Sequence[str]] = None) -> Optional[Dict[str, Any]]:
+    def search_keyword(
+        self,
+        query: str,
+        allowed_doc_ids: Optional[Sequence[str]] = None,
+        scope_explicit: Optional[bool] = None,
+    ) -> Optional[Dict[str, Any]]:
         candidates = _keyword_terms(query)
         if not candidates:
             return None
         resolved_ids, explicit_company = self.resolve_query_doc_ids(query)
         doc_ids = list(allowed_doc_ids) if allowed_doc_ids is not None else resolved_ids
+        if scope_explicit is not None:
+            explicit_company = bool(scope_explicit)
         with self._connection() as conn:
             if conn is None:
                 return None

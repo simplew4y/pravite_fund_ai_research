@@ -22,6 +22,7 @@ from utils.chunk_utils import dedupe_chunks, sanitize_chunks_for_output
 from utils.chunk_risk_calibration import ChunkRiskCalibrator
 from utils.evidence_rescue_scorer import EvidenceRescueScorer
 from utils.profiler import profiler
+from utils.retrieval_scope import filter_chunks_to_scope
 
 logger = logging.getLogger(__name__)
 
@@ -197,10 +198,17 @@ class RAG:
         retriever = self.rag_manager._retrievers[0]
         date_cutoff = self._effective_date_cutoff(query)
         effective_rerank_topk = self.top_k if rerank_topk is None else rerank_topk
-        allowed_ids = set(allowed_source_doc_ids or []) or None
+        # ``None`` is the only legacy/unscoped sentinel.  An explicitly empty
+        # list is deny-all and must not silently become a global search.
+        allowed_ids = (
+            None
+            if allowed_source_doc_ids is None
+            else {str(doc_id) for doc_id in allowed_source_doc_ids if doc_id}
+        )
         chunks = retriever.invoke(
             query, agent=agent, allowed_source_doc_ids=allowed_ids,
         )
+        chunks = filter_chunks_to_scope(chunks, allowed_ids)
         chunks = self._filter_chunks_by_cutoff(chunks, date_cutoff)
         chunks = self._backfill_text_chunks_for_cutoff(
             retriever,
@@ -211,6 +219,7 @@ class RAG:
             agent,
             allowed_ids,
         )
+        chunks = filter_chunks_to_scope(chunks, allowed_ids)
         effective_table_topk = retriever.table_k if table_topk is None else table_topk
         if table_topk is None and self._is_periodic_finance_query(query):
             finance_table_topk = self._config_int_or_none("finance_table_topk")
@@ -220,6 +229,7 @@ class RAG:
             query, k=effective_table_topk, agent=agent,
             allowed_source_doc_ids=allowed_ids,
         )
+        table_chunks = filter_chunks_to_scope(table_chunks, allowed_ids)
         table_chunks = self._filter_chunks_by_cutoff(table_chunks, date_cutoff)
         table_chunks = self._backfill_table_chunks_for_cutoff(
             retriever,
@@ -230,10 +240,14 @@ class RAG:
             agent,
             allowed_ids,
         )
+        table_chunks = filter_chunks_to_scope(table_chunks, allowed_ids)
         table_chunks = self._prepare_table_chunks(query, table_chunks)
         if effective_table_topk is not None and effective_table_topk > 0:
             table_chunks = table_chunks[:effective_table_topk]
-        pre_rerank_chunks = dedupe_chunks(chunks + table_chunks)
+        pre_rerank_chunks = filter_chunks_to_scope(
+            dedupe_chunks(chunks + table_chunks),
+            allowed_ids,
+        )
         logger.debug(
             f"Retrieved {len(chunks)} text chunks and {len(table_chunks)} tables from retriever; "
             f"{len(pre_rerank_chunks)} unique candidates before rerank"
@@ -256,6 +270,8 @@ class RAG:
             selected_chunks,
             query,
         )
+        selected_chunks = filter_chunks_to_scope(selected_chunks, allowed_ids)
+        table_chunks = filter_chunks_to_scope(table_chunks, allowed_ids)
         # 表格不参与排序，直接追加供 LLM 参考
         final_chunks = selected_chunks + table_chunks
         sanitized_final_chunks = sanitize_chunks_for_output(final_chunks)

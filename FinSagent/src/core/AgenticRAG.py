@@ -359,6 +359,7 @@ async def agents_parallel_node(state: MASState) -> Dict[str, Any]:
         graph = SUBGRAPH_MAP[agent]
         sub_state = {
             "original_query": state.get("original_query"),
+            "user_query_raw": state.get("user_query_raw", state.get("original_query")),
             "chat_history": state.get("chat_history", []),
             "session_manager": state.get("session_manager"),
             "rag": state.get("rag"),

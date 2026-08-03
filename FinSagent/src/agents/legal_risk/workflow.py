@@ -9,6 +9,7 @@ from agents.legal_risk.prompts import REWRITE_PROMPT, ANSWER_PROMPT
 
 class LegalRiskState(TypedDict, total=False):
     original_query: str
+    user_query_raw: str
     chat_history: List[Dict[str, str]]
     session_manager: Any
     rag: Any
@@ -48,6 +49,7 @@ def build_legal_risk_subgraph() -> Any:
             "legal_risk",
             run_id=state.get("run_id", ""),
             log_dir=state.get("log_dir", ""),
+            scope_query=state.get("user_query_raw") or state["original_query"],
         )
         return {"legal_risk_evidence": evidences}
 

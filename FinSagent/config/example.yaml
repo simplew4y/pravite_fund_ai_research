@@ -27,6 +27,9 @@ chunk_risk_lambda: 0.2
 
 gt_path: "/root/autodl-tmp/cjj/FinSagent_0212/test/gt/lotus_109_gt.json"
 collection_name: "lotus"
+# When enabled, a missing/invalid active-dataset collection DB fails closed
+# instead of silently searching the global vector index.
+retrieval_scope_required: true
 retrieve_top_k: 10
 rerank_top_k: 5
 workers: 1
