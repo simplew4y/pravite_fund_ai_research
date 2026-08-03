@@ -1699,6 +1699,17 @@ function MainAgentSurface({
     retry: false,
     enabled: privateFundDatasetId != null,
   });
+  const selectedAgentSkills = useMemo(
+    () => agents?.find((agent) => agent.id === selectedAgentId)?.skills ?? [],
+    [agents, selectedAgentId],
+  );
+  // A session's AgentObject already contains its bundled skills. Keep those
+  // visible while the runner-owned discovery snapshot is still cold, then
+  // supplement them with tenant-installed marketplace skills.
+  const additionalSkills = useMemo(
+    () => mergeSkillSummaries(selectedAgentSkills, installedSkills),
+    [installedSkills, selectedAgentSkills],
+  );
   // Mirrors ChatPage's `sandboxLaunching`: while the managed-sandbox
   // launch runs, the composer must stay sendable — the server parks
   // the message on the launch rendezvous — even though liveness reads
@@ -2073,7 +2084,7 @@ function MainAgentSurface({
         subAgentLabel={subAgentLabel}
         privateFundProjectLabel={privateFundProjectLabel}
         privateFundDatasetId={privateFundDatasetId}
-        additionalSkills={installedSkills}
+        additionalSkills={additionalSkills}
       />
 
       {/* Chat/Terminal toggle for terminal-first sessions, reconnect-or-
@@ -3522,11 +3533,24 @@ interface ComposerProps {
   /** Optional direct injection for isolated composer tests and embedded surfaces. */
   privateFundPromptSuggestions?: PrivateFundPromptSuggestion[];
   /**
-   * User-managed skills known to the account API. These supplement the
-   * runner snapshot, whose asynchronous discovery can still be cold when an
-   * existing conversation first binds.
+   * Skills known outside the runner snapshot: the bound Agent's bundled
+   * skills plus user-managed skills from the account API. These keep the menu
+   * populated while asynchronous runner discovery is still cold.
    */
   additionalSkills?: ReadonlyArray<{ name: string; description: string }>;
+}
+
+/** Merge skill sources in priority order while keeping menu entries stable. */
+export function mergeSkillSummaries(
+  ...groups: ReadonlyArray<ReadonlyArray<{ name: string; description: string }>>
+): Array<{ name: string; description: string }> {
+  const merged = new Map<string, { name: string; description: string }>();
+  for (const group of groups) {
+    for (const skill of group) {
+      if (!merged.has(skill.name)) merged.set(skill.name, skill);
+    }
+  }
+  return [...merged.values()];
 }
 
 /**
@@ -4369,14 +4393,10 @@ export function Composer({
   // on bind and populate the suggestions menu as ``/skill-name``
   // entries alongside the built-ins.
   const runnerSkills = useChatStore((s) => s.skills);
-  const skills = useMemo(() => {
-    const merged = new Map<string, { name: string; description: string }>();
-    for (const skill of runnerSkills) merged.set(skill.name, skill);
-    for (const skill of additionalSkills) {
-      if (!merged.has(skill.name)) merged.set(skill.name, skill);
-    }
-    return [...merged.values()];
-  }, [additionalSkills, runnerSkills]);
+  const skills = useMemo(
+    () => mergeSkillSummaries(runnerSkills, additionalSkills),
+    [additionalSkills, runnerSkills],
+  );
   // ``/model`` writes ``conv.model_override`` (the same column the REPL's
   // ``/model`` and native pickers write). In-process harnesses re-resolve
   // it each turn; native wrappers expose it only when they have a picker
