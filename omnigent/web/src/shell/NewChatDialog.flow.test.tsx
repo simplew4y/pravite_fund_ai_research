@@ -43,8 +43,13 @@ vi.mock("@/lib/routing", () => ({
 
 // The screen hands the first message to ChatPage through the chatStore
 // (keyed by conversation id), not router state — assert on that call.
-vi.mock("@/store/chatStore", () => ({
+vi.mock("@/store/chatStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/store/chatStore")>()),
   setPendingInitialPrompt: (...args: unknown[]) => setPendingInitialPromptMock(...args),
+}));
+
+vi.mock("@/lib/skillsMarketplaceApi", () => ({
+  getInstalledSkills: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/lib/identity", () => ({ authenticatedFetch: vi.fn() }));
@@ -418,14 +423,13 @@ describe("NewChatLandingScreen create flow", () => {
     );
   });
 
-  it("keeps slash text plain for native terminal agents", async () => {
+  it("hands native terminal skills off as structured invocations", async () => {
     vi.mocked(authenticatedFetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ id: "conv_new" }),
     } as unknown as Response);
-    // A native agent with a (hypothetical) bundled skill of the same name:
-    // the vendor CLI interprets slash commands itself, so the handoff must
-    // not intercept them even when the name would match.
+    // Native sessions also use the runner-owned resolver so tenant skills
+    // under `.agents/skills` do not depend on vendor CLI discovery.
     setAgents([
       agent({
         id: "ag_claude",
@@ -444,7 +448,7 @@ describe("NewChatLandingScreen create flow", () => {
     await waitFor(() =>
       expect(setPendingInitialPromptMock).toHaveBeenCalledWith("conv_new", {
         text: "/review-pr 123",
-        skill: null,
+        skill: { name: "review-pr", args: "123" },
         files: [],
       }),
     );

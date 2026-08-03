@@ -3832,6 +3832,39 @@ describe("chatStore — handleSessionEvent (session.* events)", () => {
       ]);
     });
 
+    it("ignores native transcript echoes of hidden skill instructions", () => {
+      const existingBlocks: AnyBlock[] = [];
+      useChatStore.setState({
+        blocks: existingBlocks,
+        pendingUserMessages: [],
+      });
+
+      handleSessionEvent({
+        type: "session_input_consumed",
+        itemId: "msg_native_skill_echo",
+        itemType: "message",
+        data: {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: [
+                "<skill>",
+                "<name>datapack-builder</name>",
+                "<path>/workspace/.agents/skills/datapack-builder/SKILL.md</path>",
+                "internal instructions",
+                "</skill>",
+              ].join("\n"),
+            },
+          ],
+        },
+      });
+
+      const after = useChatStore.getState();
+      expect(after.blocks).toBe(existingBlocks);
+      expect(after.pendingUserMessages).toEqual([]);
+    });
+
     it("is a no-op for non-message item types (e.g. function_call_output from other client)", () => {
       const existingBlocks: AnyBlock[] = [];
       useChatStore.setState({ blocks: existingBlocks, pendingUserMessages: [] });
