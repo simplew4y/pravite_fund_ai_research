@@ -22,6 +22,7 @@ from utils.chunk_utils import dedupe_chunks, sanitize_chunks_for_output
 from utils.chunk_risk_calibration import ChunkRiskCalibrator
 from utils.evidence_rescue_scorer import EvidenceRescueScorer
 from utils.profiler import profiler
+from utils.prompt_budget import truncate_text
 from utils.retrieval_scope import filter_chunks_to_scope
 
 logger = logging.getLogger(__name__)
@@ -1522,6 +1523,15 @@ class RAG:
         if table_formatted:
             body = body + "\n===== Tables =====\n" + separator.join(table_formatted)
         notes = "\n".join(note for note in (retrieval_notes, table_facts_note) if note)
-        if notes:
-            return notes + "\n" + separator + body
-        return body
+        context = notes + "\n" + separator + body if notes else body
+        configured_max_chars = self._config_int_or_none("rag_context_max_chars")
+        max_chars = max(4000, configured_max_chars if configured_max_chars is not None else 24000)
+        truncated = truncate_text(context, max_chars)
+        if len(truncated) < len(context):
+            logger.warning(
+                "RAG context truncated from %d to %d chars (rag_context_max_chars=%d)",
+                len(context),
+                len(truncated),
+                max_chars,
+            )
+        return truncated

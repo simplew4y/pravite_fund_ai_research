@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from utils.chunk_utils import dedupe_chunks, get_chunk_source_id
+from utils.prompt_budget import join_with_budget, truncate_text
 from tools.finnhub import (
     basic_financials,
     company_news,
@@ -758,9 +759,6 @@ async def draft_answer(
         q = ev.get("query", "unknown")
         evidence_by_query.setdefault(q, []).append(ev.get("context", ""))
 
-    tools_text = json.dumps(tool_results, ensure_ascii=False) if tool_results else "None"
-    history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history[-6:]])
-
     sub_answers = []
 
     cfg = getattr(session_manager, "config", None) or getattr(session_manager, "_config", None) or {}
@@ -789,11 +787,19 @@ async def draft_answer(
     draft_llm_backoff = max(0.1, _cfg_float("draft_llm_retry_backoff_seconds", 2.0))
     draft_llm_max_backoff = max(draft_llm_backoff, _cfg_float("draft_llm_retry_max_backoff_seconds", 30.0))
     draft_llm_max_concurrency = max(1, _cfg_int("draft_llm_max_concurrency", 1))
+    draft_evidence_max_chars = max(4000, _cfg_int("draft_evidence_max_chars", 24000))
+    draft_history_max_chars = max(1000, _cfg_int("draft_history_max_chars", 6000))
+    draft_tools_max_chars = max(1000, _cfg_int("draft_tools_max_chars", 6000))
+    draft_summary_max_chars = max(4000, _cfg_int("draft_summary_max_chars", 16000))
     data_latest_time = str(cfg.get("data_latest_time") or cfg.get("data_cutoff") or "unknown")
     draft_sem = asyncio.Semaphore(draft_llm_max_concurrency)
+    raw_tools_text = json.dumps(tool_results, ensure_ascii=False) if tool_results else "None"
+    tools_text = truncate_text(raw_tools_text, draft_tools_max_chars)
+    raw_history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history[-6:]])
+    history_text = truncate_text(raw_history_text, draft_history_max_chars)
 
     async def gen_for_sub(sub_q: str, ctx_list: List[str]):
-        evidence_text = "\n\n".join(ctx_list) if ctx_list else "None"
+        evidence_text = join_with_budget(ctx_list, draft_evidence_max_chars) or "None"
         # Inject original/root question to encourage cross-use of facts relevant to the main ask
         question_for_prompt = f"{sub_q}\n(Original question for broader context: {question})"
         prompt_filled = answer_prompt.format(
@@ -807,7 +813,14 @@ async def draft_answer(
             f"{ANSWER_EVIDENCE_GUARDRAILS.format(data_latest_time=data_latest_time)}"
         )
         messages = [{"role": "user", "content": prompt_filled}]
-        lg.info(f"[draft_prompt] sub_q='{sub_q}' prompt_length={len(prompt_filled)}")
+        lg.info(
+            "[draft_prompt] sub_q=%r prompt_length=%d evidence_chars=%d history_chars=%d tools_chars=%d",
+            sub_q,
+            len(prompt_filled),
+            len(evidence_text),
+            len(history_text),
+            len(tools_text),
+        )
         # lg.info(f"[draft_prompt] sub_q='{sub_q}' prompt_length={len(prompt_filled)}\n{prompt_filled}")
         non_retryable = ("Authentication", "Permission", "BadRequest", "NotFound", "Unprocessable")
         for attempt in range(1, draft_llm_max_retries + 1):
@@ -851,6 +864,8 @@ async def draft_answer(
 
     # Summarize sub-answers into a concise natural-language draft without heavy omission
     user_language = detect_language(question)
+    sub_answers_text = "\n\n".join([f"Sub-question: {sa['sub_q']}\nAnswer: {sa['answer']}" for sa in sub_answers])
+    sub_answers_text = truncate_text(sub_answers_text, draft_summary_max_chars)
     summary_prompt = (
         "You will be given multiple sub-answers derived from the same user question.\n"
         "Write a fluent, natural-language response that combines them without losing important details.\n"
@@ -862,10 +877,9 @@ async def draft_answer(
         "Do not use bullet lists or markdown unless the sub-answers require a compact list; keep it concise but include key specifics.\n"
         f"IMPORTANT: Respond in {user_language}.\n\n"
         f"User question: {question}\n\n"
-        f"Sub-answers:\n{sub_answers}\n\n"
+        f"Sub-answers:\n{sub_answers_text}\n\n"
         "Combined answer:"
     )
-    sub_answers_text = "\n\n".join([f"Sub-question: {sa['sub_q']}\nAnswer: {sa['answer']}" for sa in sub_answers])
     try:
         resp = await session_manager.call_llm_async([{"role": "user", "content": summary_prompt}], temperature=0)
         combined = resp.choices[0].message.content

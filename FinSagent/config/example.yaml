@@ -90,6 +90,14 @@ skill_repair_period_conflict_enabled: true
 answer_self_check_enabled: false
 answer_self_check_max_chars: 12000
 
+# Prompt budgets for the 32K-context generation model. Retrieval output is
+# relevance-ordered, so truncation preserves the highest-priority prefix.
+rag_context_max_chars: 24000
+draft_evidence_max_chars: 24000
+draft_history_max_chars: 6000
+draft_tools_max_chars: 6000
+draft_summary_max_chars: 16000
+
 # Latest data cutoff for your databases (string, e.g., "2025-02-20" or "2025")
 data_latest_time: "2025-02-20"
 
