@@ -34,6 +34,13 @@ export interface PolicySummary {
   description?: string | null;
 }
 
+export interface AgentSkillSummary {
+  /** Slash-command name without the leading slash. */
+  name: string;
+  /** One-line help text shown in the slash-command menu. */
+  description: string;
+}
+
 export interface Agent {
   id: string;
   /** Human-readable name from the YAML's `name:` field, e.g. "hello_world".
@@ -50,6 +57,8 @@ export interface Agent {
   mcp_servers_editable?: boolean;
   /** Guardrails policies declared on the agent. Empty when none configured. */
   policies?: PolicySummary[];
+  /** Skills bundled with the agent spec. Host-discovered skills remain runner-owned. */
+  skills?: AgentSkillSummary[];
   /** Terminal names declared in the spec's `terminals:` block, in
    * declaration order (e.g. ["shell"]). Gates the "new terminal"
    * affordance: empty means the agent has no terminal access and the
@@ -121,6 +130,7 @@ interface AgentObjectWire {
   mcp_servers?: McpServerSummary[];
   mcp_servers_editable?: boolean;
   policies?: PolicySummary[];
+  skills?: AgentSkillSummary[];
   terminals?: string[];
 }
 
@@ -142,6 +152,7 @@ async function fetchSessionAgent(sessionId: string): Promise<Agent> {
     mcp_servers: json.mcp_servers,
     mcp_servers_editable: json.mcp_servers_editable,
     policies: json.policies,
+    skills: json.skills,
     terminals: json.terminals,
   };
 }
