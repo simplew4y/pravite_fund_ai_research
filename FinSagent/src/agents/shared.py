@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from utils.chunk_utils import dedupe_chunks, get_chunk_source_id
 from utils.prompt_budget import join_with_budget, truncate_text
+from skills_runtime.integration import apply_retrieval_skills
 from tools.finnhub import (
     basic_financials,
     company_news,
@@ -283,6 +284,7 @@ async def rewrite_for_agent(
     rag: Any = None,
     title_summary_top_k: int = 30,
     enable_query_decompose: bool | None = None,
+    skill_context: Any = None,
 ) -> List[str]:
     """
     Agent-specific rewrite/decompose.
@@ -314,6 +316,12 @@ async def rewrite_for_agent(
         if summaries:
             title_summaries_text = "\n".join(f"- {s}" for s in summaries)
     prompt = prompt_template.format(question=question, history=history_snippet, title_summaries=title_summaries_text)
+    if skill_context is not None and getattr(skill_context, "prompt_instructions", None):
+        skill_text = "\n\n".join(
+            f"[{item.get('skill_id', '')}]\n{item.get('instruction', '')}"
+            for item in skill_context.prompt_instructions
+        )
+        prompt = f"{prompt.rstrip()}\n\nACTIVE SKILL INSTRUCTIONS:\n{skill_text}"
     prompt = f"""{prompt.rstrip()}
 
 MANDATORY LOSSLESS REWRITE RULES:

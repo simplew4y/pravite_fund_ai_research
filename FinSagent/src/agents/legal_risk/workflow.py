@@ -3,7 +3,7 @@ from typing import Any, Dict, List, TypedDict
 
 from langgraph.graph import StateGraph
 
-from agents.shared import draft_answer, retrieve_evidence, rewrite_for_agent
+from agents.shared import apply_retrieval_skills, draft_answer, retrieve_evidence, rewrite_for_agent
 from agents.legal_risk.prompts import REWRITE_PROMPT, ANSWER_PROMPT
 
 
@@ -18,6 +18,8 @@ class LegalRiskState(TypedDict, total=False):
     debug_stop_after_retrieval: bool
     enable_query_decompose: bool
     agent_outputs: Dict[str, Any]
+    skill_runtime: Any
+    legal_risk_skill_traces: List[Dict[str, Any]]
     legal_risk_sub_queries: List[str]
     legal_risk_evidence: List[Any]
     legal_risk_draft_answer: str
@@ -36,6 +38,7 @@ def build_legal_risk_subgraph() -> Any:
             log_dir=state.get("log_dir", ""),
             rag=state.get("rag"),
             enable_query_decompose=state.get("enable_query_decompose"),
+            skill_context=state.get("skill_context"),
         )
         return {"legal_risk_sub_queries": sub_queries}
 
@@ -52,7 +55,14 @@ def build_legal_risk_subgraph() -> Any:
             scope_query=state.get("user_query_raw") or state["original_query"],
             scope_history=state.get("chat_history", []),
         )
-        return {"legal_risk_evidence": evidences}
+        evidences, traces = await apply_retrieval_skills(
+            runtime=state.get("skill_runtime"),
+            question=state["original_query"],
+            agent="legal_risk",
+            evidences=evidences,
+            request_id=state.get("run_id", ""),
+        )
+        return {"legal_risk_evidence": evidences, "legal_risk_skill_traces": traces}
 
     async def draft_node(state: LegalRiskState) -> Dict:
         evidences = state.get("legal_risk_evidence", [])
@@ -81,6 +91,7 @@ def build_legal_risk_subgraph() -> Any:
             "draft_answer": state.get("legal_risk_draft_answer", ""),
             "assumptions": [],
             "risks": [],
+            "skill_traces": state.get("legal_risk_skill_traces", []),
         }
         return {"agent_outputs": outputs}
 

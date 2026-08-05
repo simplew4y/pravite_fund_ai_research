@@ -8,7 +8,7 @@ from pathlib import Path
 from skillops.registry import load_skill_registry
 
 
-def render_skill_registry_report(skill_card_dir: str | Path = "configs/skill_cards") -> str:
+def render_skill_registry_report(skill_card_dir: str | Path = "skills") -> str:
     registry = load_skill_registry(skill_card_dir)
     lines: list[str] = [
         "# SkillOps Registry Report",
@@ -69,7 +69,7 @@ def _compact(value: str, max_chars: int) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--skill_card_dir", default="configs/skill_cards")
+    parser.add_argument("--skill_card_dir", default="skills")
     parser.add_argument("--out", default="reports/skill_registry_report.md")
     args = parser.parse_args()
     output = Path(args.out)
@@ -80,4 +80,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -4,6 +4,7 @@ from typing import Any, Dict, List, TypedDict
 from langgraph.graph import StateGraph
 
 from agents.shared import (
+    apply_retrieval_skills,
     draft_answer,
     execute_planned_tool_calls,
     plan_tool_calls,
@@ -30,6 +31,8 @@ class CompanyResearcherState(TypedDict, total=False):
     company_evidence: List[Any]
     company_tool_results: Dict[str, Any]
     company_draft_answer: str
+    skill_runtime: Any
+    company_skill_traces: List[Dict[str, Any]]
 
 
 def build_company_researcher_subgraph() -> Any:
@@ -76,6 +79,7 @@ def build_company_researcher_subgraph() -> Any:
             log_dir=state.get("log_dir", ""),
             rag=state.get("rag"),
             enable_query_decompose=state.get("enable_query_decompose"),
+            skill_context=state.get("skill_context"),
         )
         return {"company_sub_queries": sub_queries}
 
@@ -94,7 +98,11 @@ def build_company_researcher_subgraph() -> Any:
                 scope_query=state.get("user_query_raw") or state["original_query"],
                 scope_history=state.get("chat_history", []),
             )
-            return {"company_evidence": evidences}
+            evidences, traces = await apply_retrieval_skills(
+                runtime=state.get("skill_runtime"), question=state["original_query"],
+                agent="company_researcher", evidences=evidences, request_id=state.get("run_id", ""),
+            )
+            return {"company_evidence": evidences, "company_skill_traces": traces}
 
         evidences = await retrieve_evidence(
             rag,
@@ -106,7 +114,11 @@ def build_company_researcher_subgraph() -> Any:
             scope_query=state.get("user_query_raw") or state["original_query"],
             scope_history=state.get("chat_history", []),
         )
-        return {"company_evidence": evidences}
+        evidences, traces = await apply_retrieval_skills(
+            runtime=state.get("skill_runtime"), question=state["original_query"],
+            agent="company_researcher", evidences=evidences, request_id=state.get("run_id", ""),
+        )
+        return {"company_evidence": evidences, "company_skill_traces": traces}
 
     async def draft_node(state: CompanyResearcherState) -> Dict:
         evidences = state.get("company_evidence", [])
@@ -137,6 +149,7 @@ def build_company_researcher_subgraph() -> Any:
             "draft_answer": state.get("company_draft_answer", ""),
             "assumptions": [],
             "risks": [],
+            "skill_traces": state.get("company_skill_traces", []),
         }
         return {"agent_outputs": outputs}
 

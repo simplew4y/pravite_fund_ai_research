@@ -26,6 +26,7 @@ from utils.table_answer_repair import load_reconstructed_table_chunks, repair_ta
 from utils.profile_fact_repair import repair_profile_answer
 from utils.answer_coverage_repair import repair_answer_coverage
 from utils.period_source_conflict_repair import repair_period_source_conflict
+from skills_runtime.models import SkillContext
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class AgentOutput(TypedDict, total=False):
     draft_answer: str
     assumptions: List[str]
     risks: List[str]
+    skill_traces: List[Dict[str, Any]]
 
 
 class RoutingDecision(TypedDict, total=False):
@@ -78,6 +80,9 @@ class MASState(TypedDict, total=False):
     # Dependencies
     rag: Any
     session_manager: Any
+    skill_runtime: Any
+    skill_context: Any
+    skill_traces: List[Dict[str, Any]]
 
     # Routing
     selected_agents: List[AgentName]
@@ -363,6 +368,8 @@ async def agents_parallel_node(state: MASState) -> Dict[str, Any]:
             "chat_history": state.get("chat_history", []),
             "session_manager": state.get("session_manager"),
             "rag": state.get("rag"),
+            "skill_runtime": state.get("skill_runtime"),
+            "skill_context": state.get("skill_context"),
             "run_id": state.get("run_id", ""),
             "log_dir": state.get("log_dir", ""),
             "debug_stop_after_retrieval": state.get("debug_stop_after_retrieval", False),
@@ -406,6 +413,26 @@ async def agents_parallel_node(state: MASState) -> Dict[str, Any]:
                     emit_cb("agent_failed", {"agent": agent, "error": str(e)})
 
     return {"agent_outputs": merged_outputs, "pending_agents": []}
+
+
+async def skills_prepare_node(state: MASState) -> Dict[str, Any]:
+    """Run early skill phases without changing legacy answers or retrieval scope."""
+    runtime = state.get("skill_runtime")
+    if runtime is None or not getattr(runtime, "enabled", False):
+        return {"skill_traces": state.get("skill_traces", [])}
+    cfg = state.get("config") or {}
+    datasets = cfg.get("datasets") if isinstance(cfg.get("datasets"), dict) else {}
+    context = SkillContext(
+        request_id=state.get("run_id", ""),
+        question=state.get("original_query", ""),
+        original_question=state.get("user_query_raw", state.get("original_query", "")),
+        dataset_id=str(datasets.get("active_dataset") or ""),
+    )
+    traces = list(state.get("skill_traces", []))
+    for phase in ("query_parse", "pre_retrieval"):
+        execution = await runtime.execute_phase(phase, context)
+        traces.extend(result.to_dict() for result in execution.results)
+    return {"skill_context": context, "skill_traces": traces}
 
 
 # ===== Skill Repair Layer =====
@@ -531,11 +558,42 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
     merged_evidence: List[Evidence] = []
     merged_pre_rerank_candidates = collect_pre_rerank_chunks_from_agent_outputs(outputs)
     synthesis_context_parts: List[str] = []
+    skill_traces = list(state.get("skill_traces", []))
     for agent, out in outputs.items():
         merged_evidence.extend(out.get("evidence", []))
+        skill_traces.extend(out.get("skill_traces", []))
         synthesis_context_parts.append(
             f"[{agent}] Draft:\n{out.get('draft_answer','')}\nEvidence count: {len(out.get('evidence', []))}"
         )
+
+    # Build the final-answer skill context from the union of agent evidence.
+    # Earlier phases already ran inside each agent before drafting.
+    runtime = state.get("skill_runtime")
+    skill_context = state.get("skill_context")
+    all_retrieved: List[Dict[str, Any]] = []
+    allowed_doc_ids: set[str] = set()
+    for evidence in merged_evidence:
+        all_retrieved.extend(evidence.get("chunks", []))
+        scope_metadata = evidence.get("retrieval_scope") or {}
+        allowed_doc_ids.update(str(doc_id) for doc_id in scope_metadata.get("source_doc_ids", []) if doc_id)
+    if runtime is not None and getattr(runtime, "enabled", False):
+        cfg = state.get("config") or {}
+        datasets = cfg.get("datasets") if isinstance(cfg.get("datasets"), dict) else {}
+        if not isinstance(skill_context, SkillContext):
+            skill_context = SkillContext()
+        skill_context.request_id = state.get("run_id", "")
+        skill_context.question = state.get("original_query", "")
+        skill_context.original_question = state.get("user_query_raw", state.get("original_query", ""))
+        skill_context.agent = state.get("selected_agents", [""])[0] if len(state.get("selected_agents", [])) == 1 else ""
+        skill_context.dataset_id = str(datasets.get("active_dataset") or "")
+        skill_context.allowed_doc_ids = sorted(allowed_doc_ids)
+        skill_context.retrieved_chunks = list(all_retrieved)
+        skill_context.pre_rerank_candidates = list(merged_pre_rerank_candidates)
+        skill_context.metric_facts = [
+            dict(chunk.get("metadata") or {})
+            for chunk in all_retrieved
+            if str((chunk.get("metadata") or {}).get("content_type") or "") == "metric_fact"
+        ]
     if state.get("debug_stop_after_retrieval", False):
         final_answer = ""
     else:
@@ -570,7 +628,19 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
     # Apply deterministic post-repairs if enabled in config (all default to True).
     # Each repair is independently gated; failures fall back to the original answer.
     cfg = state.get("config") or {}
-    if final_answer and any(
+    if final_answer and runtime is not None and getattr(runtime, "enabled", False):
+        if not isinstance(skill_context, SkillContext):
+            skill_context = SkillContext(
+                question=state.get("original_query", ""),
+                original_question=state.get("user_query_raw", state.get("original_query", "")),
+            )
+        skill_context.final_answer = final_answer
+        execution = await runtime.execute_phase("post_answer", skill_context)
+        skill_traces.extend(result.to_dict() for result in execution.results)
+        if getattr(runtime, "mode", "shadow") == "active":
+            final_answer = skill_context.final_answer
+    # Preserve the original production path until runtime is explicitly active.
+    if final_answer and (runtime is None or not getattr(runtime, "enabled", False) or getattr(runtime, "mode", "shadow") == "shadow") and any(
         cfg.get(k, True)
         for k in (
             "skill_repair_table_enabled",
@@ -603,6 +673,8 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
         "merged_evidence": merged_evidence,
         "merged_pre_rerank_candidates": merged_pre_rerank_candidates,
         "final_answer": final_answer,
+        "skill_context": skill_context,
+        "skill_traces": skill_traces,
         "time_to_first_response": ttft,
     }
 
@@ -618,12 +690,14 @@ def _route_next(state: MASState) -> str:
 def build_agentic_rag_workflow() -> StateGraph:
     workflow = StateGraph(MASState)
 
+    workflow.add_node("skills_prepare", skills_prepare_node)
     workflow.add_node("orchestrator", orchestrator_node)
     workflow.add_node("dispatch", dispatch_node)
     workflow.add_node("agents_parallel", agents_parallel_node)
     workflow.add_node("synthesis", synthesis_node)
 
-    workflow.set_entry_point("orchestrator")
+    workflow.set_entry_point("skills_prepare")
+    workflow.add_edge("skills_prepare", "orchestrator")
 
     mapping = {
         "agents_parallel": "agents_parallel",

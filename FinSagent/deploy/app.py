@@ -852,6 +852,74 @@ async def doc_agent_analyze_batch(
     return {"count": len(results), "results": results}
 
 
+@app.get("/skills")
+async def list_runtime_skills():
+    """Return discoverable user-facing skills and runtime activation status."""
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    runtime = getattr(chat_service, "skill_runtime", None)
+    if runtime is None:
+        return {"runtime": {"runtime_enabled": False}, "skills": []}
+    status = runtime.status()
+    return {
+        "runtime": {
+            "runtime_enabled": status["runtime_enabled"],
+            "execution_mode": status["execution_mode"],
+            "registry": status["registry"],
+        },
+        "skills": runtime.catalog(public_only=True),
+    }
+
+
+@app.get("/skills/{skill_id}")
+async def get_runtime_skill(skill_id: str):
+    """Return one public skill card without loading its full internal implementation."""
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    runtime = getattr(chat_service, "skill_runtime", None)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Skill runtime unavailable")
+    matches = [row for row in runtime.catalog(public_only=True) if row["skill_id"] == skill_id]
+    if not matches:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return matches[0]
+
+
+@app.post("/chat/skills-debug")
+async def chat_skills_debug(request: ChatRequest):
+    """Run one chat request and expose bounded Skill Runtime traces for evaluation."""
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    skill_config = chat_service.config.get("skills", {})
+    if not isinstance(skill_config, dict) or not skill_config.get("expose_debug_trace", False):
+        raise HTTPException(status_code=404, detail="Skill trace endpoint is disabled")
+    result = await chat_service.generate_response_debug_async(
+        question=request.question,
+        session_id=request.session_id,
+    )
+    retrieved_doc_ids: set[str] = set()
+    for chunk in result.get("retrieved_chunks", []):
+        if not isinstance(chunk, dict):
+            continue
+        metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else chunk
+        for key in ("source_doc_id", "doc_id", "document_id"):
+            value = metadata.get(key)
+            if value:
+                retrieved_doc_ids.add(str(value))
+    return {
+        "answer": result.get("answer", ""),
+        "session_id": request.session_id,
+        "activated_agents": result.get("activated_agents", []),
+        "routing_reason": result.get("routing_reason", ""),
+        "retrieved_chunk_count": result.get("retrieved_chunk_count", 0),
+        "retrieved_doc_ids": sorted(retrieved_doc_ids),
+        "pre_rerank_candidate_count": result.get("pre_rerank_candidate_count", 0),
+        "skill_traces": result.get("skill_traces", []),
+        "total_time": result.get("total_time", 0.0),
+        "error": result.get("error"),
+    }
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """

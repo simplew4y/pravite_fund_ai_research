@@ -1,0 +1,36 @@
+schema_version: 1
+skill_id: evidence_rescue_scorer
+version: 0.1.0
+name: Evidence Rescue Scorer
+description: Trace rescued chunks emitted by the existing RAG rescue layer.
+category: retrieval
+type: builtin
+phase: post_retrieval
+priority: 200
+status: experimental
+owner: myz
+agents: []
+routing: {}
+evidence_contract:
+  company_scope_required: true
+  source_evidence_required: true
+  allow_cross_company: false
+implementation:
+  entrypoint: evidence_rescue_audit
+permissions:
+  network: false
+  filesystem_write: false
+public: false
+governance:
+  scope: Audits candidate evidence rescued when initial retrieval may miss key anchors.
+  failure_types: [retrieval_miss, source_conflict, table_alignment_error]
+  trigger: Retrieval confidence is low or rescued chunks are present.
+  inputs: [question, candidate_chunks, retrieval_scores]
+  outputs: [rescue_scores, selected_rescue_chunks, skill_trace]
+  risks:
+    - A learned scorer can overfit a narrow diagnostic set.
+    - Promotion requires cross-company protected-set evaluation.
+  eval_sets: [rescue_scorer_v1_smoke_20260531, cross_company_benchmark_v1_1]
+  last_reviewed: "2026-06-05"
+  implementation_refs: [src/utils/evidence_rescue_scorer.py]
+  notes: Experimental until cross-company and holdout gates show stable benefit.

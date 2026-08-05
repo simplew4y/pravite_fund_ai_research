@@ -82,6 +82,29 @@ skill_repair_profile_enabled: true
 skill_repair_profile_allow_legacy_fallback: false
 skill_repair_coverage_enabled: true
 skill_repair_period_conflict_enabled: true
+
+# Discoverable Skill Runtime. "shadow" records routing/execution traces while
+# preserving the legacy repair chain; switch to "active" only after regression.
+skills:
+  runtime_enabled: false
+  execution_mode: shadow
+  expose_debug_trace: false
+  roots:
+    - ./skills
+  strict_discovery: false
+  promoted_only: true
+  allow:
+    - table_evidence_verifier
+    - company_profile_boundary
+    - answer_coverage
+    - source_conflict
+    - period_alignment
+  deny: []
+  execution:
+    max_skills_per_request: 8
+    default_timeout_seconds: 5
+  security:
+    allow_python_skills: false
 # Optional company-scoped reconstructed table directory, e.g.:
 # reconstructed_table_dir: "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250729/tables"
 

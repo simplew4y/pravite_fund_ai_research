@@ -1,0 +1,35 @@
+schema_version: 1
+skill_id: answer_coverage
+version: 0.1.0
+name: Answer Coverage Repair
+description: Add guarded missing context to an otherwise supported answer.
+category: verification
+type: builtin
+phase: post_answer
+priority: 300
+status: promoted
+owner: myz
+agents: []
+routing: {}
+evidence_contract:
+  company_scope_required: false
+  source_evidence_required: false
+implementation:
+  entrypoint: answer_coverage_repair
+permissions:
+  network: false
+  filesystem_write: false
+public: false
+governance:
+  scope: Adds reviewed missing context when a supported answer is incomplete.
+  failure_types: [answer_coverage_failure, profile_boundary_error]
+  trigger: Question matches a guarded coverage fact and the original answer is incomplete.
+  inputs: [question, generated_answer]
+  outputs: [repaired_answer, coverage_fact_id, repair_reason, skill_trace]
+  risks:
+    - Can appear company-specific if reviewed boundaries are not explicit.
+    - Must not become a hidden answer factbook for unseen companies.
+  eval_sets: [zeekr_small30, zeekr_holdout20, final_stack_validation_20260603]
+  last_reviewed: "2026-06-05"
+  implementation_refs: [src/utils/answer_coverage_repair.py]
+  notes: Guarded coverage repair, not free-form answer injection.

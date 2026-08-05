@@ -4,6 +4,7 @@ from typing import Any, Dict, List, TypedDict
 from langgraph.graph import StateGraph
 
 from agents.shared import (
+    apply_retrieval_skills,
     draft_answer,
     execute_planned_tool_calls,
     plan_tool_calls,
@@ -30,6 +31,8 @@ class QuantState(TypedDict, total=False):
     quant_evidence: List[Any]
     quant_tool_results: Dict[str, Any]
     quant_draft_answer: str
+    skill_runtime: Any
+    quant_skill_traces: List[Dict[str, Any]]
 
 
 def build_quant_subgraph() -> Any:
@@ -76,6 +79,7 @@ def build_quant_subgraph() -> Any:
             log_dir=state.get("log_dir", ""),
             rag=state.get("rag"),
             enable_query_decompose=state.get("enable_query_decompose"),
+            skill_context=state.get("skill_context"),
         )
         return {"quant_sub_queries": sub_queries}
 
@@ -94,7 +98,11 @@ def build_quant_subgraph() -> Any:
                 scope_query=state.get("user_query_raw") or state["original_query"],
                 scope_history=state.get("chat_history", []),
             )
-            return {"quant_evidence": evidences}
+            evidences, traces = await apply_retrieval_skills(
+                runtime=state.get("skill_runtime"), question=state["original_query"],
+                agent="quant", evidences=evidences, request_id=state.get("run_id", ""),
+            )
+            return {"quant_evidence": evidences, "quant_skill_traces": traces}
 
         evidences = await retrieve_evidence(
             rag,
@@ -106,7 +114,11 @@ def build_quant_subgraph() -> Any:
             scope_query=state.get("user_query_raw") or state["original_query"],
             scope_history=state.get("chat_history", []),
         )
-        return {"quant_evidence": evidences}
+        evidences, traces = await apply_retrieval_skills(
+            runtime=state.get("skill_runtime"), question=state["original_query"],
+            agent="quant", evidences=evidences, request_id=state.get("run_id", ""),
+        )
+        return {"quant_evidence": evidences, "quant_skill_traces": traces}
 
     async def draft_node(state: QuantState) -> Dict:
         evidences = state.get("quant_evidence", [])
@@ -137,6 +149,7 @@ def build_quant_subgraph() -> Any:
             "draft_answer": state.get("quant_draft_answer", ""),
             "assumptions": [],
             "risks": [],
+            "skill_traces": state.get("quant_skill_traces", []),
         }
         return {"agent_outputs": outputs}
 

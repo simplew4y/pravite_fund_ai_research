@@ -1,0 +1,37 @@
+schema_version: 1
+skill_id: source_conflict
+version: 0.1.0
+name: Period and Source Conflict Repair
+description: Repair later-period leakage when compatible evidence is already retrieved.
+category: verification
+type: builtin
+phase: post_answer
+priority: 400
+status: promoted
+owner: myz
+agents: []
+routing:
+  keywords: [年, 季度, 财年, 截至, year, quarter, fiscal]
+evidence_contract:
+  company_scope_required: true
+  source_evidence_required: true
+  allow_cross_company: false
+implementation:
+  entrypoint: period_source_conflict_repair
+permissions:
+  network: false
+  filesystem_write: false
+public: true
+governance:
+  scope: Repairs later-period leakage when period-compatible evidence is already retrieved.
+  failure_types: [source_conflict, period_mismatch, wrong_source]
+  trigger: Answer contains later-period leakage and compatible evidence exists.
+  inputs: [question, generated_answer, retrieved_chunks]
+  outputs: [repaired_answer, supporting_source, repair_reason, skill_trace]
+  risks:
+    - Narrow trigger patterns may not generalize to every fiscal-period conflict.
+    - Incorrect triggers could suppress legitimate later-period context.
+  eval_sets: [nvidia_mini10_period_source_conflict_20260605, cross_company_benchmark_v1_1]
+  last_reviewed: "2026-06-05"
+  implementation_refs: [src/utils/period_source_conflict_repair.py, test/colm/retrieval/run_rescue_e2e_sample.py]
+  notes: Guarded period-aware source arbitration.

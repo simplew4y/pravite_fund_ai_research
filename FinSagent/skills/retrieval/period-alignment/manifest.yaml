@@ -1,0 +1,37 @@
+schema_version: 1
+skill_id: period_alignment
+version: 0.1.0
+name: Period-Aware Retrieval Cutoff
+description: Audit fiscal-period intent around the existing RAG cutoff implementation.
+category: retrieval
+type: builtin
+phase: post_retrieval
+priority: 100
+status: promoted
+owner: myz
+agents: []
+routing:
+  keywords: [年, 季度, 财年, 截至, year, quarter, fiscal]
+evidence_contract:
+  company_scope_required: true
+  source_evidence_required: true
+  allow_cross_company: false
+implementation:
+  entrypoint: period_alignment_audit
+permissions:
+  network: false
+  filesystem_write: false
+public: true
+governance:
+  scope: Controls retrieval around fiscal/calendar periods and limits later-filing dominance.
+  failure_types: [period_mismatch, wrong_source, source_conflict]
+  trigger: Question contains an explicit fiscal year, quarter, date, or cutoff phrase.
+  inputs: [question, filing_metadata, retrieved_chunks]
+  outputs: [period_cutoff_decision, backfill_decision, audit_metadata]
+  risks:
+    - Over-filtering may hide useful restatements or comparative evidence.
+    - Ambiguous dates may map to the wrong fiscal period.
+  eval_sets: [zeekr_small30, zeekr_holdout20, cross_company_benchmark_v1_1]
+  last_reviewed: "2026-06-05"
+  implementation_refs: [test/colm/retrieval/run_rescue_e2e_sample.py]
+  notes: Audits the existing guarded period-cutoff and backfill behavior.

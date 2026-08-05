@@ -34,6 +34,7 @@ from agentic_search_loop import (
 )
 from utils.vllm_reranker import VLLMReranker
 from utils.session_history_store import session_history_store_from_config
+from skills_runtime import SkillRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,8 @@ class ChatService:
         )
 
         # Workflow (单例,所有 session 共享)
+        skills_root = Path(__file__).resolve().parents[2] / "skills"
+        self.skill_runtime = SkillRuntime.from_config(config, default_root=skills_root)
         self.workflow = build_agentic_rag_workflow()
         self.general_graph = build_general_subgraph()
 
@@ -286,6 +289,8 @@ class ChatService:
             "rag": self.rag,
             "session_manager": session_manager,
             "config": self.config,
+            "skill_runtime": self.skill_runtime,
+            "skill_traces": [],
             "debug_stop_after_retrieval": False,
             "final_answer": "",
             "is_complete": False,
@@ -705,6 +710,7 @@ class ChatService:
                     "chat_history": session_manager.get_chat_history_copy(),
                     "session_manager": session_manager,
                     "rag": self.rag,
+                    "skill_runtime": self.skill_runtime,
                     "run_id": "",
                     "log_dir": "",
                     "enable_query_decompose": bool(self.config.get("enable_ctx_decomp", False)),
@@ -996,6 +1002,7 @@ class ChatService:
                         "chat_history": session_manager.get_chat_history_copy(),
                         "session_manager": session_manager,
                         "rag": self.rag,
+                        "skill_runtime": self.skill_runtime,
                         "run_id": "",
                         "log_dir": "",
                         "enable_query_decompose": bool(self.config.get("enable_ctx_decomp", False)),
@@ -1017,9 +1024,13 @@ class ChatService:
             async def _run_phase2() -> Dict[str, Any]:
                 initial_state = {
                     "original_query": question,
+                    "user_query_raw": question,
                     "chat_history": session_manager.get_chat_history_copy(),
                     "rag": self.rag,
+                    "skill_runtime": self.skill_runtime,
                     "session_manager": session_manager,
+                    "config": self.config,
+                    "skill_traces": [],
                     "draft_holder": draft_holder,
                     "selected_agents": [],
                     "routing_reason": "",
@@ -1137,6 +1148,8 @@ class ChatService:
                 "rag": self.rag,
                 "session_manager": session_manager,
                 "config": self.config,
+                "skill_runtime": self.skill_runtime,
+                "skill_traces": [],
                 "debug_stop_after_retrieval": stop_after_retrieval,
                 "selected_agents": [],
                 "routing_reason": "",
@@ -1180,6 +1193,7 @@ class ChatService:
                 "pre_rerank_candidates": pre_rerank_candidates,
                 "pre_rerank_candidate_count": len(pre_rerank_candidates),
                 "agent_outputs": final_state.get("agent_outputs", {}),
+                "skill_traces": final_state.get("skill_traces", []),
                 "time_to_first_response": final_state.get("time_to_first_response", 0.0),
                 "total_time": total_time,
             }
