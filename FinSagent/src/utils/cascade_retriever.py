@@ -37,10 +37,13 @@ METRIC_EXPANSIONS = {
 }
 
 QUALIFIER_GROUPS = {
+    "归母": ("归母", "attributable", "parent", "shareholders", "owners of the parent"),
+    "扣非": ("扣非", "扣除非经常", "excluding non-recurring", "adjusted"),
     "剔除": ("剔除", "excluding", "exclude", "adjusted", "ex-"),
     "阶段性": ("阶段性", "temporary", "one-off", "non-recurring", "nonrecurring"),
     "实际": ("实际", "actual", "underlying", "normalized"),
     "调整后": ("调整后", "adjusted", "underlying", "normalized"),
+    "持续经营": ("持续经营", "continuing operations", "continued operations"),
     "储能": ("储能", "energy storage", "ess"),
     "光伏": ("光伏", "photovoltaic", "pv", "solar"),
     "海外": ("海外", "overseas", "international"),
@@ -217,22 +220,28 @@ class CascadeRetriever:
         query: str,
         allowed_doc_ids: Optional[Sequence[str]] = None,
         scope_explicit: Optional[bool] = None,
+        confidence_query: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         terms = _metric_terms(query)
         if not terms:
             return None
+        validation_query = str(confidence_query or query)
         resolved_ids, explicit_company = self.resolve_query_doc_ids(query)
         doc_ids = list(allowed_doc_ids) if allowed_doc_ids is not None else resolved_ids
         if scope_explicit is not None:
             explicit_company = bool(scope_explicit)
-        periods = _extract_periods(query)
+        periods = _extract_periods(validation_query)
         with self._connection() as conn:
             if conn is None:
                 return None
             cols = self._columns(conn, "metric_facts")
             if "metric_name" not in cols or "doc_id" not in cols:
                 return None
-            selected = [c for c in ("metric_name", "value_numeric", "value_text", "unit", "doc_id", "period", "sheet_name", "cell_ref", "confidence", "quality_flag") if c in cols]
+            selected = [c for c in (
+                "metric_name", "value_numeric", "value_text", "unit", "currency",
+                "doc_id", "period", "actual_or_estimate", "sheet_name", "cell_ref",
+                "confidence", "quality_flag",
+            ) if c in cols]
             scope_sql, params = self._scope_clause(doc_ids)
             term_sql = " OR ".join("LOWER(metric_name) LIKE ?" for _ in terms)
             params.extend(f"%{term}%" for term in terms)
@@ -255,7 +264,7 @@ class CascadeRetriever:
         high_confidence = (
             explicit_company and period_match and period_unambiguous
             and len(source_ids) == 1 and len(unique_metric_names) == 1
-            and _qualifiers_match(query, metric_names)
+            and _qualifiers_match(validation_query, metric_names)
         )
         return {
             "type": "dci_metric", "query": query,
@@ -339,6 +348,8 @@ class CascadeRetriever:
                 "metadata": {
                     "content_type": "metric_fact", "metric_name": metric, "value": value,
                     "unit": str(row.get("unit") or ""), "period": period,
+                    "currency": str(row.get("currency") or ""),
+                    "actual_or_estimate": str(row.get("actual_or_estimate") or ""),
                     "source_doc_id": str(row.get("doc_id") or ""),
                     "source_ref": " ".join(x for x in (str(row.get("sheet_name") or ""), str(row.get("cell_ref") or "")) if x),
                     "confidence": row.get("confidence"), "quality_flag": row.get("quality_flag", ""),

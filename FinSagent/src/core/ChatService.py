@@ -1177,6 +1177,23 @@ class ChatService:
             activated_agents = final_state.get("selected_agents", [])
             retrieved_chunks = extract_retrieved_chunks(final_state)
             pre_rerank_candidates = final_state.get("merged_pre_rerank_candidates", [])
+            retrieval_decisions = []
+            for agent_name, output in (final_state.get("agent_outputs", {}) or {}).items():
+                if not isinstance(output, dict):
+                    continue
+                for evidence in output.get("evidence", []) or []:
+                    if not isinstance(evidence, dict):
+                        continue
+                    retrieval_decisions.append({
+                        "agent": agent_name,
+                        "query": evidence.get("query", ""),
+                        "policy": evidence.get("retrieval_policy", {}),
+                        "retrieval_scope": evidence.get("retrieval_scope", {}),
+                        "rag_executed": bool(evidence.get("rag_executed", False)),
+                        "rag_succeeded": bool(evidence.get("rag_succeeded", False)),
+                        "conflicts": evidence.get("evidence_conflicts", []),
+                        "trace": evidence.get("retrieval_trace", []),
+                    })
 
             if not stop_after_retrieval:
                 session_manager.add_exchange(question, final_answer)
@@ -1193,6 +1210,7 @@ class ChatService:
                 "pre_rerank_candidates": pre_rerank_candidates,
                 "pre_rerank_candidate_count": len(pre_rerank_candidates),
                 "agent_outputs": final_state.get("agent_outputs", {}),
+                "retrieval_decisions": retrieval_decisions,
                 "skill_traces": final_state.get("skill_traces", []),
                 "time_to_first_response": final_state.get("time_to_first_response", 0.0),
                 "total_time": total_time,
@@ -1210,6 +1228,7 @@ class ChatService:
                 "pre_rerank_candidates": [],
                 "pre_rerank_candidate_count": 0,
                 "agent_outputs": {},
+                "retrieval_decisions": [],
                 "error": str(e),
             }
         finally:

@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from utils.chunk_utils import dedupe_chunks, get_chunk_source_id
 from utils.prompt_budget import join_with_budget, truncate_text
 from skills_runtime.integration import apply_retrieval_skills
+from retrieval_control import decide_retrieval_policy, fuse_evidence
 from tools.finnhub import (
     basic_financials,
     company_news,
@@ -135,6 +136,11 @@ ANSWER_EVIDENCE_GUARDRAILS = """
 
 Industrial evidence guardrails:
 - Treat Evidence and Tools as the only factual sources. Do not use prior knowledge to fill gaps.
+- Evidence may contain STRUCTURED DCI FACTS, KEYWORD EVIDENCE, and RAG EVIDENCE. Use them together; do not ignore a channel merely because another retriever also returned results.
+- A DCI fact marked tier=candidate is retained for completeness but is not authoritative. It must not override stronger dated table or narrative evidence.
+- A DCI fact marked tier=answer_grade may support a direct fact answer, but its company, period, unit, and actual/estimate status must still match the question.
+- If the retrieval policy says rag_required=true, the response must use the RAG evidence for analysis and use DCI only as quantitative support.
+- Preserve evidence IDs for important numeric reasoning. Never attribute a claim to an evidence ID that does not support the same company, metric, period, and actual/estimate status.
 - Every date, number, percentage, entity relationship, product list item, and governance claim must be directly supported by Evidence or Tools.
 - If sources conflict, report the conflict instead of choosing silently. Prefer explicitly dated, more recent evidence only when it directly answers the same metric/entity.
 - For numeric or table questions, preserve units and periods exactly. Show a formula only when all inputs are present; otherwise say the calculation is not supported by provided data.
@@ -357,7 +363,7 @@ MANDATORY LOSSLESS REWRITE RULES:
 def _cascade_to_evidence(
     query: str, cascade_result: dict, agent: str,
 ) -> tuple:
-    """Convert a CascadeRetriever result into the _(query, context, chunks, time_info, pre_rerank, ok) tuple."""
+    """Convert a legacy CascadeRetriever result into the internal result tuple."""
     chunks = cascade_result.get("chunks", [])
     route = cascade_result.get("type", "dci_unknown")
     ctx_types = [c.get("metadata", {}).get("content_type", "") for c in chunks[:3]]
@@ -372,7 +378,22 @@ def _cascade_to_evidence(
         label = f"[{ct}] {src}" if src else f"[{ct}]"
         context_lines.append(f"{label}: {c.get('page_content', '')}")
     context = "\n".join(context_lines)
-    return (query, context, chunks, [], chunks, True)
+    return (
+        query, context, chunks, [], chunks, True,
+        {
+            "policy": {
+                "mode": "legacy_cascade",
+                "query_type": "unknown",
+                "run_rag": False,
+                "rag_required": False,
+                "reason_codes": ["LEGACY_DCI_SHORT_CIRCUIT"],
+            },
+            "conflicts": [],
+            "retrieval_trace": [],
+            "rag_executed": False,
+            "rag_succeeded": False,
+        },
+    )
 
 
 async def retrieve_evidence(
@@ -478,16 +499,86 @@ async def retrieve_evidence(
             "retrieval_mode", "dci_rag_cascade"
         )
 
-        # ── DCI cascade ──────────────────────────────────────────────
+        # ── DCI retrieval ────────────────────────────────────────────
+        r1 = None
+        r2 = None
         if _c is not None:
             allowed_doc_ids = list(scope.source_doc_ids) if scope is not None else []
             scope_explicit = bool(scope and scope.explicit_company)
-            # Step 1 — metric_facts exact match
             r1 = _c.search_metric(
                 query,
                 allowed_doc_ids=allowed_doc_ids,
                 scope_explicit=scope_explicit,
+                confidence_query=scope_query or query,
             )
+            r2 = _c.search_keyword(
+                query,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_explicit=scope_explicit,
+            )
+
+        # ── Evidence fusion: DCI is always retained ─────────────────
+        if _mode in {"evidence_fusion", "dci_only"}:
+            policy = decide_retrieval_policy(
+                original_question=scope_query or query,
+                agent=agent,
+                metric_result=r1,
+                keyword_result=r2,
+                mode=_mode,
+            )
+            rag_result = None
+            rag_succeeded = False
+            if policy.run_rag:
+                allowed_doc_ids = list(scope.source_doc_ids) if scope is not None else None
+                try:
+                    rag_result = rag.retrieve(
+                        query,
+                        query_time,
+                        agent=agent,
+                        allowed_source_doc_ids=allowed_doc_ids,
+                    )
+                    rag_succeeded = True
+                except Exception as e:
+                    # A failed semantic fallback must not erase structured DCI evidence.
+                    lg.error(
+                        "[%s] evidence-fusion RAG failed for %r; retaining DCI: %s",
+                        agent, query, e, exc_info=True,
+                    )
+            fused = fuse_evidence(
+                query=query,
+                policy=policy,
+                metric_result=r1,
+                keyword_result=r2,
+                rag_result=rag_result,
+                rag_executed=policy.run_rag,
+                rag_succeeded=rag_succeeded,
+                config=(rag_config.get("retrieval_control") or {}),
+            )
+            lg.info(
+                "[evidence_fusion] query=%r type=%s reasons=%s dci_metric=%d "
+                "dci_keyword=%d rag_executed=%s rag_succeeded=%s final=%d conflicts=%d",
+                query,
+                policy.query_type,
+                list(policy.reason_codes),
+                len((r1 or {}).get("chunks", [])),
+                len((r2 or {}).get("chunks", [])),
+                fused.rag_executed,
+                fused.rag_succeeded,
+                len(fused.final_chunks),
+                len(fused.conflicts),
+            )
+            return (
+                query,
+                fused.context,
+                fused.final_chunks,
+                fused.time_info,
+                fused.pre_rerank_chunks,
+                True,
+                fused.metadata(),
+            )
+
+        # ── Legacy DCI cascade (rollback compatibility) ─────────────
+        if _c is not None:
             if r1 is not None:
                 if _mode == "dci_only":
                     if should_skip_rag(r1, agent):
@@ -498,12 +589,6 @@ async def retrieve_evidence(
                     lg.info("[cascade] DCI metric hit for '%s' — skipping RAG", query)
                     return _cascade_to_evidence(query, r1, agent)
 
-            # Step 2 — chunks LIKE grep
-            r2 = _c.search_keyword(
-                query,
-                allowed_doc_ids=allowed_doc_ids,
-                scope_explicit=scope_explicit,
-            )
             if r2 is not None:
                 if _mode == "dci_only":
                     if should_skip_rag(r2, agent):
@@ -517,7 +602,7 @@ async def retrieve_evidence(
         # ── dci_only: no more fallback ───────────────────────────────
         if _mode == "dci_only":
             lg.info("[cascade] dci_only mode — no DCI hits for '%s', returning empty", query)
-            return query, "", [], [], [], True
+            return query, "", [], [], [], True, {}
 
         # ── Step 3 — full RAG (existing logic) ───────────────────────
         try:
@@ -551,10 +636,23 @@ async def retrieve_evidence(
                 time_info,
                 dedupe_chunks(pre_rerank_chunks),
                 True,
+                {
+                    "policy": {
+                        "mode": _mode,
+                        "query_type": "unknown",
+                        "run_rag": True,
+                        "rag_required": False,
+                        "reason_codes": ["LEGACY_RAG_FALLBACK"],
+                    },
+                    "conflicts": [],
+                    "retrieval_trace": [],
+                    "rag_executed": True,
+                    "rag_succeeded": True,
+                },
             )
         except Exception as e:
             lg.error(f"[{agent}] retrieval failed for '{query}': {e}", exc_info=True)
-            return query, "", [], [], [], False
+            return query, "", [], [], [], False, {}
 
     import time as _time
     _t0 = _time.perf_counter()
@@ -563,7 +661,7 @@ async def retrieve_evidence(
     global _retrieval_time_acc
     _retrieval_time_acc += _time.perf_counter() - _t0
     evidences: List[Dict[str, Any]] = []
-    for query, context, chunks, time_info, pre_rerank_chunks, ok in results:
+    for query, context, chunks, time_info, pre_rerank_chunks, ok, retrieval_metadata in results:
         if not ok:
             continue
         evidences.append(
@@ -581,6 +679,11 @@ async def retrieve_evidence(
                     "source_doc_ids": list(scope.source_doc_ids) if scope is not None else [],
                     "explicit_company": bool(scope and scope.explicit_company),
                 },
+                "retrieval_policy": retrieval_metadata.get("policy", {}),
+                "evidence_conflicts": retrieval_metadata.get("conflicts", []),
+                "retrieval_trace": retrieval_metadata.get("retrieval_trace", []),
+                "rag_executed": bool(retrieval_metadata.get("rag_executed", False)),
+                "rag_succeeded": bool(retrieval_metadata.get("rag_succeeded", False)),
             }
         )
         lg.info(

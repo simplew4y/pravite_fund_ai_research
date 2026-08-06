@@ -48,17 +48,12 @@ Rules:
 - If exact row/column facts are present, do not add unsupported caveats about missing or inconsistent data.
 - For percentages computed from table rows, if the question does not request decimal precision, state the rounded headline percentage first and optionally include the computed decimal in parentheses.
 
-## Evidence Priority Rules (Cascade Retrieval)
-The system uses a 3-step cascade to find evidence:
-1. **DCI Metric** — SQL metric_facts exact match (highest precision). When available, use these for indicator values.
-2. **DCI Keyword** — SQL LIKE grep over chunks. Use when exact match is not available.
-3. **RAG / Chroma** — Semantic search. Use for trends and context when exact data is missing.
-
-When evaluating evidence:
-- DCI Metric results are authoritative for specific indicator values. Trust them over RAG chunks.
-- RAG chunks may be semantically close but not exact.
-- When both DCI and RAG return results for the same metric, prefer the DCI Metric value.
-- If evidence is contradictory: metric_facts > keyword chunks > semantic chunks.
+## Evidence Fusion Rules
+- STRUCTURED DCI FACTS are always retained. Check each fact's confidence tier, company, period, unit, and actual/estimate status.
+- A candidate DCI fact is a lead, not an authoritative answer. Compare it with RAG table/text evidence.
+- RAG EVIDENCE supplies table and narrative context. For report or analysis requests it is mandatory, even when DCI contains exact numbers.
+- Do not use a fixed source hierarchy when evidence conflicts. Compare whether the sources answer the same metric, company, period, and actual/estimate basis.
+- Disclose unresolved conflicts instead of selecting a value silently.
 
 Question: {question}
 History:

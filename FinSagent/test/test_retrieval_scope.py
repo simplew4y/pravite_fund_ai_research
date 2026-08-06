@@ -99,6 +99,26 @@ def test_original_company_scope_is_inherited_by_lossy_metric_rewrite(tmp_path: P
     assert result["chunks"][0]["metadata"]["unit"] == "EUR million"
 
 
+def test_original_qualifiers_control_metric_confidence_after_lossy_rewrite(tmp_path: Path) -> None:
+    db_path = tmp_path / "collection.sqlite3"
+    _build_collection_db(db_path)
+    retriever = CascadeRetriever(
+        str(db_path),
+        company_aliases={"P911.DE": ["保时捷", "Porsche"]},
+    )
+    scope = retriever.resolve_scope("保时捷 2024 年归母净利润")
+
+    result = retriever.search_metric(
+        "2024 net profit",
+        allowed_doc_ids=scope.source_doc_ids,
+        scope_explicit=scope.explicit_company,
+        confidence_query="保时捷 2024 年归母净利润",
+    )
+
+    assert result is not None
+    assert result["high_confidence"] is False
+
+
 def test_original_company_scope_is_inherited_by_lossy_keyword_rewrite(tmp_path: Path) -> None:
     db_path = tmp_path / "collection.sqlite3"
     _build_collection_db(db_path)

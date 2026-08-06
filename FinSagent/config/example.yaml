@@ -30,6 +30,17 @@ collection_name: "lotus"
 # When enabled, a missing/invalid active-dataset collection DB fails closed
 # instead of silently searching the global vector index.
 retrieval_scope_required: true
+# evidence_fusion retains all DCI evidence, supplements low-confidence DCI with
+# scoped RAG, and forces RAG for report/analysis requests. Legacy values
+# dci_rag_cascade and dci_only remain available for rollback/diagnostics.
+retrieval_mode: evidence_fusion
+retrieval_control:
+  evidence_fusion:
+    max_metric_facts: 12
+    max_keyword_chunks: 6
+    max_table_chunks: 6
+    max_text_chunks: 8
+    max_chunk_chars: 4000
 retrieve_top_k: 10
 rerank_top_k: 5
 workers: 1

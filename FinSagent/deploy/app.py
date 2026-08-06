@@ -906,14 +906,29 @@ async def chat_skills_debug(request: ChatRequest):
             value = metadata.get(key)
             if value:
                 retrieved_doc_ids.add(str(value))
+    retrieval_decisions = result.get("retrieval_decisions", [])
+    allowed_doc_ids: set[str] = set()
+    for decision in retrieval_decisions:
+        if not isinstance(decision, dict):
+            continue
+        scope = decision.get("retrieval_scope", {})
+        if not isinstance(scope, dict):
+            continue
+        for value in scope.get("source_doc_ids", []) or []:
+            if value:
+                allowed_doc_ids.add(str(value))
     return {
         "answer": result.get("answer", ""),
         "session_id": request.session_id,
         "activated_agents": result.get("activated_agents", []),
         "routing_reason": result.get("routing_reason", ""),
         "retrieved_chunk_count": result.get("retrieved_chunk_count", 0),
+        # Authoritative request boundary. ``retrieved_doc_ids`` is retained for
+        # compatibility and may contain legacy source/chunk identifiers.
+        "allowed_doc_ids": sorted(allowed_doc_ids),
         "retrieved_doc_ids": sorted(retrieved_doc_ids),
         "pre_rerank_candidate_count": result.get("pre_rerank_candidate_count", 0),
+        "retrieval_decisions": retrieval_decisions,
         "skill_traces": result.get("skill_traces", []),
         "total_time": result.get("total_time", 0.0),
         "error": result.get("error"),
