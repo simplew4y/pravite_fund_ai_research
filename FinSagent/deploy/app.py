@@ -416,6 +416,15 @@ class ChatRequest(BaseModel):
         }
 
 
+class EvidenceFusionRequest(BaseModel):
+    """Project-scoped retrieval request used by the Omnigent test runtime."""
+
+    query: str
+    dataset_id: str
+    original_question: str = ""
+    agent: str = "general"
+
+
 class ChatResponse(BaseModel):
     """聊天响应"""
     answer: str
@@ -932,6 +941,57 @@ async def chat_skills_debug(request: ChatRequest):
         "skill_traces": result.get("skill_traces", []),
         "total_time": result.get("total_time", 0.0),
         "error": result.get("error"),
+    }
+
+
+@app.post("/retrieval/evidence-fusion")
+async def retrieval_evidence_fusion(request: EvidenceFusionRequest):
+    """Return one bounded Evidence Fusion result for an allowed project dataset.
+
+    The caller supplies only a dataset id. The server resolves the collection
+    database below the configured dataset root and never accepts a filesystem
+    path from the request.
+    """
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    dataset_id = request.dataset_id.strip()
+    if not dataset_id or not all(ch.isalnum() or ch in {"-", "_"} for ch in dataset_id):
+        raise HTTPException(status_code=400, detail="invalid dataset_id")
+    datasets_cfg = chat_service.config.get("datasets", {})
+    root_value = os.environ.get("FINSAGENT_DATASET_ROOT") or datasets_cfg.get("root_dir") or ""
+    root = Path(str(root_value)).expanduser().resolve()
+    dataset_root = (root / dataset_id).resolve()
+    if not dataset_root.is_relative_to(root):
+        raise HTTPException(status_code=400, detail="dataset path escapes configured root")
+    collection_db = dataset_root / "meta" / "collection.sqlite3"
+    if not collection_db.is_file():
+        raise HTTPException(status_code=404, detail="dataset collection not found")
+
+    from agents.shared import retrieve_evidence
+
+    evidences = await retrieve_evidence(
+        rag=chat_service.rag,
+        sub_queries=[request.query],
+        query_time=datetime.now(timezone.utc),
+        agent=request.agent,
+        collection_db=str(collection_db),
+        dataset_id=dataset_id,
+        scope_query=request.original_question or request.query,
+    )
+    if not evidences:
+        raise HTTPException(status_code=422, detail="retrieval scope resolved no evidence")
+    evidence = evidences[0]
+    return {
+        "dataset_id": dataset_id,
+        "query": request.query,
+        "context": evidence.get("context", ""),
+        "chunks": evidence.get("chunks", []),
+        "retrieval_scope": evidence.get("retrieval_scope", {}),
+        "retrieval_policy": evidence.get("retrieval_policy", {}),
+        "evidence_conflicts": evidence.get("evidence_conflicts", []),
+        "retrieval_trace": evidence.get("retrieval_trace", []),
+        "rag_executed": bool(evidence.get("rag_executed", False)),
+        "rag_succeeded": bool(evidence.get("rag_succeeded", False)),
     }
 
 

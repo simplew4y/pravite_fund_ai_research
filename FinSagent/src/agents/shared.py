@@ -400,6 +400,7 @@ async def retrieve_evidence(
     rag: Any, sub_queries: List[str], query_time: datetime, agent: str,
     run_id: str = "", log_dir: str = "",
     collection_db: str = "",
+    dataset_id: str = "",
     scope_query: str = "",
     scope_history: Optional[List[Dict[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
@@ -452,7 +453,7 @@ async def retrieve_evidence(
         )
 
     datasets_cfg = rag_config.get("datasets", {}) or {}
-    active_dataset = str(datasets_cfg.get("active_dataset") or "")
+    active_dataset = str(dataset_id or datasets_cfg.get("active_dataset") or "")
     scope_required = bool(rag_config.get("retrieval_scope_required", False))
     scope = None
     if _c is not None:

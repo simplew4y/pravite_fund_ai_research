@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import Request
 
-from omnigent.server.auth import AuthProvider
+from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
 
 
@@ -102,7 +102,7 @@ def tenant_scope_dependency(
 ):
     async def bind(request: Request) -> AsyncIterator[PrivateFundTenantContext | None]:
         user_id = require_user(request, auth_provider)
-        if user_id is None:
+        if user_id in {None, RESERVED_USER_LOCAL}:
             yield None
             return
         if account_store is None:

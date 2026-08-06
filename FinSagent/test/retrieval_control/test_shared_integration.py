@@ -108,7 +108,14 @@ class _RAG:
         }
 
 
-def _retrieve(db_path: Path, rag: _RAG, question: str, sub_query: str):
+def _retrieve(
+    db_path: Path,
+    rag: _RAG,
+    question: str,
+    sub_query: str,
+    *,
+    dataset_id: str = "",
+):
     return asyncio.run(
         retrieve_evidence(
             rag,
@@ -116,6 +123,7 @@ def _retrieve(db_path: Path, rag: _RAG, question: str, sub_query: str):
             datetime.now(),
             "quant",
             collection_db=str(db_path),
+            dataset_id=dataset_id,
             scope_query=question,
             scope_history=[],
         )
@@ -142,6 +150,22 @@ def test_lossy_low_confidence_dci_runs_rag_and_retains_all_channels(tmp_path: Pa
         "dci_metric", "dci_keyword", "rag",
     }
     assert "LOW_CONFIDENCE_DCI_RETAINED" in evidence["retrieval_policy"]["reason_codes"]
+
+
+def test_explicit_dataset_id_is_propagated_to_retrieval_scope(tmp_path: Path) -> None:
+    db_path = tmp_path / "collection.sqlite3"
+    _build_db(db_path)
+    rag = _RAG()
+
+    evidences = _retrieve(
+        db_path,
+        rag,
+        "保时捷 2024 年归母净利润是多少？",
+        "2024 net profit",
+        dataset_id="omnigent-demo",
+    )
+
+    assert evidences[0]["retrieval_scope"]["dataset_id"] == "omnigent-demo"
 
 
 def test_high_confidence_simple_fact_skips_rag_but_keeps_dci(tmp_path: Path) -> None:
@@ -193,4 +217,3 @@ def test_rag_failure_keeps_dci_evidence(tmp_path: Path) -> None:
     assert evidences[0]["rag_executed"] is True
     assert evidences[0]["rag_succeeded"] is False
     assert any(chunk["metadata"]["source_kind"] == "dci_metric" for chunk in evidences[0]["chunks"])
-
