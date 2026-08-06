@@ -176,4 +176,3 @@ def test_source_channels_have_reserved_limits() -> None:
 
     assert len([c for c in fused.final_chunks if c["metadata"]["source_kind"] == "dci_metric"]) == 2
     assert len([c for c in fused.final_chunks if c["metadata"]["source_kind"] == "rag"]) == 1
-

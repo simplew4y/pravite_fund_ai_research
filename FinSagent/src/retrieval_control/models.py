@@ -61,4 +61,3 @@ class EvidenceFusionResult:
             "rag_executed": self.rag_executed,
             "rag_succeeded": self.rag_succeeded,
         }
-

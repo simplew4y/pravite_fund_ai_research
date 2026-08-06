@@ -11,4 +11,3 @@ __all__ = [
     "decide_retrieval_policy",
     "fuse_evidence",
 ]
-
