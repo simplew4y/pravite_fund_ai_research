@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any, cast
@@ -10,6 +11,168 @@ from fastapi.testclient import TestClient
 
 from omnigent.server import private_fund_tracking, private_fund_tracking_worker
 from omnigent.server.routes import private_fund_pdf
+
+
+class _VerifiedTrackingClient:
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> str:
+        del max_tokens, temperature
+        response = """[
+          {
+            "item_type": "risk",
+            "canonical_key": "sungrow/order_delay/overseas_orders",
+            "title": "海外订单延期影响收入确认",
+            "content": "海外订单存在延期风险，可能影响2026年收入确认。",
+            "evidence_ids": ["chunk:risk-1"],
+            "evidence_quotes": [
+              {
+                "evidence_id": "chunk:risk-1",
+                "quote": "海外订单存在延期风险，可能影响2026年收入确认"
+              }
+            ],
+            "state": "emerging",
+            "impact": "high",
+            "confidence": 0.91,
+            "entity": "阳光电源",
+            "event_type": "order_delay",
+            "subject": "海外订单收入确认",
+            "direction": "negative",
+            "trigger": "海外订单延期",
+            "transmission_path": "延期导致收入确认后移",
+            "classification_reason": "证据明确描述未决延期及其不利影响",
+            "quality_status": "verified"
+          }
+        ]"""
+        if any("chunk:risk-2" in message.get("content", "") for message in messages):
+            payload = json.loads(response)
+            payload[0]["evidence_ids"] = ["chunk:risk-2"]
+            payload[0]["evidence_quotes"] = [{
+                "evidence_id": "chunk:risk-2",
+                "quote": "海外订单存在延期风险，可能显著影响2026年收入确认",
+            }]
+            payload[0]["content"] += " updated"
+            return json.dumps(payload)
+        return response
+
+
+def test_llm_evidence_grounding_rebinds_adjacent_chunk_to_exact_atomic_quote() -> None:
+    raw = {
+        "item_type": "catalyst",
+        "evidence_ids": ["chunk:moderator"],
+        "evidence_quotes": [
+            {
+                "evidence_id": "chunk:moderator",
+                "quote": "波兰工厂目前正在建设，同时也在考虑美国的产能规划",
+            }
+        ],
+    }
+    units = [
+        {
+            "evidence_id": "chunk:moderator",
+            "content": "下面有请电话尾号8590的投资者进行提问，请您优先提供姓名和机构名。",
+        },
+        {
+            "evidence_id": "chunk:combined",
+            "content": "投资者提问海外产能。波兰工厂目前正在建设，同时也在考虑美国的产能规划。管理层随后回答。",
+        },
+        {
+            "evidence_id": "chunk:atomic",
+            "content": "波兰工厂目前正在建设，同时也在考虑美国的产能规划。",
+        },
+    ]
+
+    grounded = private_fund_tracking._ground_llm_evidence(raw, units)
+
+    assert grounded is not None
+    assert grounded["evidence_ids"] == ["chunk:atomic"]
+    assert grounded["evidence_reassigned"] is True
+    assert grounded["evidence_grounded"] is True
+
+
+def test_llm_evidence_grounding_rejects_unverifiable_quote() -> None:
+    raw = {
+        "item_type": "risk",
+        "evidence_ids": ["chunk:moderator"],
+        "evidence_quotes": [
+            {"evidence_id": "chunk:moderator", "quote": "公司已经明确建设美国工厂"}
+        ],
+    }
+    units = [
+        {
+            "evidence_id": "chunk:moderator",
+            "content": "下面有请投资者进行提问，请您提供姓名和机构名。",
+        }
+    ]
+
+    assert private_fund_tracking._ground_llm_evidence(raw, units) is None
+
+
+def test_tracking_quality_gate_regression_cases() -> None:
+    fixture_path = (
+        Path(__file__).parents[1] / "fixtures" / "private_fund_tracking_quality_cases.json"
+    )
+    cases = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+    for case in cases:
+        candidate = private_fund_tracking._candidate_from_raw(
+            case["raw"],
+            valid_evidence_ids={"chunk:risk-1"},
+            default_date="2026-08-04",
+        )
+        if not case["expected_admitted"]:
+            assert candidate is None, case["name"]
+            continue
+        assert candidate is not None, case["name"]
+        assert candidate.metadata["quality_status"] == case["expected_quality"], case["name"]
+
+
+def test_tracking_title_is_analytical_and_localizes_event_type() -> None:
+    candidate = private_fund_tracking._candidate_from_raw(
+        {
+            "item_type": "catalyst",
+            "title": "产能啊，同时呢也希望通过本地建厂多获取一些订单啊。",
+            "content": "产能啊，同时呢也希望通过本地建厂多获取一些订单啊。",
+            "evidence_ids": ["chunk:risk-1"],
+            "entity": "阳光电源",
+            "event_type": "order_award",
+            "subject": "阿联酋7.5GWh储能订单",
+            "trigger": "订单签署",
+            "classification_reason": "已获得明确订单",
+            "quality_status": "verified",
+            "confidence": 0.9,
+        },
+        valid_evidence_ids={"chunk:risk-1"},
+        default_date="2026-08-05",
+    )
+
+    assert candidate is not None
+    assert candidate.title == "阳光电源：阿联酋7.5GWh储能订单"
+    assert candidate.title != candidate.content
+
+    unknown_event = private_fund_tracking._candidate_from_raw(
+        {
+            "item_type": "risk",
+            "content": "海外市场融资和产品准入可能受到地缘政治环境影响。",
+            "evidence_ids": ["chunk:risk-1"],
+            "entity": "阳光电源",
+            "event_type": "geopolitical_restriction",
+            "subject": "逆变器在欧美市场融资与准入",
+            "trigger": "地缘政治限制",
+            "transmission_path": "融资和准入受限导致销售承压",
+            "classification_reason": "存在明确的不利传导路径",
+            "quality_status": "verified",
+            "confidence": 0.9,
+        },
+        valid_evidence_ids={"chunk:risk-1"},
+        default_date="2026-08-05",
+    )
+    assert unknown_event is not None
+    assert unknown_event.title == "阳光电源：逆变器在欧美市场融资与准入"
 
 
 def _collection_db(tmp_path: Path) -> Path:
@@ -73,27 +236,88 @@ def test_document_event_creates_versioned_items_and_deduplicated_alerts(tmp_path
     assert len(jobs) == 1
     assert completed is not None
     assert completed["status"] == "completed"
-    assert completed["result"]["candidate_count"] == 3
+    assert completed["result"]["candidate_count"] == 1
 
     items = private_fund_tracking.list_items(collection_db, "demo")
-    assert {item["item_type"] for item in items} == {"risk", "catalyst", "assumption"}
+    assert {item["item_type"] for item in items} == {"assumption"}
     assert all(item["current_version_no"] == 1 for item in items)
-    assert len(private_fund_tracking.list_alerts(collection_db, "demo")) == 2
+    assert len(private_fund_tracking.list_alerts(collection_db, "demo")) == 0
 
     # The same document/extractor pair is idempotent and cannot emit duplicates.
     again = private_fund_tracking.enqueue_current_documents(collection_db, "demo")
     assert again[0]["job_id"] == jobs[0]["job_id"]
     assert again[0]["status"] == "completed"
     assert private_fund_tracking.process_next_job(collection_db, "demo") is None
-    assert len(private_fund_tracking.list_alerts(collection_db, "demo")) == 2
+    assert len(private_fund_tracking.list_alerts(collection_db, "demo")) == 0
 
+
+def test_legacy_unstructured_tracking_items_are_hidden_from_user_ledger(tmp_path: Path) -> None:
+    collection_db = _collection_db(tmp_path)
+    legacy = private_fund_tracking.ResearchCandidate(
+        item_type="catalyst",
+        canonical_key="legacy-but",
+        title="催化剂：但是",
+        content="但是呢，大家看到目前订单可能还是比较少。",
+        evidence_ids=["chunk:catalyst-1"],
+        metadata={
+            "quality_status": "needs_review",
+            "extraction_method": "keyword_fallback",
+            "content_kind": "evidence_lead",
+        },
+    )
+    with private_fund_tracking._connect(collection_db) as connection:
+        private_fund_tracking.ensure_tracking_schema(connection, "demo")
+        private_fund_tracking._reconcile_candidates(
+            connection,
+            "demo",
+            [legacy],
+            source_type="document",
+            source_id="legacy",
+        )
+        connection.commit()
+
+    assert private_fund_tracking.list_items(collection_db, "demo", item_type="catalyst") == []
+    raw_items = private_fund_tracking.list_items(
+        collection_db,
+        "demo",
+        item_type="catalyst",
+        include_unqualified=True,
+    )
+    assert [item["title"] for item in raw_items] == ["催化剂：但是"]
+    overview = private_fund_tracking.tracking_overview(collection_db, "demo")
+    assert overview["counts"].get("catalyst", 0) == 0
+    assert overview["governance_counts"] == {"active_unqualified": 1, "archived": 0}
+
+    governed = private_fund_tracking.list_low_quality_items(collection_db, "demo")
+    assert governed[0]["quality_issue"] == "旧版关键词降级记录，未形成完整事件结构"
+    item_id = governed[0]["item_id"]
+    assert private_fund_tracking.archive_low_quality_items(collection_db, "demo", [item_id])[
+        "archived_count"
+    ] == 1
+    assert private_fund_tracking.list_low_quality_items(collection_db, "demo") == []
+    archived = private_fund_tracking.list_low_quality_items(
+        collection_db, "demo", archive_status="archived"
+    )
+    assert archived[0]["archived_at"]
+    assert private_fund_tracking.restore_archived_items(collection_db, "demo", [item_id])[
+        "restored_count"
+    ] == 1
+    private_fund_tracking.archive_low_quality_items(collection_db, "demo", [item_id])
+    assert private_fund_tracking.purge_archived_items(collection_db, "demo", [item_id])[
+        "purged_count"
+    ] == 1
+    assert private_fund_tracking.list_items(
+        collection_db, "demo", include_unqualified=True, archive_status="all"
+    ) == []
 
 def test_new_document_version_updates_existing_risk_instead_of_creating_duplicate(
     tmp_path: Path,
 ) -> None:
     collection_db = _collection_db(tmp_path)
     private_fund_tracking.enqueue_current_documents(collection_db, "demo")
-    private_fund_tracking.process_next_job(collection_db, "demo")
+    private_fund_tracking.process_next_job(
+        collection_db, "demo", llm_client=_VerifiedTrackingClient()
+    )
 
     with sqlite3.connect(collection_db) as conn:
         conn.execute("UPDATE documents SET is_current=0 WHERE doc_id='doc-v1'")
@@ -114,7 +338,9 @@ def test_new_document_version_updates_existing_risk_instead_of_creating_duplicat
         conn.commit()
 
     private_fund_tracking.enqueue_current_documents(collection_db, "demo")
-    private_fund_tracking.process_next_job(collection_db, "demo")
+    private_fund_tracking.process_next_job(
+        collection_db, "demo", llm_client=_VerifiedTrackingClient()
+    )
 
     risks = private_fund_tracking.list_items(collection_db, "demo", item_type="risk")
     assert len(risks) == 1
@@ -122,6 +348,9 @@ def test_new_document_version_updates_existing_risk_instead_of_creating_duplicat
     timeline = private_fund_tracking.get_item_timeline(collection_db, "demo", risks[0]["item_id"])
     assert [version["version_no"] for version in timeline["versions"]] == [1, 2]
     assert timeline["changes"][-1]["change_type"] == "content_changed"
+    second_diff = {change["field"]: change for change in timeline["versions"][1]["field_changes"]}
+    assert second_diff["content"]["before"] != second_diff["content"]["after"]
+    assert second_diff["content"]["label"] == "当前判断"
 
 
 def test_manual_scan_rechecks_current_documents_without_duplicate_versions(tmp_path: Path) -> None:
@@ -135,12 +364,39 @@ def test_manual_scan_rechecks_current_documents_without_duplicate_versions(tmp_p
     assert queued["payload"]["document_ids"] == ["doc-v1"]
     assert completed is not None
     assert completed["job_id"] == queued["job_id"]
-    assert completed["result"]["candidate_count"] == 3
+    assert completed["result"]["candidate_count"] == 1
     assert all(
         item["current_version_no"] == 1
         for item in private_fund_tracking.list_items(collection_db, "demo")
     )
-    assert len(private_fund_tracking.list_alerts(collection_db, "demo")) == 2
+    assert len(private_fund_tracking.list_alerts(collection_db, "demo")) == 0
+
+
+def test_verified_skill_candidate_passes_quality_gate_and_creates_material_alert(
+    tmp_path: Path,
+) -> None:
+    collection_db = _collection_db(tmp_path)
+    private_fund_tracking.enqueue_current_documents(collection_db, "demo")
+
+    completed = private_fund_tracking.process_next_job(
+        collection_db, "demo", llm_client=_VerifiedTrackingClient()
+    )
+
+    assert completed is not None
+    assert completed["result"]["skill_loaded"] is True
+    assert completed["result"]["verified_candidate_count"] == 1
+    assert completed["result"]["review_candidate_count"] == 1
+    risk = private_fund_tracking.list_items(collection_db, "demo", item_type="risk")[0]
+    assert risk["current_version"]["metadata"]["quality_status"] == "verified"
+    assert risk["title"] != risk["current_version"]["content"]
+    assert len(risk["title"]) <= 48
+    timeline = private_fund_tracking.get_item_timeline(collection_db, "demo", risk["item_id"])
+    evidence = timeline["versions"][-1]["evidence_sources"][0]
+    assert evidence["evidence_id"] == "chunk:risk-1"
+    assert evidence["document_name"].endswith(".pdf")
+    assert evidence["excerpt"]
+    assert evidence["full_content"].startswith(evidence["excerpt"])
+    assert len(private_fund_tracking.list_alerts(collection_db, "demo")) == 1
 
 
 def test_memo_artifacts_are_grouped_into_versions_and_comparable(tmp_path: Path) -> None:
@@ -189,6 +445,9 @@ def test_memo_artifacts_are_grouped_into_versions_and_comparable(tmp_path: Path)
     assert first["html_path"] == str(first_html)
     assert first["pdf_path"] == str(first_pdf)
 
+    memo_jobs = private_fund_tracking.enqueue_current_memo_versions(collection_db, "demo")
+    assert [job["source_id"] for job in memo_jobs] == [second["memo_version_id"]]
+
     comparison = private_fund_tracking.compare_memo_versions(
         collection_db,
         "demo",
@@ -203,7 +462,9 @@ def test_memo_artifacts_are_grouped_into_versions_and_comparable(tmp_path: Path)
 def test_alert_lifecycle_and_watch_rule_are_persistent(tmp_path: Path) -> None:
     collection_db = _collection_db(tmp_path)
     private_fund_tracking.enqueue_current_documents(collection_db, "demo")
-    private_fund_tracking.process_next_job(collection_db, "demo")
+    private_fund_tracking.process_next_job(
+        collection_db, "demo", llm_client=_VerifiedTrackingClient()
+    )
     alert = private_fund_tracking.list_alerts(collection_db, "demo")[0]
 
     updated = private_fund_tracking.update_alert_status(
@@ -222,9 +483,15 @@ def test_alert_lifecycle_and_watch_rule_are_persistent(tmp_path: Path) -> None:
         target_type="risk",
         min_priority="high",
         frequency="daily",
+        query={
+            "keywords": ["海外订单"],
+            "event_types": ["order_delay"],
+            "change_types": ["content_changed"],
+        },
     )
     assert custom["target_type"] == "risk"
     assert custom["min_priority"] == "high"
+    assert custom["query"]["event_types"] == ["order_delay"]
 
     snoozed = private_fund_tracking.update_alert_status(
         collection_db,
@@ -264,15 +531,26 @@ def test_watch_rule_keyword_query_filters_alerts(tmp_path: Path) -> None:
         min_priority="low",
         query={"keywords": ["供应链"]},
     )
+    wrong_event_type = private_fund_tracking.upsert_watch_rule(
+        collection_db,
+        "demo",
+        name="海外产品发布",
+        target_type="risk",
+        min_priority="low",
+        query={"keywords": ["海外"], "event_types": ["product_launch"]},
+    )
 
     private_fund_tracking.enqueue_current_documents(collection_db, "demo")
-    private_fund_tracking.process_next_job(collection_db, "demo")
+    private_fund_tracking.process_next_job(
+        collection_db, "demo", llm_client=_VerifiedTrackingClient()
+    )
     rule_ids = {
         alert["rule_id"] for alert in private_fund_tracking.list_alerts(collection_db, "demo")
     }
 
     assert matching["rule_id"] in rule_ids
     assert nonmatching["rule_id"] not in rule_ids
+    assert wrong_event_type["rule_id"] not in rule_ids
 
 
 def test_tracking_http_api_exposes_async_jobs_and_alert_lifecycle(
@@ -280,7 +558,9 @@ def test_tracking_http_api_exposes_async_jobs_and_alert_lifecycle(
 ) -> None:
     collection_db = _collection_db(tmp_path)
     private_fund_tracking.enqueue_current_documents(collection_db, "demo")
-    private_fund_tracking.process_next_job(collection_db, "demo")
+    private_fund_tracking.process_next_job(
+        collection_db, "demo", llm_client=_VerifiedTrackingClient()
+    )
     alert = private_fund_tracking.list_alerts(collection_db, "demo")[0]
 
     monkeypatch.setattr(
@@ -307,8 +587,19 @@ def test_tracking_http_api_exposes_async_jobs_and_alert_lifecycle(
 
     overview = client.get("/v1/private-fund/projects/demo/tracking")
     assert overview.status_code == 200
-    assert overview.json()["counts"] == {"assumption": 1, "catalyst": 1, "risk": 1}
-    assert overview.json()["unread_alert_count"] == 2
+    assert overview.json()["counts"] == {"assumption": 1, "risk": 1}
+    assert overview.json()["unread_alert_count"] == 1
+    assert overview.json()["quality_counts"] == {"verified": 1, "needs_review": 0}
+    assert overview.json()["governance_counts"] == {
+        "active_unqualified": 0,
+        "archived": 0,
+    }
+
+    governance = client.get(
+        "/v1/private-fund/projects/demo/research-items-governance?archive_status=active"
+    )
+    assert governance.status_code == 200
+    assert governance.json()["items"] == []
 
     queued = client.post("/v1/private-fund/projects/demo/tracking/run")
     assert queued.status_code == 202
@@ -331,7 +622,7 @@ def test_tracking_http_api_exposes_async_jobs_and_alert_lifecycle(
 
 
 def test_standalone_worker_discovers_dataset_and_drains_queue(tmp_path: Path) -> None:
-    collection_db = _collection_db(tmp_path)
+    collection_db = _collection_db(tmp_path / "user-demo" / "private_fund_datasets")
 
     processed = private_fund_tracking_worker.run_cycle(tmp_path, None)
 

@@ -19,6 +19,47 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 # omnigent/inner/codex_native_executor.py.
 _ATTACHMENT_MARKER_RE = re.compile(r"^\[Attached(?: file)?: .+\]$")
 
+# Project-scoped research instructions are sent to the agent inside hidden
+# markers.  They are execution context, not the user's question, and must not
+# become the conversation title.  The legacy boundaries cover sessions created
+# before the launcher consistently wrapped that context.
+_PRIVATE_FUND_CONTEXT_RE = re.compile(
+    r"<!--\s*omnigent-private-fund-context:start\s*-->.*?"
+    r"<!--\s*omnigent-private-fund-context:end\s*-->",
+    flags=re.DOTALL | re.IGNORECASE,
+)
+_PRIVATE_FUND_LEGACY_PREFIX = "当前会话必须基于私募投研资料项目"
+_PRIVATE_FUND_LEGACY_END_MARKERS = (
+    "不得裸写或无证据扩写",
+    "声称系统无法获取引用链接",
+)
+
+
+def _strip_private_fund_title_context(text: str) -> str:
+    """Remove private-fund execution instructions from title candidates."""
+    text = _PRIVATE_FUND_CONTEXT_RE.sub("", text)
+    lines = text.splitlines()
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip().startswith(_PRIVATE_FUND_LEGACY_PREFIX)
+        ),
+        None,
+    )
+    if start is None:
+        return text
+
+    end_candidates = [
+        index
+        for index in range(start, len(lines))
+        if any(marker in lines[index] for marker in _PRIVATE_FUND_LEGACY_END_MARKERS)
+    ]
+    if not end_candidates:
+        return text
+    end = max(end_candidates)
+    return "\n".join(lines[:start] + lines[end + 1 :])
+
 # ── Conversation ──────────────────────────────────────
 
 
@@ -276,6 +317,7 @@ def synthesize_conversation_title(
         if block.get("type") == "input_text":
             text = block.get("text")
             if isinstance(text, str):
+                text = _strip_private_fund_title_context(text)
                 kept_lines = [
                     line
                     for line in text.splitlines()

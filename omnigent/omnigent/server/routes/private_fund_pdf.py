@@ -83,7 +83,10 @@ DEFAULT_PDF_PATH = (
 SOURCE_RENDER_DIR = _PRIVATE_FUND_ROOT / "output/pdf_sources"
 SOURCE_RENDER_DPI = 144
 DATASET_WORKSPACE_DIR = _PRIVATE_FUND_ROOT / "output/private_fund_datasets"
-EXCEL_FILE_TYPES = {"xlsx", "xls", "xlsm", "csv"}
+# Older dataset indexes used the generic ``excel`` type while newer ones
+# persist the concrete extension.  Citation resolution must support both or a
+# valid workbook can be cited by the model but rejected by the source viewer.
+EXCEL_FILE_TYPES = {"xlsx", "xls", "xlsm", "csv", "excel"}
 EXCEL_MAX_ROW = 1_048_576
 EXCEL_MAX_COLUMN = 16_384
 EXCEL_SOURCE_MAX_GRID_CELLS = 4_000
@@ -326,6 +329,10 @@ class UpdateResearchWatchRuleRequest(BaseModel):
     min_priority: str | None = None
     frequency: str | None = None
     active: bool | None = None
+
+
+class ResearchItemGovernanceRequest(BaseModel):
+    item_ids: list[str] = Field(default_factory=list, min_length=1, max_length=500)
 
 
 class UpdateResearchAlertRequest(BaseModel):
@@ -2919,7 +2926,7 @@ def _dataset_document_by_name(
     params: list[Any] = [clean_name, clean_name, Path(clean_name).stem, f"%/{clean_name}"]
     if file_types:
         placeholders = ",".join("?" for _ in file_types)
-        type_filter = f"AND lower(file_type) IN ({placeholders})"
+        type_filter = f"AND ltrim(lower(file_type), '.') IN ({placeholders})"
         params.extend(sorted(file_types))
     try:
         with sqlite3.connect(str(collection_db), timeout=5) as conn:
@@ -2931,11 +2938,11 @@ def _dataset_document_by_name(
                 FROM documents
                 WHERE deleted_at IS NULL
                   AND (
-                    original_filename = ?
-                    OR source_name = ?
-                    OR title = ?
-                    OR stored_path LIKE ?
-                    OR ? LIKE '%' || original_filename
+                    original_filename = ? COLLATE NOCASE
+                    OR source_name = ? COLLATE NOCASE
+                    OR title = ? COLLATE NOCASE
+                    OR stored_path LIKE ? COLLATE NOCASE
+                    OR ? LIKE '%' || original_filename COLLATE NOCASE
                   )
                   {type_filter}
                 ORDER BY original_filename
@@ -5096,6 +5103,56 @@ def create_private_fund_pdf_router(
                 status=status,
             )
         }
+
+    @router.get("/private-fund/projects/{dataset_id}/research-items-governance")
+    def list_project_research_item_governance(
+        dataset_id: str,
+        archive_status: str = Query(default="active", pattern="^(active|archived)$"),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "items": private_fund_tracking.list_low_quality_items(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                archive_status=archive_status,
+            )
+        }
+
+    @router.post("/private-fund/projects/{dataset_id}/research-items-governance/archive")
+    def archive_project_research_items(
+        dataset_id: str, request: ResearchItemGovernanceRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_tracking.archive_low_quality_items(
+                _collection_db_path(dataset_id), dataset_id, request.item_ids
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/research-items-governance/restore")
+    def restore_project_research_items(
+        dataset_id: str, request: ResearchItemGovernanceRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_tracking.restore_archived_items(
+                _collection_db_path(dataset_id), dataset_id, request.item_ids
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/research-items-governance/purge")
+    def purge_project_research_items(
+        dataset_id: str, request: ResearchItemGovernanceRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_tracking.purge_archived_items(
+                _collection_db_path(dataset_id), dataset_id, request.item_ids
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.get("/private-fund/projects/{dataset_id}/research-items/{item_id}/timeline")
     def get_project_research_item_timeline(

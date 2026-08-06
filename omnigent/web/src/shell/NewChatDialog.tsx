@@ -108,6 +108,7 @@ import {
   privateFundProjectPreamble,
   readActivePrivateFundProjectId,
   readPrivateFundResearchMode,
+  wrapPrivateFundPromptContext,
   writeActivePrivateFundProjectId,
   writePrivateFundResearchMode,
 } from "@/lib/privateFundApi";
@@ -2443,6 +2444,7 @@ export function NewChatLandingScreen() {
         selectedPrivateFundProject,
         privateFundResearchMode,
       );
+      const hiddenPrivateFundContext = wrapPrivateFundPromptContext(privateFundContext);
       const userPrompt = sanitizeInitialPrompt(message);
       // Native vendor CLIs require `/skill` to remain the first token. Put
       // the project/research contract after such a command so the CLI still
@@ -2453,9 +2455,9 @@ export function NewChatLandingScreen() {
         mentionedItems.length === 0 &&
         isSlashCommandText(userPrompt);
       const initialPrompt = preserveNativeSlashPrefix
-        ? `${userPrompt}\n\n${privateFundContext}`.trim()
+        ? `${userPrompt}\n\n${hiddenPrivateFundContext}`.trim()
         : buildMentionPreamble(mentionedItems, selectedAgent?.harness ?? null) +
-          privateFundContext +
+          hiddenPrivateFundContext +
           userPrompt;
       // A first message matching one of the agent's bundled skills is
       // handed off as a structured invocation so ChatPage auto-sends it

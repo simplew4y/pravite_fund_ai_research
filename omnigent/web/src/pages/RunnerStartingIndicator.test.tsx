@@ -51,6 +51,24 @@ afterEach(() => {
 });
 
 describe("RunnerStartingIndicator", () => {
+  it("replaces an endless terminal spinner with a recoverable timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      renderWithContext("hero", makeCtx({ terminalStartingUp: true }));
+      expect(screen.getByTestId("runner-starting-indicator")).toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(45_000);
+
+      const timeout = screen.getByTestId("runner-startup-timeout");
+      expect(timeout).toHaveAttribute("role", "alert");
+      expect(timeout).toHaveTextContent("启动时间过长");
+      expect(screen.getByRole("button", { name: "刷新并重试" })).toBeInTheDocument();
+      expect(screen.queryByTestId("runner-starting-indicator")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("hero: shows a spinner + Starting up… copy while a terminal-first session is spinning up", () => {
     renderWithContext("hero", makeCtx({ terminalStartingUp: true }));
     const indicator = screen.getByTestId("runner-starting-indicator");

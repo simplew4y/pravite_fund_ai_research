@@ -121,6 +121,50 @@ def test_to_api_dict_exposes_interrupted_assistant_marker() -> None:
             [{"type": "input_text", "text": "why does [Attached: x.png] render twice?"}],
             "why does [Attached: x.png] render twice?",
         ),
+        (
+            [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "<!-- omnigent-private-fund-context:start -->\n"
+                        "当前会话必须基于私募投研资料项目「阳光电源」回答。\n"
+                        "dataset_id: 阳光电源\n"
+                        "<!-- omnigent-private-fund-context:end -->\n"
+                        "分析最近一期经营变化"
+                    ),
+                }
+            ],
+            "分析最近一期经营变化",
+        ),
+        (
+            [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "/deep-research 核验业绩\n\n"
+                        "<!-- omnigent-private-fund-context:start -->\n"
+                        "当前会话必须基于私募投研资料项目「阳光电源」回答。\n"
+                        "<!-- omnigent-private-fund-context:end -->"
+                    ),
+                }
+            ],
+            "/deep-research 核验业绩",
+        ),
+        (
+            [
+                {
+                    "type": "input_text",
+                    "text": (
+                        "当前会话必须基于私募投研资料项目「阳光电源」回答。\n"
+                        "研究级别：标准研究\n"
+                        "关键事实、时间、金额和事件必须逐条溯源，不得裸写或无证据扩写。\n"
+                        "勾选节点只是研究上下文，禁止声称系统无法获取引用链接。\n"
+                        "分析逆变器业务增长驱动"
+                    ),
+                }
+            ],
+            "分析逆变器业务增长驱动",
+        ),
     ],
 )
 def test_synthesize_conversation_title(

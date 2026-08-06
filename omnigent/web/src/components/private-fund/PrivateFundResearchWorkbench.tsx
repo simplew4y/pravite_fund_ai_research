@@ -178,7 +178,9 @@ export type WorkbenchActionContextValue = {
   contextAssetIds: string[];
   removeContextAsset: (assetId: string) => void;
   addResearchNodeFromResponse: (responseId: string, content: string) => void;
-  markUsefulInformation: (responseId: string, content: string) => void;
+  markUsefulInformation: (responseId: string, content: string) => Promise<void>;
+  openSourcePicker: () => void;
+  openAssetManagement: () => void;
   pinToCurrentAssumption: (responseId: string, content: string) => void;
   generationMode: PrivateFundGenerationMode;
   generationInstruction: string;
@@ -462,6 +464,7 @@ export function PrivateFundResearchWorkbench({
   const [presentationMode, setPresentationMode] = useState<PrivateFundGenerationMode>("plain_text");
   const [presentationInstruction, setPresentationInstruction] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [assetManagementRequestId, setAssetManagementRequestId] = useState<number | undefined>();
   const documentPreviewRequest = usePrivateFundWorkspaceStore(
     (state) => state.documentPreviewRequest,
   );
@@ -796,19 +799,19 @@ export function PrivateFundResearchWorkbench({
   });
 
   const selectInformation = useCallback(
-    (responseId: string, content: string) => {
+    async (responseId: string, content: string) => {
       const normalized = content.trim();
       if (!normalized) return;
+      await saveInformationMutation.mutateAsync({
+        responseId,
+        content: normalized,
+        optimisticAssetId: `pending-information:${responseId}:${Date.now()}`,
+      });
       setSelectedInformation((current) => {
         if (current.some((item) => item.responseId === responseId && item.content === normalized)) {
           return current;
         }
         return [...current, { responseId, content: normalized }];
-      });
-      saveInformationMutation.mutate({
-        responseId,
-        content: normalized,
-        optimisticAssetId: `pending-information:${responseId}:${Date.now()}`,
       });
       setNotice("已保存为回答笔记");
     },
@@ -928,6 +931,11 @@ export function PrivateFundResearchWorkbench({
       },
       addResearchNodeFromResponse: selectInformation,
       markUsefulInformation: selectInformation,
+      openSourcePicker: () => selectWorkspaceView("sources"),
+      openAssetManagement: () => {
+        setAssetManagementRequestId((value) => (value ?? 0) + 1);
+        selectWorkspaceView("notes");
+      },
       pinToCurrentAssumption: selectInformation,
       generationMode: presentationMode,
       generationInstruction: presentationInstruction,
@@ -946,6 +954,7 @@ export function PrivateFundResearchWorkbench({
       presentationMode,
       promptSuggestions,
       selectInformation,
+      selectWorkspaceView,
       selectedInformation.length,
       workflow?.nodes,
     ],
@@ -1204,6 +1213,7 @@ export function PrivateFundResearchWorkbench({
         }
         onOpenAsset={compact && SIDE_PANEL_VIEWS.has(view) ? openSidePanelAsset : openAsset}
         onOpenMemoHistory={view === "memos" ? openMemoHistory : undefined}
+        managementRequestId={view === "notes" ? assetManagementRequestId : undefined}
         onSetContext={(assetIds) => contextMutation.mutateAsync(assetIds).then(() => undefined)}
         title={view === "sources" ? "资料" : view === "memos" ? "Memo" : "笔记"}
       />

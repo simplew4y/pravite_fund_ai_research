@@ -54,6 +54,8 @@ export type ResearchAssetLibraryProps = {
   onOpenAsset: (asset: PrivateFundAsset) => void;
   onOpenMemoHistory?: (seriesId: string) => void;
   onDeleteAssets: (assetIds: string[]) => Promise<void>;
+  /** Incremented by an external entry point to open batch-management mode. */
+  managementRequestId?: number;
 };
 
 type MemoAssetSeries = {
@@ -273,6 +275,7 @@ export function ResearchAssetLibrary({
   onOpenAsset,
   onOpenMemoHistory,
   onDeleteAssets,
+  managementRequestId,
 }: ResearchAssetLibraryProps) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -291,6 +294,12 @@ export function ResearchAssetLibrary({
     () => new Set(),
   );
   const compactSideLibrary = compact && (zone === "notes" || zone === "memos");
+
+  useEffect(() => {
+    if (managementRequestId === undefined || assets.length === 0) return;
+    setManaging(true);
+    setManagedSelection(new Set());
+  }, [assets.length, managementRequestId]);
 
   const availableTypes = useMemo(
     () => [...new Set(assets.map((asset) => asset.assetType))].sort(),

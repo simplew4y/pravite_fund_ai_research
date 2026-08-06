@@ -7,6 +7,9 @@ import {
   FileSearch,
   Loader2,
   MapPin,
+  Maximize2,
+  Minus,
+  Plus,
   Table2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -19,6 +22,14 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import type { PdfSourceSelection } from "@/shell/FileViewerContext";
 import { cn } from "@/lib/utils";
 import { hostFetch } from "@/lib/host";
@@ -121,6 +132,7 @@ function sourceLabel(source: PdfSourceSelection): string {
 }
 
 function errorMessage(error: unknown): string {
+  if (error instanceof TypeError) return "网络连接失败，无法加载引用来源。";
   return error instanceof Error ? error.message : "无法读取原始文档";
 }
 
@@ -330,23 +342,28 @@ export function InlineSourcePopover({
   href,
   children,
   className,
+  presentation = "popover",
 }: {
   source: PdfSourceSelection;
   href?: string;
   children: React.ReactNode;
   className?: string;
+  presentation?: "popover" | "dialog";
 }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<SourceState>({ status: "idle" });
+  const [retryKey, setRetryKey] = useState(0);
+  const [pdfZoom, setPdfZoom] = useState(1);
   const [excelWindow, setExcelWindow] = useState<{ row?: number; col?: number }>({});
   const triggerRef = useRef<HTMLAnchorElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const request = useMemo(() => sourceRequest(source, excelWindow), [excelWindow, source]);
 
   useEffect(() => setExcelWindow({}), [source.workbookName, source.sheetName, source.rangeRef]);
+  useEffect(() => setPdfZoom(1), [source.evidenceId, source.pageNo, source.pdfName]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || presentation === "dialog") return;
 
     const closeOnOutsidePointerDown = (event: PointerEvent) => {
       const eventPath = event.composedPath();
@@ -364,7 +381,7 @@ export function InlineSourcePopover({
     // dismisses this independently portalled popover.
     window.addEventListener("pointerdown", closeOnOutsidePointerDown, true);
     return () => window.removeEventListener("pointerdown", closeOnOutsidePointerDown, true);
-  }, [open]);
+  }, [open, presentation]);
 
   useEffect(() => {
     if (!open) return;
@@ -374,6 +391,15 @@ export function InlineSourcePopover({
       .then(async (response) => {
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+          if (response.status === 403) {
+            throw new Error("没有权限读取该引用文件，请确认项目访问权限。");
+          }
+          if (response.status === 404) {
+            throw new Error("引用文件不存在或已被删除，请前往资料管理确认文件状态。");
+          }
+          if (response.status >= 500) {
+            throw new Error("引用来源服务暂时不可用，请稍后重试。");
+          }
           throw new Error(payload?.detail || response.statusText || "无法读取原始文档");
         }
         return response.json() as Promise<PdfPage | ExcelPayload>;
@@ -389,7 +415,165 @@ export function InlineSourcePopover({
         if (!controller.signal.aborted) setState({ status: "error", message: errorMessage(error) });
       });
     return () => controller.abort();
-  }, [open, request.kind, request.url]);
+  }, [open, request.kind, request.url, retryKey]);
+
+  if (presentation === "dialog") {
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <button
+            className={className}
+            data-source-citation="true"
+            title="点击查看原始文档"
+            type="button"
+          >
+            {children}
+          </button>
+        </DialogTrigger>
+        <DialogContent className="flex h-[max(360px,calc(100dvh-400px))] w-[max(640px,calc(100vw-400px))] max-w-none flex-col gap-0 overflow-hidden rounded-lg p-0 sm:max-w-none">
+          <DialogHeader className="shrink-0 border-b border-[var(--pf-line)] px-4 py-3 pr-12">
+            <div className="flex min-w-0 items-center gap-2">
+              {isExcel(source) ? (
+                <Table2 className="size-4 shrink-0 text-[var(--pf-accent-ink)]" />
+              ) : (
+                <FileSearch className="size-4 shrink-0 text-[var(--pf-accent-ink)]" />
+              )}
+              <DialogTitle className="text-sm">原始文档</DialogTitle>
+              {state.status === "pdf" && (
+                <div
+                  aria-label="PDF 缩放控制"
+                  className="ml-auto flex items-center gap-1 rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] p-0.5"
+                  role="group"
+                >
+                  <button
+                    aria-label="缩小 PDF"
+                    className="rounded p-1.5 hover:bg-[var(--pf-panel-subtle)] disabled:opacity-35"
+                    disabled={pdfZoom <= 0.75}
+                    onClick={() => setPdfZoom((value) => Math.max(0.75, value - 0.25))}
+                    type="button"
+                  >
+                    <Minus className="size-3.5" />
+                  </button>
+                  <span className="w-11 text-center text-[10px] tabular-nums text-[var(--pf-ink-secondary)]">
+                    {Math.round(pdfZoom * 100)}%
+                  </span>
+                  <button
+                    aria-label="放大 PDF"
+                    className="rounded p-1.5 hover:bg-[var(--pf-panel-subtle)] disabled:opacity-35"
+                    disabled={pdfZoom >= 2.5}
+                    onClick={() => setPdfZoom((value) => Math.min(2.5, value + 0.25))}
+                    type="button"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                  <button
+                    aria-label="适合窗口宽度"
+                    className="rounded p-1.5 hover:bg-[var(--pf-panel-subtle)]"
+                    onClick={() => setPdfZoom(1)}
+                    title="适合窗口宽度"
+                    type="button"
+                  >
+                    <Maximize2 className="size-3.5" />
+                  </button>
+                </div>
+              )}
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[9px]",
+                  state.status !== "pdf" && "ml-auto",
+                  (state.status === "idle" || state.status === "loading") &&
+                    "bg-[var(--pf-panel-subtle)] text-[var(--pf-ink-muted)]",
+                  (state.status === "pdf" || state.status === "excel") &&
+                    "bg-emerald-500/10 text-emerald-700",
+                  state.status === "error" && "bg-red-500/10 text-red-700",
+                )}
+                role="status"
+              >
+                {state.status === "idle" || state.status === "loading"
+                  ? "加载中"
+                  : state.status === "pdf" || state.status === "excel"
+                    ? "加载成功"
+                    : "加载失败"}
+              </span>
+            </div>
+            <DialogDescription className="truncate text-[11px]">
+              {source.pdfName || source.workbookName || "项目资料"} · {sourceLabel(source)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto bg-[var(--pf-panel-subtle)]">
+            {(state.status === "idle" || state.status === "loading") && (
+              <div
+                aria-live="polite"
+                className="flex h-full min-h-44 items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]"
+                role="status"
+              >
+                <Loader2 className="size-4 animate-spin" />
+                正在读取原始文档…
+              </div>
+            )}
+            {state.status === "error" && (
+              <div className="min-h-32 space-y-3 p-4 text-xs" role="alert">
+                <div className="flex items-start gap-2 text-red-700">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span className="break-words">{state.message}</span>
+                </div>
+                <div className="flex flex-wrap gap-2 pl-6">
+                  <button
+                    className="rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2.5 py-1 text-[var(--pf-ink)] hover:bg-[var(--pf-panel-subtle)]"
+                    onClick={() => setRetryKey((value) => value + 1)}
+                    type="button"
+                  >
+                    重试加载
+                  </button>
+                  <a
+                    className="rounded-md px-2.5 py-1 text-[var(--pf-accent-ink)] hover:bg-[var(--pf-panel-subtle)] hover:underline"
+                    href={`/?private_fund_project=${encodeURIComponent(source.datasetId || readActivePrivateFundProjectId() || "")}`}
+                  >
+                    前往资料管理
+                  </a>
+                </div>
+              </div>
+            )}
+            {state.status === "pdf" && (
+              <div className="min-w-full p-2 sm:p-3">
+                <div
+                  className="relative overflow-hidden rounded-lg border border-[var(--pf-line)] bg-white shadow-sm"
+                  data-pdf-page-container="true"
+                  style={{ width: `${pdfZoom * 100}%` }}
+                >
+                  <img
+                    alt={`${state.page.file_name} 第 ${state.page.page_no} 页`}
+                    className="block h-auto w-full select-none"
+                    src={state.page.image_url}
+                  />
+                  {state.page.matched &&
+                    state.page.highlights.map((highlight, index) => (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute rounded-sm border border-amber-500/80 bg-amber-300/35"
+                        key={`${highlight.x_pct}-${highlight.y_pct}-${index}`}
+                        style={{
+                          left: `${highlight.x_pct}%`,
+                          top: `${highlight.y_pct}%`,
+                          width: `${highlight.width_pct}%`,
+                          height: `${highlight.height_pct}%`,
+                        }}
+                      />
+                    ))}
+                </div>
+              </div>
+            )}
+            {state.status === "excel" && (
+              <ExcelOriginal
+                onNavigateWindow={(row, col) => setExcelWindow({ row, col })}
+                source={state.source}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -411,68 +595,107 @@ export function InlineSourcePopover({
       <PopoverContent
         align="start"
         className="w-[min(560px,calc(100vw-24px))] gap-0 overflow-hidden p-0"
-        ref={contentRef}
         sideOffset={8}
       >
-        <PopoverHeader className="border-b border-[var(--pf-line)] px-3 py-2.5">
-          <PopoverTitle className="flex items-center gap-2 text-xs">
-            {isExcel(source) ? (
-              <Table2 className="size-4 text-[var(--pf-accent-ink)]" />
-            ) : (
-              <FileSearch className="size-4 text-[var(--pf-accent-ink)]" />
-            )}
-            原始文档
-          </PopoverTitle>
-          <PopoverDescription className="truncate text-[10px]">
-            {source.pdfName || source.workbookName || "项目资料"} · {sourceLabel(source)}
-          </PopoverDescription>
-        </PopoverHeader>
-        <div className="max-h-[68vh] overflow-auto bg-[var(--pf-panel-subtle)]">
-          {(state.status === "idle" || state.status === "loading") && (
-            <div className="flex h-44 items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]">
-              <Loader2 className="size-4 animate-spin" />
-              正在读取原始文档…
-            </div>
-          )}
-          {state.status === "error" && (
-            <div className="flex min-h-32 items-start gap-2 p-4 text-xs text-red-700">
-              <AlertCircle className="mt-0.5 size-4 shrink-0" />
-              <span className="break-words">{state.message}</span>
-            </div>
-          )}
-          {state.status === "pdf" && (
-            <div className="p-2.5">
-              <div className="relative overflow-hidden rounded-lg border border-[var(--pf-line)] bg-white shadow-sm">
-                <img
-                  alt={`${state.page.file_name} 第 ${state.page.page_no} 页`}
-                  className="block h-auto w-full select-none"
-                  src={state.page.image_url}
-                />
-                {state.page.matched &&
-                  state.page.highlights.map((highlight, index) => (
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "pointer-events-none absolute rounded-sm border border-amber-500/80 bg-amber-300/35",
-                      )}
-                      key={`${highlight.x_pct}-${highlight.y_pct}-${index}`}
-                      style={{
-                        left: `${highlight.x_pct}%`,
-                        top: `${highlight.y_pct}%`,
-                        width: `${highlight.width_pct}%`,
-                        height: `${highlight.height_pct}%`,
-                      }}
-                    />
-                  ))}
+        <div className="contents" ref={contentRef}>
+          <PopoverHeader className="border-b border-[var(--pf-line)] px-3 py-2.5">
+            <PopoverTitle className="flex items-center gap-2 text-xs">
+              {isExcel(source) ? (
+                <Table2 className="size-4 text-[var(--pf-accent-ink)]" />
+              ) : (
+                <FileSearch className="size-4 text-[var(--pf-accent-ink)]" />
+              )}
+              原始文档
+            </PopoverTitle>
+            <PopoverDescription className="truncate text-[10px]">
+              {source.pdfName || source.workbookName || "项目资料"} · {sourceLabel(source)}
+            </PopoverDescription>
+            <span
+              className={cn(
+                "ml-auto rounded-full px-2 py-0.5 text-[9px]",
+                (state.status === "idle" || state.status === "loading") &&
+                  "bg-[var(--pf-panel-subtle)] text-[var(--pf-ink-muted)]",
+                (state.status === "pdf" || state.status === "excel") &&
+                  "bg-emerald-500/10 text-emerald-700",
+                state.status === "error" && "bg-red-500/10 text-red-700",
+              )}
+              role="status"
+            >
+              {state.status === "idle" || state.status === "loading"
+                ? "加载中"
+                : state.status === "pdf" || state.status === "excel"
+                  ? "加载成功"
+                  : "加载失败"}
+            </span>
+          </PopoverHeader>
+          <div className="max-h-[68vh] overflow-auto bg-[var(--pf-panel-subtle)]">
+            {(state.status === "idle" || state.status === "loading") && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex h-44 items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]"
+              >
+                <Loader2 className="size-4 animate-spin" />
+                正在读取原始文档…
               </div>
-            </div>
-          )}
-          {state.status === "excel" && (
-            <ExcelOriginal
-              onNavigateWindow={(row, col) => setExcelWindow({ row, col })}
-              source={state.source}
-            />
-          )}
+            )}
+            {state.status === "error" && (
+              <div role="alert" className="min-h-32 space-y-3 p-4 text-xs">
+                <div className="flex items-start gap-2 text-red-700">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span className="break-words">{state.message}</span>
+                </div>
+                <div className="flex flex-wrap gap-2 pl-6">
+                  <button
+                    type="button"
+                    className="rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2.5 py-1 text-[var(--pf-ink)] hover:bg-[var(--pf-panel-subtle)]"
+                    onClick={() => setRetryKey((value) => value + 1)}
+                  >
+                    重试加载
+                  </button>
+                  <a
+                    className="rounded-md px-2.5 py-1 text-[var(--pf-accent-ink)] hover:bg-[var(--pf-panel-subtle)] hover:underline"
+                    href={`/?private_fund_project=${encodeURIComponent(source.datasetId || readActivePrivateFundProjectId() || "")}`}
+                  >
+                    前往资料管理
+                  </a>
+                </div>
+              </div>
+            )}
+            {state.status === "pdf" && (
+              <div className="p-2.5">
+                <div className="relative overflow-hidden rounded-lg border border-[var(--pf-line)] bg-white shadow-sm">
+                  <img
+                    alt={`${state.page.file_name} 第 ${state.page.page_no} 页`}
+                    className="block h-auto w-full select-none"
+                    src={state.page.image_url}
+                  />
+                  {state.page.matched &&
+                    state.page.highlights.map((highlight, index) => (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "pointer-events-none absolute rounded-sm border border-amber-500/80 bg-amber-300/35",
+                        )}
+                        key={`${highlight.x_pct}-${highlight.y_pct}-${index}`}
+                        style={{
+                          left: `${highlight.x_pct}%`,
+                          top: `${highlight.y_pct}%`,
+                          width: `${highlight.width_pct}%`,
+                          height: `${highlight.height_pct}%`,
+                        }}
+                      />
+                    ))}
+                </div>
+              </div>
+            )}
+            {state.status === "excel" && (
+              <ExcelOriginal
+                onNavigateWindow={(row, col) => setExcelWindow({ row, col })}
+                source={state.source}
+              />
+            )}
+          </div>
         </div>
       </PopoverContent>
     </Popover>

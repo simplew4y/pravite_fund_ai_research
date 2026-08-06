@@ -261,6 +261,7 @@ export function Sidebar({
   const [pinnedConversationIds, setPinnedConversationIds] = useState(readPinnedConversationIds);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (serverInfo !== "loading" && serverInfo.accounts_enabled) {
@@ -277,10 +278,12 @@ export function Sidebar({
   }, []);
 
   const signOut = useCallback(async () => {
+    if (signingOut) return;
+    setSigningOut(true);
     await logout();
     clearUserScopedBrowserState();
     window.location.href = "/login";
-  }, []);
+  }, [signingOut]);
 
   const lastSelectedIdRef = useRef<string | null>(null);
   const visibleIdsRef = useRef<string[]>([]);
@@ -781,10 +784,11 @@ export function Sidebar({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
+                    disabled={signingOut}
                     onSelect={() => void signOut()}
                   >
                     <LogOutIcon className="size-4" />
-                    退出登录
+                    {signingOut ? "正在退出…" : "退出登录"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
