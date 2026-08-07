@@ -33,6 +33,10 @@ import type { PrivateFundProject } from "@/lib/privateFundApi";
 import { setPendingInitialPrompt, useChatStore } from "@/store/chatStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+vi.mock("@/lib/skillsMarketplaceApi", () => ({
+  getInstalledSkills: vi.fn().mockResolvedValue([]),
+}));
+
 const privateFundProjectsState = vi.hoisted(() => ({
   projects: [] as unknown[],
   project: undefined as unknown,
@@ -1496,10 +1500,7 @@ describe("NewChatLandingScreen skills menu", () => {
     expect(screen.queryByText("Review a pull request")).toBeNull();
   });
 
-  it("shows no menu for native terminal agents even if skills are listed", () => {
-    // A native agent with (hypothetical) bundled skills: the gate is the
-    // agent kind, not an empty skill list — the vendor CLI interprets
-    // slash commands itself, so the web menu must stay out of the way.
+  it("shows skills for native terminal agents so the runner can resolve them", () => {
     mockAgents([
       {
         id: "a1",
@@ -1512,7 +1513,7 @@ describe("NewChatLandingScreen skills menu", () => {
     ]);
     renderLanding();
     typeMessage("/");
-    expect(screen.queryByTestId("slash-menu-item-review-pr")).toBeNull();
+    expect(screen.getByTestId("slash-menu-item-review-pr")).toBeTruthy();
   });
 });
 

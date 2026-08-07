@@ -100,6 +100,27 @@ describe("itemsToBlocks — flat shape", () => {
     ]);
   });
 
+  it("skips native transcript echoes of the internal skill envelope", () => {
+    const hiddenSkill = [
+      "<skill>",
+      "<name>datapack-builder</name>",
+      "<path>/workspace/.agents/skills/datapack-builder/SKILL.md</path>",
+      "# Financial Data Pack Builder",
+      "<user_request>build a data pack</user_request>",
+      "</skill>",
+    ].join("\n");
+
+    const blocks = itemsToBlocks([
+      userMessage("resp_skill", hiddenSkill, "msg_native_echo"),
+      userMessage("resp_visible", "/datapack-builder build a data pack", "msg_visible"),
+    ]);
+
+    expect(blocks).toHaveLength(1);
+    expect((blocks[0] as UserMessageBlock).content).toEqual([
+      { type: "input_text", text: "/datapack-builder build a data pack" },
+    ]);
+  });
+
   it("user + assistant items produce [UserMessageBlock, TextDone] in order", () => {
     const items: ConversationItem[] = [
       userMessage("resp_1", "Hello", "msg_user1"),

@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpIcon,
   BotIcon,
@@ -184,6 +184,7 @@ import { useForkDialog } from "@/shell/ForkDialogContext";
 import { supportsEffortControl } from "@/lib/sessionCapabilities";
 import { isCodexNativeSession } from "@/lib/codexPlanMode";
 import { getCliServerUrl } from "@/lib/host";
+import { getInstalledSkills } from "@/lib/skillsMarketplaceApi";
 import { SessionImage } from "@/components/SessionImage";
 import {
   CodexGoalControl,
@@ -1571,10 +1572,9 @@ interface MainAgentSurfaceProps {
   disabled: boolean;
   onSend: (text: string, files?: File[]) => void;
   /**
-   * Invoke a skill via the `slash_command` event path. Gated off inside
-   * `MainAgentSurface` for terminal-first (native) sessions, where `/skill`
-   * is sent as plaintext for the vendor TUI to handle. See
-   * `ComposerProps.onSendSlashCommand`.
+   * Invoke a skill via the `slash_command` event path. The runner resolves
+   * the session's bundled and user-managed skills before forwarding hidden
+   * skill context to either an in-process or native harness.
    */
   onSendSlashCommand?: (name: string, args: string) => void;
   onStop: () => void;
@@ -1692,6 +1692,24 @@ function MainAgentSurface({
   onAddTrustedMemoSource,
 }: MainAgentSurfaceProps) {
   const terminalFirst = useTerminalFirst();
+  const { data: installedSkills = [] } = useQuery({
+    queryKey: ["skills", "installed"],
+    queryFn: getInstalledSkills,
+    staleTime: 30_000,
+    retry: false,
+    enabled: privateFundDatasetId != null,
+  });
+  const selectedAgentSkills = useMemo(
+    () => agents?.find((agent) => agent.id === selectedAgentId)?.skills ?? [],
+    [agents, selectedAgentId],
+  );
+  // A session's AgentObject already contains its bundled skills. Keep those
+  // visible while the runner-owned discovery snapshot is still cold, then
+  // supplement them with tenant-installed marketplace skills.
+  const additionalSkills = useMemo(
+    () => mergeSkillSummaries(selectedAgentSkills, installedSkills),
+    [installedSkills, selectedAgentSkills],
+  );
   // Mirrors ChatPage's `sandboxLaunching`: while the managed-sandbox
   // launch runs, the composer must stay sendable — the server parks
   // the message on the launch rendezvous — even though liveness reads
@@ -1841,24 +1859,20 @@ function MainAgentSurface({
     [onSend],
   );
   // Wrap the slash-command sender the same way (scroll to bottom on send).
-  // Gated off for native-wrapper sessions (claude-native / codex-native):
-  // there the composer's `/skill` must reach the vendor TUI as plaintext
-  // (the server has no slash_command path for native sessions). Undefined
-  // → the composer falls through to the plaintext send for these. Keyed
-  // on the wrapper label, NOT `isTerminalFirst` — a terminal-first SDK
-  // session (embedded Omnigent REPL terminal) runs an in-process harness
-  // with the full server-side slash_command path.
+  // Keep this enabled for native wrappers too: user-managed skills live in
+  // the tenant's `.agents/skills` directory, which the runner can resolve
+  // even when the vendor TUI does not discover that directory itself.
   const isTerminalFirst = terminalFirst?.isTerminalFirst === true;
   const isNativeWrapper = terminalFirst?.isNativeWrapper === true;
   const handleSendSlashCommand = useMemo(
     () =>
-      onSendSlashCommand && !isNativeWrapper
+      onSendSlashCommand
         ? (name: string, args: string) => {
             setSendScrollNonce((n) => n + 1);
             onSendSlashCommand(name, args);
           }
         : undefined,
-    [onSendSlashCommand, isNativeWrapper],
+    [onSendSlashCommand],
   );
 
   // "Working…" is shown when the main session is busy, including after a
@@ -2070,6 +2084,7 @@ function MainAgentSurface({
         subAgentLabel={subAgentLabel}
         privateFundProjectLabel={privateFundProjectLabel}
         privateFundDatasetId={privateFundDatasetId}
+        additionalSkills={additionalSkills}
       />
 
       {/* Chat/Terminal toggle for terminal-first sessions, reconnect-or-
@@ -3516,9 +3531,9 @@ interface ComposerProps {
    * Send a recognised skill as a `slash_command` event (the REPL's wire
    * shape) instead of plaintext. When present and the typed command names
    * a known session skill, `submit()` routes through this; otherwise the
-   * command falls through to `onSend` as plaintext. Undefined for
-   * native-terminal sessions, which always send `/skill` as plaintext so
-   * the vendor TUI loads the skill itself.
+   * command falls through to `onSend` as plaintext. Native-terminal
+   * sessions also use this path so tenant-scoped `.agents/skills` can be
+   * resolved by the runner instead of relying on vendor-specific discovery.
    */
   onSendSlashCommand?: (name: string, args: string) => void;
   onStop: () => void;
@@ -3609,6 +3624,25 @@ interface ComposerProps {
   privateFundDatasetId?: string | null;
   /** Optional direct injection for isolated composer tests and embedded surfaces. */
   privateFundPromptSuggestions?: PrivateFundPromptSuggestion[];
+  /**
+   * Skills known outside the runner snapshot: the bound Agent's bundled
+   * skills plus user-managed skills from the account API. These keep the menu
+   * populated while asynchronous runner discovery is still cold.
+   */
+  additionalSkills?: ReadonlyArray<{ name: string; description: string }>;
+}
+
+/** Merge skill sources in priority order while keeping menu entries stable. */
+export function mergeSkillSummaries(
+  ...groups: ReadonlyArray<ReadonlyArray<{ name: string; description: string }>>
+): Array<{ name: string; description: string }> {
+  const merged = new Map<string, { name: string; description: string }>();
+  for (const group of groups) {
+    for (const skill of group) {
+      if (!merged.has(skill.name)) merged.set(skill.name, skill);
+    }
+  }
+  return [...merged.values()];
 }
 
 /**
@@ -4291,6 +4325,7 @@ export function Composer({
   privateFundProjectLabel = null,
   privateFundDatasetId = null,
   privateFundPromptSuggestions,
+  additionalSkills = [],
 }: ComposerProps) {
   const workbenchActions = usePrivateFundWorkbenchActions();
   const [composeIntent, setComposeIntent] = useState<PrivateFundComposeIntent>(null);
@@ -4461,7 +4496,11 @@ export function Composer({
   // Session skills (bundled + host-discovered) come from the snapshot
   // on bind and populate the suggestions menu as ``/skill-name``
   // entries alongside the built-ins.
-  const skills = useChatStore((s) => s.skills);
+  const runnerSkills = useChatStore((s) => s.skills);
+  const skills = useMemo(
+    () => mergeSkillSummaries(runnerSkills, additionalSkills),
+    [additionalSkills, runnerSkills],
+  );
   // ``/model`` writes ``conv.model_override`` (the same column the REPL's
   // ``/model`` and native pickers write). In-process harnesses re-resolve
   // it each turn; native wrappers expose it only when they have a picker
@@ -4911,10 +4950,8 @@ export function Composer({
     // "/review-pr https://github.com/...").
     // Commands don't mix with file attachments — require no files. Built-ins
     // run locally; a known skill routes through ``onSendSlashCommand`` (a
-    // ``slash_command`` event) when that's wired — i.e. in-process sessions.
-    // Anything else (unknown command, or a skill on a native-terminal
-    // session where ``onSendSlashCommand`` is undefined) falls through to the
-    // plaintext send path below.
+    // ``slash_command`` event) when that's wired. Anything else falls through
+    // to the plaintext send path below.
     if (isSlashCommandText(trimmed) && files.length === 0 && mentionedItems.length === 0) {
       const parts = trimmed.split(/\s+/);
       const cmd = parts[0].toLowerCase();
@@ -4947,10 +4984,8 @@ export function Composer({
       // (the REPL's wire shape) so the server resolves the skill and
       // injects its instructions, instead of the agent seeing the literal
       // "/name" text. `parts[0]` keeps the original case for the server's
-      // exact-name lookup. `onSendSlashCommand` is undefined for
-      // native-terminal sessions, so those fall through to the plaintext
-      // path below and the vendor TUI loads the skill itself. Reply quotes
-      // don't apply to a slash command (no content field) — clear them.
+      // exact-name lookup. Reply quotes don't apply to a slash command (no
+      // content field) — clear them.
       if (onSendSlashCommand && parts[0] in slashCommands) {
         const skillArgs = trimmed.slice(parts[0].length).trim();
         appendEntry(trimmed);

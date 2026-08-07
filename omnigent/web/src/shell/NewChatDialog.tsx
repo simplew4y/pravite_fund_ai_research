@@ -1,6 +1,6 @@
 import { type DragEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "@/lib/routing";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -113,6 +113,7 @@ import {
   writePrivateFundResearchMode,
 } from "@/lib/privateFundApi";
 import { generatePrivateFundPromptSuggestions } from "@/lib/privateFundPromptSuggestions";
+import { getInstalledSkills } from "@/lib/skillsMarketplaceApi";
 
 // Hidden from the new-session picker only. `nessie` is superseded by polly.
 // `kimi` / `kimi-code` are the headless SDK harness (kept for sub-agent / `run
@@ -1630,6 +1631,12 @@ export function NewChatLandingScreen() {
   const queryClient = useQueryClient();
   const serverUrl = getCliServerUrl();
   const { data: agents } = useAvailableAgents();
+  const { data: installedSkills = [] } = useQuery({
+    queryKey: ["skills", "installed"],
+    queryFn: getInstalledSkills,
+    staleTime: 30_000,
+    retry: false,
+  });
   const { data: hosts } = useHosts();
   const { data: privateFundProjectsData } = usePrivateFundProjects();
   const privateFundProjects = privateFundProjectsData ?? EMPTY_PRIVATE_FUND_PROJECTS;
@@ -2053,9 +2060,6 @@ export function NewChatLandingScreen() {
     // same harness so they don't need to be deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNativeHarness]);
-  // Native-terminal agents interpret slash commands inside their own CLI
-  // (the runner injects the text verbatim), so the landing composer must
-  // not intercept them — no skills menu, no slash_command routing.
   const isNativeTerminalAgent = isNativeCodingAgent(selectedAgent);
   const selectedHost = allHosts.find((h) => h.host_id === selectedHostId);
   // Warn-only readiness signal for the agent picker: only meaningful when
@@ -2084,19 +2088,28 @@ export function NewChatLandingScreen() {
   // Sandbox creates need no host or path workspace — the server
   // provisions both; only the message, agent, and (optional) repo
   // inputs gate the submit.
-  // Slash-command suggestions for the chosen agent's bundled skills.
+  // Slash-command suggestions combine bundled and tenant-installed skills.
   // Mirrors the in-session composer's menu mechanics (open while the
   // command name is still being typed: leading "/", no second "/", no
   // space yet), but lists skills only — built-ins like /model need a
-  // live session. Hidden for native-terminal agents (their CLI owns
-  // slash commands) and for agents without bundled skills.
+  // live session. The runner resolves these for native sessions too, which
+  // is required for tenant skills stored under `.agents/skills`.
   const [slashMenuIndex, setSlashMenuIndex] = useState(-1);
+  const availableSkills = useMemo(() => {
+    const merged = new Map<string, { name: string; description: string }>();
+    for (const skill of selectedAgent?.skills ?? []) merged.set(skill.name, skill);
+    for (const skill of installedSkills) {
+      if (!merged.has(skill.name)) {
+        merged.set(skill.name, { name: skill.name, description: skill.description });
+      }
+    }
+    return [...merged.values()];
+  }, [installedSkills, selectedAgent]);
   const skillCommands = useMemo(() => {
-    if (isNativeTerminalAgent) return {};
     const m: Record<string, string> = {};
-    for (const s of selectedAgent?.skills ?? []) m[`/${s.name}`] = s.description;
+    for (const s of availableSkills) m[`/${s.name}`] = s.description;
     return m;
-  }, [selectedAgent, isNativeTerminalAgent]);
+  }, [availableSkills]);
   const trimmedMessage = message.trimStart();
   const slashMenuOpen =
     trimmedMessage.startsWith("/") &&
@@ -2446,6 +2459,7 @@ export function NewChatLandingScreen() {
       );
       const hiddenPrivateFundContext = wrapPrivateFundPromptContext(privateFundContext);
       const userPrompt = sanitizeInitialPrompt(message);
+      const matchedSkill = matchSkillInvocation(userPrompt, availableSkills);
       // Native vendor CLIs require `/skill` to remain the first token. Put
       // the project/research contract after such a command so the CLI still
       // resolves it while the task receives the same private-fund rules.
@@ -2459,17 +2473,20 @@ export function NewChatLandingScreen() {
         : buildMentionPreamble(mentionedItems, selectedAgent?.harness ?? null) +
           hiddenPrivateFundContext +
           userPrompt;
-      // A first message matching one of the agent's bundled skills is
+      // A first message matching a bundled or tenant-installed skill is
       // handed off as a structured invocation so ChatPage auto-sends it
       // as a `slash_command` event (server resolves the skill) instead
-      // of plain text the agent would see as a literal "/name". Native
-      // terminal agents keep plain text — their CLI owns slash commands.
+      // of plain text the agent would see as a literal "/name". Private-fund
+      // rules ride in the hidden skill arguments rather than hiding the
+      // command behind a visible preamble.
       setPendingInitialPrompt(data.id, {
         text: initialPrompt,
-        skill:
-          isNativeTerminalAgent || privateFundContext
-            ? null
-            : matchSkillInvocation(initialPrompt, agent?.skills ?? []),
+        skill: matchedSkill
+          ? {
+              ...matchedSkill,
+              args: `${wrapPrivateFundPromptContext(privateFundContext)}${matchedSkill.args}`.trim(),
+            }
+          : null,
         files,
       });
       // Scope the recall entry to the new session id so ArrowUp surfaces it in

@@ -53,7 +53,7 @@ import type {
   UserMessageBlock,
 } from "@/lib/blocks";
 import { BlockStream } from "@/lib/blockStream";
-import { itemsToBlocks } from "@/lib/itemsToBlocks";
+import { isInternalSkillInjectionContent, itemsToBlocks } from "@/lib/itemsToBlocks";
 import {
   ApiError,
   approve as approveElicitation,
@@ -2086,8 +2086,21 @@ async function bindStream(
               code: session.lastTaskError.code,
             }
           : null;
-      return {
+      // Runner capabilities resolve off the initial snapshot's hot path.
+      // Their SSE nudge can win the race against the history request above;
+      // in that ordering the bind-time snapshot still carries empty arrays.
+      // Keep the already-applied live values instead of letting the older
+      // empty snapshot erase the slash-command menu/model catalog.
+      const settledBindingPatch = {
         ...bindingPatch,
+        skills: bindingPatch.skills.length > 0 ? bindingPatch.skills : state.skills,
+        codexModelOptions:
+          bindingPatch.codexModelOptions.length > 0
+            ? bindingPatch.codexModelOptions
+            : state.codexModelOptions,
+      };
+      return {
+        ...settledBindingPatch,
         blocks: syntheticError !== null ? [...allBlocks, syntheticError] : allBlocks,
         pendingUserMessages: snapshotPending,
         pendingByConversation: prunedStash,
@@ -3228,13 +3241,19 @@ function userContentFromEvent(event: SessionInputConsumedEvent): MessageContentB
   if (event.data.role !== "user") return null;
   const raw = event.data.content;
   if (!Array.isArray(raw)) return null;
-  return raw.filter(
+  const content = raw.filter(
     (b): b is MessageContentBlock =>
       typeof b === "object" &&
       b !== null &&
       "type" in b &&
       (b.type === "input_text" || b.type === "input_image" || b.type === "input_file"),
   );
+  return isInternalSkillInjectionContent(content) ? null : content;
+}
+
+function isInternalSkillInjectionEvent(event: SessionInputConsumedEvent): boolean {
+  const raw = event.data.content;
+  return Array.isArray(raw) && isInternalSkillInjectionContent(raw);
 }
 
 function hasCommittedItem(blocks: AnyBlock[], itemId: string): boolean {
@@ -3754,7 +3773,7 @@ export function handleSessionEvent(event: StreamEvent): void {
       return;
     }
     case "session_input_consumed":
-      if (event.isMeta === true) return;
+      if (event.isMeta === true || isInternalSkillInjectionEvent(event)) return;
       // Promote the matching optimistic bubble into committed history.
       // Three ways to find it, in order of precision:
       //   1. By id — the server tells us which pending-input entry this
