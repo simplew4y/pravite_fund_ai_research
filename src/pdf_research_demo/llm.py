@@ -29,10 +29,9 @@ class LLMConfig:
     max_tokens: int = 1200
     temperature: float = 0.2
     chat_template_enable_thinking: bool | None = None
-    thinking_type: str | None = None
     source: str = ""
 
-    def safe_summary(self) -> dict[str, str | float | int | bool | None]:
+    def safe_summary(self) -> dict[str, str | float | int | bool]:
         return {
             "enabled": bool(self.model_name and self.base_url and self.api_key),
             "model_name": self.model_name,
@@ -41,7 +40,6 @@ class LLMConfig:
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "chat_template_enable_thinking": self.chat_template_enable_thinking,
-            "thinking_type": self.thinking_type,
             "source": self.source,
         }
 
@@ -167,7 +165,7 @@ class OpenAICompatibleChatClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> str:
-        """Prefer provider-enforced JSON and fall back when unavailable or empty."""
+        """Prefer provider-enforced JSON and fall back when unsupported."""
 
         try:
             return self._chat_request(
@@ -178,12 +176,10 @@ class OpenAICompatibleChatClient:
             )
         except LLMError as exc:
             message = str(exc).lower()
-            json_mode_unavailable = any(
+            if not any(
                 marker in message
                 for marker in ("response_format", "json_object", "unsupported", "400")
-            )
-            json_mode_empty = "response was empty" in message
-            if not (json_mode_unavailable or json_mode_empty):
+            ):
                 raise
             return self._chat_request(
                 messages,
@@ -208,8 +204,6 @@ class OpenAICompatibleChatClient:
         }
         if response_format is not None:
             payload["response_format"] = response_format
-        if self.config.thinking_type:
-            payload["thinking"] = {"type": self.config.thinking_type}
         if self.config.chat_template_enable_thinking is not None:
             payload["chat_template_kwargs"] = {
                 "enable_thinking": self.config.chat_template_enable_thinking,

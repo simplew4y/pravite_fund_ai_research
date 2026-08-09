@@ -202,12 +202,12 @@ def _tmux_lockdown_commands() -> list[list[str]]:
         ["set-option", "-g", "prefix", "None"],
         ["set-option", "-g", "prefix2", "None"],
         ["unbind-key", "-a", "-T", "prefix"],
-        ["unbind-key", "-T", "root", "MouseDown3Pane"],
-        ["unbind-key", "-T", "root", "M-MouseDown3Pane"],
-        ["unbind-key", "-T", "root", "MouseDown3Status"],
-        ["unbind-key", "-T", "root", "M-MouseDown3Status"],
-        ["unbind-key", "-T", "root", "MouseDown3StatusLeft"],
-        ["unbind-key", "-T", "root", "M-MouseDown3StatusLeft"],
+        ["unbind-key", "-q", "-T", "root", "MouseDown3Pane"],
+        ["unbind-key", "-q", "-T", "root", "M-MouseDown3Pane"],
+        ["unbind-key", "-q", "-T", "root", "MouseDown3Status"],
+        ["unbind-key", "-q", "-T", "root", "M-MouseDown3Status"],
+        ["unbind-key", "-q", "-T", "root", "MouseDown3StatusLeft"],
+        ["unbind-key", "-q", "-T", "root", "M-MouseDown3StatusLeft"],
     ]
 
 

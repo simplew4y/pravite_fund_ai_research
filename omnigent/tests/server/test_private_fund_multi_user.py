@@ -118,7 +118,6 @@ def test_user_model_keys_are_encrypted_and_gateway_forces_saved_model(
             json={
                 "model": "attacker-controlled-model",
                 "messages": [{"role": "user", "content": "hello"}],
-                "thinking": {"type": "disabled"},
             },
         )
 

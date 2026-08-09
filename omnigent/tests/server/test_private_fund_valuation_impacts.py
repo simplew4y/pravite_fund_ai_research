@@ -4,8 +4,6 @@ import json
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from omnigent.server import private_fund_valuation_impact_agent as impact_agent
 
 
@@ -13,7 +11,7 @@ class _FakeImpactAgent:
     def __init__(self) -> None:
         self.calls = 0
 
-    def chat_json(
+    def chat(
         self,
         messages: list[dict[str, str]],
         *,
@@ -53,46 +51,6 @@ class _FakeImpactAgent:
             },
             ensure_ascii=False,
         )
-
-
-class _RetryingImpactAgent(_FakeImpactAgent):
-    def __init__(self) -> None:
-        super().__init__()
-        self.attempts = 0
-        self.max_tokens_seen: list[int | None] = []
-
-    def chat_json(
-        self,
-        messages: list[dict[str, str]],
-        *,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-    ) -> str:
-        self.attempts += 1
-        self.max_tokens_seen.append(max_tokens)
-        if self.attempts < 3:
-            raise RuntimeError("LLM response was empty.")
-        return super().chat_json(
-            messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-
-
-class _AuthenticationFailureAgent:
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def chat_json(
-        self,
-        messages: list[dict[str, str]],
-        *,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-    ) -> str:
-        del messages, max_tokens, temperature
-        self.calls += 1
-        raise RuntimeError("LLM request failed with HTTP 401: invalid API key")
 
 
 def _database(path: Path, *, supporting_documents: bool = True) -> sqlite3.Connection:
@@ -187,7 +145,7 @@ def _database(path: Path, *, supporting_documents: bool = True) -> sqlite3.Conne
     return conn
 
 
-def test_skill_run_persists_append_only_auditable_cards(tmp_path: Path) -> None:
+def test_skill_run_persists_validated_cards_and_reuses_cache(tmp_path: Path) -> None:
     conn = _database(tmp_path / "collection.sqlite3")
     client = _FakeImpactAgent()
 
@@ -206,45 +164,14 @@ def test_skill_run_persists_append_only_auditable_cards(tmp_path: Path) -> None:
         llm_client=client,
     )
 
-    assert client.calls == 2
+    assert client.calls == 1
     assert first["status"] == "completed"
     assert first["card_count"] == 2
     assert [card["direction"] for card in first["cards"]] == ["up", "down"]
     assert first["cards"][0]["source_refs"] == ["Management meeting.pdf p.3"]
-    assert first["cards"][0]["review_status"] in {"ready", "needs_review"}
-    assert first["cards"][0]["evidence_locations"][0]["page"] == 3
-    assert first["selection_scope"]["mode"] == "all_current_effective_documents"
-    assert first["coverage_summary"]["usable_evidence_count"] == 2
-    assert second["run_id"] != first["run_id"]
-    assert conn.execute("SELECT COUNT(*) FROM valuation_impact_agent_runs").fetchone()[0] == 2
-    assert conn.execute("SELECT COUNT(*) FROM valuation_impact_cards").fetchone()[0] == 4
+    assert second["run_id"] == first["run_id"]
+    assert conn.execute("SELECT COUNT(*) FROM valuation_impact_cards").fetchone()[0] == 2
     conn.close()
-
-
-def test_chat_json_retries_empty_content_and_uses_json_mode() -> None:
-    client = _RetryingImpactAgent()
-
-    payload, raw = impact_agent._chat_json(
-        client,
-        [{"role": "user", "content": "Return JSON"}],
-    )
-
-    assert client.attempts == 3
-    assert client.max_tokens_seen == [6_000, 6_000, 6_000]
-    assert payload["impacts"]
-    assert json.loads(raw)["analysis_summary"]
-
-
-def test_chat_json_does_not_retry_authentication_failures() -> None:
-    client = _AuthenticationFailureAgent()
-
-    with pytest.raises(RuntimeError, match="HTTP 401"):
-        impact_agent._chat_json(
-            client,
-            [{"role": "user", "content": "Return JSON"}],
-        )
-
-    assert client.calls == 1
 
 
 def test_skill_rejects_unknown_evidence_and_inputs() -> None:

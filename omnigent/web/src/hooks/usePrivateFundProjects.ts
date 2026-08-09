@@ -176,15 +176,10 @@ export function usePrivateFundValuationTracking(datasetId: string | null | undef
     queryKey: ["private-fund-valuation-tracking", datasetId],
     queryFn: () => getPrivateFundValuationTrackingOverview(datasetId!),
     enabled: Boolean(datasetId),
-    refetchInterval: (query) => {
-      const now = Date.now();
-      const hasRecentActiveJob = (query.state.data?.jobs ?? []).some((job) => {
-        if (!["queued", "running"].includes(job.status)) return false;
-        const createdAt = Date.parse(job.createdAt);
-        return !Number.isFinite(createdAt) || now - createdAt < 10 * 60 * 1000;
-      });
-      return hasRecentActiveJob ? 3000 : false;
-    },
+    refetchInterval: (query) =>
+      query.state.data?.jobs.some((job) => ["queued", "running"].includes(job.status))
+        ? 2000
+        : 30_000,
   });
 }
 

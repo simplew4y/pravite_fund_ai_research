@@ -87,14 +87,6 @@ def _market_refresh_bucket(now: datetime | None = None) -> str:
     return bucket_start.isoformat(timespec="minutes")
 
 
-def _valuation_llm_timeout_seconds() -> int:
-    try:
-        timeout = int(os.environ.get("PRIVATE_FUND_VALUATION_LLM_TIMEOUT_SECONDS", "90"))
-    except ValueError:
-        return 90
-    return min(90, max(15, timeout))
-
-
 def _load_llm_client(data_namespace: str, dataset_id: str) -> Any | None:
     enabled = os.environ.get("PRIVATE_FUND_VALUATION_USE_LLM", "1").strip().lower()
     if enabled in {"0", "false", "no", "off"}:
@@ -118,27 +110,13 @@ def _load_llm_client(data_namespace: str, dataset_id: str) -> Any | None:
             model_name="private-fund-default",
             base_url=f"{gateway}/v1",
             api_key=issue_user_llm_token(user_id, f"valuation:{dataset_id}"),
-            timeout_seconds=_valuation_llm_timeout_seconds(),
+            timeout_seconds=600,
             source="user-scoped local gateway",
-            thinking_type="disabled",
         )
         return OpenAICompatibleChatClient(config)
     except Exception:  # noqa: BLE001
         _LOGGER.warning("valuation Agent LLM is unavailable", exc_info=True)
         return None
-
-
-def recover_interrupted_jobs(workspace: Path) -> int:
-    """Requeue jobs left running by a previous server process."""
-
-    recovered = 0
-    for _namespace, dataset_id, collection_db in _collection_dbs(workspace):
-        recovered += private_fund_valuation_tracking.recover_stale_jobs(
-            collection_db,
-            dataset_id,
-            stale_after_minutes=0,
-        )
-    return recovered
 
 
 def run_cycle(
@@ -153,13 +131,7 @@ def run_cycle(
     for data_namespace, dataset_id, collection_db in databases:
         try:
             dataset_llm_client = llm_client or _load_llm_client(data_namespace, dataset_id)
-            private_fund_valuation_tracking.recover_stale_jobs(
-                collection_db,
-                dataset_id,
-                stale_after_minutes=int(
-                    os.environ.get("PRIVATE_FUND_VALUATION_STALE_JOB_MINUTES", "5")
-                ),
-            )
+            private_fund_valuation_tracking.recover_stale_jobs(collection_db, dataset_id)
             # This idempotent discovery also backfills historical model versions
             # and catches imports that bypass the HTTP pipeline.
             model_jobs = private_fund_valuation_tracking.enqueue_model_documents(
@@ -167,9 +139,18 @@ def run_cycle(
                 dataset_id,
                 include_history=True,
             )
-            # Model ingestion queues version-scoped market and context jobs.
-            # Avoid a project-wide refresh here: it would keep an unrelated
-            # selected model in a perpetual polling state.
+            # The fingerprinted refresh catches auxiliary files and imports
+            # that bypass the HTTP upload route without repeatedly polling APIs.
+            if not any(job.get("status") in {"queued", "running"} for job in model_jobs):
+                private_fund_valuation_tracking.enqueue_context_refresh(
+                    collection_db,
+                    dataset_id,
+                )
+                private_fund_valuation_tracking.enqueue_market_data_refresh(
+                    collection_db,
+                    dataset_id,
+                    refresh_bucket=_market_refresh_bucket(),
+                )
             for _ in range(max_jobs_per_db):
                 result = private_fund_valuation_tracking.process_next_job(
                     collection_db, dataset_id, llm_client=dataset_llm_client

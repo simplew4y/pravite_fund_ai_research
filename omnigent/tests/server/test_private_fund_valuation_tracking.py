@@ -218,12 +218,8 @@ def test_builds_series_versions_changes_and_alerts(tmp_path: Path) -> None:
     jobs = valuation.enqueue_model_documents(database, "demo", include_history=True)
     assert [job["status"] for job in jobs] == ["queued", "queued"]
     completed = _drain(database)
-    assert len(completed) == 8
+    assert len(completed) == 2
     assert all(job["status"] == "completed" for job in completed)
-    assert [job["job_type"] for job in completed].count("model_version_ingested") == 2
-    assert [job["job_type"] for job in completed].count("model_metric_refresh") == 2
-    assert [job["job_type"] for job in completed].count("market_data_refresh") == 2
-    assert [job["job_type"] for job in completed].count("valuation_context_refresh") == 2
 
     overview = valuation.tracking_overview(database, "demo")
     assert len(overview["series"]) == 1
@@ -438,9 +434,6 @@ def test_valuation_tracking_http_api_exposes_comparison_and_lifecycle(
     queued = client.post("/v1/private-fund/projects/demo/valuation-tracking/run")
     assert queued.status_code == 202
     assert len(queued.json()["jobs"]) == 2
-    assert {job["job_type"] for job in queued.json()["jobs"]} == {
-        "model_version_ingested"
-    }
 
     alert = overview["alerts"][0]
     acknowledged = client.patch(
@@ -462,14 +455,7 @@ def test_valuation_tracking_http_api_exposes_comparison_and_lifecycle(
 
 def test_standalone_valuation_worker_discovers_and_drains_models(tmp_path: Path) -> None:
     workspace = tmp_path / "datasets"
-    database = (
-        workspace
-        / "test-user"
-        / "private_fund_datasets"
-        / "demo"
-        / "meta"
-        / "collection.sqlite3"
-    )
+    database = workspace / "demo" / "meta" / "collection.sqlite3"
     database.parent.mkdir(parents=True)
     _create_collection(database)
     _insert_model(
@@ -486,9 +472,8 @@ def test_standalone_valuation_worker_discovers_and_drains_models(tmp_path: Path)
 
     processed = valuation_worker.run_cycle(workspace, max_jobs_per_db=4)
 
-    assert processed == 4
-    assert len(valuation.list_jobs(database, "demo")) == 4
-    assert all(job["status"] == "completed" for job in valuation.list_jobs(database, "demo"))
+    assert processed == 1
+    assert valuation.list_jobs(database, "demo")[0]["status"] == "completed"
     health = (workspace / ".valuation-tracking-worker.json").read_text(encoding="utf-8")
     assert '"status": "online"' in health
     assert '"dataset_count": 1' in health
@@ -512,10 +497,7 @@ def test_market_refresh_job_is_idempotent_per_hourly_bucket(tmp_path: Path) -> N
     _create_collection(database)
 
     first = valuation.enqueue_market_data_refresh(
-        database,
-        "demo",
-        refresh_bucket="2026-07-20T11:00+08:00",
-        trigger="manual_refresh",
+        database, "demo", refresh_bucket="2026-07-20T11:00+08:00"
     )
     second = valuation.enqueue_market_data_refresh(
         database, "demo", refresh_bucket="2026-07-20T11:00+08:00"
@@ -528,60 +510,6 @@ def test_market_refresh_job_is_idempotent_per_hourly_bucket(tmp_path: Path) -> N
         if job["job_type"] == "market_data_refresh"
     ]
     assert len(jobs) == 1
-    assert jobs[0]["payload"]["trigger"] == "manual_refresh"
-
-
-def test_context_refresh_preserves_selected_documents_and_defaults_to_all(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    database = tmp_path / "collection.sqlite3"
-    _create_collection(database)
-    captured_document_ids: list[list[str] | None] = []
-
-    def fake_refresh(
-        collection_db: Path,
-        dataset_id: str,
-        *,
-        llm_client: Any | None = None,
-        series_id: str = "",
-        model_version_id: str = "",
-        document_ids: list[str] | None = None,
-    ) -> dict[str, Any]:
-        del collection_db, dataset_id, llm_client, series_id, model_version_id
-        captured_document_ids.append(document_ids)
-        return {"series": [], "series_count": 0}
-
-    monkeypatch.setattr(valuation, "refresh_current_context_cards", fake_refresh)
-
-    all_documents = valuation.enqueue_context_refresh(
-        database,
-        "demo",
-        source_id="manual-all-documents",
-        series_id="series-1",
-        model_version_id="version-1",
-    )
-    assert all_documents["payload"]["selection_mode"] == "all_current"
-    assert all_documents["payload"]["document_ids"] is None
-    processed_all = valuation.process_next_job(database, "demo")
-    assert processed_all is not None
-    assert processed_all["status"] == "completed"
-    assert captured_document_ids == [None]
-
-    selected_documents = valuation.enqueue_context_refresh(
-        database,
-        "demo",
-        source_id="manual-selected-documents",
-        series_id="series-1",
-        model_version_id="version-1",
-        document_ids=["doc-meeting", "", "doc-model", "doc-meeting"],
-    )
-    assert selected_documents["job_id"] != all_documents["job_id"]
-    assert selected_documents["payload"]["selection_mode"] == "selected_documents"
-    assert selected_documents["payload"]["document_ids"] == ["doc-meeting", "doc-model"]
-    processed_selected = valuation.process_next_job(database, "demo")
-    assert processed_selected is not None
-    assert processed_selected["status"] == "completed"
-    assert captured_document_ids[-1] == ["doc-meeting", "doc-model"]
 
 
 def test_agent_analysis_and_one_click_derived_model_are_auditable(

@@ -104,8 +104,6 @@ dependencies = [
     # Private-fund directory ingestion parses XLSX/XLSM files via
     # FinSagent/data_pipeline/private_fund_directory_ingest.py.
     "openpyxl>=3.1,<4",
-    "orjson==3.11.9",
-    "backoff>=2.2.1",
 ]
 
 [project.optional-dependencies]
