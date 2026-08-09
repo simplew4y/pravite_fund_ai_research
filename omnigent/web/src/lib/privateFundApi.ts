@@ -511,6 +511,7 @@ export interface PrivateFundValuationTrackingJob {
   finishedAt?: string | null;
   lastError?: string | null;
   result?: Record<string, unknown> | null;
+  payload?: Record<string, unknown>;
 }
 
 export interface PrivateFundValuationAnalysis {
@@ -658,13 +659,35 @@ export interface PrivateFundValuationMetricTimeline {
   periods: PrivateFundValuationMetricTimelinePeriod[];
 }
 
+export interface PrivateFundValuationMarketSnapshot {
+  label: string;
+  asOf: string;
+  status: string;
+  modelAvailableCount: number;
+  actualAvailableCount: number;
+  comparedCount: number;
+  periodMismatchCount: number;
+  comparisons: PrivateFundValuationMetricComparison[];
+}
+
+export interface PrivateFundMarketDataProviderAttempt {
+  provider: string;
+  status: string;
+  fieldsFound: string[];
+  errorMessage: string;
+  durationMs: number;
+}
+
 export interface PrivateFundValuationMarketDataStatus {
   snapshotId: string;
   provider: string;
   status: string;
   asOf: string;
   errorMessage: string;
+  providerAttempts: PrivateFundMarketDataProviderAttempt[];
   createdAt: string;
+  isStale: boolean;
+  identitySnapshot: Record<string, unknown>;
 }
 
 export interface PrivateFundValuationPriceComparison {
@@ -733,9 +756,35 @@ export interface PrivateFundValuationMetricAnalysis {
   marketData: PrivateFundValuationMarketDataStatus;
   priceComparison: PrivateFundValuationPriceComparison;
   metricComparisons: PrivateFundValuationMetricComparison[];
+  marketSnapshot?: PrivateFundValuationMarketSnapshot;
   metricTimeline?: PrivateFundValuationMetricTimeline;
   contextCards: PrivateFundValuationContextCard[];
   valuationImpacts: PrivateFundValuationImpactAnalysis;
+}
+
+export interface PrivateFundValuationModelIdentityAudit {
+  auditId: string;
+  oldCompanyName?: string | null;
+  oldCompanyTicker?: string | null;
+  newCompanyName?: string | null;
+  newCompanyTicker?: string | null;
+  changeSource: string;
+  actor: string;
+  validationStatus: string;
+  validationReasons: string[];
+  candidate: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface PrivateFundValuationSecurityCandidate {
+  securityId: string;
+  market: string;
+  exchange: string;
+  companyName: string;
+  ticker: string;
+  source: string;
+  sourceUpdatedAt: string;
+  label: string;
 }
 
 export interface PrivateFundValuationModelSeries {
@@ -744,6 +793,10 @@ export interface PrivateFundValuationModelSeries {
   name: string;
   companyName?: string | null;
   companyTicker?: string | null;
+  identitySource?: string | null;
+  identityStatus?: string | null;
+  identityUpdatedAt?: string | null;
+  identityAudit: PrivateFundValuationModelIdentityAudit[];
   modelType?: string | null;
   currentModelVersionId?: string | null;
   currentVersionNo: number;
@@ -1281,6 +1334,7 @@ interface ValuationTrackingJobWire {
   finished_at?: string | null;
   last_error?: string | null;
   result?: Record<string, unknown> | null;
+  payload?: Record<string, unknown>;
 }
 
 interface ValuationAnalysisWire {
@@ -1387,6 +1441,10 @@ interface ValuationModelSeriesWire {
   name: string;
   company_name?: string | null;
   company_ticker?: string | null;
+  identity_source?: string | null;
+  identity_status?: string | null;
+  identity_updated_at?: string | null;
+  identity_audit?: ValuationModelIdentityAuditWire[];
   model_type?: string | null;
   current_model_version_id?: string | null;
   current_version_no: number;
@@ -1396,6 +1454,31 @@ interface ValuationModelSeriesWire {
   current_version?: ValuationModelVersionWire | null;
   versions?: ValuationModelVersionWire[];
   metric_analysis?: ValuationMetricAnalysisWire;
+}
+
+interface ValuationModelIdentityAuditWire {
+  audit_id: string;
+  old_company_name?: string | null;
+  old_company_ticker?: string | null;
+  new_company_name?: string | null;
+  new_company_ticker?: string | null;
+  change_source: string;
+  actor: string;
+  validation_status: string;
+  validation_reasons?: string[];
+  candidate?: Record<string, unknown>;
+  created_at: string;
+}
+
+interface ValuationSecurityCandidateWire {
+  security_id: string;
+  market: string;
+  exchange: string;
+  company_name: string;
+  ticker: string;
+  source: string;
+  source_updated_at: string;
+  label?: string;
 }
 
 interface ValuationMetricComparisonWire {
@@ -1439,13 +1522,35 @@ interface ValuationMetricTimelineWire {
   periods?: ValuationMetricTimelinePeriodWire[];
 }
 
+interface ValuationMarketSnapshotWire {
+  label?: string | null;
+  as_of?: string | null;
+  status?: string | null;
+  model_available_count?: number | null;
+  actual_available_count?: number | null;
+  compared_count?: number | null;
+  period_mismatch_count?: number | null;
+  comparisons?: ValuationMetricComparisonWire[];
+}
+
+interface ValuationMarketDataProviderAttemptWire {
+  provider?: string | null;
+  status?: string | null;
+  fields_found?: string[] | null;
+  error_message?: string | null;
+  duration_ms?: number | null;
+}
+
 interface ValuationMarketDataStatusWire {
   snapshot_id?: string;
   provider?: string;
   status?: string;
   as_of?: string | null;
   error_message?: string | null;
+  provider_attempts?: ValuationMarketDataProviderAttemptWire[] | null;
   created_at?: string | null;
+  is_stale?: boolean | number | null;
+  identity_snapshot?: Record<string, unknown> | null;
 }
 
 interface ValuationPriceComparisonWire {
@@ -1514,6 +1619,7 @@ interface ValuationMetricAnalysisWire {
   market_data?: ValuationMarketDataStatusWire;
   price_comparison?: ValuationPriceComparisonWire;
   metric_comparisons?: ValuationMetricComparisonWire[];
+  market_snapshot?: ValuationMarketSnapshotWire;
   metric_timeline?: ValuationMetricTimelineWire;
   context_cards?: ValuationContextCardWire[];
   valuation_impacts?: ValuationImpactAnalysisWire;
@@ -2058,6 +2164,7 @@ function valuationTrackingJobFromWire(
     finishedAt: job.finished_at ?? null,
     lastError: job.last_error ?? null,
     result: job.result ?? null,
+    payload: job.payload ?? {},
   };
 }
 
@@ -2216,6 +2323,22 @@ function valuationModelSeriesFromWire(
     name: series.name,
     companyName: series.company_name ?? null,
     companyTicker: series.company_ticker ?? null,
+    identitySource: series.identity_source ?? null,
+    identityStatus: series.identity_status ?? null,
+    identityUpdatedAt: series.identity_updated_at ?? null,
+    identityAudit: (series.identity_audit ?? []).map((audit) => ({
+      auditId: audit.audit_id,
+      oldCompanyName: audit.old_company_name ?? null,
+      oldCompanyTicker: audit.old_company_ticker ?? null,
+      newCompanyName: audit.new_company_name ?? null,
+      newCompanyTicker: audit.new_company_ticker ?? null,
+      changeSource: audit.change_source,
+      actor: audit.actor,
+      validationStatus: audit.validation_status,
+      validationReasons: audit.validation_reasons ?? [],
+      candidate: audit.candidate ?? {},
+      createdAt: audit.created_at,
+    })),
     modelType: series.model_type ?? null,
     currentModelVersionId: series.current_model_version_id ?? null,
     currentVersionNo: series.current_version_no,
@@ -2233,6 +2356,15 @@ function valuationModelSeriesFromWire(
         status: marketData.status ?? "pending",
         asOf: marketData.as_of ?? "",
         errorMessage: marketData.error_message ?? "",
+        isStale: Boolean(marketData.is_stale),
+        identitySnapshot: marketData.identity_snapshot ?? {},
+        providerAttempts: (marketData.provider_attempts ?? []).map((attempt) => ({
+          provider: attempt.provider ?? "",
+          status: attempt.status ?? "",
+          fieldsFound: attempt.fields_found ?? [],
+          errorMessage: attempt.error_message ?? "",
+          durationMs: attempt.duration_ms ?? 0,
+        })),
         createdAt: marketData.created_at ?? "",
       },
       priceComparison: {
@@ -2260,6 +2392,18 @@ function valuationModelSeriesFromWire(
       metricComparisons: (metricAnalysis.metric_comparisons ?? []).map(
         valuationMetricComparisonFromWire,
       ),
+      marketSnapshot: {
+        label: metricAnalysis.market_snapshot?.label ?? "当前市场快照",
+        asOf: metricAnalysis.market_snapshot?.as_of ?? "",
+        status: metricAnalysis.market_snapshot?.status ?? "unavailable",
+        modelAvailableCount: metricAnalysis.market_snapshot?.model_available_count ?? 0,
+        actualAvailableCount: metricAnalysis.market_snapshot?.actual_available_count ?? 0,
+        comparedCount: metricAnalysis.market_snapshot?.compared_count ?? 0,
+        periodMismatchCount: metricAnalysis.market_snapshot?.period_mismatch_count ?? 0,
+        comparisons: (metricAnalysis.market_snapshot?.comparisons ?? []).map(
+          valuationMetricComparisonFromWire,
+        ),
+      },
       metricTimeline: {
         defaultPeriod: metricAnalysis.metric_timeline?.default_period ?? "",
         latestPeriod: metricAnalysis.metric_timeline?.latest_period ?? "",
@@ -2899,16 +3043,74 @@ export async function getPrivateFundValuationTrackingOverview(
 
 export async function runPrivateFundValuationTracking(
   datasetId: string,
+  scope?: { seriesId?: string; modelVersionId?: string; documentIds?: string[] },
 ): Promise<PrivateFundValuationTrackingJob[]> {
+  const query = new URLSearchParams();
+  if (scope?.seriesId) query.set("series_id", scope.seriesId);
+  if (scope?.modelVersionId) query.set("model_version_id", scope.modelVersionId);
+  for (const documentId of scope?.documentIds ?? []) query.append("document_ids", documentId);
+  const suffix = query.size ? `?${query.toString()}` : "";
   const body = await jsonOrThrow<{ jobs?: ValuationTrackingJobWire[] }>(
     await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-tracking/run`,
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-tracking/run${suffix}`,
       { method: "POST" },
     ),
   );
   return (body.jobs ?? []).map(valuationTrackingJobFromWire);
 }
 
+
+export async function searchPrivateFundValuationSecurities(
+  datasetId: string,
+  query: string,
+): Promise<PrivateFundValuationSecurityCandidate[]> {
+  const params = new URLSearchParams({ query });
+  const body = await jsonOrThrow<{ candidates?: ValuationSecurityCandidateWire[] }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-securities?${params}`,
+    ),
+  );
+  return (body.candidates ?? []).map((candidate) => ({
+    securityId: candidate.security_id,
+    market: candidate.market,
+    exchange: candidate.exchange,
+    companyName: candidate.company_name,
+    ticker: candidate.ticker,
+    source: candidate.source,
+    sourceUpdatedAt: candidate.source_updated_at,
+    label: candidate.label ?? `${candidate.company_name}（${candidate.ticker}）`,
+  }));
+}
+
+export async function updatePrivateFundValuationModelIdentity(
+  datasetId: string,
+  seriesId: string,
+  input: { companyName: string; companyTicker: string; changeSource?: string },
+): Promise<{ series: PrivateFundValuationModelSeries | null; jobs: PrivateFundValuationTrackingJob[]; auditId: string }> {
+  const body = await jsonOrThrow<{
+    series?: ValuationModelSeriesWire | null;
+    jobs?: ValuationTrackingJobWire[];
+    audit_id?: string;
+  }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/valuation-models/${encodeURIComponent(seriesId)}/identity`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: input.companyName,
+          company_ticker: input.companyTicker,
+          change_source: input.changeSource ?? "manual_entry",
+        }),
+      },
+    ),
+  );
+  return {
+    series: body.series ? valuationModelSeriesFromWire(body.series) : null,
+    jobs: (body.jobs ?? []).map(valuationTrackingJobFromWire),
+    auditId: body.audit_id ?? "",
+  };
+}
 export async function getPrivateFundValuationModelOverview(
   datasetId: string,
   seriesId: string,
