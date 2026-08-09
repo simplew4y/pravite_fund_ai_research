@@ -1,0 +1,24 @@
+schema_version: 1
+source_id: finskillops_skill_seeds
+repository: https://github.com/YanzhangMa/finskillops-skill-seeds
+visibility: private
+consumer_policy: github_release_only
+normalized_recipe_zone: skills
+runtime_output: skills/finskillops
+forbidden_runtime_zones: [inbox, candidates, exports]
+adapter: scripts/import_finskillops_skills.py
+current_observation:
+  ref: 1e1a0f75d955f3f1dd2c6a83bd5b92ce37f296ee
+  github_releases: 0
+  normalized_release_recipes: 0
+  proposed_candidate_records: 5
+  review_only_portable_recipes: 4
+  withheld_candidates: 1
+planned_capabilities:
+  - verify-financial-numbers
+  - align-financial-periods-and-sources
+  - probe-financial-evidence
+  - scope-financial-analysis
+notes:
+  - Current proposed events originated from simplew4y/FinSagent and must not be round-tripped as duplicate runtime skills.
+  - A stable GitHub Release is required before the adapter writes runtime packages.

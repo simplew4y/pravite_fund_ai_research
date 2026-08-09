@@ -1,5 +1,21 @@
 # FinSagent Skill Packages
 
+## FinSkillOps release feed
+
+The private `YanzhangMa/finskillops-skill-seeds` repository is registered in
+`skill_sources/finskillops-skill-seeds.yaml`. FinSagent imports only normalized
+portable recipes under `skills/` from stable GitHub Releases:
+
+```bash
+PYTHONPATH=src python scripts/import_finskillops_skills.py --replace
+```
+
+For an offline release checkout, also pass `--source-root` and the unmodified
+GitHub Releases API response via `--release-metadata`. The importer never reads
+`inbox/`, `candidates/`, or `exports/` as runtime inputs. Imported packages are
+private and experimental until downstream routing, quality, safety, and latency
+gates promote them explicitly.
+
 `skills/` is the single installation root for FinSagent runtime skills. A skill is
 self-contained and lives at:
 
