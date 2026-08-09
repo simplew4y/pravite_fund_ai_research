@@ -447,6 +447,9 @@ export function PrivateFundCorpusSection({
   const [editingFolderName, setEditingFolderName] = useState("");
   const [draggedFileName, setDraggedFileName] = useState("");
   const openDocumentPreview = usePrivateFundWorkspaceStore((state) => state.openDocumentPreview);
+  const setSelectedSourceDocumentIds = usePrivateFundWorkspaceStore(
+    (state) => state.setSelectedSourceDocumentIds,
+  );
 
   const pendingAttachments = useChatStore((state) => state.pendingComposerAttachments);
   const pendingRemovals = useChatStore((state) => state.pendingComposerAttachmentRemovals);
@@ -493,6 +496,14 @@ export function PrivateFundCorpusSection({
   );
   const allRows = useMemo(() => [...fileRows.values()], [fileRows]);
   const attachedCount = allRows.filter((row) => attachedKeys.has(row.attachmentKey)).length;
+  const selectedSourceDocumentIds = useMemo(
+    () =>
+      allRows
+        .filter((row) => attachedKeys.has(row.attachmentKey))
+        .map((row) => row.file.docId)
+        .filter((documentId): documentId is string => Boolean(documentId)),
+    [allRows, attachedKeys],
+  );
   const allManaged = allRows.length > 0 && managedNames.size === allRows.length;
   const someManaged = managedNames.size > 0 && !allManaged;
 
@@ -529,6 +540,11 @@ export function PrivateFundCorpusSection({
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
   );
+
+  useEffect(() => {
+    if (!selectedDatasetId) return;
+    setSelectedSourceDocumentIds(selectedDatasetId, selectedSourceDocumentIds);
+  }, [selectedDatasetId, selectedSourceDocumentIds, setSelectedSourceDocumentIds]);
 
   useEffect(() => {
     const next = readExpandedFolders(selectedDatasetId ?? "");
