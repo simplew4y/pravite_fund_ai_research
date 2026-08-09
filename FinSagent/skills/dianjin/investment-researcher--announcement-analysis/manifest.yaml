@@ -1,0 +1,91 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_announcement_analysis
+version: 0.1.0
+name: 重大公告解读技能
+description: 解读上市公司重大公告（年报、季报、业绩预告、并购重组、定增、增减持、股权激励、重大合同等），生成结构化的解读报告。适用于基金研究员、投资经理等需要快速理解公告核心信息、分析预期差、提炼投资要点的场景。当用户提到公告解读、公告分析、公告点评、研报点评、业绩解读、财报分析、定增分析、减持分析、股权激励分析、重大合同分析、并购重组分析、回购分析、股权质押分析、诉讼处罚分析时使用此
+  skill。默认输出结构化 Markdown 格式报告。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- company_researcher
+- market_researcher
+- general
+routing:
+  keywords:
+  - 公告
+  - 重大公告
+  - 解读公告
+  - 公告解读
+  - 公告分析
+  - 公告点评
+  - 研报点评
+  - 业绩解读
+  - 财报分析
+  - 定增分析
+  - 减持分析
+  - 股权激励分析
+  - 重大合同分析
+  - 并购重组分析
+  - 回购分析
+  - 股权质押分析
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/announcement-analysis/SKILL.md
+  upstream_sha256: ad6fe1e5a4cdc1ed45625481ac344fac007ab99d6822d774b22412135ada2f7a
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/announcement-analysis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 公告, 重大公告, 解读公告, 公告解读, 公告分析, 公告点评, 研报点评, 业绩解读, 财报分析, 定增分析, 减持分析, 股权激励分析,
+    重大合同分析, 并购重组分析, 回购分析, 股权质押分析'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/announcement-analysis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/announcement-analysis/SKILL.md;
+    installed for shadow evaluation, not production activation.

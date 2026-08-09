@@ -171,6 +171,26 @@ def test_active_mode_applies_prompt_instruction(tmp_path: Path) -> None:
     assert context.prompt_instructions[0]["skill_id"] == "research_thesis"
 
 
+def test_prompt_instruction_is_bounded_before_trace_or_context(tmp_path: Path) -> None:
+    _write_prompt_skill(tmp_path)
+    skill_path = tmp_path / "finance" / "research-thesis" / "SKILL.md"
+    skill_path.write_text(skill_path.read_text(encoding="utf-8") + ("evidence workflow\n" * 500), encoding="utf-8")
+    registry = RuntimeSkillRegistry(SkillLoader([tmp_path]).discover())
+    executor = SkillExecutor(
+        SkillRouter(registry),
+        mode="active",
+        max_prompt_instruction_chars=1200,
+    )
+    context = SkillContext(question="投资逻辑", agent="market_researcher")
+
+    execution = asyncio.run(executor.execute_phase("pre_answer", context))
+
+    result = execution.results[0]
+    assert result.trace["instruction_truncated"] is True
+    assert len(result.trace["instruction"]) < 1300
+    assert "Instruction truncated" in context.prompt_instructions[0]["instruction"]
+
+
 def test_router_respects_agent_and_negative_keywords(tmp_path: Path) -> None:
     _write_prompt_skill(tmp_path)
     registry = RuntimeSkillRegistry(SkillLoader([tmp_path]).discover())

@@ -1,0 +1,81 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_macro_data_brief
+version: 0.1.0
+name: 宏观经济数据解读简报生成技能
+description: 宏观经济数据解读与市场分析技能。当用户要求生成宏观数据解读、宏观经济简报、当日经济数据点评、宏观数据对股债影响分析、经济数据速评时使用。包括"今日宏观数据解读"、"XX月经济数据点评"、"宏观数据对股市影响"、"生成宏观数据简报"、"最新PMI/CPI/社融数据解读"等表述。本技能自动搜索当日或最新发布的中国核心宏观经济数据（PMI、CPI、PPI、社融、M2、进出口、工业增加值、固定资产投资、社零等），对比市场预期值，解读数据含义与预期偏差，分析对货币政策和财政政策的传导逻辑，评估对股市、债市的即时影响，最终生成结构化的Markdown格式宏观数据解读简报。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- general
+routing:
+  keywords:
+  - 今日宏观数据解读
+  - XX月经济数据点评
+  - 宏观数据对股市影响
+  - 生成宏观数据简报
+  - 最新PMI/CPI/社融数据解读
+  - 宏观经济数据解读简报
+  - 宏观经济数据解读简报生成技能
+  - macro data brief
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/macro-data-brief/SKILL.md
+  upstream_sha256: 91d0e5a3dc6eba286214ac6070bb65c00a5c801eec8eec37c34152d8900e3c24
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/macro-data-brief.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 今日宏观数据解读, XX月经济数据点评, 宏观数据对股市影响, 生成宏观数据简报, 最新PMI/CPI/社融数据解读, 宏观经济数据解读简报,
+    宏观经济数据解读简报生成技能, macro data brief'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/macro-data-brief/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/macro-data-brief/SKILL.md;
+    installed for shadow evaluation, not production activation.

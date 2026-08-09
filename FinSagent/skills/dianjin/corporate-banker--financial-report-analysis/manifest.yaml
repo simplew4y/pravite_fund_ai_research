@@ -1,0 +1,86 @@
+schema_version: 1
+skill_id: dianjin_corporate_banker_financial_report_analysis
+version: 0.1.0
+name: 财务报表深度分析(Financial Report Analysis)
+description: 尽调报告-财报分析技能。对上市公司或目标企业的财务报表进行全面深度分析。涵盖资产负债表、利润表、现金流量表三大核心报表的解读,通过计算盈利能力、偿债能力、运营效率、成长能力等关键财务指标,结合杜邦分析法拆解ROE驱动力,评估盈利质量(收现比/净现比),进行财务粉饰识别与风险预警,最终输出结构化的财务健康评估报告,为投资决策和经营管理提供数据支撑。当用户上传财务报表、提供公司名称或股票代码并要求进行财务分析时使用此技能。触发词包括:"财报分析"、"财务报表分析"、"financial
+  analysis"、"财务分析"、"分析财报"、"解读财报"、"财报解读"、"财务健康评估"。不适用于:非财务数据分析、市场调研、行业分析、简单数据查询、无具体财务数据的空泛咨询、或个人信贷财务分析。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- company_researcher
+- legal_risk
+- general
+routing:
+  keywords:
+  - 财报分析
+  - 财务报表分析
+  - 财务分析
+  - financial analysis
+  - 分析财报
+  - 解读财报
+  - 财报解读
+  - 财务健康评估
+  - 财务报表深度分析
+  - 财务报表深度分析(Financial Report Analysis)
+  - financial report analysis
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/corporate-banker/financial-report-analysis/SKILL.md
+  upstream_sha256: 49a942f9179f9951d2e4c9d1b76b82bcc947dcc46349a5f70f372c7604ec863e
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/corporate-banker/financial-report-analysis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 财报分析, 财务报表分析, 财务分析, financial analysis, 分析财报, 解读财报, 财报解读, 财务健康评估,
+    财务报表深度分析, 财务报表深度分析(Financial Report Analysis), financial report analysis'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/corporate-banker/financial-report-analysis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/corporate-banker/financial-report-analysis/SKILL.md;
+    installed for shadow evaluation, not production activation.

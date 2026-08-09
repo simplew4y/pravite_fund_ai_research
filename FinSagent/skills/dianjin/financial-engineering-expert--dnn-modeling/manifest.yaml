@@ -1,0 +1,83 @@
+schema_version: 1
+skill_id: dianjin_financial_engineering_expert_dnn_modeling
+version: 0.1.0
+name: DNN 深度学习建模 (portable)
+description: 【DNN深度学习建模】当用户需要"深度学习"、"DNN建模"、"神经网络"、"MLP"、"跑个DNN"、"深度模型"时使用。基于 PyTorch 实现多层全连接网络（MLP）进行二分类建模。支持
+  BatchNorm、Dropout、学习率调度、早停。复用平台已有的三段式数据切分、AUC/KS/BCR评估体系、稳定性分析。前提条件：需要已有数据集。与 xgb-modeling 的区别：本 Skill
+  使用深度神经网络，适合高维特征交互场景；xgb-modeling 使用 XGBoost 树模型。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+routing:
+  keywords:
+  - 深度学习
+  - DNN建模
+  - 神经网络
+  - MLP
+  - 跑个DNN
+  - 深度模型
+  - DNN 深度学习建模
+  - DNN 深度学习建模 (portable)
+  - dnn modeling
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/financial-engineering-expert/dnn-modeling/SKILL.md
+  upstream_sha256: 3fec7a5728aac836fb1fdebe98be53e8855c0df4d4c64f0eb3f535a7e5c28118
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/financial-engineering-expert/dnn-modeling.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 深度学习, DNN建模, 神经网络, MLP, 跑个DNN, 深度模型, DNN 深度学习建模, DNN 深度学习建模 (portable),
+    dnn modeling'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/financial-engineering-expert/dnn-modeling/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/financial-engineering-expert/dnn-modeling/SKILL.md;
+    installed for shadow evaluation, not production activation.

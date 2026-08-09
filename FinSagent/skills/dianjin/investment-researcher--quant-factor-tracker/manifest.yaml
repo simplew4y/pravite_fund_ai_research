@@ -1,0 +1,85 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_quant_factor_tracker
+version: 0.1.0
+name: 量化因子跟踪与评估 (Quant Factor Tracker)
+description: 证券金融工程研究员因子跟踪与评估技能。当用户要求跟踪量化因子表现、更新因子库、计算因子IC/IR、分析分组超额收益、评估因子有效性、监控因子衰减或生成因子跟踪报告时触发。包括“因子跟踪”、“计算因子IC”、“因子失效分析”、“生成因子评估报告”、“因子库更新”、“看看这些因子最近表现怎么样”、“跑一下IC和分组收益”等表述。本技能自动获取或接收因子截面数据与下期收益率，计算Rank
+  IC、IR、分组超额收益，执行单调性与衰减检验，标记因子强弱状态与失效预警，输出标准化Markdown格式因子跟踪报告。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+- market_researcher
+routing:
+  keywords:
+  - 因子跟踪
+  - 计算因子IC
+  - 因子失效分析
+  - 生成因子评估报告
+  - 因子库更新
+  - 看看这些因子最近表现怎么样
+  - 跑一下IC和分组收益
+  - 量化因子跟踪与评估
+  - 量化因子跟踪与评估 (Quant Factor Tracker)
+  - 因子表现
+  - quant factor tracker
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/quant-factor-tracker/SKILL.md
+  upstream_sha256: 091d3dafca35ba1ed981147e3ab7dd44a15ebda295f4a697da822daca10004ab
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/quant-factor-tracker.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 因子跟踪, 计算因子IC, 因子失效分析, 生成因子评估报告, 因子库更新, 看看这些因子最近表现怎么样, 跑一下IC和分组收益,
+    量化因子跟踪与评估, 量化因子跟踪与评估 (Quant Factor Tracker), 因子表现, quant factor tracker'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/quant-factor-tracker/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/quant-factor-tracker/SKILL.md;
+    installed for shadow evaluation, not production activation.

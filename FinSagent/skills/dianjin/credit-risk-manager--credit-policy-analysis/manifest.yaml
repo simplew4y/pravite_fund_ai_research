@@ -1,0 +1,83 @@
+schema_version: 1
+skill_id: dianjin_credit_risk_manager_credit_policy_analysis
+version: 0.1.0
+name: 信贷政策环境分析
+description: 信贷政策环境分析技能。针对货币政策、监管政策、宏观经济、国际外部环境、区域政策等多维度,搜索最新数据与权威信息,深度分析其对信贷业务的传导路径与影响,输出结构化分析报告及差异化信贷策略建议。触发词包括:"信贷政策分析"、"政策环境分析"、"宏观经济影响分析"、"信贷环境报告"、"货币政策对信贷的影响"、"监管政策解读"、"信贷策略建议"。不适用于:企业财务分析、客户信用评级、具体授信审批决策、贷后风险监测。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- legal_risk
+- company_researcher
+routing:
+  keywords:
+  - 信贷政策分析
+  - 政策环境分析
+  - 宏观经济影响分析
+  - 信贷环境报告
+  - 货币政策对信贷的影响
+  - 监管政策解读
+  - 信贷策略建议
+  - 信贷政策环境分析
+  - 财务分析
+  - credit policy analysis
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/credit-risk-manager/credit-policy-analysis/SKILL.md
+  upstream_sha256: 406d5972c7b90521ecf152e187c5a1b51cad12934937404199820e9739ec3006
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/credit-risk-manager/credit-policy-analysis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 信贷政策分析, 政策环境分析, 宏观经济影响分析, 信贷环境报告, 货币政策对信贷的影响, 监管政策解读, 信贷策略建议, 信贷政策环境分析,
+    财务分析, credit policy analysis'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/credit-risk-manager/credit-policy-analysis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/credit-risk-manager/credit-policy-analysis/SKILL.md;
+    installed for shadow evaluation, not production activation.

@@ -1,0 +1,89 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_fixed_income_weekly_brief
+version: 0.1.0
+name: 固定收益周报生成技能
+description: 固定收益研究员周报生成技能。当用户要求生成固收周报、债市周报、债券周报、利率周报、资金面周报时使用，包括"固收周报"、"债市周报"、"债券周报"、"利率周报"、"生成本周固收周报"、"本周债市复盘"、"固收周报速评"、"债市每周简报"、"本周债券市场回顾"等表述。本技能自动获取资金面、债券市场、央行操作、信用债、同业存单、地方债、二级资本债、永续债、ABS等核心周度数据，结合市场情绪与政策动态，生成标准化Markdown格式固定收益周报。即使用户只说"这周债市怎么样"、"生成债券周报"、"固收周报"等简短表述也要触发。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- company_researcher
+- market_researcher
+- general
+routing:
+  keywords:
+  - 固收周报
+  - 债市周报
+  - 债券周报
+  - 利率周报
+  - 生成本周固收周报
+  - 本周债市复盘
+  - 固收周报速评
+  - 债市每周简报
+  - 本周债券市场回顾
+  - 这周债市怎么样
+  - 生成债券周报
+  - 固定收益周报
+  - 固定收益周报生成技能
+  - 资金面
+  - fixed income weekly brief
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/fixed-income-weekly-brief/SKILL.md
+  upstream_sha256: 5cc38aad11944d1fef51338dd6a7a698465a34cef8172b902f7222f25cad54cb
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/fixed-income-weekly-brief.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 固收周报, 债市周报, 债券周报, 利率周报, 生成本周固收周报, 本周债市复盘, 固收周报速评, 债市每周简报, 本周债券市场回顾,
+    这周债市怎么样, 生成债券周报, 固定收益周报, 固定收益周报生成技能, 资金面, fixed income weekly brief'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/fixed-income-weekly-brief/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/fixed-income-weekly-brief/SKILL.md;
+    installed for shadow evaluation, not production activation.

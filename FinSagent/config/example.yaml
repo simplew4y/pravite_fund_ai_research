@@ -114,6 +114,7 @@ skills:
   execution:
     max_skills_per_request: 8
     default_timeout_seconds: 5
+    max_prompt_instruction_chars: 12000
   security:
     allow_python_skills: false
 # Optional company-scoped reconstructed table directory, e.g.:

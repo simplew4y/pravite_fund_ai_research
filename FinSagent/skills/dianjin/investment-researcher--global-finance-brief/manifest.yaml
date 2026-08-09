@@ -1,0 +1,78 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_global_finance_brief
+version: 0.1.0
+name: 全球财经要闻简报技能
+description: 全球财经要闻自动抓取与简报生成技能。当用户询问财经热点、财经新闻、市场动态、投资热点、生成财经简报，或要求查看今天/最近金融市场有什么大事时触发。即使用户只说"财经热点"、"财经新闻汇总"等简短表述也要触发。本技能自动搜索最新财经资讯（24-72
+  小时），智能筛选高影响力事件，按宏观/市场/行业/公司分类汇总，生成结构化简要报告，包含核心头条、市场表现、行业动态、投资机会和风险提示。支持定时任务创建。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- general
+routing:
+  keywords:
+  - 财经热点
+  - 财经新闻汇总
+  - 全球财经要闻简报
+  - 全球财经要闻简报技能
+  - global finance brief
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/global-finance-brief/SKILL.md
+  upstream_sha256: 7a242f5bfa1ff1a0da195b09f8e2dfa45dfed18e9796b9c9474ad3da88a1db29
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/global-finance-brief.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 财经热点, 财经新闻汇总, 全球财经要闻简报, 全球财经要闻简报技能, global finance brief'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/global-finance-brief/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/global-finance-brief/SKILL.md;
+    installed for shadow evaluation, not production activation.

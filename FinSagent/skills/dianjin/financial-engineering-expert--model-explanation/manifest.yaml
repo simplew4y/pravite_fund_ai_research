@@ -1,0 +1,85 @@
+schema_version: 1
+skill_id: dianjin_financial_engineering_expert_model_explanation
+version: 0.1.0
+name: 模型解释报告 (portable)
+description: 【模型解释】当用户问"为什么模型这样预测"、"哪些特征最重要"、"解释一下这个样本"、"模型怎么做的决策"、"feature importance"、"为什么给这个分数"时使用。基于SHAP的模型解释，支持全局特征重要性、单样本预测解释、特征交互分析。前提条件：需要已训练好的XGBoost模型。不做模型训练，不做特征筛选。与
+  feature-analysis 的区别：本 Skill 解释"已训练模型的决策逻辑"，feature-analysis 分析"建模前的特征质量"。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+routing:
+  keywords:
+  - 为什么模型这样预测
+  - 哪些特征最重要
+  - 解释一下这个样本
+  - 模型怎么做的决策
+  - feature importance
+  - 为什么给这个分数
+  - 已训练模型的决策逻辑
+  - 建模前的特征质量
+  - 模型解释报告
+  - 模型解释报告 (portable)
+  - 模型解释
+  - model explanation
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/financial-engineering-expert/model-explanation/SKILL.md
+  upstream_sha256: c51dce5f06f948eab7161590da5d25361babb8f306d9dfbcf2975afd21df23e0
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/financial-engineering-expert/model-explanation.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 为什么模型这样预测, 哪些特征最重要, 解释一下这个样本, 模型怎么做的决策, feature importance, 为什么给这个分数,
+    已训练模型的决策逻辑, 建模前的特征质量, 模型解释报告, 模型解释报告 (portable), 模型解释, model explanation'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/financial-engineering-expert/model-explanation/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/financial-engineering-expert/model-explanation/SKILL.md;
+    installed for shadow evaluation, not production activation.

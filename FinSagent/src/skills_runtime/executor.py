@@ -24,6 +24,7 @@ class SkillExecutor:
         mode: str = "shadow",
         max_skills_per_request: int = 8,
         default_timeout_seconds: float = 5.0,
+        max_prompt_instruction_chars: int = 12000,
         allow_python: bool = False,
     ) -> None:
         if mode not in {"shadow", "active"}:
@@ -32,6 +33,7 @@ class SkillExecutor:
         self.mode = mode
         self.max_skills_per_request = max(1, int(max_skills_per_request))
         self.default_timeout_seconds = max(0.1, float(default_timeout_seconds))
+        self.max_prompt_instruction_chars = max(1000, int(max_prompt_instruction_chars))
         self.allow_python = bool(allow_python)
 
     async def execute_phase(
@@ -95,13 +97,18 @@ class SkillExecutor:
     async def _dispatch(self, skill: RegisteredSkill, context: SkillContext) -> SkillResult:
         kind = skill.manifest.kind
         if kind == "prompt":
+            instruction = self._bounded_prompt_instruction(skill)
             return SkillResult(
                 skill_id=skill.manifest.skill_id,
                 version=skill.manifest.version,
                 phase=skill.manifest.phase,
                 triggered=True,
                 status="applied",
-                trace={"instruction": skill.instruction},
+                trace={
+                    "instruction": instruction,
+                    "instruction_chars": len(instruction),
+                    "instruction_truncated": len(instruction) < len(skill.instruction),
+                },
             )
         if kind == "formula":
             return self._execute_formula(skill, context)
@@ -112,6 +119,20 @@ class SkillExecutor:
                 return self._failure(skill, "python_skills_disabled", status="blocked")
             return await self._execute_python(skill, context)
         return self._failure(skill, f"unsupported_kind:{kind}")
+
+    def _bounded_prompt_instruction(self, skill: RegisteredSkill) -> str:
+        per_skill_limit = int(
+            skill.manifest.implementation.get("max_instruction_chars")
+            or self.max_prompt_instruction_chars
+        )
+        limit = max(1000, min(per_skill_limit, self.max_prompt_instruction_chars))
+        instruction = skill.instruction
+        if len(instruction) <= limit:
+            return instruction
+        boundary = instruction.rfind("\n", 0, limit)
+        if boundary < limit // 2:
+            boundary = limit
+        return instruction[:boundary].rstrip() + "\n\n[Instruction truncated by FinSagent prompt budget.]"
 
     def _execute_formula(self, skill: RegisteredSkill, context: SkillContext) -> SkillResult:
         expression = str(skill.manifest.implementation.get("expression") or "")

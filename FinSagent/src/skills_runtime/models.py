@@ -153,7 +153,7 @@ class SkillManifest:
         )
 
     def catalog_dict(self, *, enabled: bool, package_hash: str = "") -> dict[str, Any]:
-        return {
+        row = {
             "skill_id": self.skill_id,
             "version": self.version,
             "name": self.name,
@@ -166,6 +166,12 @@ class SkillManifest:
             "owner": self.owner,
             "package_hash": package_hash,
         }
+        source = str(self.implementation.get("source") or "").strip()
+        if source:
+            row["source"] = source
+            row["upstream_ref"] = str(self.implementation.get("upstream_ref") or "")
+            row["upstream_path"] = str(self.implementation.get("upstream_path") or "")
+        return row
 
 
 @dataclass(frozen=True)

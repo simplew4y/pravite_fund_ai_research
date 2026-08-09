@@ -1,0 +1,83 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_macro_asset_allocation
+version: 0.1.0
+name: 宏观大类资产配置技能
+description: 宏观大类资产配置建议生成技能。当用户要求生成资产配置报告、大类资产配置建议、投资组合配置、股债商品配置策略时使用。包括"生成资产配置建议"、"当前适合配置什么资产"、"股债商品怎么配"、"宏观视角资产配置"、"投资组合配置建议"等表述。本技能结合最新宏观经济数据、政策预判、市场环境，运用美林时钟/宏观象限等分析框架，自动生成股票、债券、商品、外汇等大类资产配置建议，标注配置逻辑、权重建议与风险点，输出面向专业投资机构的
+  Markdown 格式资产配置报告。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- general
+routing:
+  keywords:
+  - 生成资产配置建议
+  - 当前适合配置什么资产
+  - 股债商品怎么配
+  - 宏观视角资产配置
+  - 投资组合配置建议
+  - 宏观大类资产配置
+  - 宏观大类资产配置技能
+  - 资产配置
+  - macro asset allocation
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/macro-asset-allocation/SKILL.md
+  upstream_sha256: 4b18160ab4e744b5bf0e22c76e34e55f8b54f625aa9cf8092f4a202eeb76584b
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/macro-asset-allocation.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 生成资产配置建议, 当前适合配置什么资产, 股债商品怎么配, 宏观视角资产配置, 投资组合配置建议, 宏观大类资产配置, 宏观大类资产配置技能,
+    资产配置, macro asset allocation'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/macro-asset-allocation/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/macro-asset-allocation/SKILL.md;
+    installed for shadow evaluation, not production activation.

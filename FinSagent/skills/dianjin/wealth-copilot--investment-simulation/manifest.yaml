@@ -1,0 +1,77 @@
+schema_version: 1
+skill_id: dianjin_wealth_copilot_investment_simulation
+version: 0.1.0
+name: 投资收益模拟
+description: 运用蒙特卡洛模拟对拟投资组合进行多周期收益概率测算， 可视化乐观/中性/悲观三种情景，帮助客户理解预期风险收益。 当用户提到收益模拟、能赚多少、预期收益、蒙特卡洛、 投资回报、投多少能赚多少时触发。
+  不用于资产配置方案设计（由asset-allocation-optimizer处理）。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- quant
+- general
+routing:
+  keywords:
+  - 投资收益模拟
+  - 资产配置
+  - investment simulation
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/wealth-copilot/L2-6_allocation/investment-simulation/SKILL.md
+  upstream_sha256: 37eb85c11350a4db98fde27b1dc98abf2502fba0362f8a302c2e3ac9e9f59187
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/wealth-copilot/L2-6_allocation/investment-simulation.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 投资收益模拟, 资产配置, investment simulation'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/wealth-copilot/L2-6_allocation/investment-simulation/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/wealth-copilot/L2-6_allocation/investment-simulation/SKILL.md;
+    installed for shadow evaluation, not production activation.

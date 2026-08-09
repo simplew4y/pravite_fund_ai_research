@@ -1,0 +1,90 @@
+schema_version: 1
+skill_id: dianjin_financial_engineering_expert_univariate_analysis
+version: 0.1.0
+name: 单变量分析 (portable)
+description: 【单变量分析】当用户提到"分析某个/某些特征"、"看看xxx特征"、"xxx特征分布"、"帮我分箱"、"交叉分布"、"筛选特征"、"分析一下xxx"等涉及少量特征分析的请求时使用。支持两种模式：(1)
+  无目标变量：等频/等距分箱分布、交叉分布表；(2) 有目标变量：IV值和分箱明细。适用场景关键词：分析特征、看特征、特征分布、分箱、交叉分析、IV值、单个特征、几个特征。与 feature-analysis
+  的区别：聚焦少量特征的快速分析，不含全量相关性和方案推荐。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+routing:
+  keywords:
+  - 分析某个/某些特征
+  - 看看xxx特征
+  - xxx特征分布
+  - 帮我分箱
+  - 交叉分布
+  - 筛选特征
+  - 分析一下xxx
+  - '"分析某个/某些特征"'
+  - '"看看xxx特征"'
+  - '"xxx特征分布"'
+  - '"帮我分箱"'
+  - '"交叉分布"'
+  - '"筛选特征"'
+  - '"分析一下xxx"等涉及少量特征分析的请求'
+  - 单变量分析
+  - 单变量分析 (portable)
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/financial-engineering-expert/univariate-analysis/SKILL.md
+  upstream_sha256: 260085fbac01769fc8460be7277b83a084e47936d9561b73c12172b9a69f4b79
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/financial-engineering-expert/univariate-analysis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 分析某个/某些特征, 看看xxx特征, xxx特征分布, 帮我分箱, 交叉分布, 筛选特征, 分析一下xxx, "分析某个/某些特征",
+    "看看xxx特征", "xxx特征分布", "帮我分箱", "交叉分布", "筛选特征", "分析一下xxx"等涉及少量特征分析的请求, 单变量分析, 单变量分析 (portable)'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/financial-engineering-expert/univariate-analysis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/financial-engineering-expert/univariate-analysis/SKILL.md;
+    installed for shadow evaluation, not production activation.

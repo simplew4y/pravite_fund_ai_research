@@ -57,6 +57,9 @@ class SkillRuntime:
             mode=mode,
             max_skills_per_request=int(executor_cfg.get("max_skills_per_request", 8)),
             default_timeout_seconds=float(executor_cfg.get("default_timeout_seconds", 5.0)),
+            max_prompt_instruction_chars=int(
+                executor_cfg.get("max_prompt_instruction_chars", 12000)
+            ),
             allow_python=bool((skill_cfg.get("security") or {}).get("allow_python_skills", False)),
         )
         runtime = cls(

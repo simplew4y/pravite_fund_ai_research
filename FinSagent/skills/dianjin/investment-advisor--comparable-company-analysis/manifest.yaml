@@ -1,0 +1,81 @@
+schema_version: 1
+skill_id: dianjin_investment_advisor_comparable_company_analysis
+version: 0.1.0
+name: 可比公司分析技能 (Comparable Company Analysis)
+description: 金融领域的可比公司分析工具，通过行业分析法对目标公司与可比公司整合经营指标、估值倍数和统计基准比较。支持A股、港股、美股市场的上市公司分析。输入单一公司问句后，调用可比公司接口并生成主题化Excel报告。适用于快速对比目标公司与同业在经营、财务、估值维度的差异。数据查询优先使用
+  上游外部金融数据服务 服务。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- quant
+- general
+routing:
+  keywords:
+  - 可比公司
+  - 同业对比
+  - 可比估值
+  - 可比公司分析技能
+  - 可比公司分析技能 (Comparable Company Analysis)
+  - comparable company analysis
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: true
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-advisor/comparable-company-analysis/SKILL.md
+  upstream_sha256: f2bba442633fca2c491901ae52ee52f36412e4921332688e4fc0fec27b81c4a7
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-advisor/comparable-company-analysis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 可比公司, 同业对比, 可比估值, 可比公司分析技能, 可比公司分析技能 (Comparable Company Analysis),
+    comparable company analysis'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-advisor/comparable-company-analysis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-advisor/comparable-company-analysis/SKILL.md;
+    installed for shadow evaluation, not production activation.

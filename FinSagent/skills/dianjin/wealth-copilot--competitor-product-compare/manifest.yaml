@@ -1,0 +1,77 @@
+schema_version: 1
+skill_id: dianjin_wealth_copilot_competitor_product_compare
+version: 0.1.0
+name: 竞品对比分析
+description: 对比同类基金产品，从收益、风险、费率、流动性、基金经理能力五个维度 生成对比报告，帮助客户经理回应"别家产品更好"的异议。 当用户提到跟XX比怎么样、竞品对比、同类比较、为什么选我们、
+  两只基金比较时触发。 不用于单只基金分析（由fund-deep-research处理）。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- quant
+- general
+routing:
+  keywords:
+  - 别家产品更好
+  - 竞品对比分析
+  - competitor product compare
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/wealth-copilot/L2-3_strategy/competitor-product-compare/SKILL.md
+  upstream_sha256: 57faba5d8dc71056e861b43148413b3fa7c98432ba49072528637d7c860d7c53
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/wealth-copilot/L2-3_strategy/competitor-product-compare.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 别家产品更好, 竞品对比分析, competitor product compare'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/wealth-copilot/L2-3_strategy/competitor-product-compare/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/wealth-copilot/L2-3_strategy/competitor-product-compare/SKILL.md;
+    installed for shadow evaluation, not production activation.

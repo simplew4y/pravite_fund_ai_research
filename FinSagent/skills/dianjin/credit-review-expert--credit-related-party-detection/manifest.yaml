@@ -1,0 +1,86 @@
+schema_version: 1
+skill_id: dianjin_credit_review_expert_credit_related_party_detection
+version: 0.1.0
+name: 关联交易识别与关联风险排查
+description: 企业客户关联交易识别与关联风险排查技能。通过股权穿透、管理层任职、家族关系、交易集中度、担保链条等多维度识别关联方,检测资金空转、转移定价、虚构交易、利润转移等异常特征,评估关联风险对授信安全的影响,输出结构化关联方图谱与风险报告。用于贷前关联排查、贷中关联交易监测、贷后风险预警。触发词包括:"关联关系识别"、"关联交易分析"、"关联风险排查"、"related
+  party detection"、"关联图谱"、"查一下这家企业的关联关系"、"关联交易分析一下"、"担保链分析"。不适用于:贷后风险分类调整、不良资产处置、授信审批决策、股权穿透分析(请使用equity-penetration-analysis)、或无具体企业背景的一般合规咨询。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- legal_risk
+- company_researcher
+routing:
+  keywords:
+  - 关联关系识别
+  - 关联交易分析
+  - 关联风险排查
+  - related party detection
+  - 关联图谱
+  - 查一下这家企业的关联关系
+  - 关联交易分析一下
+  - 担保链分析
+  - 关联交易识别与关联风险排查
+  - 股权穿透
+  - 关联方
+  - credit related party detection
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/credit-review-expert/credit-related-party-detection/SKILL.md
+  upstream_sha256: 9b1b69fea732472020aa78f6059f1e6a768d44f2f2e0969b1ad174a9888f20b4
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/credit-review-expert/credit-related-party-detection.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 关联关系识别, 关联交易分析, 关联风险排查, related party detection, 关联图谱, 查一下这家企业的关联关系,
+    关联交易分析一下, 担保链分析, 关联交易识别与关联风险排查, 股权穿透, 关联方, credit related party detection'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/credit-review-expert/credit-related-party-detection/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/credit-review-expert/credit-related-party-detection/SKILL.md;
+    installed for shadow evaluation, not production activation.

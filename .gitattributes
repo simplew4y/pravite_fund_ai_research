@@ -1,0 +1,3 @@
+# Preserve byte-for-byte third-party review copies without weakening whitespace
+# checks for FinSagent runtime instructions or source code.
+FinSagent/skills/dianjin/**/references/UPSTREAM_SKILL.md -whitespace

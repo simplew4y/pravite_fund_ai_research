@@ -65,3 +65,35 @@ Supported phases are `query_parse`, `pre_retrieval`, `post_retrieval`,
 Legacy files in `configs/skill_cards/` remain readable for old reports during
 the migration, but new or changed governance metadata belongs in the package
 manifest under `governance`.
+
+## Qwen DianJin candidate catalog
+
+`scripts/import_dianjin_skills.py` imports private-fund-relevant workflows from
+Qwen DianJin's `DianJin-SKILLS` tree. It includes the complete investment
+researcher, investment advisor, and financial engineering roles plus selected
+financial-statement, due-diligence, portfolio, allocation, and risk workflows.
+Insurance claims, underwriting, and sales/outreach workflows are excluded.
+
+The generated packages live below `skills/dianjin/` and are deliberately:
+
+- `experimental`, `public: false`, and outside the production allowlist;
+- prompt-only, network-disabled, and unable to execute upstream tool commands;
+- company/dataset evidence-bound where the workflow concerns a single issuer;
+- pinned to an exact upstream Git ref with byte-for-byte source retained under
+  `references/UPSTREAM_SKILL.md`;
+- bounded to 9,000 runtime characters even though the review copy is complete;
+- marked `license_review_required` until upstream product-use terms are confirmed.
+
+Import or refresh a reviewed upstream snapshot:
+
+```bash
+PYTHONPATH=src python scripts/import_dianjin_skills.py \
+  --ref <reviewed-qwen-dianjin-commit> \
+  --output-root skills \
+  --replace
+```
+
+Import from an offline checkout by adding `--source-root /path/to/qwen-dianjin`.
+Promotion remains a separate downstream decision: run routing and grounding
+evaluations, change an individual package status, and then add only that ID to
+the production allowlist.

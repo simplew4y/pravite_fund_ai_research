@@ -1,0 +1,84 @@
+schema_version: 1
+skill_id: dianjin_corporate_banker_visit_memo
+version: 0.1.0
+name: 拜访记录（Visit Memo）
+description: 客户经理走访纪要生成技能。将现场拜访的口述观察结构化记录为贷前尽调笔记,支持多轮增量更新与持久化保存。当用户在客户拜访现场口述企业经营状况、厂区观察、财务线索、风险信号、人物印象等信息,或要求记录、整理、更新拜访笔记时使用此技能。触发词包括:"拜访记录"、"走访纪要"、"visit
+  memo"、"现场记录"、"记录拜访"、"整理笔记"、"拜访纪要"、"visit record"。不适用于:拜访前规划、授信审批决策、贷后管理报告、正式尽调报告生成、或无具体客户背景的一般咨询。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- company_researcher
+- legal_risk
+- general
+routing:
+  keywords:
+  - 拜访记录
+  - 走访纪要
+  - visit memo
+  - 现场记录
+  - 记录拜访
+  - 整理笔记
+  - 拜访纪要
+  - visit record
+  - 拜访记录（Visit Memo）
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/corporate-banker/visit-memo/SKILL.md
+  upstream_sha256: 2b43778402f84ed1c99ca83b9b79e562d86c01a229dfed848d9dd8b67bb024e1
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/corporate-banker/visit-memo.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 拜访记录, 走访纪要, visit memo, 现场记录, 记录拜访, 整理笔记, 拜访纪要, visit record, 拜访记录（Visit
+    Memo）'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/corporate-banker/visit-memo/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/corporate-banker/visit-memo/SKILL.md;
+    installed for shadow evaluation, not production activation.

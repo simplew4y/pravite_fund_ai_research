@@ -1,0 +1,82 @@
+schema_version: 1
+skill_id: dianjin_financial_engineering_expert_xgb_tuning
+version: 0.1.0
+name: XGBoost 参数调优 (portable)
+description: 【XGBoost超参数调优 — 唯一调参入口】当用户说"帮我调参"、"模型过拟合了怎么办"、"调整learning_rate/max_depth等参数"时使用。核心能力：基于 Optuna
+  TPE 贝叶斯优化 + 诊断驱动的约束搜索（过拟合→收紧树深度上限，欠拟合→抬高树深度下限），每轮输出诊断报告供用户确认。不做特征探索/特征工程，不批量跑多种方案对比。前置条件：需先用 xgb-modeling
+  训练出基线模型。与 auto-experiment 的区别：本Skill只调整"模型超参数"，auto-experiment 负责"自主探索特征和方案"。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+routing:
+  keywords:
+  - 帮我调参
+  - 模型过拟合了怎么办
+  - 调整learning_rate/max_depth等参数
+  - 模型超参数
+  - 自主探索特征和方案
+  - XGBoost 参数调优
+  - XGBoost 参数调优 (portable)
+  - xgb tuning
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/financial-engineering-expert/xgb-tuning/SKILL.md
+  upstream_sha256: a1a32a1eb762ea937564e5279d99d1df344ae2994bf044f860e4e14d854459cf
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/financial-engineering-expert/xgb-tuning.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 帮我调参, 模型过拟合了怎么办, 调整learning_rate/max_depth等参数, 模型超参数, 自主探索特征和方案,
+    XGBoost 参数调优, XGBoost 参数调优 (portable), xgb tuning'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/financial-engineering-expert/xgb-tuning/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/financial-engineering-expert/xgb-tuning/SKILL.md;
+    installed for shadow evaluation, not production activation.
