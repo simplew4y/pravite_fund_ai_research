@@ -11,6 +11,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
 from utils.EnsembleRetriever import EnsembleRetriever
+from utils.index_readiness import IndexNotReadyError, validate_index_bundle
 from utils.vllm_embeddings import VLLMEmbeddings
 import GPUtil
 
@@ -51,6 +52,30 @@ class RAGManager:
         self.embedding_backend = str(config.get("embedding_backend", "huggingface")).lower()
         self.batch_size = 5
         self.embeddings = None
+
+        # Validate before loading embeddings and, most importantly, before a
+        # LangChain Chroma constructor can get-or-create an empty collection.
+        if config.get("index_readiness_required", False) and collections:
+            persist = os.path.abspath(config["persist_directory"])
+            source_db = config.get("canonical_database")
+            if not source_db:
+                source_db = os.path.join(os.path.dirname(persist), "meta", "collection.sqlite3")
+            for collection, top_k in collections.items():
+                if top_k <= 0:
+                    continue
+                try:
+                    validate_index_bundle(
+                        persist,
+                        collection,
+                        source_db=source_db,
+                        require_manifest=config.get("index_manifest_required", True),
+                    ).require_ready()
+                except IndexNotReadyError as exc:
+                    raise RuntimeError(
+                        f"{exc}. Rebuild once with: python data_pipeline/"
+                        f"rebuild_private_fund_indexes.py --dataset-root "
+                        f"{os.path.dirname(persist)!r}"
+                    ) from exc
 
         self._embedding_lock = None if self.embedding_backend == "vllm" else threading.Lock()
         if self._embedding_lock is not None:

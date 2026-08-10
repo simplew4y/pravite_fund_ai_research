@@ -218,6 +218,39 @@ def _sync_collection_to_chroma(
         logger.exception("Chroma sync failed (non-fatal) for dataset %s", dataset_id)
 
 
+def _publish_private_fund_indexes(collection_db_path: str, dataset_id: str) -> dict[str, Any]:
+    """Build all retrieval indexes through the validated atomic publisher."""
+    dataset_root = Path(collection_db_path).resolve().parent.parent
+    if dataset_root.name != dataset_id:
+        raise RuntimeError(
+            f"dataset identity mismatch: path={dataset_root.name!r}, result={dataset_id!r}"
+        )
+    command = [
+        sys.executable,
+        str(Path(PROJECT_ROOT) / "data_pipeline" / "prepare_private_fund_dataset.py"),
+        "--dataset-root", str(dataset_root),
+        "--config", CONFIG_PATH,
+    ]
+    completed = subprocess.run(
+        command,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=None,
+    )
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout or "").strip()[-4000:]
+        raise RuntimeError(
+            f"retrieval index publication failed (code={completed.returncode}): {details}"
+        )
+    output = (completed.stdout or "").strip()
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return {"status": "completed", "output": output[-2000:]}
+
+
 def _path_counts_toward_rag_busy(path: str) -> bool:
     """与 chat_service / RAG 相关的路由，用于热重载前等待空闲。"""
     if path.startswith("/chat"):
@@ -1384,12 +1417,17 @@ def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
             job_id=job_id,
             classification_llm=classification_llm,
         )
-        # ── SQLite → Chroma 增量同步 ──
-        _sync_collection_to_chroma(
-            result.collection_db_path,
-            result.dataset_id,
-            result.documents,
+        # SQLite is canonical. Publish every derived index as one validated
+        # bundle; never incrementally mutate the collections used by requests.
+        index_result = _publish_private_fund_indexes(
+            result.collection_db_path, result.dataset_id
         )
+        config = load_config()
+        active_dataset = str(config.get("datasets", {}).get("active_dataset") or "").strip()
+        if result.dataset_id == active_dataset:
+            _reload_chat_stack_after_ingest(
+                f"private-fund bundle published dataset={result.dataset_id}"
+            )
         with _private_fund_ingest_jobs_lock:
             _private_fund_ingest_jobs[job_id] = {
                 "job_id": job_id,
@@ -1397,6 +1435,7 @@ def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
                 "started_at": result.started_at,
                 "finished_at": result.finished_at,
                 "result": private_fund_result_to_dict(result),
+                "index_result": index_result,
             }
     except Exception as exc:
         logger.exception("private fund directory ingest failed: job_id=%s", job_id)
@@ -1420,7 +1459,8 @@ async def private_fund_ingest_directory(
 
     - PDF：直接抽文本，按 document/page/speaker turn 存 evidence。
     - Excel：存 workbook/sheet/region summary，同时写 excel_cells 与 metric_facts。
-    - DB：写入 workspace_root/datasets.sqlite3 与 workspace_root/{dataset_id}/meta/collection.sqlite3。
+    - DB：写入 canonical SQLite，随后在临时目录完整生成四类检索索引；
+      校验通过后一次发布，失败时保留上一版可用索引。
     """
     directory_path = Path(request.directory_path).expanduser().resolve()
     if not directory_path.is_dir():

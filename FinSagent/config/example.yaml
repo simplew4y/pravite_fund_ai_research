@@ -3,6 +3,12 @@
 
 # chroma, ts_chroma, bm25_index and table_chroma are required under `persist_directory`
 persist_directory: "/root/autodl-tmp/database_20250220"
+# Production/test serving should fail closed instead of letting Chroma create
+# empty collections when a path is missing or misspelled. Index-build scripts
+# do not instantiate RAGManager and are unaffected by these flags.
+index_readiness_required: true
+index_manifest_required: true
+allow_missing_bm25_index: false
 
 embeddings_model_name: "BAAI/bge-m3"
 embedding_backend: "vllm"

@@ -29,7 +29,13 @@ class VLLMEmbeddings(Embeddings):
             },
             timeout=self.timeout_seconds,
         )
-        response.raise_for_status()
+        if not response.ok:
+            lengths = [len(text) for text in texts]
+            raise RuntimeError(
+                f"Embedding request failed with HTTP {response.status_code}; "
+                f"batch_size={len(texts)}, char_lengths={lengths}, "
+                f"response={response.text[:1000]!r}"
+            )
         payload = response.json()
 
         items = payload.get("data", [])
