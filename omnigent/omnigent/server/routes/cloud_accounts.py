@@ -39,8 +39,12 @@ _REPLAY_TTL_SECONDS = 15.0
 
 
 class CloudLoginRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
+    email: str | None = Field(default=None, min_length=3, max_length=320)
+    username: str | None = Field(default=None, min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=1024)
+
+    def login_email(self) -> str:
+        return (self.email or self.username or "").strip().lower()
 
 
 class CloudRegistrationEmailRequest(BaseModel):
@@ -253,7 +257,7 @@ def create_cloud_accounts_router(
             samesite="lax",
         )
 
-    def set_local_session(response: Response, user_id: str) -> None:
+    def set_local_session(response: Response, user_id: str) -> str:
         max_age = config.session_ttl_hours * 3600
         session_token = mint_session_cookie(
             user_id=user_id,
@@ -268,6 +272,7 @@ def create_cloud_accounts_router(
             secure=config.secure_cookies,
             max_age_seconds=max_age,
         )
+        return session_token
 
     def persist_shadow(user: dict[str, Any]) -> None:
         account_store.upsert_cloud_user(
@@ -481,11 +486,14 @@ def create_cloud_accounts_router(
 
     @router.post("/auth/login")
     async def login(body: CloudLoginRequest) -> Response:
+        email = body.login_email()
+        if not email:
+            return _cloud_error(422, "missing_email", "email is required")
         try:
             upstream = await cloud_request(
                 "POST",
                 "auth/login",
-                json_body={"email": body.email.strip().lower(), "password": body.password},
+                json_body={"email": email, "password": body.password},
             )
         except RuntimeError:
             return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")
@@ -503,14 +511,28 @@ def create_cloud_accounts_router(
             bundle = bundle_from_token_response(data, user)
         except (KeyError, TypeError, ValueError):
             return _cloud_error(502, "invalid_cloud_response", "云端账户服务返回了无效数据")
+        max_age = config.session_ttl_hours * 3600
+        session_token = mint_session_cookie(
+            user_id=user["id"],
+            cookie_secret=config.cookie_secret,
+            ttl_hours=config.session_ttl_hours,
+            provider="cloud_accounts",
+        )
         response = JSONResponse(
             {
-                "expires_in": config.session_ttl_hours * 3600,
+                "token": session_token,
+                "expires_in": max_age,
                 "user": user,
             },
             headers={"Cache-Control": "private, no-store"},
         )
-        set_local_session(response, user["id"])
+        _set_session_cookie(
+            response,
+            session_token,
+            cookie_name=config.session_cookie_name,
+            secure=config.secure_cookies,
+            max_age_seconds=max_age,
+        )
         set_cloud_cookie(response, bundle)
         return response
 

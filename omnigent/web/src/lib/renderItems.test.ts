@@ -258,6 +258,26 @@ describe("buildBubbles — bubble grouping", () => {
     expect((bubbles[2] as Extract<Bubble, { kind: "compaction" }>).itemId).toBe("comp_1");
   });
 
+  it("marks the first automatic assistant continuation after compaction", () => {
+    const blocks: AnyBlock[] = [
+      {
+        type: "compaction",
+        ctx: ctx({ itemId: "comp_1", responseId: "resp_compact" }),
+      },
+      {
+        type: "text_done",
+        ctx: ctx({ itemId: "a1", responseId: "resp_resume" }),
+        fullText: "Checking persisted state.",
+        hasCodeBlocks: false,
+      },
+    ];
+
+    const bubbles = buildBubbles(blocks, null);
+    const resumed = bubbles[1] as Extract<Bubble, { kind: "assistant" }>;
+
+    expect(resumed.afterCompaction).toBe(true);
+  });
+
   it("compaction_loading bubble is removed even when separated from compaction by assistant blocks", () => {
     const blocks: AnyBlock[] = [
       {

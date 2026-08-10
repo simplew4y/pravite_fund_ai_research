@@ -251,6 +251,13 @@ def create_user_llm_gateway_router(storage_location: str) -> APIRouter:
         payload = await request.json()
         payload.pop("model", None)
         _normalize_payload(payload, target)
+        thinking = payload.pop("thinking", None)
+        if thinking is not None:
+            extra_body = payload.get("extra_body")
+            payload["extra_body"] = {
+                **(extra_body if isinstance(extra_body, dict) else {}),
+                "thinking": thinking,
+            }
         stream = bool(payload.get("stream"))
         try:
             import litellm

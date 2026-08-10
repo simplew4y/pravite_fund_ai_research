@@ -70,6 +70,33 @@ def test_session_start_hook_records_transcript_state_without_output(
     assert read_transcript_path(bridge_dir) == transcript_path
 
 
+def test_compaction_session_start_injects_hidden_resume_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Compaction resumes preserve language and cannot blindly replay writes."""
+
+    bridge_dir = tmp_path / "bridge"
+    payload = {
+        "hook_event_name": "SessionStart",
+        "source": "compact",
+        "transcript_path": str(tmp_path / "session.jsonl"),
+    }
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+
+    exit_code = claude_native_hook.main(["--bridge-dir", str(bridge_dir)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    output = json.loads(captured.out)
+    guard = output["hookSpecificOutput"]["additionalContext"]
+    assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "Simplified Chinese" in guard
+    assert "Do not resume or repeat" in guard
+    assert captured.err == ""
+
+
 def test_session_start_hook_emits_conversation_url_system_message(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -7945,6 +7945,60 @@ def _parse_skill_slash_command(body: SessionEventInput) -> tuple[str, str]:
     return name.strip(), arguments
 
 
+def _parse_plaintext_skill_candidate(body: SessionEventInput) -> tuple[str, str] | None:
+    """Parse a leading ``/name`` from a plain user-message event.
+
+    Native-wrapper clients historically sent skills as ordinary text so the
+    vendor TUI could resolve them. Tenant-managed skills live under
+    ``.agents/skills`` and are runner-owned instead, so the server needs a
+    compatibility path that can upgrade a known command before it reaches the
+    TUI. Path-shaped tokens such as ``/etc/hosts`` are deliberately excluded.
+    """
+    if body.type != "message" or body.data.get("role") != "user":
+        return None
+    text = _extract_user_text_from_event(body).strip()
+    match = re.match(r"^/([A-Za-z0-9][A-Za-z0-9._-]*)(?:\s+([\s\S]*))?$", text)
+    if match is None:
+        return None
+    return match.group(1), (match.group(2) or "").strip()
+
+
+async def _upgrade_plaintext_skill_event(
+    session_id: str,
+    body: SessionEventInput,
+    runner_client: httpx.AsyncClient,
+) -> SessionEventInput:
+    """Upgrade a runner-known plaintext ``/skill`` to ``slash_command``.
+
+    Unknown commands remain untouched so native CLI commands such as
+    ``/model`` and future vendor commands continue to pass through normally.
+    Runner discovery is best-effort; transport or malformed-response failures
+    also preserve the original message and let the normal dispatch path report
+    any subsequent runner problem.
+    """
+    candidate = _parse_plaintext_skill_candidate(body)
+    if candidate is None:
+        return body
+    name, arguments = candidate
+    try:
+        response = await runner_client.get(
+            f"/v1/sessions/{session_id}/skills",
+            timeout=5.0,
+        )
+        if response.status_code != 200:
+            return body
+        payload = response.json()
+        skills = payload.get("skills", []) if isinstance(payload, dict) else []
+        if not any(isinstance(skill, dict) and skill.get("name") == name for skill in skills):
+            return body
+    except (httpx.HTTPError, ConnectionError, ValueError, TypeError):
+        return body
+    return SessionEventInput(
+        type=_SLASH_COMMAND_TYPE,
+        data={"kind": "skill", "name": name, "arguments": arguments},
+    )
+
+
 def _build_skill_slash_command_policy_body(body: SessionEventInput) -> SessionEventInput:
     """
     Build the user-message shape used for input policy evaluation.
@@ -18915,7 +18969,12 @@ def create_sessions_router(
                     session_id,
                     exc_info=True,
                 )
-        if body.type == _SLASH_COMMAND_TYPE:
+        effective_body = await _upgrade_plaintext_skill_event(
+            session_id,
+            body,
+            runner_client,
+        )
+        if effective_body.type == _SLASH_COMMAND_TYPE:
             if _agent is None:
                 raise OmnigentError(
                     f"Session {session_id!r} has no agent; cannot run slash command",
@@ -18924,7 +18983,7 @@ def create_sessions_router(
             item_id = await _dispatch_skill_slash_command_to_runner(
                 session_id,
                 conv,
-                body,
+                effective_body,
                 conversation_store,
                 runner_client,
                 agent=_agent,
@@ -18935,7 +18994,7 @@ def create_sessions_router(
         dispatch = await _dispatch_session_event_to_runner(
             session_id,
             conv,
-            body,
+            effective_body,
             conversation_store,
             runner_client,
             agent_name=_agent.name if _agent else None,

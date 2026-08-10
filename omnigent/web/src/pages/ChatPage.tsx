@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpIcon,
   BotIcon,
@@ -184,6 +184,7 @@ import { useForkDialog } from "@/shell/ForkDialogContext";
 import { supportsEffortControl } from "@/lib/sessionCapabilities";
 import { isCodexNativeSession } from "@/lib/codexPlanMode";
 import { getCliServerUrl } from "@/lib/host";
+import { getInstalledSkills } from "@/lib/skillsMarketplaceApi";
 import { SessionImage } from "@/components/SessionImage";
 import {
   CodexGoalControl,
@@ -1571,10 +1572,9 @@ interface MainAgentSurfaceProps {
   disabled: boolean;
   onSend: (text: string, files?: File[]) => void;
   /**
-   * Invoke a skill via the `slash_command` event path. Gated off inside
-   * `MainAgentSurface` for terminal-first (native) sessions, where `/skill`
-   * is sent as plaintext for the vendor TUI to handle. See
-   * `ComposerProps.onSendSlashCommand`.
+   * Invoke a skill via the `slash_command` event path. The runner resolves
+   * the session's bundled and user-managed skills before forwarding hidden
+   * skill context to either an in-process or native harness.
    */
   onSendSlashCommand?: (name: string, args: string) => void;
   onStop: () => void;
@@ -1692,6 +1692,24 @@ function MainAgentSurface({
   onAddTrustedMemoSource,
 }: MainAgentSurfaceProps) {
   const terminalFirst = useTerminalFirst();
+  const { data: installedSkills = [] } = useQuery({
+    queryKey: ["skills", "installed"],
+    queryFn: getInstalledSkills,
+    staleTime: 30_000,
+    retry: false,
+    enabled: privateFundDatasetId != null,
+  });
+  const selectedAgentSkills = useMemo(
+    () => agents?.find((agent) => agent.id === selectedAgentId)?.skills ?? [],
+    [agents, selectedAgentId],
+  );
+  // A session's AgentObject already contains its bundled skills. Keep those
+  // visible while the runner-owned discovery snapshot is still cold, then
+  // supplement them with tenant-installed marketplace skills.
+  const additionalSkills = useMemo(
+    () => mergeSkillSummaries(selectedAgentSkills, installedSkills),
+    [installedSkills, selectedAgentSkills],
+  );
   // Mirrors ChatPage's `sandboxLaunching`: while the managed-sandbox
   // launch runs, the composer must stay sendable — the server parks
   // the message on the launch rendezvous — even though liveness reads
@@ -1841,24 +1859,20 @@ function MainAgentSurface({
     [onSend],
   );
   // Wrap the slash-command sender the same way (scroll to bottom on send).
-  // Gated off for native-wrapper sessions (claude-native / codex-native):
-  // there the composer's `/skill` must reach the vendor TUI as plaintext
-  // (the server has no slash_command path for native sessions). Undefined
-  // → the composer falls through to the plaintext send for these. Keyed
-  // on the wrapper label, NOT `isTerminalFirst` — a terminal-first SDK
-  // session (embedded Omnigent REPL terminal) runs an in-process harness
-  // with the full server-side slash_command path.
+  // Keep this enabled for native wrappers too: user-managed skills live in
+  // the tenant's `.agents/skills` directory, which the runner can resolve
+  // even when the vendor TUI does not discover that directory itself.
   const isTerminalFirst = terminalFirst?.isTerminalFirst === true;
   const isNativeWrapper = terminalFirst?.isNativeWrapper === true;
   const handleSendSlashCommand = useMemo(
     () =>
-      onSendSlashCommand && !isNativeWrapper
+      onSendSlashCommand
         ? (name: string, args: string) => {
             setSendScrollNonce((n) => n + 1);
             onSendSlashCommand(name, args);
           }
         : undefined,
-    [onSendSlashCommand, isNativeWrapper],
+    [onSendSlashCommand],
   );
 
   // "Working…" is shown when the main session is busy, including after a
@@ -2070,6 +2084,7 @@ function MainAgentSurface({
         subAgentLabel={subAgentLabel}
         privateFundProjectLabel={privateFundProjectLabel}
         privateFundDatasetId={privateFundDatasetId}
+        additionalSkills={additionalSkills}
       />
 
       {/* Chat/Terminal toggle for terminal-first sessions, reconnect-or-
@@ -2860,8 +2875,53 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
   const terminalSpinUp = Boolean(
     terminalFirst?.isTerminalFirst && terminalFirst.terminalStartingUp,
   );
+  const [startupTimedOut, setStartupTimedOut] = useState(false);
+  useEffect(() => {
+    if (!terminalSpinUp || sandboxLabel !== undefined) {
+      setStartupTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setStartupTimedOut(true), 45_000);
+    return () => window.clearTimeout(timer);
+  }, [sandboxLabel, terminalSpinUp]);
   if (sandboxLabel === undefined && !terminalSpinUp) {
     return null;
+  }
+  if (startupTimedOut && sandboxLabel === undefined) {
+    const retry = () => window.location.reload();
+    if (variant === "hero") {
+      return (
+        <ConversationEmptyState data-testid="runner-startup-timeout" role="alert">
+          <AlertTriangleIcon className="size-7 text-destructive" aria-hidden />
+          <div className="space-y-1.5">
+            <h3 className="text-2xl font-medium tracking-[-0.02em]">启动时间过长</h3>
+            <p className="text-muted-foreground text-base">
+              运行服务暂时不可用，请检查服务状态后重试。
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            onClick={retry}
+          >
+            刷新并重试
+          </button>
+        </ConversationEmptyState>
+      );
+    }
+    return (
+      <Message from="assistant" data-testid="runner-startup-timeout" role="alert">
+        <MessageContent>
+          <span className="flex items-center gap-2 text-destructive text-sm">
+            <AlertTriangleIcon className="size-4 shrink-0" aria-hidden />
+            运行服务启动超时。
+            <button type="button" className="underline" onClick={retry}>
+              刷新并重试
+            </button>
+          </span>
+        </MessageContent>
+      </Message>
+    );
   }
   const line = sandboxLabel !== undefined ? `${sandboxLabel}…` : "Starting up…";
   // role=status + aria-live so assistive tech announces the transient wait;
@@ -3301,6 +3361,10 @@ function AssistantBubble({
   // gap is rendered at the page level, not inside this component.
   const sessionStatus = useChatStore((s) => s.sessionStatus);
   const [isCopied, setIsCopied] = useState(false);
+  const [answerNoteStatus, setAnswerNoteStatus] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
+  const [answerNoteError, setAnswerNoteError] = useState("");
   const copyTimeoutRef = useRef<number>(0);
   // null outside AppShell's provider (isolated tests) → hide the action.
   const forkDialog = useForkDialog();
@@ -3347,7 +3411,11 @@ function AssistantBubble({
         className={isWide ? "max-w-full" : "max-w-3xl"}
       >
         <MessageContent className={isWide ? "w-full" : undefined}>
-          <BlockRenderer items={bubble.items} sessionStatus={sessionStatus} />
+          <BlockRenderer
+            items={bubble.items}
+            sessionStatus={sessionStatus}
+            collapsePostCompactionActivity={bubble.afterCompaction === true}
+          />
         </MessageContent>
         {bubble.lifecycle === "cancelled" && (
           <p
@@ -3390,20 +3458,63 @@ function AssistantBubble({
                 size="sm"
                 variant={isTrustedMemoSource ? "secondary" : "ghost"}
                 className="h-7 gap-1 px-2 text-xs"
-                disabled={isTrustedMemoSource}
+                disabled={isTrustedMemoSource || answerNoteStatus === "saving"}
+                disabledReason={
+                  isTrustedMemoSource ? "该回答已经保存到回答笔记。" : "回答笔记正在保存，请稍候。"
+                }
                 onClick={() => {
-                  onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText);
-                  workbenchActions?.markUsefulInformation(
-                    bubble.responseId,
-                    trustedMemoMarkdownText,
-                  );
+                  void (async () => {
+                    setAnswerNoteStatus("saving");
+                    setAnswerNoteError("");
+                    try {
+                      await workbenchActions?.markUsefulInformation(
+                        bubble.responseId,
+                        trustedMemoMarkdownText,
+                      );
+                      onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText);
+                      setAnswerNoteStatus("saved");
+                    } catch (error) {
+                      setAnswerNoteStatus("error");
+                      setAnswerNoteError(
+                        error instanceof Error ? error.message : "保存回答笔记失败，请重试。",
+                      );
+                    }
+                  })();
                 }}
               >
                 {isTrustedMemoSource ? <CheckIcon size={14} /> : <FileTextIcon size={14} />}
                 <span>{isTrustedMemoSource ? "已保存为回答笔记" : "保存为回答笔记"}</span>
               </MessageAction>
             )}
+            {workbenchActions && (
+              <MessageAction
+                tooltip="进入笔记资产批量管理"
+                label="管理回答笔记"
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={workbenchActions.openAssetManagement}
+              >
+                <FolderIcon size={14} />
+                <span>管理回答笔记</span>
+              </MessageAction>
+            )}
           </MessageActions>
+        )}
+        {answerNoteStatus === "saving" && (
+          <p role="status" className="mt-1 text-xs text-muted-foreground">
+            正在保存回答笔记…
+          </p>
+        )}
+        {(answerNoteStatus === "saved" || isTrustedMemoSource) && (
+          <p role="status" className="mt-1 text-xs text-success">
+            回答笔记已保存，可在笔记资产库中管理。
+          </p>
+        )}
+        {answerNoteStatus === "error" && (
+          <p role="alert" className="mt-1 text-xs text-destructive">
+            {answerNoteError || "保存回答笔记失败，请重试。"}
+          </p>
         )}
       </Message>
 
@@ -3424,9 +3535,9 @@ interface ComposerProps {
    * Send a recognised skill as a `slash_command` event (the REPL's wire
    * shape) instead of plaintext. When present and the typed command names
    * a known session skill, `submit()` routes through this; otherwise the
-   * command falls through to `onSend` as plaintext. Undefined for
-   * native-terminal sessions, which always send `/skill` as plaintext so
-   * the vendor TUI loads the skill itself.
+   * command falls through to `onSend` as plaintext. Native-terminal
+   * sessions also use this path so tenant-scoped `.agents/skills` can be
+   * resolved by the runner instead of relying on vendor-specific discovery.
    */
   onSendSlashCommand?: (name: string, args: string) => void;
   onStop: () => void;
@@ -3517,6 +3628,25 @@ interface ComposerProps {
   privateFundDatasetId?: string | null;
   /** Optional direct injection for isolated composer tests and embedded surfaces. */
   privateFundPromptSuggestions?: PrivateFundPromptSuggestion[];
+  /**
+   * Skills known outside the runner snapshot: the bound Agent's bundled
+   * skills plus user-managed skills from the account API. These keep the menu
+   * populated while asynchronous runner discovery is still cold.
+   */
+  additionalSkills?: ReadonlyArray<{ name: string; description: string }>;
+}
+
+/** Merge skill sources in priority order while keeping menu entries stable. */
+export function mergeSkillSummaries(
+  ...groups: ReadonlyArray<ReadonlyArray<{ name: string; description: string }>>
+): Array<{ name: string; description: string }> {
+  const merged = new Map<string, { name: string; description: string }>();
+  for (const group of groups) {
+    for (const skill of group) {
+      if (!merged.has(skill.name)) merged.set(skill.name, skill);
+    }
+  }
+  return [...merged.values()];
 }
 
 /**
@@ -4120,7 +4250,19 @@ function SubagentComposerTray({ label }: { label: string }) {
 }
 
 function PrivateFundContextTray({ actions }: { actions: WorkbenchActionContextValue }) {
-  if (actions.contextAssets.length === 0) return null;
+  if (actions.contextAssets.length === 0) {
+    return (
+      <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
+        <button
+          type="button"
+          onClick={actions.openSourcePicker}
+          className="w-full rounded-xl border border-dashed border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-3 py-2 text-left text-[11px] text-[var(--pf-ink-muted)] transition-colors hover:border-[var(--pf-accent)] hover:text-[var(--pf-ink-secondary)]"
+        >
+          尚未添加问题上下文 · 点击此处打开资料，再勾选文件加入上下文
+        </button>
+      </section>
+    );
+  }
   return (
     <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
       <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-2.5 py-2">
@@ -4187,6 +4329,7 @@ export function Composer({
   privateFundProjectLabel = null,
   privateFundDatasetId = null,
   privateFundPromptSuggestions,
+  additionalSkills = [],
 }: ComposerProps) {
   const workbenchActions = usePrivateFundWorkbenchActions();
   const [composeIntent, setComposeIntent] = useState<PrivateFundComposeIntent>(null);
@@ -4357,7 +4500,11 @@ export function Composer({
   // Session skills (bundled + host-discovered) come from the snapshot
   // on bind and populate the suggestions menu as ``/skill-name``
   // entries alongside the built-ins.
-  const skills = useChatStore((s) => s.skills);
+  const runnerSkills = useChatStore((s) => s.skills);
+  const skills = useMemo(
+    () => mergeSkillSummaries(runnerSkills, additionalSkills),
+    [additionalSkills, runnerSkills],
+  );
   // ``/model`` writes ``conv.model_override`` (the same column the REPL's
   // ``/model`` and native pickers write). In-process harnesses re-resolve
   // it each turn; native wrappers expose it only when they have a picker
@@ -4807,10 +4954,8 @@ export function Composer({
     // "/review-pr https://github.com/...").
     // Commands don't mix with file attachments — require no files. Built-ins
     // run locally; a known skill routes through ``onSendSlashCommand`` (a
-    // ``slash_command`` event) when that's wired — i.e. in-process sessions.
-    // Anything else (unknown command, or a skill on a native-terminal
-    // session where ``onSendSlashCommand`` is undefined) falls through to the
-    // plaintext send path below.
+    // ``slash_command`` event) when that's wired. Anything else falls through
+    // to the plaintext send path below.
     if (isSlashCommandText(trimmed) && files.length === 0 && mentionedItems.length === 0) {
       const parts = trimmed.split(/\s+/);
       const cmd = parts[0].toLowerCase();
@@ -4843,10 +4988,8 @@ export function Composer({
       // (the REPL's wire shape) so the server resolves the skill and
       // injects its instructions, instead of the agent seeing the literal
       // "/name" text. `parts[0]` keeps the original case for the server's
-      // exact-name lookup. `onSendSlashCommand` is undefined for
-      // native-terminal sessions, so those fall through to the plaintext
-      // path below and the vendor TUI loads the skill itself. Reply quotes
-      // don't apply to a slash command (no content field) — clear them.
+      // exact-name lookup. Reply quotes don't apply to a slash command (no
+      // content field) — clear them.
       if (onSendSlashCommand && parts[0] in slashCommands) {
         const skillArgs = trimmed.slice(parts[0].length).trim();
         appendEntry(trimmed);

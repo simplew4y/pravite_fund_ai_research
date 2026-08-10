@@ -154,6 +154,28 @@ function projectStatus(project: PrivateFundProject): { label: string; className:
   return { label: "待索引", className: "text-warning" };
 }
 
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "大小未知";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function formatFileUpdatedAt(value: string | null | undefined): string {
+  if (!value) return "时间未知";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function fileClassification(file: PrivateFundFile): string {
+  const value = file.docSubtype || file.docType;
+  return value && value !== "unknown" ? value.replaceAll("_", " ") : "待分类";
+}
+
 function AttachmentCheckbox({
   checked,
   mixed = false,
@@ -223,7 +245,7 @@ function DraggableFileRow({
         transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined
       }
       className={cn(
-        "group ml-5 flex min-h-8 items-center gap-1 rounded-md px-1.5 py-1 text-left hover:bg-muted",
+        "group ml-5 flex min-h-11 items-center gap-1 rounded-md px-1.5 py-1 text-left hover:bg-muted",
         attached && !manageMode && "bg-muted/50",
         isDragging && "opacity-35",
       )}
@@ -250,13 +272,19 @@ function DraggableFileRow({
       <button
         type="button"
         aria-label={`预览资料 ${row.file.name}`}
-        className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-start gap-1.5 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onPreview}
+        title={`${row.file.name} · ${formatFileSize(row.file.size)} · 上传于 ${formatFileUpdatedAt(row.file.uploadedAt)} · ${row.file.chunkCount} 个索引片段 · ${fileClassification(row.file)}`}
       >
-        <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{row.file.name}</span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">
-          {row.file.fileType.toUpperCase()}
+        <FileTextIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-medium">{row.file.name}</span>
+          <span className="mt-0.5 block truncate text-[9px] text-muted-foreground">
+            {formatFileUpdatedAt(row.file.uploadedAt)} · {formatFileSize(row.file.size)} · {row.file.chunkCount} 个片段 · {fileClassification(row.file)}
+          </span>
+        </span>
+        <span className="mt-0.5 shrink-0 text-[9px] font-medium text-muted-foreground">
+          {row.file.fileType.toUpperCase() || "FILE"}
         </span>
       </button>
       {row.assignment === "manual" && !manageMode ? (
@@ -447,6 +475,9 @@ export function PrivateFundCorpusSection({
   const [editingFolderName, setEditingFolderName] = useState("");
   const [draggedFileName, setDraggedFileName] = useState("");
   const openDocumentPreview = usePrivateFundWorkspaceStore((state) => state.openDocumentPreview);
+  const setSelectedSourceDocumentIds = usePrivateFundWorkspaceStore(
+    (state) => state.setSelectedSourceDocumentIds,
+  );
 
   const pendingAttachments = useChatStore((state) => state.pendingComposerAttachments);
   const pendingRemovals = useChatStore((state) => state.pendingComposerAttachmentRemovals);
@@ -493,6 +524,14 @@ export function PrivateFundCorpusSection({
   );
   const allRows = useMemo(() => [...fileRows.values()], [fileRows]);
   const attachedCount = allRows.filter((row) => attachedKeys.has(row.attachmentKey)).length;
+  const selectedSourceDocumentIds = useMemo(
+    () =>
+      allRows
+        .filter((row) => attachedKeys.has(row.attachmentKey))
+        .map((row) => row.file.docId)
+        .filter((documentId): documentId is string => Boolean(documentId)),
+    [allRows, attachedKeys],
+  );
   const allManaged = allRows.length > 0 && managedNames.size === allRows.length;
   const someManaged = managedNames.size > 0 && !allManaged;
 
@@ -529,6 +568,11 @@ export function PrivateFundCorpusSection({
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
   );
+
+  useEffect(() => {
+    if (!selectedDatasetId) return;
+    setSelectedSourceDocumentIds(selectedDatasetId, selectedSourceDocumentIds);
+  }, [selectedDatasetId, selectedSourceDocumentIds, setSelectedSourceDocumentIds]);
 
   useEffect(() => {
     const next = readExpandedFolders(selectedDatasetId ?? "");
@@ -916,7 +960,7 @@ export function PrivateFundCorpusSection({
               type="button"
               data-testid="private-fund-project-switcher"
               aria-label={`切换研究项目：${project?.name ?? selectedDatasetId ?? "未选择项目"}`}
-              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="relative z-[101] flex min-w-0 flex-1 pointer-events-auto isolate items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">
@@ -927,7 +971,7 @@ export function PrivateFundCorpusSection({
           </PopoverTrigger>
           <PopoverContent
             align="start"
-            className="w-72 gap-0 p-1"
+            className="z-[110] w-72 gap-0 p-1 pointer-events-auto"
             onCloseAutoFocus={(event) => event.preventDefault()}
           >
             <div className="flex items-center gap-2 border-b px-2 py-1.5">
@@ -1049,7 +1093,9 @@ export function PrivateFundCorpusSection({
             <div className="min-w-0 flex-1">
               <h3 className="text-xs font-semibold">资料来源</h3>
               <p className="truncate text-[10px] text-muted-foreground">
-                已加入当前提问 {attachedCount} 份
+                {attachedCount > 0
+                  ? `已加入当前提问 ${attachedCount} 份`
+                  : "点击资料复选框添加到问题上下文"}
               </p>
             </div>
             {manageMode ? (

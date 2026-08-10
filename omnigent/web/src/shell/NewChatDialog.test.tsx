@@ -33,6 +33,10 @@ import type { PrivateFundProject } from "@/lib/privateFundApi";
 import { setPendingInitialPrompt, useChatStore } from "@/store/chatStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+vi.mock("@/lib/skillsMarketplaceApi", () => ({
+  getInstalledSkills: vi.fn().mockResolvedValue([]),
+}));
+
 const privateFundProjectsState = vi.hoisted(() => ({
   projects: [] as unknown[],
   project: undefined as unknown,
@@ -1506,10 +1510,7 @@ describe("NewChatLandingScreen skills menu", () => {
     expect(screen.queryByText("Review a pull request")).toBeNull();
   });
 
-  it("shows no menu for native terminal agents even if skills are listed", () => {
-    // A native agent with (hypothetical) bundled skills: the gate is the
-    // agent kind, not an empty skill list — the vendor CLI interprets
-    // slash commands itself, so the web menu must stay out of the way.
+  it("shows skills for native terminal agents so the runner can resolve them", () => {
     mockAgents([
       {
         id: "a1",
@@ -1522,7 +1523,7 @@ describe("NewChatLandingScreen skills menu", () => {
     ]);
     renderLanding();
     typeMessage("/");
-    expect(screen.queryByTestId("slash-menu-item-review-pr")).toBeNull();
+    expect(screen.getByTestId("slash-menu-item-review-pr")).toBeTruthy();
   });
 });
 
@@ -1852,6 +1853,8 @@ describe("NewChatLandingScreen private-fund research mode", () => {
     expect(prompt).toContain("可点击的 Markdown 引用");
     expect(prompt).toContain("资料未覆盖/需复核");
     expect(prompt).toContain("核验最近业绩变化");
+    expect(prompt).toContain("<!-- omnigent-private-fund-context:start -->");
+    expect(prompt).toContain("<!-- omnigent-private-fund-context:end -->");
   });
 
   it("creates a private-fund session without exposing a host or absolute workspace", async () => {
@@ -1946,6 +1949,7 @@ describe("NewChatLandingScreen private-fund research mode", () => {
     const [, payload] = setPendingInitialPromptMock.mock.calls[0]!;
     const prompt = (payload as { text: string }).text;
     expect(prompt).toMatch(/^\/deep-research 核验业绩\n\n/);
+    expect(prompt).toContain("<!-- omnigent-private-fund-context:start -->");
     expect(prompt).toContain("dataset_id: 阳光电源");
     expect(prompt).toContain("关键事实、时间、金额和事件必须逐条溯源");
   });

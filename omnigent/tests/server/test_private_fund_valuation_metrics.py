@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
+import time
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
 
 from omnigent.server import private_fund_valuation_metric_agent as metric_agent
@@ -74,6 +74,47 @@ class _FakeAkshare:
     def stock_hk_hist(self, **kwargs: Any) -> list[dict[str, Any]]:
         self.hk_params = kwargs
         return [{"日期": "2026-07-20", "收盘": 7.38, "成交额": 3_000}]
+
+
+class _FakeHttpResponse:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, Any]:
+        return self.payload
+
+
+class _FakeEastmoneyClient:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def get(self, _url: str, **kwargs: Any) -> _FakeHttpResponse:
+        self.calls.append(kwargs)
+        return _FakeHttpResponse(
+            {
+                "result": {
+                    "data": [
+                        {
+                            "REPORT_DATE": "2025-09-30",
+                            "NOTICE_DATE": "2025-10-29",
+                            "PARENT_NETPROFIT_YOY": 25.0,
+                            "XSMLL": 32.0,
+                            "TOTAL_OPERATE_INCOME_YOY": 18.0,
+                        },
+                        {
+                            "REPORT_DATE": "2025-06-30",
+                            "NOTICE_DATE": "2025-08-30",
+                            "PARENT_NETPROFIT_YOY": 20.0,
+                            "XSMLL": 30.0,
+                            "TOTAL_OPERATE_INCOME_YOY": 12.0,
+                        },
+                    ]
+                }
+            }
+        )
 
 
 class _FakeMetricAgent:
@@ -381,17 +422,86 @@ def test_extracts_exactly_five_metrics_and_compares_to_api_values(tmp_path: Path
     assert by_key["forward_pe"]["model_value"] == pytest.approx(25.0)
     assert by_key["avg_turnover_amount_20d"]["model_value"] == pytest.approx(800_000_000)
     assert by_key["quarter_revenue_growth_qoq"]["model_value"] == pytest.approx(0.20)
-    assert all(item["status"] == "compared" for item in comparisons)
-    assert all(item["severity"] in {"warning", "critical"} for item in comparisons)
+    assert by_key["avg_turnover_amount_20d"]["status"] == "period_mismatch"
+    assert all(
+        item["status"] == "compared"
+        for item in comparisons
+        if item["metric_key"] != "avg_turnover_amount_20d"
+    )
+    assert all(
+        item["severity"] in {"warning", "critical"}
+        for item in comparisons
+        if item["metric_key"] != "avg_turnover_amount_20d"
+    )
     timeline = payload["metric_timeline"]
     assert timeline["default_period"] == "2025Q2"
-    assert next(
+    selected_period = next(
         item for item in timeline["periods"] if item["period"] == "2025Q2"
-    )["compared_count"] == 3
+    )
+    assert selected_period["compared_count"] == 3
+    assert {
+        item["metric_key"] for item in selected_period["comparisons"]
+    } == metrics.QUARTERLY_COMPARISON_KEYS
 
     alerts = tracking.list_metric_alerts(database, "demo")
-    assert len(alerts) == 5
+    assert {alert["title"] for alert in alerts} == {
+        "单季净利润增速",
+        "单季毛利率环比变化",
+        "单季营收增速环比",
+    }
     assert all(alert["alert_type"] == "model_actual_gap" for alert in alerts)
+
+
+
+def test_market_refresh_preserves_model_values_when_actual_period_is_newer(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "collection.sqlite3"
+    _create_database(database)
+    with sqlite3.connect(database) as conn:
+        conn.row_factory = sqlite3.Row
+        series = dict(conn.execute("SELECT * FROM valuation_model_series").fetchone())
+        version = dict(conn.execute("SELECT * FROM valuation_model_versions").fetchone())
+        model_result = metrics.refresh_model_metric_values(
+            conn,
+            dataset_id="demo",
+            series=series,
+            version=version,
+        )
+        assert model_result["model_metric_count"] == 5
+
+        newer_actuals = {key: dict(value) for key, value in _actual_values().items()}
+        for key in metrics.QUARTERLY_COMPARISON_KEYS:
+            newer_actuals[key]["period"] = "2026Q1"
+        metrics.refresh_metric_comparison(
+            conn,
+            dataset_id="demo",
+            series=series,
+            version=version,
+            provider=_FakeProvider(newer_actuals),
+        )
+        conn.commit()
+        stored = {
+            str(row["metric_key"]): row["value_numeric"]
+            for row in conn.execute(
+                "SELECT metric_key, value_numeric FROM valuation_metric_model_values"
+            )
+        }
+        payload = metrics.latest_metric_payload(
+            conn,
+            dataset_id="demo",
+            series_id="series-1",
+            model_version_id="version-1",
+        )
+
+    comparisons = {item["metric_key"]: item for item in payload["metric_comparisons"]}
+    assert all(stored[key] is not None for key in metrics.METRIC_KEYS)
+    assert all(
+        comparisons[key]["model_value"] is not None
+        and comparisons[key]["status"] == "period_mismatch"
+        and comparisons[key]["severity"] == "unavailable"
+        for key in metrics.QUARTERLY_COMPARISON_KEYS
+    )
 
 
 def test_source_verified_manual_override_survives_refresh(tmp_path: Path) -> None:
@@ -493,17 +603,34 @@ def test_akshare_normalizes_a_and_h_share_daily_prices() -> None:
     assert hk_share["currency"] == "HKD"
 
 
-def test_akshare_is_the_free_default_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_hk_ticker_accepts_short_code_and_pads_provider_symbol() -> None:
+    identity = metrics._security_identity("700.HK")
+
+    assert identity.canonical_ticker == "700.HK"
+    assert identity.provider_symbol == "00700"
+    assert identity.market == "hk"
+
+
+def test_free_combo_is_the_free_default_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "PRIVATE_FUND_MARKET_DATA_PROVIDER",
         "PRIVATE_FUND_MARKET_DATA_API_URL",
-        "TUSHARE_TOKEN",
-        "TUSHARE_API_TOKEN",
+        "PRIVATE_FUND_CONSENSUS_API_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
-    assert isinstance(metrics.default_market_data_provider(), metrics.AkshareMarketDataProvider)
+    provider = metrics.default_market_data_provider()
 
+    assert isinstance(provider, metrics.FreeComboMarketDataProvider)
+    assert [item.name for item in provider._providers_for_metrics("300274.SZ")] == [
+        "akshare",
+        "eastmoney_financial",
+        "eastmoney_market",
+    ]
+    assert [item.name for item in provider._providers_for_metrics("700.HK")] == [
+        "tencent_hk",
+        "akshare",
+    ]
 
 def test_target_price_is_compared_with_valuation_and_latest_closes(tmp_path: Path) -> None:
     database = tmp_path / "collection.sqlite3"
@@ -699,6 +826,213 @@ def test_document_date_is_reconciled_with_full_filename_date() -> None:
     assert any("冲突" in warning for warning in reconciled["warnings"])
 
 
+class _WaterfallSource:
+    def __init__(self, name: str, values: dict[str, Any], status: str = "completed") -> None:
+        self.name = name
+        self.values = values
+        self.status = status
+
+    def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]:
+        assert company_name == "Demo Corp"
+        assert ticker == "300274.SZ"
+        return {
+            "provider": self.name,
+            "status": self.status,
+            "as_of": "2026-07-20T05:30:00+00:00",
+            "metrics": self.values,
+            "error": "" if self.values else "no fields",
+        }
+
+    def fetch_daily_prices(
+        self, *, ticker: str, start_date: date, end_date: date
+    ) -> dict[str, Any]:
+        del start_date, end_date
+        return {
+            "provider": self.name,
+            "provider_symbol": ticker,
+            "canonical_ticker": ticker,
+            "currency": "CNY",
+            "bars": [{"trade_date": "2026-07-20", "close": 10.0, "amount": 100.0}],
+        }
+
+
+
+class _FakeTencentClient:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def get(self, _url: str, **kwargs: Any) -> _FakeHttpResponse:
+        self.calls.append(kwargs)
+        first_date = date(2026, 7, 19)
+        rows = [
+            [
+                (first_date + timedelta(days=index)).isoformat(),
+                "10.0",
+                "11.0",
+                "12.0",
+                "9.0",
+                "100.0",
+            ]
+            for index in range(20)
+        ]
+        quote = [""] * 38
+        quote[30] = "2026/08/07 16:08:23"
+        quote[37] = "2000.0"
+        return _FakeHttpResponse(
+            {
+                "code": 0,
+                "data": {
+                    "hk00700": {
+                        "day": rows,
+                        "qt": {"hk00700": quote},
+                    }
+                },
+            }
+        )
+
+
+
+def test_public_market_http_proxy_requires_explicit_opt_in(monkeypatch) -> None:
+    monkeypatch.setenv("HTTPS_PROXY", "http://unreachable.invalid:7897")
+    monkeypatch.delenv("PRIVATE_FUND_MARKET_TRUST_ENV_PROXY", raising=False)
+    assert metrics._market_data_trust_env_proxy() is False
+
+    monkeypatch.setenv("PRIVATE_FUND_MARKET_TRUST_ENV_PROXY", "1")
+    assert metrics._market_data_trust_env_proxy() is True
+
+def test_tencent_hk_provider_returns_turnover_when_akshare_upstream_is_unavailable() -> None:
+    client = _FakeTencentClient()
+    provider = metrics.TencentHkMarketDataProvider(http_client=client)
+
+    payload = provider.fetch_metrics(company_name="腾讯控股", ticker="700.HK")
+
+    assert payload["status"] == "completed"
+    assert payload["ticker"] == "700.HK"
+    turnover = payload["metrics"]["avg_turnover_amount_20d"]
+    assert turnover["value"] == pytest.approx((19 * 1100.0 + 2000.0) / 20)
+    assert turnover["metadata"]["estimated_days"] == 19
+    assert client.calls[0]["params"]["param"] == "hk00700,day,,,140,"
+    assert client.calls[0]["timeout"] == 10.0
+
+def test_eastmoney_financial_provider_normalizes_quarterly_metrics() -> None:
+    client = _FakeEastmoneyClient()
+    provider = metrics.EastmoneyFinancialMarketDataProvider(http_client=client)
+
+    payload = provider.fetch_metrics(company_name="Demo Corp", ticker="300274.SZ")
+
+    assert payload["status"] == "completed"
+    assert payload["metrics"]["quarter_net_profit_yoy"]["value"] == pytest.approx(0.25)
+    assert payload["metrics"]["quarter_gross_margin_qoq_delta"]["value"] == pytest.approx(
+        0.02
+    )
+    assert payload["metrics"]["quarter_revenue_growth_qoq"]["value"] == pytest.approx(
+        0.06
+    )
+    assert client.calls[0]["params"]["filter"] == '(SECUCODE="300274.SZ")'
+
+
+def test_free_combo_waterfall_merges_by_priority_and_keeps_diagnostics() -> None:
+    actual = _actual_values()
+    provider = metrics.FreeComboMarketDataProvider(
+        akshare_provider=_WaterfallSource(
+            "akshare",
+            {
+                "quarter_net_profit_yoy": actual["quarter_net_profit_yoy"],
+                "quarter_gross_margin_qoq_delta": actual["quarter_gross_margin_qoq_delta"],
+            },
+        ),
+        eastmoney_financial_provider=_WaterfallSource(
+            "eastmoney_financial",
+            {"quarter_revenue_growth_qoq": actual["quarter_revenue_growth_qoq"]},
+        ),
+        eastmoney_market_provider=_WaterfallSource(
+            "eastmoney_market",
+            {"avg_turnover_amount_20d": actual["avg_turnover_amount_20d"]},
+        ),
+    )
+
+    payload = provider.fetch_metrics(company_name="Demo Corp", ticker="300274.SZ")
+
+    assert payload["provider"] == "free_combo"
+    assert payload["status"] == "partial"
+    assert set(payload["metrics"]) == {
+        "quarter_net_profit_yoy",
+        "quarter_gross_margin_qoq_delta",
+        "avg_turnover_amount_20d",
+        "quarter_revenue_growth_qoq",
+    }
+    assert payload["missing_metric_keys"] == ["forward_pe"]
+    assert "TTM PE was not substituted" in payload["error"]
+    assert [attempt["provider"] for attempt in payload["provider_attempts"]] == [
+        "akshare",
+        "eastmoney_financial",
+        "eastmoney_market",
+    ]
+
+def test_free_combo_times_out_one_source_and_continues_waterfall(monkeypatch) -> None:
+    class _SlowSource(_WaterfallSource):
+        def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]:
+            time.sleep(0.05)
+            return super().fetch_metrics(company_name=company_name, ticker=ticker)
+
+    monkeypatch.setenv("PRIVATE_FUND_MARKET_SOURCE_TIMEOUT_SECONDS", "0.01")
+    provider = metrics.FreeComboMarketDataProvider(
+        akshare_provider=_SlowSource("akshare", _actual_values()),
+        eastmoney_financial_provider=_WaterfallSource("eastmoney_financial", {}),
+        eastmoney_market_provider=_WaterfallSource(
+            "eastmoney_market",
+            {"avg_turnover_amount_20d": _actual_values()["avg_turnover_amount_20d"]},
+        ),
+    )
+
+    payload = provider.fetch_metrics(company_name="Demo Corp", ticker="300274.SZ")
+
+    assert payload["status"] == "partial"
+    assert set(payload["metrics"]) == {"avg_turnover_amount_20d"}
+    assert payload["provider_attempts"][0]["provider"] == "akshare"
+    assert "did not respond within 0.01s" in payload["provider_attempts"][0]["error_message"]
+
+def test_free_combo_missing_ticker_is_partial_ready_without_alerts(tmp_path: Path) -> None:
+    database = tmp_path / "collection.sqlite3"
+    _create_database(database)
+    with sqlite3.connect(database) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute("UPDATE valuation_model_series SET company_ticker='' WHERE series_id='series-1'")
+        result = metrics.refresh_metric_comparison(
+            conn,
+            dataset_id="demo",
+            series=dict(conn.execute("SELECT * FROM valuation_model_series").fetchone()),
+            version=dict(conn.execute("SELECT * FROM valuation_model_versions").fetchone()),
+            provider=metrics.FreeComboMarketDataProvider(
+                akshare_provider=_WaterfallSource("akshare", {}),
+                eastmoney_financial_provider=_WaterfallSource("eastmoney_financial", {}),
+                eastmoney_market_provider=_WaterfallSource("eastmoney_market", {}),
+            ),
+        )
+        conn.commit()
+
+    assert result["status"] == "missing_ticker"
+    assert result["comparisons"]
+    assert tracking.list_metric_alerts(database, "demo") == []
+
+
+def test_free_combo_uses_independent_consensus_for_forward_pe() -> None:
+    actual = _actual_values()
+    provider = metrics.FreeComboMarketDataProvider(
+        akshare_provider=_WaterfallSource("akshare", {}),
+        eastmoney_financial_provider=_WaterfallSource("eastmoney_financial", {}),
+        eastmoney_market_provider=_WaterfallSource("eastmoney_market", {}),
+        consensus_provider=_WaterfallSource(
+            "consensus_api",
+            {"forward_pe": actual["forward_pe"]},
+        ),
+    )
+
+    payload = provider.fetch_metrics(company_name="Demo Corp", ticker="300274.SZ")
+
+    assert payload["metrics"]["forward_pe"] == actual["forward_pe"]
+    assert payload["provider_attempts"][-1]["provider"] == "consensus_api"
+
 def test_missing_actual_value_is_explicit_and_never_alerts(tmp_path: Path) -> None:
     database = tmp_path / "collection.sqlite3"
     _create_database(database)
@@ -729,140 +1063,6 @@ def test_missing_actual_value_is_explicit_and_never_alerts(tmp_path: Path) -> No
     assert "未触发预警" in forward["explanation"]
     alerts = tracking.list_metric_alerts(database, "demo")
     assert all(alert["title"] != "Forward PE" for alert in alerts)
-
-
-def test_tushare_quarter_conversion_uses_standalone_values() -> None:
-    rows = [
-        {"end_date": "20250331", "revenue": 100.0},
-        {"end_date": "20250630", "revenue": 230.0},
-        {"end_date": "20250930", "revenue": 390.0},
-    ]
-    standalone = metrics._standalone_quarters(rows, ("revenue",))
-    assert standalone[(2025, 1)]["revenue"] == pytest.approx(100.0)
-    assert standalone[(2025, 2)]["revenue"] == pytest.approx(130.0)
-    assert standalone[(2025, 3)]["revenue"] == pytest.approx(160.0)
-
-
-def test_tushare_proxy_transport_retries_without_leaking_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("TUSHARE_MIN_INTERVAL_SECONDS", "0")
-    monkeypatch.setenv("TUSHARE_REQUEST_ATTEMPTS", "3")
-    monkeypatch.setattr(metrics.time, "sleep", lambda _seconds: None)
-    calls: list[dict[str, Any]] = []
-
-    def fake_post(url: str, **kwargs: Any) -> httpx.Response:
-        calls.append({"url": url, **kwargs})
-        if len(calls) == 1:
-            raise httpx.ConnectError("transient TLS failure")
-        return httpx.Response(
-            200,
-            json={
-                "code": 0,
-                "msg": "",
-                "data": {"fields": ["ts_code"], "items": [["300274.SZ"]]},
-            },
-            request=httpx.Request("POST", url),
-        )
-
-    monkeypatch.setattr(metrics.httpx, "post", fake_post)
-    provider = metrics.TushareMarketDataProvider("test-token", "https://example.test/api")
-
-    rows = provider._call("stock_basic", {"list_status": "L"}, ["ts_code"])
-
-    assert rows == [{"ts_code": "300274.SZ"}]
-    assert len(calls) == 2
-    assert calls[-1]["headers"]["Accept-Encoding"] == "gzip"
-
-
-def test_tushare_provider_reuses_short_lived_metric_cache(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("TUSHARE_MIN_INTERVAL_SECONDS", "0")
-    monkeypatch.setenv("TUSHARE_CACHE_TTL_SECONDS", "300")
-    provider = metrics.TushareMarketDataProvider("test-token", "https://example.test/api")
-    api_calls: list[str] = []
-
-    def fake_call(
-        api_name: str, _params: dict[str, Any], _fields: list[str]
-    ) -> list[dict[str, Any]]:
-        api_calls.append(api_name)
-        return []
-
-    monkeypatch.setattr(provider, "_call", fake_call)
-
-    first = provider.fetch_metrics(company_name="Demo", ticker="300274.SZ")
-    second = provider.fetch_metrics(company_name="Demo", ticker="300274.SZ")
-
-    assert first == second
-    assert api_calls == ["income", "daily"]
-
-
-def test_tushare_provider_builds_period_aligned_historical_metrics(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("TUSHARE_MIN_INTERVAL_SECONDS", "0")
-    provider = metrics.TushareMarketDataProvider("test-token", "https://example.test/api")
-    income = [
-        {
-            "end_date": "20240331",
-            "ann_date": "20240425",
-            "revenue": 100.0,
-            "oper_cost": 60.0,
-            "n_income_attr_p": 10.0,
-        },
-        {
-            "end_date": "20240630",
-            "ann_date": "20240824",
-            "revenue": 220.0,
-            "oper_cost": 130.0,
-            "n_income_attr_p": 25.0,
-        },
-        {
-            "end_date": "20250331",
-            "ann_date": "20250425",
-            "revenue": 130.0,
-            "oper_cost": 70.0,
-            "n_income_attr_p": 20.0,
-        },
-        {
-            "end_date": "20250630",
-            "ann_date": "20250824",
-            "revenue": 290.0,
-            "oper_cost": 150.0,
-            "n_income_attr_p": 50.0,
-        },
-    ]
-    daily = [
-        {
-            "trade_date": (date(2025, 6, 30) - metrics.timedelta(days=index)).strftime(
-                "%Y%m%d"
-            ),
-            "close": 80.0,
-            "amount": 100.0 + index,
-        }
-        for index in range(30)
-    ]
-
-    def fake_call(
-        api_name: str, _params: dict[str, Any], _fields: list[str]
-    ) -> list[dict[str, Any]]:
-        return income if api_name == "income" else daily
-
-    monkeypatch.setattr(provider, "_call", fake_call)
-
-    payload = provider.fetch_metrics(company_name="Demo", ticker="300274.SZ")
-
-    history = {item["period"]: item for item in payload["metric_history"]}
-    q2 = history["2025Q2"]["metrics"]
-    assert q2["quarter_net_profit_yoy"]["value"] == pytest.approx(1.0)
-    assert q2["quarter_gross_margin_qoq_delta"]["value"] == pytest.approx(
-        0.5 - 60.0 / 130.0
-    )
-    assert q2["quarter_revenue_growth_qoq"]["value"] == pytest.approx(
-        (160.0 / 120.0 - 1.0) - (130.0 / 100.0 - 1.0)
-    )
-    assert q2["avg_turnover_amount_20d"]["period"].startswith("20D@202506")
 
 
 def test_metric_timeline_defaults_to_latest_comparable_period(tmp_path: Path) -> None:
@@ -929,59 +1129,6 @@ def test_metric_timeline_defaults_to_latest_comparable_period(tmp_path: Path) ->
     assert q1_net["actual_value"] == pytest.approx(0.35)
 
 
-def test_configured_tushare_proxy_is_selected(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PRIVATE_FUND_MARKET_DATA_PROVIDER", "tushare")
-    monkeypatch.setenv("TUSHARE_TOKEN", "test-token")
-    monkeypatch.setenv("TUSHARE_API_URL", "https://example.test/api")
-
-    provider = metrics.default_market_data_provider()
-
-    assert isinstance(provider, metrics.TushareMarketDataProvider)
-    assert provider.base_url == "https://example.test/api"
-
-
-def test_hybrid_provider_routes_a_shares_to_tushare_and_hk_to_fallback() -> None:
-    class RecordingProvider:
-        def __init__(self, name: str) -> None:
-            self.name = name
-            self.tickers: list[str] = []
-
-        def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]:
-            del company_name
-            self.tickers.append(ticker)
-            return {"provider": self.name, "status": "completed", "metrics": {}}
-
-    a_share = RecordingProvider("a-share")
-    hk = RecordingProvider("hk")
-    provider = metrics.RoutedMarketDataProvider(
-        a_share_provider=a_share,
-        hk_provider=hk,
-    )
-
-    provider.fetch_metrics(company_name="Sungrow", ticker="300274.SZ")
-    provider.fetch_metrics(company_name="Horizon", ticker="9660.HK")
-    unsupported = provider.fetch_metrics(company_name="Porsche", ticker="P911.DE")
-
-    assert a_share.tickers == ["300274.SZ"]
-    assert hk.tickers == ["9660.HK"]
-    assert unsupported["status"] == "unavailable"
-
-
-def test_tushare_adapter_does_not_send_non_a_share_codes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    provider = metrics.TushareMarketDataProvider("test-token", "https://example.test/api")
-    monkeypatch.setattr(
-        provider,
-        "_call",
-        lambda *_args, **_kwargs: pytest.fail("unsupported ticker reached Tushare API"),
-    )
-
-    result = provider.fetch_metrics(company_name="Horizon", ticker="9660.HK")
-
-    assert result["status"] == "unavailable"
-
-
 def test_quarterly_comparison_rejects_period_mismatch() -> None:
     result = metrics._comparison(
         metrics.METRIC_BY_KEY["quarter_net_profit_yoy"],
@@ -1024,10 +1171,7 @@ def test_period_mismatch_dismisses_stale_quarterly_alerts(tmp_path: Path) -> Non
 
     active_alerts = tracking.list_metric_alerts(database, "demo", status="new")
 
-    assert {alert["title"] for alert in active_alerts} == {
-        "Forward PE",
-        "近20日日均成交额",
-    }
+    assert active_alerts == []
 
 
 @pytest.mark.parametrize(

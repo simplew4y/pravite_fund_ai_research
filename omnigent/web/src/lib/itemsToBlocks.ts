@@ -83,7 +83,7 @@ function itemToBlock(item: ConversationItem): AnyBlock | null {
     // after /compact. It starts with a distinctive prefix and is
     // part of the model's context (needed for resume) but should
     // not be shown as a chat bubble in the web UI.
-    if (isCompactionSummaryMessage(item)) {
+    if (isCompactionSummaryMessage(item) || isInternalSkillInjectionContent(item.content)) {
       return null;
     }
     return userMessageToBlock(item);
@@ -117,6 +117,29 @@ function itemToBlock(item: ConversationItem): AnyBlock | null {
   }
   // Unknown future item types — skip silently so the page still renders.
   return null;
+}
+
+/**
+ * Detect the full SKILL.md envelope injected internally for a slash command.
+ * Native terminal transcripts can echo this hidden prompt back as an ordinary
+ * user message without preserving ``is_meta``. It remains model context, but
+ * rendering it would expose several pages of implementation instructions in
+ * the chat transcript.
+ */
+export function isInternalSkillInjectionContent(
+  content: ReadonlyArray<{ type?: unknown; text?: unknown }>,
+): boolean {
+  const text = content
+    .filter((block) => block.type === "input_text" && typeof block.text === "string")
+    .map((block) => block.text as string)
+    .join("")
+    .trimStart();
+  return (
+    text.startsWith("<skill>") &&
+    text.includes("<name>") &&
+    text.includes("<path>") &&
+    text.includes("</skill>")
+  );
 }
 
 /**

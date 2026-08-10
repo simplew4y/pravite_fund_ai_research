@@ -110,6 +110,22 @@ describe("Composer slash-command menu", () => {
     expect(ta.value).toBe("/deslop ");
   });
 
+  it("shows a user-installed skill while the runner snapshot is still cold", () => {
+    useChatStore.setState({ skills: [] });
+    render(
+      <Composer
+        {...composerProps({
+          additionalSkills: [
+            { name: "datapack-builder", description: "Build an investment committee data pack" },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.change(textarea(), { target: { value: "/data" } });
+    expect(screen.getByTestId("slash-menu-item-datapack-builder")).toBeTruthy();
+  });
+
   it("Enter completes the highlighted command instead of sending", () => {
     const onSend = vi.fn();
     render(<Composer {...composerProps({ onSend })} />);
@@ -294,6 +310,26 @@ describe("Composer slash-command submit routing", () => {
     fireEvent.keyDown(ta, { key: "Enter" });
 
     expect(onSend).toHaveBeenCalledWith("/deslop", undefined);
+  });
+
+  it("routes a known tenant skill through slash_command for native sessions", () => {
+    const onSend = vi.fn();
+    const onSendSlashCommand = vi.fn();
+    render(
+      <Composer
+        {...composerProps({
+          onSend,
+          onSendSlashCommand,
+          isNativeWrapper: true,
+        })}
+      />,
+    );
+    const ta = textarea();
+    fireEvent.change(ta, { target: { value: "/deslop fix the report" } });
+    fireEvent.keyDown(ta, { key: "Enter" });
+
+    expect(onSendSlashCommand).toHaveBeenCalledWith("deslop", "fix the report");
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("keeps a private-fund native skill as the first token while injecting task rules", () => {

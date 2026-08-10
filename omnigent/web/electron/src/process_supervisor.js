@@ -598,7 +598,11 @@ async function startNative(env, endpoints) {
       String(serverPort),
       "--no-open",
     ],
-    env2,
+    {
+      ...env2,
+      // The desktop supervisor launches a dedicated valuation worker below.
+      PRIVATE_FUND_VALUATION_BACKGROUND_WORKER: "0",
+    },
     omnigentCwd,
   );
 

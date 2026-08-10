@@ -21,10 +21,7 @@ vi.mock("@/lib/privateFundApi", async (importOriginal) => {
   };
 });
 
-const memoVersion = (
-  versionNo: number,
-  seriesId = "series-1",
-): PrivateFundMemoVersion => ({
+const memoVersion = (versionNo: number, seriesId = "series-1"): PrivateFundMemoVersion => ({
   memoVersionId: `${seriesId}-memo-v${versionNo}`,
   seriesId,
   versionNo,
@@ -40,6 +37,8 @@ const overview: PrivateFundTrackingOverview = {
   datasetId: "sungrow",
   counts: { thesis: 1, assumption: 1 },
   unreadAlertCount: 0,
+  qualityCounts: {},
+  governanceCounts: { activeUnqualified: 0, archived: 0 },
   items: [
     {
       itemId: "assumption-1",
@@ -131,6 +130,7 @@ describe("PrivateFundHistoryPanel", () => {
           impact: "high",
           confidence: 0.82,
           evidenceIds: ["chunk:1"],
+          fieldChanges: [],
         },
         {
           itemVersionId: "assumption-v2",
@@ -146,6 +146,7 @@ describe("PrivateFundHistoryPanel", () => {
           impact: "high",
           confidence: 0.87,
           evidenceIds: ["chunk:2"],
+          fieldChanges: [],
         },
       ],
       changes: [],
@@ -170,10 +171,7 @@ describe("PrivateFundHistoryPanel", () => {
   });
 
   it("opens the requested Memo series when entered from the asset library", async () => {
-    const secondSeriesVersions = [
-      memoVersion(2, "series-2"),
-      memoVersion(1, "series-2"),
-    ];
+    const secondSeriesVersions = [memoVersion(2, "series-2"), memoVersion(1, "series-2")];
     vi.mocked(usePrivateFundTracking).mockReturnValue({
       data: {
         ...overview,

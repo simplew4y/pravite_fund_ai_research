@@ -38,6 +38,8 @@ export interface LoginFailure {
   error: string;
   /** HTTP status, in case the UI wants to distinguish 401 vs 5xx. */
   status: number;
+  /** Stable server error code when one is available. */
+  code?: string;
 }
 
 export type LoginResult = LoginSuccess | LoginFailure;
@@ -284,7 +286,7 @@ export const ACCOUNT_UPDATED_EVENT = "omnigent:account-updated";
 
 export type RegistrationCodeResult =
   | { ok: true; expires_in: number; resend_after: number }
-  | { ok: false; error: string; status: number };
+  | { ok: false; error: string; status: number; code?: string };
 
 /** Request a four-digit email code from the cloud accounts service. */
 export async function sendRegistrationCode(email: string): Promise<RegistrationCodeResult> {
@@ -313,6 +315,7 @@ export async function sendRegistrationCode(email: string): Promise<RegistrationC
       ok: false,
       error: data?.message ?? data?.error ?? data?.code ?? "验证码发送失败。",
       status: res.status,
+      code: data?.code ?? data?.error,
     };
   } catch {
     return { ok: false, error: "无法连接到账户服务。", status: 0 };
@@ -345,6 +348,7 @@ export async function register(body: RegisterRequest): Promise<LoginResult> {
     return { ok: true, ...data };
   }
   let message = "账户注册失败。";
+  let code: string | undefined;
   try {
     const data = (await res.json()) as {
       error?: string;
@@ -352,11 +356,12 @@ export async function register(body: RegisterRequest): Promise<LoginResult> {
       message?: string;
       detail?: string;
     };
+    code = data.code ?? data.error;
     message = data.message ?? data.detail ?? data.error ?? data.code ?? message;
   } catch {
     if (res.status >= 500) message = "账户服务暂时不可用，请稍后重试。";
   }
-  return { ok: false, error: message, status: res.status };
+  return { ok: false, error: message, status: res.status, code };
 }
 
 /** Body used by native Accounts deployments for self-serve password changes. */

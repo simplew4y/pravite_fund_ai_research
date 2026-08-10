@@ -23,6 +23,7 @@ import pytest
 
 from omnigent.llms.context_window import ModelPricing
 from omnigent.runtime.tool_output import MAX_TOOL_OUTPUT_BYTES
+from omnigent.server.schemas import SessionEventInput
 from omnigent.spec.types import SkillSpec
 from omnigent.stores.conversation_store.sqlalchemy_store import (
     SqlAlchemyConversationStore,
@@ -929,6 +930,74 @@ async def test_external_subagent_start_rejects_missing_required_keys(
 
 
 # ── POST /v1/sessions/{id}/events skill slash_command ─────
+
+
+async def test_plaintext_installed_skill_is_upgraded_before_native_dispatch() -> None:
+    """A stale/native client may send ``/skill`` as a plain message."""
+    from omnigent.server.routes.sessions import _upgrade_plaintext_skill_event
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/skills")
+        return httpx.Response(
+            200,
+            json={"skills": [{"name": "datapack-builder", "description": "Build a pack"}]},
+        )
+
+    runner = httpx.AsyncClient(
+        transport=httpx.MockTransport(_handler),
+        base_url="http://runner",
+    )
+    try:
+        body = SessionEventInput(
+            type="message",
+            data={
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "/datapack-builder 基于当前项目资料生成投委会 Data Pack Excel",
+                    }
+                ],
+            },
+        )
+        upgraded = await _upgrade_plaintext_skill_event("conv_skill", body, runner)
+    finally:
+        await runner.aclose()
+
+    assert upgraded.type == "slash_command"
+    assert upgraded.data == {
+        "kind": "skill",
+        "name": "datapack-builder",
+        "arguments": "基于当前项目资料生成投委会 Data Pack Excel",
+    }
+
+
+async def test_plaintext_unknown_slash_command_remains_a_message() -> None:
+    """Vendor-native commands must still reach the native TUI unchanged."""
+    from omnigent.server.routes.sessions import _upgrade_plaintext_skill_event
+
+    runner = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={"skills": [{"name": "datapack-builder", "description": "Build a pack"}]},
+            )
+        ),
+        base_url="http://runner",
+    )
+    try:
+        body = SessionEventInput(
+            type="message",
+            data={
+                "role": "user",
+                "content": [{"type": "input_text", "text": "/model private-fund-default"}],
+            },
+        )
+        upgraded = await _upgrade_plaintext_skill_event("conv_native", body, runner)
+    finally:
+        await runner.aclose()
+
+    assert upgraded is body
 
 
 async def test_skill_slash_command_persists_visible_item_and_hidden_meta_message(

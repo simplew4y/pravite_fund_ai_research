@@ -186,3 +186,48 @@ def test_empty_excel_source_range_reports_nearby_cells(tmp_path, monkeypatch) ->
     assert payload["cells"] == []
     assert payload["empty_reason"] == "requested_range_empty"
     assert [cell["cell_ref"] for cell in payload["nearby_cells"]] == ["B220"]
+
+
+def test_dataset_document_lookup_accepts_legacy_excel_type_and_filename_case(
+    tmp_path, monkeypatch
+) -> None:
+    db_path = tmp_path / "collection.sqlite3"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE documents (
+                doc_id TEXT PRIMARY KEY,
+                original_filename TEXT,
+                source_name TEXT,
+                title TEXT,
+                stored_path TEXT,
+                file_type TEXT,
+                deleted_at TEXT
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, NULL)",
+            (
+                "doc-legacy",
+                "300274 V44.XLSX",
+                "300274 V44.XLSX",
+                "300274 V44",
+                "/dataset/raw/300274 V44.XLSX",
+                ".excel",
+            ),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(
+        private_fund_pdf,
+        "_active_collection_db",
+        lambda _dataset_id=None: (db_path, "300274"),
+    )
+
+    result = private_fund_pdf._dataset_document_by_name(
+        "300274 v44.xlsx", "300274", file_types=private_fund_pdf.EXCEL_FILE_TYPES
+    )
+
+    assert result is not None
+    assert result[0]["doc_id"] == "doc-legacy"
