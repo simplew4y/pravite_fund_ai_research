@@ -25,7 +25,8 @@
       "id": "risk-catalyst-tracking-0.2.1",
       "component": "risk_catalyst_tracking",
       "fromVersion": "0.1.1",
-      "toVersion": "0.2.1"
+      "toVersion": "0.2.1",
+      "legacyDataPolicy": "discard"
     },
     {
       "id": "valuation-tracking-0.2.1",
