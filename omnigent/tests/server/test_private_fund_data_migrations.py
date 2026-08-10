@@ -104,7 +104,7 @@ def test_migration_discards_legacy_tracking_and_is_idempotent(tmp_path: Path) ->
     }
 
 
-def test_existing_v1_migration_is_reapplied_for_destructive_tracking_reset(
+def test_current_database_is_not_destructively_reset_for_checksum_update(
     tmp_path: Path,
 ) -> None:
     data_root = tmp_path / "data"
@@ -135,12 +135,12 @@ def test_existing_v1_migration_is_reapplied_for_destructive_tracking_reset(
     )
 
     assert result["databases"][0]["status"] == "migrated"
-    assert result["databases"][0]["discardedLegacyTracking"]["items"] == 1
+    assert result["databases"][0]["discardedLegacyTracking"]["items"] == 0
     assert result["databases"][0]["backup"].endswith(
         "collection.before-risk-reset-v2.sqlite3"
     )
     with sqlite3.connect(collection) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM research_items").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM research_items").fetchone()[0] == 1
         rows = conn.execute(
             f"""
             SELECT component, checksum FROM {migrations.MIGRATION_TABLE}
@@ -152,6 +152,64 @@ def test_existing_v1_migration_is_reapplied_for_destructive_tracking_reset(
         "risk_catalyst_tracking",
         migrations._RISK_CATALYST_RESET_CHECKSUM,
     )
+
+
+def test_collection_created_by_current_release_is_not_treated_as_legacy(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    collection = (
+        data_root
+        / "users"
+        / "namespace-1"
+        / "private_fund_datasets"
+        / "current-project"
+        / "meta"
+        / "collection.sqlite3"
+    )
+    collection.parent.mkdir(parents=True)
+    with sqlite3.connect(collection) as conn:
+        conn.row_factory = sqlite3.Row
+        migrations._load_collection_schema_ensurer()(
+            conn,
+            initialize_current_data_version=True,
+        )
+        private_fund_tracking.ensure_tracking_schema(conn, "current-project")
+        conn.execute(
+            """
+            INSERT INTO research_items
+                (item_id, dataset_id, item_type, canonical_key, title, status,
+                 current_version_no, current_version_id, first_seen_at, last_seen_at,
+                 created_at, updated_at)
+            VALUES ('current-risk', 'current-project', 'risk', 'current-risk',
+                    '当前版本风险', 'active', 1, 'current-risk-v1', '2026-08-10',
+                    '2026-08-10', '2026-08-10', '2026-08-10')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO research_item_versions
+                (item_version_id, item_id, version_no, observed_at, source_type,
+                 source_id, content, created_at)
+            VALUES ('current-risk-v1', 'current-risk', 1, '2026-08-10',
+                    'document', 'doc-current', '当前版本生成的数据。', '2026-08-10')
+            """
+        )
+        conn.commit()
+
+    result = migrations.run_data_migrations(
+        data_root=data_root,
+        backup_root=data_root / "backups",
+        manifest_path=data_root / "data-manifest.json",
+    )
+
+    assert result["databases"][0]["status"] == "current"
+    with sqlite3.connect(collection) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM research_items").fetchone()[0] == 1
+        assert (
+            conn.execute("SELECT COUNT(*) FROM research_item_versions").fetchone()[0]
+            == 1
+        )
 
 
 def test_tracking_reset_preserves_other_research_items_and_memos(tmp_path: Path) -> None:

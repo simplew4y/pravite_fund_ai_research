@@ -131,6 +131,38 @@ def _ensure_migration_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def initialize_current_collection_version(
+    conn: sqlite3.Connection,
+    *,
+    app_version: str | None = None,
+) -> None:
+    """Mark a newly-created collection as native to the current release."""
+
+    target = database_target_version()
+    active_app_version = app_version or product_version()
+    _ensure_migration_table(conn)
+    applied_at = _utc_now()
+    for component in MIGRATION_COMPONENTS:
+        checksum = _COMPONENT_CHECKSUMS[component]
+        conn.execute(
+            f"""
+            INSERT OR IGNORE INTO {MIGRATION_TABLE}
+                (migration_id, component, from_version, to_version, applied_at,
+                 app_version, checksum)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"{component}:initialized:{target}:{checksum[:12]}",
+                component,
+                target,
+                target,
+                applied_at,
+                active_app_version,
+                checksum,
+            ),
+        )
+
+
 def _component_state(conn: sqlite3.Connection, component: str) -> tuple[str, str | None]:
     exists = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (MIGRATION_TABLE,)
@@ -408,9 +440,15 @@ def migrate_collection_database(
             _migrate_source_folders(conn, dataset_id)
             private_fund_tracking.ensure_tracking_schema(conn, dataset_id)
             private_fund_valuation_tracking.ensure_valuation_schema(conn, dataset_id)
+            should_discard_legacy_tracking = (
+                "risk_catalyst_tracking" in pending
+                and versions["risk_catalyst_tracking"] == legacy_data_baseline()
+                and _version_tuple(versions["risk_catalyst_tracking"])
+                < _version_tuple(target)
+            )
             discarded_tracking = (
                 _discard_legacy_risk_catalyst_tracking(conn, dataset_id)
-                if "risk_catalyst_tracking" in pending
+                if should_discard_legacy_tracking
                 else {"items": 0, "versions": 0, "alerts": 0, "jobs": 0, "rules": 0}
             )
             _ensure_migration_table(conn)
