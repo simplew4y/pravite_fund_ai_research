@@ -120,3 +120,35 @@ def test_migration_refuses_data_newer_than_application(tmp_path: Path) -> None:
             backup_root=data_root / "backups",
             manifest_path=data_root / "data-manifest.json",
         )
+
+
+def test_migration_failure_restores_database_without_replace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "data"
+    collection = _legacy_collection(data_root)
+
+    def fail_after_write(conn: sqlite3.Connection, dataset_id: str) -> None:
+        del dataset_id
+        conn.execute(
+            "UPDATE research_item_versions SET content='should be rolled back' "
+            "WHERE item_version_id='legacy-risk-v1'"
+        )
+        raise RuntimeError("synthetic migration failure")
+
+    monkeypatch.setattr(migrations, "_migrate_source_folders", fail_after_write)
+
+    with pytest.raises(RuntimeError, match="synthetic migration failure"):
+        migrations.run_data_migrations(
+            data_root=data_root,
+            backup_root=data_root / "backups",
+            manifest_path=data_root / "data-manifest.json",
+        )
+
+    with sqlite3.connect(collection) as conn:
+        content = conn.execute(
+            "SELECT content FROM research_item_versions WHERE item_version_id='legacy-risk-v1'"
+        ).fetchone()[0]
+    assert content == "海外订单可能延期并影响收入确认。"
+    assert not collection.with_name(".collection.sqlite3.restore.tmp").exists()
