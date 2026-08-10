@@ -2978,6 +2978,13 @@ def server(
             )
         port = _picked
 
+    from omnigent.server.private_fund_data_migrations import run_startup_data_migrations
+
+    try:
+        run_startup_data_migrations()
+    except Exception as exc:
+        raise click.ClickException(f"private-fund data migration failed: {exc}") from exc
+
     import uvicorn
 
     from omnigent.runner.transports.ws_tunnel.limits import (

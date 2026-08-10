@@ -616,6 +616,41 @@ def enqueue_manual_scan(collection_db: Path, dataset_id: str) -> dict[str, Any]:
     )
 
 
+def enqueue_legacy_rebuild(collection_db: Path, dataset_id: str) -> dict[str, Any]:
+    """Queue an explicit model-backed rebuild of migrated tracking records."""
+
+    token = _now().strftime("%Y%m%dT%H%M%S.%fZ")
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        document_ids = [str(item["doc_id"]) for item in _current_document_snapshot(conn)]
+        memo_rows = conn.execute(
+            """
+            SELECT v.memo_version_id
+            FROM research_memo_series s
+            JOIN research_memo_versions v
+              ON v.series_id=s.series_id AND v.version_no=s.current_version_no
+            WHERE s.dataset_id=? AND v.status NOT IN ('failed', 'cancelled')
+            ORDER BY v.created_at
+            """,
+            (dataset_id,),
+        ).fetchall()
+        memo_version_ids = [str(row["memo_version_id"]) for row in memo_rows]
+        conn.commit()
+    return enqueue_job(
+        collection_db,
+        dataset_id,
+        job_type="legacy_rebuild",
+        source_id=token,
+        payload={
+            "document_ids": document_ids,
+            "memo_version_ids": memo_version_ids,
+            "explicit_user_action": True,
+        },
+        priority=10,
+        max_attempts=1,
+    )
+
+
 def enqueue_scheduled_scan(
     collection_db: Path, dataset_id: str, *, now: datetime | None = None
 ) -> dict[str, Any]:
@@ -2454,6 +2489,39 @@ def recover_stale_jobs(
         return cursor.rowcount
 
 
+def _archive_legacy_automatic_items(conn: sqlite3.Connection, dataset_id: str) -> int:
+    """Archive legacy automatic rows left unmatched by a successful rebuild."""
+
+    rows = conn.execute(
+        """
+        SELECT i.item_id, v.source_type, v.metadata_json
+        FROM research_items i
+        JOIN research_item_versions v ON v.item_version_id=i.current_version_id
+        WHERE i.dataset_id=? AND i.archived_at IS NULL
+          AND i.item_type IN ('risk', 'catalyst')
+        """,
+        (dataset_id,),
+    ).fetchall()
+    item_ids: list[str] = []
+    for row in rows:
+        metadata = _decode(row["metadata_json"], {})
+        if metadata.get("requires_rebuild") and str(row["source_type"]) in {"document", "memo"}:
+            item_ids.append(str(row["item_id"]))
+    if not item_ids:
+        return 0
+    now = _now_iso()
+    placeholders = ",".join("?" for _ in item_ids)
+    cursor = conn.execute(
+        f"""
+        UPDATE research_items
+        SET archived_at=?, archive_reason='legacy_rebuilt', updated_at=?
+        WHERE item_id IN ({placeholders})
+        """,
+        [now, now, *item_ids],
+    )
+    return int(cursor.rowcount)
+
+
 def process_next_job(
     collection_db: Path,
     dataset_id: str,
@@ -2473,7 +2541,18 @@ def process_next_job(
             if job["job_type"] == "scheduled_scan":
                 result = _scan_due_items(conn, dataset_id)
             else:
-                if job["job_type"] == "memo_version_created":
+                if job["job_type"] == "legacy_rebuild":
+                    if llm_client is None:
+                        raise RuntimeError("当前模型不可用，旧版数据未重新分析")
+                    document_ids = [str(item) for item in payload.get("document_ids") or []]
+                    units, default_date = _load_document_units(conn, document_ids)
+                    for memo_version_id in payload.get("memo_version_ids") or []:
+                        memo_units, memo_date = _load_memo_units(conn, str(memo_version_id))
+                        units.extend(memo_units)
+                        default_date = max(default_date, memo_date)
+                    source_type = "document"
+                    source_id = str(job["source_id"])
+                elif job["job_type"] == "memo_version_created":
                     source_type = "memo"
                     source_id = str(payload.get("memo_version_id") or job["source_id"])
                     units, default_date = _load_memo_units(conn, source_id)
@@ -2534,6 +2613,12 @@ def process_next_job(
                         source_id=source_id,
                     ),
                 }
+                if job["job_type"] == "legacy_rebuild":
+                    if llm_error:
+                        raise RuntimeError(f"旧版数据重新分析失败：{llm_error}")
+                    result["legacy_items_archived"] = _archive_legacy_automatic_items(
+                        conn, dataset_id
+                    )
             now = _now_iso()
             conn.execute(
                 """
@@ -2748,6 +2833,8 @@ def _is_displayable_tracking_item(item: dict[str, Any]) -> bool:
         return True
     version = item.get("current_version") or {}
     metadata = version.get("metadata") or {}
+    if metadata.get("requires_rebuild"):
+        return bool(_canonical_text(item.get("title")) and _canonical_text(version.get("content")))
     if version.get("evidence_grounding_failure"):
         return False
     if metadata.get("extraction_method") == "keyword_fallback":
@@ -2771,6 +2858,8 @@ def _tracking_item_quality_issue(item: dict[str, Any]) -> str:
         return ""
     version = item.get("current_version") or {}
     metadata = version.get("metadata") or {}
+    if metadata.get("requires_rebuild"):
+        return "旧版数据，尚未使用当前规则重新分析"
     if version.get("evidence_grounding_failure"):
         return "证据仅包含主持人转场或提问提示，无法支持当前判断"
     if metadata.get("extraction_method") == "keyword_fallback":
@@ -3312,12 +3401,15 @@ def tracking_overview(collection_db: Path, dataset_id: str) -> dict[str, Any]:
     counts: dict[str, int] = {}
     quality_counts: dict[str, int] = {"verified": 0, "needs_review": 0}
     visible_item_ids = set()
+    legacy_item_count = 0
     for item in items:
         item_type = str(item.get("item_type") or "")
         counts[item_type] = counts.get(item_type, 0) + 1
         visible_item_ids.add(str(item.get("item_id") or ""))
         if item_type in {"risk", "catalyst"}:
             metadata = (item.get("current_version") or {}).get("metadata") or {}
+            if metadata.get("requires_rebuild"):
+                legacy_item_count += 1
             quality = str(metadata.get("quality_status") or "needs_review")
             quality_counts[quality] = quality_counts.get(quality, 0) + 1
     alerts = [
@@ -3334,6 +3426,9 @@ def tracking_overview(collection_db: Path, dataset_id: str) -> dict[str, Any]:
     )
     return {
         "dataset_id": dataset_id,
+        "schema_version": TRACKING_SCHEMA_VERSION,
+        "rebuild_required": legacy_item_count > 0,
+        "legacy_item_count": legacy_item_count,
         "counts": counts,
         "unread_alert_count": unread,
         "quality_counts": quality_counts,

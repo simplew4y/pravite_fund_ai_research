@@ -35,6 +35,9 @@ const memoVersion = (versionNo: number, seriesId = "series-1"): PrivateFundMemoV
 
 const overview: PrivateFundTrackingOverview = {
   datasetId: "sungrow",
+  schemaVersion: 2,
+  rebuildRequired: false,
+  legacyItemCount: 0,
   counts: { thesis: 1, assumption: 1 },
   unreadAlertCount: 0,
   qualityCounts: {},

@@ -525,6 +525,9 @@ export interface PrivateFundMemoComparison {
 
 export interface PrivateFundTrackingOverview {
   datasetId: string;
+  schemaVersion: number;
+  rebuildRequired: boolean;
+  legacyItemCount: number;
   counts: Record<string, number>;
   unreadAlertCount: number;
   qualityCounts: Record<string, number>;
@@ -1377,6 +1380,9 @@ interface MemoSeriesWire {
 
 interface TrackingOverviewWire {
   dataset_id: string;
+  schema_version?: number;
+  rebuild_required?: boolean;
+  legacy_item_count?: number;
   counts?: Record<string, number>;
   unread_alert_count?: number;
   quality_counts?: Record<string, number>;
@@ -2224,6 +2230,9 @@ function memoVersionFromWire(version: MemoVersionWire): PrivateFundMemoVersion {
 function trackingOverviewFromWire(payload: TrackingOverviewWire): PrivateFundTrackingOverview {
   return {
     datasetId: payload.dataset_id,
+    schemaVersion: payload.schema_version ?? 1,
+    rebuildRequired: Boolean(payload.rebuild_required),
+    legacyItemCount: payload.legacy_item_count ?? 0,
     counts: payload.counts ?? {},
     unreadAlertCount: payload.unread_alert_count ?? 0,
     qualityCounts: payload.quality_counts ?? {},
@@ -3151,6 +3160,18 @@ export async function runPrivateFundTracking(datasetId: string): Promise<Private
   const body = await jsonOrThrow<{ job: TrackingJobWire }>(
     await authenticatedFetch(
       `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/tracking/run`,
+      { method: "POST" },
+    ),
+  );
+  return trackingJobFromWire(body.job);
+}
+
+export async function rebuildPrivateFundTracking(
+  datasetId: string,
+): Promise<PrivateFundTrackingJob> {
+  const body = await jsonOrThrow<{ job: TrackingJobWire }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/tracking/rebuild`,
       { method: "POST" },
     ),
   );
