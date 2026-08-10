@@ -34,7 +34,20 @@ MIGRATION_COMPONENTS = (
     "risk_catalyst_tracking",
     "valuation_tracking",
 )
-_MIGRATION_CHECKSUM = hashlib.sha256(b"private-fund-data-migration:0.1.1:0.2.1:v1").hexdigest()
+_BASE_MIGRATION_CHECKSUM = hashlib.sha256(
+    b"private-fund-data-migration:0.1.1:0.2.1:v1"
+).hexdigest()
+_RISK_CATALYST_RESET_CHECKSUM = hashlib.sha256(
+    b"private-fund-data-migration:risk-catalyst:0.1.1:0.2.1:discard-v2"
+).hexdigest()
+_COMPONENT_CHECKSUMS = {
+    component: (
+        _RISK_CATALYST_RESET_CHECKSUM
+        if component == "risk_catalyst_tracking"
+        else _BASE_MIGRATION_CHECKSUM
+    )
+    for component in MIGRATION_COMPONENTS
+}
 _STARTUP_MIGRATION_COMPLETED = False
 
 
@@ -118,20 +131,22 @@ def _ensure_migration_table(conn: sqlite3.Connection) -> None:
     )
 
 
-def _component_version(conn: sqlite3.Connection, component: str) -> str:
+def _component_state(conn: sqlite3.Connection, component: str) -> tuple[str, str | None]:
     exists = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (MIGRATION_TABLE,)
     ).fetchone()
     if exists is None:
-        return legacy_data_baseline()
+        return legacy_data_baseline(), None
     row = conn.execute(
         f"""
-        SELECT to_version FROM {MIGRATION_TABLE}
-        WHERE component=? ORDER BY applied_at DESC LIMIT 1
+        SELECT to_version, checksum FROM {MIGRATION_TABLE}
+        WHERE component=? ORDER BY applied_at DESC, rowid DESC LIMIT 1
         """,
         (component,),
     ).fetchone()
-    return str(row[0]) if row else legacy_data_baseline()
+    if row is None:
+        return legacy_data_baseline(), None
+    return str(row[0]), str(row[1])
 
 
 def _load_collection_schema_ensurer() -> Any:
@@ -198,141 +213,127 @@ def _migrate_source_folders(conn: sqlite3.Connection, dataset_id: str) -> None:
     private_fund_source_folders._sync_assignments(conn, dataset_id, files)
 
 
-def _mark_legacy_tracking(conn: sqlite3.Connection) -> int:
-    tables = {
+def _discard_legacy_risk_catalyst_tracking(
+    conn: sqlite3.Connection, dataset_id: str
+) -> dict[str, int]:
+    """Discard beta risk/catalyst outputs while preserving source files and Memos."""
+
+    item_filter = "dataset_id=? AND item_type IN ('risk', 'catalyst')"
+    item_ids = [
         str(row[0])
-        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-    }
-    if not {"research_items", "research_item_versions"}.issubset(tables):
-        return 0
-    rows = conn.execute(
-        """
-        SELECT v.item_version_id, v.metadata_json
-        FROM research_item_versions v
-        JOIN research_items i ON i.item_id=v.item_id
-        WHERE i.item_type IN ('risk', 'catalyst')
-        """
-    ).fetchall()
-    updated = 0
-    for item_version_id, raw_metadata in rows:
-        try:
-            metadata = json.loads(raw_metadata or "{}")
-        except (TypeError, ValueError, json.JSONDecodeError):
-            metadata = {}
-        extractor = str(metadata.get("extractor_version") or "legacy-unversioned")
-        if extractor == private_fund_tracking.EXTRACTOR_VERSION:
-            continue
-        metadata.update(
-            {
-                "quality_status": "needs_review",
-                "legacy_schema_version": legacy_data_baseline(),
-                "requires_rebuild": True,
-                "legacy_extractor_version": extractor,
-            }
-        )
-        conn.execute(
-            "UPDATE research_item_versions SET metadata_json=? WHERE item_version_id=?",
-            (json.dumps(metadata, ensure_ascii=False, sort_keys=True), item_version_id),
-        )
-        updated += 1
-    return updated
-
-
-def _suppress_automatic_legacy_rebuild(
-    conn: sqlite3.Connection, dataset_id: str, *, legacy_count: int
-) -> None:
-    """Mark current sources as seen so migration never spends model credit."""
-
-    if legacy_count <= 0:
-        return
-    now = _utc_now()
-    try:
-        documents = private_fund_tracking._current_document_snapshot(conn)
-    except (sqlite3.OperationalError, AttributeError):
-        documents = []
-    for document in documents:
-        source_id = str(document["doc_id"])
-        job_type = "document_ingested"
-        job_id = private_fund_tracking._digest(
-            dataset_id,
-            job_type,
-            source_id,
-            private_fund_tracking.EXTRACTOR_VERSION,
-        )
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO research_tracking_jobs
-                (job_id, dataset_id, job_type, source_id, payload_json,
-                 extractor_version, status, priority, attempt_count, max_attempts,
-                 available_at, started_at, finished_at, result_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'completed', 50, 0, 4, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                f"rtj_{job_id}",
-                dataset_id,
-                job_type,
-                source_id,
-                json.dumps({"document_ids": [source_id]}, ensure_ascii=False),
-                private_fund_tracking.EXTRACTOR_VERSION,
-                now,
-                now,
-                now,
-                json.dumps(
-                    {"migration_suppressed": True, "requires_explicit_rebuild": True},
-                    ensure_ascii=False,
-                ),
-                now,
-                now,
-            ),
-        )
-    try:
-        memo_rows = conn.execute(
-            """
-            SELECT v.memo_version_id
-            FROM research_memo_series s
-            JOIN research_memo_versions v
-              ON v.series_id=s.series_id AND v.version_no=s.current_version_no
-            WHERE s.dataset_id=? AND v.status NOT IN ('failed', 'cancelled')
-            """,
+        for row in conn.execute(
+            f"SELECT item_id FROM research_items WHERE {item_filter}",
             (dataset_id,),
         ).fetchall()
-    except sqlite3.OperationalError:
-        memo_rows = []
-    for row in memo_rows:
-        source_id = str(row[0])
-        job_type = "memo_version_created"
-        digest = private_fund_tracking._digest(
-            dataset_id,
-            job_type,
-            source_id,
-            private_fund_tracking.EXTRACTOR_VERSION,
-        )
+    ]
+    version_count = int(
         conn.execute(
             """
-            INSERT OR IGNORE INTO research_tracking_jobs
-                (job_id, dataset_id, job_type, source_id, payload_json,
-                 extractor_version, status, priority, attempt_count, max_attempts,
-                 available_at, started_at, finished_at, result_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'completed', 60, 0, 4, ?, ?, ?, ?, ?, ?)
+            SELECT COUNT(*)
+            FROM research_item_versions v
+            JOIN research_items i ON i.item_id=v.item_id
+            WHERE i.dataset_id=? AND i.item_type IN ('risk', 'catalyst')
             """,
-            (
-                f"rtj_{digest}",
-                dataset_id,
-                job_type,
-                source_id,
-                json.dumps({"memo_version_id": source_id}, ensure_ascii=False),
-                private_fund_tracking.EXTRACTOR_VERSION,
-                now,
-                now,
-                now,
-                json.dumps(
-                    {"migration_suppressed": True, "requires_explicit_rebuild": True},
-                    ensure_ascii=False,
-                ),
-                now,
-                now,
-            ),
+            (dataset_id,),
+        ).fetchone()[0]
+    )
+    alert_count = int(
+        conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM research_alerts a
+            JOIN research_items i ON i.item_id=a.item_id
+            WHERE i.dataset_id=? AND i.item_type IN ('risk', 'catalyst')
+            """,
+            (dataset_id,),
+        ).fetchone()[0]
+    )
+    job_count = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM research_tracking_jobs WHERE dataset_id=?",
+            (dataset_id,),
+        ).fetchone()[0]
+    )
+    rule_count = int(
+        conn.execute(
+            """
+            SELECT COUNT(*) FROM research_watch_rules
+            WHERE dataset_id=? AND target_type IN ('risk', 'catalyst')
+            """,
+            (dataset_id,),
+        ).fetchone()[0]
+    )
+
+    conn.execute(
+        """
+        DELETE FROM research_item_evidence
+        WHERE item_version_id IN (
+            SELECT v.item_version_id
+            FROM research_item_versions v
+            JOIN research_items i ON i.item_id=v.item_id
+            WHERE i.dataset_id=? AND i.item_type IN ('risk', 'catalyst')
         )
+        """,
+        (dataset_id,),
+    )
+    conn.execute(
+        """
+        DELETE FROM research_item_relations
+        WHERE from_item_id IN (
+            SELECT item_id FROM research_items
+            WHERE dataset_id=? AND item_type IN ('risk', 'catalyst')
+        ) OR to_item_id IN (
+            SELECT item_id FROM research_items
+            WHERE dataset_id=? AND item_type IN ('risk', 'catalyst')
+        )
+        """,
+        (dataset_id, dataset_id),
+    )
+    for table in (
+        "research_alerts",
+        "research_change_events",
+        "research_tracking_observations",
+        "research_item_versions",
+    ):
+        conn.execute(
+            f"""
+            DELETE FROM {table}
+            WHERE item_id IN (
+                SELECT item_id FROM research_items
+                WHERE dataset_id=? AND item_type IN ('risk', 'catalyst')
+            )
+            """,
+            (dataset_id,),
+        )
+    conn.execute(
+        """
+        DELETE FROM research_watch_rules
+        WHERE dataset_id=? AND (
+            target_type IN ('risk', 'catalyst')
+            OR target_item_id IN (
+                SELECT item_id FROM research_items
+                WHERE dataset_id=? AND item_type IN ('risk', 'catalyst')
+            )
+        )
+        """,
+        (dataset_id, dataset_id),
+    )
+    conn.execute(
+        "DELETE FROM research_tracking_jobs WHERE dataset_id=?",
+        (dataset_id,),
+    )
+    conn.execute(
+        f"DELETE FROM research_items WHERE {item_filter}",
+        (dataset_id,),
+    )
+    private_fund_tracking._ensure_default_watch_rules(conn, dataset_id)
+    return {
+        "items": len(item_ids),
+        "versions": version_count,
+        "alerts": alert_count,
+        "jobs": job_count,
+        "rules": rule_count,
+    }
 
 
 def _backup_database(source: Path, destination: Path) -> None:
@@ -368,21 +369,34 @@ def migrate_collection_database(
 ) -> dict[str, Any]:
     target = database_target_version()
     with sqlite3.connect(collection_db, timeout=30) as probe:
-        versions = {
-            component: _component_version(probe, component)
+        states = {
+            component: _component_state(probe, component)
             for component in MIGRATION_COMPONENTS
         }
+    versions = {component: state[0] for component, state in states.items()}
     for component, current in versions.items():
         if _version_tuple(current) > _version_tuple(target):
             raise DataVersionTooNew(
                 f"{collection_db}: {component} data version {current} is newer than app {target}"
             )
-    pending = [component for component, current in versions.items() if current != target]
+    pending = [
+        component
+        for component, (current, checksum) in states.items()
+        if current != target or checksum != _COMPONENT_CHECKSUMS[component]
+    ]
     if not pending:
         return {"database": str(collection_db), "status": "current", "version": target}
 
-    if not backup_path.exists():
-        _backup_database(collection_db, backup_path)
+    risk_reset_only = pending == ["risk_catalyst_tracking"] and versions[
+        "risk_catalyst_tracking"
+    ] == target
+    active_backup_path = (
+        backup_path.with_name(f"{backup_path.stem}.before-risk-reset-v2{backup_path.suffix}")
+        if risk_reset_only
+        else backup_path
+    )
+    if not active_backup_path.exists():
+        _backup_database(collection_db, active_backup_path)
     try:
         with sqlite3.connect(collection_db, timeout=30) as conn:
             conn.row_factory = sqlite3.Row
@@ -394,12 +408,18 @@ def migrate_collection_database(
             _migrate_source_folders(conn, dataset_id)
             private_fund_tracking.ensure_tracking_schema(conn, dataset_id)
             private_fund_valuation_tracking.ensure_valuation_schema(conn, dataset_id)
-            legacy_count = _mark_legacy_tracking(conn)
-            _suppress_automatic_legacy_rebuild(conn, dataset_id, legacy_count=legacy_count)
+            discarded_tracking = (
+                _discard_legacy_risk_catalyst_tracking(conn, dataset_id)
+                if "risk_catalyst_tracking" in pending
+                else {"items": 0, "versions": 0, "alerts": 0, "jobs": 0, "rules": 0}
+            )
             _ensure_migration_table(conn)
             applied_at = _utc_now()
             for component in pending:
-                migration_id = f"{component}:{versions[component]}:{target}"
+                checksum = _COMPONENT_CHECKSUMS[component]
+                migration_id = (
+                    f"{component}:{versions[component]}:{target}:{checksum[:12]}"
+                )
                 conn.execute(
                     f"""
                     INSERT OR IGNORE INTO {MIGRATION_TABLE}
@@ -414,7 +434,7 @@ def migrate_collection_database(
                         target,
                         applied_at,
                         app_version,
-                        _MIGRATION_CHECKSUM,
+                        checksum,
                     ),
                 )
             conn.commit()
@@ -423,11 +443,12 @@ def migrate_collection_database(
             "status": "migrated",
             "fromVersions": versions,
             "version": target,
-            "legacyTrackingItems": legacy_count,
-            "backup": str(backup_path),
+            "legacyTrackingItems": 0,
+            "discardedLegacyTracking": discarded_tracking,
+            "backup": str(active_backup_path),
         }
     except Exception:
-        _restore_database(backup_path, collection_db)
+        _restore_database(active_backup_path, collection_db)
         raise
 
 
