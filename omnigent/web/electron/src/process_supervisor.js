@@ -11,8 +11,10 @@
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
+const net = require("node:net");
 const path = require("node:path");
 const desktop = require("./desktop_mode");
+const packageMetadata = require("../package.json");
 
 const KILL_GRACE_MS = 4000;
 const HEALTH_POLL_MS = 1000;
@@ -325,10 +327,16 @@ function spawnTracked(name, command, args, env, cwd) {
  * @param {() => Promise<boolean>} check
  * @param {number} timeoutMs
  */
-async function waitUntil(label, check, timeoutMs) {
+async function waitUntil(label, check, timeoutMs, childName = null) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    const ownedChild = childName ? children.get(childName) : null;
+    if (childName && (!ownedChild || ownedChild.exitCode !== null)) {
+      emitStatus(`${label} process exited before becoming ready`);
+      return false;
+    }
     if (await check()) {
+      if (ownedChild && ownedChild.exitCode !== null) return false;
       emitStatus(`${label} ready`);
       return true;
     }
@@ -336,6 +344,60 @@ async function waitUntil(label, check, timeoutMs) {
     await new Promise((r) => setTimeout(r, HEALTH_POLL_MS));
   }
   return false;
+}
+
+function portAvailable(host, port) {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once("error", () => resolve(false));
+    probe.listen({ host, port, exclusive: true }, () => {
+      probe.close(() => resolve(true));
+    });
+  });
+}
+
+async function runDataMigrations(env2, project) {
+  const python = desktop.bundledPythonPath();
+  if (!python || !fs.existsSync(python)) {
+    return { ok: false, error: "Bundled Python runtime is unavailable." };
+  }
+  emitStatus("Checking user data version…");
+  const args = [
+    "-m",
+    "omnigent.server.private_fund_data_migrations",
+    "migrate",
+    "--app-version",
+    packageMetadata.version,
+    "--data-root",
+    env2.PRIVATE_FUND_MIGRATION_DATA_ROOT,
+    "--backup-root",
+    env2.PRIVATE_FUND_MIGRATION_BACKUP_ROOT,
+    "--manifest",
+    env2.PRIVATE_FUND_DATA_MANIFEST,
+  ];
+  return new Promise((resolve) => {
+    const child = spawnTracked("migration", python, args, env2, project);
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    child.once("error", (error) => finish({ ok: false, error: error.message }));
+    child.once("exit", (code) => {
+      if (code === 0) {
+        emitStatus("User data is ready");
+        finish({ ok: true });
+      } else {
+        finish({
+          ok: false,
+          error:
+            "User data migration failed. Existing data was restored; check migration.log in the app data logs folder.",
+        });
+      }
+    });
+  });
 }
 
 /**
@@ -395,7 +457,7 @@ function nativeChildEnv(env, root, project) {
 
   // LiteLLM is the Anthropic-compatible gateway for Claude Code on desktop.
   const litellmHost = env.LITELLM_HOST || "127.0.0.1";
-  const litellmPort = env.LITELLM_PORT || "4000";
+  const litellmPort = env.LITELLM_PORT || String(desktop.DEFAULT_LITELLM_PORT);
   const litellmUrl = `http://${litellmHost}:${litellmPort}`;
   const noProxyEntries = String(env.NO_PROXY || env.no_proxy || "")
     .split(",")
@@ -489,7 +551,12 @@ async function startLiteLlm(env2, endpoints, root, project) {
     env2,
     project || root,
   );
-  if (!(await waitUntil("LiteLLM", () => litellmHealthy(endpoints.litellmUrl), DEFAULT_START_TIMEOUT_MS))) {
+  if (!(await waitUntil(
+    "LiteLLM",
+    () => litellmHealthy(endpoints.litellmUrl),
+    DEFAULT_START_TIMEOUT_MS,
+    "litellm",
+  ))) {
     return { ok: false, error: "LiteLLM did not become healthy. Check logs in app data folder." };
   }
   return { ok: true };
@@ -571,15 +638,22 @@ async function startNative(env, endpoints) {
       fs.mkdirSync(env2.PYTHONPYCACHEPREFIX, { recursive: true });
     }
     if (env2.CLAUDE_CONFIG_DIR) fs.mkdirSync(env2.CLAUDE_CONFIG_DIR, { recursive: true });
+    if (env2.OMNIGENT_LOG_DIR) fs.mkdirSync(env2.OMNIGENT_LOG_DIR, { recursive: true });
+    if (env2.PRIVATE_FUND_MIGRATION_BACKUP_ROOT) {
+      fs.mkdirSync(env2.PRIVATE_FUND_MIGRATION_BACKUP_ROOT, { recursive: true });
+    }
   } catch {
     // ignore
   }
 
   const serverHost = env2.OMNIGENT_SERVER_HOST || "127.0.0.1";
-  const serverPort = env2.OMNIGENT_SERVER_PORT || "6767";
+  const serverPort = env2.OMNIGENT_SERVER_PORT || String(desktop.DEFAULT_SERVER_PORT);
   const omnigentCwd = fs.existsSync(path.join(project, "omnigent"))
     ? path.join(project, "omnigent")
     : project;
+
+  const migrationResult = await runDataMigrations(env2, omnigentCwd);
+  if (!migrationResult.ok) return migrationResult;
 
   const litellmResult = await startLiteLlm(env2, endpoints, root, project);
   if (!litellmResult.ok) return litellmResult;
@@ -606,7 +680,12 @@ async function startNative(env, endpoints) {
     omnigentCwd,
   );
 
-  if (!(await waitUntil("Omnigent Server", () => serverHealthy(endpoints.serverUrl), DEFAULT_START_TIMEOUT_MS))) {
+  if (!(await waitUntil(
+    "Omnigent Server",
+    () => serverHealthy(endpoints.serverUrl),
+    DEFAULT_START_TIMEOUT_MS,
+    "server",
+  ))) {
     return {
       ok: false,
       error: "Omnigent server did not become healthy. Check logs in app data folder.",
@@ -642,6 +721,15 @@ async function startNative(env, endpoints) {
   );
 
   await new Promise((r) => setTimeout(r, 2000));
+  for (const name of ["litellm", "server", "tracking", "valuation", "host"]) {
+    const child = children.get(name);
+    if (!child || child.exitCode !== null) {
+      return {
+        ok: false,
+        error: `${name} exited during desktop startup. Check ${name}.log in the app data logs folder.`,
+      };
+    }
+  }
   return { ok: true, serverUrl: endpoints.serverUrl };
 }
 
@@ -691,7 +779,7 @@ async function startWsl(env, endpoints) {
 async function ensureStackRunning(llmConfig = null) {
   const endpoints = desktop.stackEndpoints();
   // Only reuse an already-running server if WE started it (or user opts in).
-  // Otherwise a leftover WSL/dev stack on :6767 would show foreign data and
+  // Otherwise a leftover dev stack on the desktop port could show foreign data and
   // look like a "silent fallback" — which is not zero-config native mode.
   const reuseExisting =
     process.env.DESKTOP_REUSE_EXISTING_SERVER === "1" || children.size > 0;
@@ -700,10 +788,20 @@ async function ensureStackRunning(llmConfig = null) {
     strategy = strategy || "existing";
     return { ok: true, serverUrl: endpoints.serverUrl, strategy };
   }
-  if (!reuseExisting && (await serverHealthy(endpoints.serverUrl))) {
-    emitStatus(
-      "Port busy with another local server; starting owned stack may fail if ports clash…",
-    );
+  if (!reuseExisting) {
+    const serverHost = "127.0.0.1";
+    if (!(await portAvailable(serverHost, endpoints.serverPort))) {
+      return {
+        ok: false,
+        error: `Desktop server port ${endpoints.serverPort} is already in use by another process. Close it or change the desktop port before retrying.`,
+      };
+    }
+    if (!(await portAvailable(serverHost, endpoints.litellmPort))) {
+      return {
+        ok: false,
+        error: `Desktop model gateway port ${endpoints.litellmPort} is already in use by another process. Close it or change the desktop port before retrying.`,
+      };
+    }
   }
 
   const env = desktop.buildStackEnv(llmRuntimeEnv(llmConfig));
@@ -767,6 +865,8 @@ module.exports = {
   httpOk,
   litellmHealthy,
   serverHealthy,
+  portAvailable,
+  runDataMigrations,
   detectStrategy,
   hasNativeRuntime,
   _children: children,

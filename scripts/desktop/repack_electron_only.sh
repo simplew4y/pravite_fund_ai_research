@@ -21,5 +21,5 @@ if(!(t.includes('proxy_cli')||t.includes('Scripts'+require('path').sep+'litellm.
 }
 console.log('OK asar litellm fix present');
 "
-ls -lah dist/PrivateFundWorkbench-Setup-0.3.0-x64.exe dist/win-unpacked/resources/app.asar
+ls -lah dist/PrivateFundWorkbench-Setup-0.2.1-x64.exe dist/win-unpacked/resources/app.asar
 echo DONE

@@ -8,6 +8,17 @@ const path = require("node:path");
 const supervisor = require("../src/process_supervisor");
 
 describe("process_supervisor LLM configuration", () => {
+  it("detects whether a loopback port is owned by another process", async () => {
+    const net = require("node:net");
+    const server = net.createServer();
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.equal(typeof address, "object");
+    assert.equal(await supervisor.portAvailable("127.0.0.1", address.port), false);
+    await new Promise((resolve) => server.close(resolve));
+    assert.equal(await supervisor.portAvailable("127.0.0.1", address.port), true);
+  });
+
   it("maps a user provider to child environment variables", () => {
     assert.deepEqual(
       supervisor.llmRuntimeEnv({

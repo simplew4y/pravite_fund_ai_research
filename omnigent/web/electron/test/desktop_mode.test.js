@@ -9,6 +9,12 @@ const path = require("node:path");
 const desktop = require("../src/desktop_mode");
 
 describe("desktop_mode", () => {
+  it("uses ports isolated from the browser development stack", () => {
+    assert.equal(desktop.DEFAULT_SERVER_PORT, 17667);
+    assert.equal(desktop.DEFAULT_LITELLM_PORT, 14000);
+    assert.equal(desktop.DEFAULT_SERVER_URL, "http://127.0.0.1:17667");
+  });
+
   it("parseEnvFile reads KEY=VALUE and ignores comments", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pf-desktop-"));
     const file = path.join(dir, "desktop.env");
@@ -50,6 +56,15 @@ describe("desktop_mode", () => {
       path.join(desktop.runtimeRoot(), "userData", "pycache", "python312"),
     );
     if (prev !== undefined) process.env.PYTHONPYCACHEPREFIX = prev;
+  });
+
+  it("keeps migrations and backups under the Electron user data root", () => {
+    const env = desktop.buildStackEnv();
+    const userData = path.join(desktop.runtimeRoot(), "userData");
+    assert.equal(env.PRIVATE_FUND_MIGRATION_DATA_ROOT, path.join(userData, "data"));
+    assert.equal(env.PRIVATE_FUND_MIGRATION_BACKUP_ROOT, path.join(userData, "backups"));
+    assert.equal(env.PRIVATE_FUND_DATA_MANIFEST, path.join(userData, "data-manifest.json"));
+    assert.equal(env.OMNIGENT_LOG_DIR, path.join(userData, "logs"));
   });
 
   it("buildStackEnv preserves an explicit Python bytecode cache path", () => {

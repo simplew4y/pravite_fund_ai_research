@@ -55,11 +55,82 @@ export ELECTRON_BUILDER_CACHE="${ELECTRON_BUILDER_CACHE:-$HOME/.cache/electron-b
 export DESKTOP_MODE=bundled
 export CSC_IDENTITY_AUTO_DISCOVERY="${CSC_IDENTITY_AUTO_DISCOVERY:-false}"
 
+echo "==> Removing previous Windows package outputs"
+rm -rf "$ELECTRON_DIR/dist"
+
 echo "==> electron-builder --win --x64"
 ./node_modules/.bin/electron-builder --win --x64
 
+echo "==> Writing release metadata"
+export PF_RELEASE_ROOT="$ROOT_DIR"
+export PF_RELEASE_DIST="$ELECTRON_DIR/dist"
+python3 - <<'PY'
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(os.environ["PF_RELEASE_ROOT"])
+dist = Path(os.environ["PF_RELEASE_DIST"])
+release = json.loads((root / "product-release.json").read_text(encoding="utf-8"))
+commit = subprocess.check_output(
+    ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+).strip()
+built_at = datetime.now(timezone.utc).isoformat()
+runtime_version = {}
+version_file = root / "omnigent/web/electron/resources/runtime/VERSION"
+if version_file.is_file():
+    for line in version_file.read_text(encoding="utf-8").splitlines():
+        key, separator, value = line.partition("=")
+        if separator:
+            runtime_version[key] = value
+
+artifacts = []
+for path in sorted(dist.iterdir()):
+    if not path.is_file() or path.suffix.lower() not in {".exe", ".blockmap"}:
+        continue
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    artifacts.append({"name": path.name, "size": path.stat().st_size, "sha256": digest})
+
+build_info = [
+    f"product_version={release['productVersion']}",
+    f"commit={commit}",
+    f"built_at={built_at}",
+    "platform=windows",
+    "arch=x64",
+    f"database_changed={str(bool(release['databaseChanged'])).lower()}",
+    f"database_target_version={release['databaseTargetVersion']}",
+    f"python={runtime_version.get('python', 'unknown')}",
+]
+(dist / "BUILD_INFO.txt").write_text("\n".join(build_info) + "\n", encoding="utf-8")
+
+manifest = {
+    "productVersion": release["productVersion"],
+    "commit": commit,
+    "builtAt": built_at,
+    "platform": "windows",
+    "arch": "x64",
+    "databaseChanged": bool(release["databaseChanged"]),
+    "databaseTargetVersion": release["databaseTargetVersion"],
+    "migrationComponents": release["migrations"],
+    "artifacts": artifacts,
+}
+(dist / "RELEASE_MANIFEST.json").write_text(
+    json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+)
+(dist / "SHA256SUMS").write_text(
+    "".join(f"{item['sha256']}  {item['name']}\n" for item in artifacts), encoding="utf-8"
+)
+PY
+
 echo "==> Artifacts:"
 ls -lah "$ELECTRON_DIR/dist"/*.exe 2>/dev/null || true
+ls -lah "$ELECTRON_DIR/dist"/*.blockmap "$ELECTRON_DIR/dist"/BUILD_INFO.txt \
+  "$ELECTRON_DIR/dist"/RELEASE_MANIFEST.json "$ELECTRON_DIR/dist"/SHA256SUMS 2>/dev/null || true
 du -sh "$ELECTRON_DIR/dist/win-unpacked" 2>/dev/null || true
 test -f "$ELECTRON_DIR/dist/win-unpacked/resources/runtime/python/python.exe" && echo "OK: bundled python.exe in package"
 test -f "$ELECTRON_DIR/dist/win-unpacked/resources/app.asar" && echo "OK: app.asar present"
@@ -68,4 +139,4 @@ echo "Install on a CLEAN Windows PC (no WSL/Python required):"
 echo "  $ELECTRON_DIR/dist/PrivateFundWorkbench-Setup-*.exe"
 echo "Or portable:"
 echo "  $ELECTRON_DIR/dist/win-unpacked/PrivateFundWorkbench.exe"
-echo "User data will live under %APPDATA%\\PrivateFundWorkbench\\data\\users"
+echo "User data will live under %APPDATA%\\私募研究工作台\\data\\users"

@@ -97,6 +97,7 @@ rsync -a \
   --exclude 'tests' \
   --exclude '/examples' \
   "$ROOT_DIR/omnigent/" "$PROJECT/omnigent/"
+cp -f "$ROOT_DIR/product-release.json" "$PROJECT/product-release.json"
 
 PROJECT_EXAMPLES="$PROJECT/omnigent/omnigent/resources/examples"
 mkdir -p "$PROJECT_EXAMPLES"
@@ -144,9 +145,9 @@ cat > "$RUNTIME_DIR/config/desktop.env" <<'EOF'
 DESKTOP_MODE=bundled
 DESKTOP_STACK=native
 LITELLM_HOST=127.0.0.1
-LITELLM_PORT=4000
+LITELLM_PORT=14000
 OMNIGENT_SERVER_HOST=127.0.0.1
-OMNIGENT_SERVER_PORT=6767
+OMNIGENT_SERVER_PORT=17667
 OMNIGENT_AUTH_ENABLED=1
 OMNIGENT_AUTH_PROVIDER=cloud_accounts
 OMNIGENT_ACCOUNTS_ENABLED=1

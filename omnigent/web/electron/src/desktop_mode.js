@@ -12,10 +12,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 /** Default loopback URL for the private-fund Omnigent server. */
-const DEFAULT_SERVER_URL = "http://127.0.0.1:6767";
-const DEFAULT_LITELLM_URL = "http://127.0.0.1:4000";
-const DEFAULT_SERVER_PORT = 6767;
-const DEFAULT_LITELLM_PORT = 4000;
+const DEFAULT_SERVER_URL = "http://127.0.0.1:17667";
+const DEFAULT_LITELLM_URL = "http://127.0.0.1:14000";
+const DEFAULT_SERVER_PORT = 17667;
+const DEFAULT_LITELLM_PORT = 14000;
 
 /**
  * Lazy electron.app — unit tests run under plain Node without Electron.
@@ -195,6 +195,9 @@ function buildStackEnv(extra = {}) {
   }
   const dataDir = path.join(userData, "data");
   const configHome = path.join(userData, "config");
+  const logDir = path.join(userData, "logs");
+  const backupDir = path.join(userData, "backups");
+  const dataManifest = path.join(userData, "data-manifest.json");
   const pythonCache = path.join(userData, "pycache", "python312");
   const projectRoot = path.join(runtimeRoot(), "project");
   const userDataRoot = path.join(dataDir, "users");
@@ -295,6 +298,13 @@ function buildStackEnv(extra = {}) {
       `${serverUrl},http://localhost:${serverPort},http://127.0.0.1:${serverPort}`,
     OMNIGENT_CONFIG_HOME: fileEnv.OMNIGENT_CONFIG_HOME || configHome,
     OMNIGENT_DATA_DIR: fileEnv.OMNIGENT_DATA_DIR || dataDir,
+    OMNIGENT_LOG_DIR: fileEnv.OMNIGENT_LOG_DIR || logDir,
+    PRIVATE_FUND_MIGRATION_DATA_ROOT:
+      fileEnv.PRIVATE_FUND_MIGRATION_DATA_ROOT || dataDir,
+    PRIVATE_FUND_MIGRATION_BACKUP_ROOT:
+      fileEnv.PRIVATE_FUND_MIGRATION_BACKUP_ROOT || backupDir,
+    PRIVATE_FUND_DATA_MANIFEST:
+      fileEnv.PRIVATE_FUND_DATA_MANIFEST || dataManifest,
     PYTHONPYCACHEPREFIX:
       extra.PYTHONPYCACHEPREFIX ||
       fileEnv.PYTHONPYCACHEPREFIX ||
