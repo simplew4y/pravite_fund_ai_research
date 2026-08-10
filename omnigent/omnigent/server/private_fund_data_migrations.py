@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import sqlite3
 import sys
 import time
@@ -141,9 +140,25 @@ def _load_collection_schema_ensurer() -> Any:
 
         return ensure_collection_schema
     except ImportError:
-        repository = Path(__file__).resolve().parents[3]
-        finsagent = repository / "FinSagent"
-        if finsagent.is_dir() and str(finsagent) not in sys.path:
+        module_path = Path(__file__).resolve()
+        candidates: list[Path] = []
+        for ancestor in module_path.parents:
+            candidates.extend(
+                (
+                    ancestor / "FinSagent",
+                    ancestor / "project" / "FinSagent",
+                )
+            )
+        finsagent = next(
+            (path for path in candidates if (path / "data_pipeline").is_dir()),
+            None,
+        )
+        if finsagent is None:
+            searched = ", ".join(str(path) for path in candidates)
+            raise MigrationError(
+                f"FinSAgent data_pipeline was not found; searched: {searched}"
+            ) from None
+        if str(finsagent) not in sys.path:
             sys.path.insert(0, str(finsagent))
         from data_pipeline.private_fund_directory_ingest import ensure_collection_schema
 
@@ -328,10 +343,21 @@ def _backup_database(source: Path, destination: Path) -> None:
 
 def _restore_database(backup: Path, target: Path) -> None:
     temporary = target.with_name(f".{target.name}.restore.tmp")
-    shutil.copy2(backup, temporary)
-    os.replace(temporary, target)
-    target.with_name(f"{target.name}-wal").unlink(missing_ok=True)
-    target.with_name(f"{target.name}-shm").unlink(missing_ok=True)
+    temporary.unlink(missing_ok=True)
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            target.with_name(f"{target.name}-wal").unlink(missing_ok=True)
+            target.with_name(f"{target.name}-shm").unlink(missing_ok=True)
+            with sqlite3.connect(backup, timeout=30) as source_conn, sqlite3.connect(
+                target, timeout=30
+            ) as target_conn:
+                source_conn.backup(target_conn)
+            return
+        except (OSError, sqlite3.Error) as exc:
+            last_error = exc
+            time.sleep(0.2 * (attempt + 1))
+    raise MigrationError(f"failed to restore {target} from {backup}: {last_error}")
 
 
 def migrate_collection_database(
