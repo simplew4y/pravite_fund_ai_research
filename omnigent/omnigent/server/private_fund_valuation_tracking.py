@@ -20,9 +20,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from omnigent.server import private_fund_valuation_metrics, private_fund_valuation_overview
+from omnigent.server import (
+    private_fund_valuation_impact_agent,
+    private_fund_valuation_metrics,
+    private_fund_valuation_overview,
+)
 
-VALUATION_TRACKING_SCHEMA_VERSION = 3
+VALUATION_TRACKING_SCHEMA_VERSION = 4
 VALUATION_ANALYZER_VERSION = "valuation-tracking-v1"
 ALERT_STATUSES = frozenset({"new", "acknowledged", "dismissed", "snoozed"})
 JOB_STATUSES = frozenset({"queued", "running", "completed", "failed"})
@@ -36,6 +40,7 @@ VALUATION_MODEL_SUBTYPES = frozenset(
 )
 MATERIALITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 _RETRY_DELAYS_SECONDS = (30, 120, 600)
+SECURITY_DIRECTORY_CACHE_TTL_HOURS = 24
 
 
 _METRIC_PROFILES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
@@ -174,6 +179,149 @@ def _tables(conn: sqlite3.Connection) -> set[str]:
     }
 
 
+
+
+def _canonical_security_ticker(value: Any) -> tuple[str, str, str, str]:
+    raw = unicodedata.normalize("NFKC", str(value or "")).strip().upper()
+    hk = re.fullmatch(r"(\d{1,5})\.HK", raw)
+    if hk:
+        digits = hk.group(1).lstrip("0") or "0"
+        return f"{digits}.HK", "hk", "HK", digits.zfill(5)
+    a_share = re.fullmatch(r"(\d{6})(?:\.(SZ|SH|BJ))?", raw)
+    if a_share:
+        digits, exchange = a_share.groups()
+        if not exchange:
+            if digits.startswith(("4", "8")):
+                exchange = "BJ"
+            elif digits.startswith(("5", "6", "9")):
+                exchange = "SH"
+            else:
+                exchange = "SZ"
+        return f"{digits}.{exchange}", "a_share", exchange, digits
+    raise ValueError("unsupported security ticker format; first phase supports A-share and HK .HK tickers")
+
+
+def _security_cache_seed(now: str) -> list[dict[str, str]]:
+    entries = [
+        ("阳光电源", "300274.SZ", "a_share", "SZ"),
+        ("宁德时代", "300750.SZ", "a_share", "SZ"),
+        ("贵州茅台", "600519.SH", "a_share", "SH"),
+        ("腾讯控股", "700.HK", "hk", "HK"),
+        ("阿里巴巴-W", "9988.HK", "hk", "HK"),
+    ]
+    return [
+        {
+            "security_id": f"vsd_{_digest(market, ticker, length=20)}",
+            "market": market,
+            "exchange": exchange,
+            "company_name": name,
+            "ticker": ticker,
+            "normalized_name": _normalize(name),
+            "normalized_ticker": _normalize(ticker),
+            "source": "builtin:first_phase_ahk_directory",
+            "source_updated_at": now,
+            "created_at": now,
+            "updated_at": now,
+        }
+        for name, ticker, market, exchange in entries
+    ]
+
+
+def _ensure_security_directory_cache(conn: sqlite3.Connection) -> None:
+    if "valuation_security_directory" not in _tables(conn):
+        return
+    count = int(conn.execute("SELECT COUNT(*) FROM valuation_security_directory").fetchone()[0])
+    if count:
+        return
+    now = _now_iso()
+    for entry in _security_cache_seed(now):
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO valuation_security_directory
+                (security_id, market, exchange, company_name, ticker,
+                 normalized_name, normalized_ticker, source, source_updated_at,
+                 cache_status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+            """,
+            (
+                entry["security_id"],
+                entry["market"],
+                entry["exchange"],
+                entry["company_name"],
+                entry["ticker"],
+                entry["normalized_name"],
+                entry["normalized_ticker"],
+                entry["source"],
+                entry["source_updated_at"],
+                entry["created_at"],
+                entry["updated_at"],
+            ),
+        )
+
+
+def _security_candidate_payload(row: sqlite3.Row) -> dict[str, Any]:
+    payload = dict(row)
+    payload["label"] = f"{payload['company_name']}（{payload['ticker']}）"
+    return payload
+
+
+def _find_security_candidate(
+    conn: sqlite3.Connection,
+    *,
+    company_name: str,
+    ticker: str,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    reasons: list[str] = []
+    normalized_name = _normalize(company_name)
+    try:
+        canonical_ticker, market, _exchange, _provider_symbol = _canonical_security_ticker(ticker)
+    except ValueError as exc:
+        return None, [str(exc)]
+    row = conn.execute(
+        """
+        SELECT * FROM valuation_security_directory
+        WHERE cache_status='active' AND market=? AND normalized_ticker=?
+        LIMIT 1
+        """,
+        (market, _normalize(canonical_ticker)),
+    ).fetchone()
+    if row is None:
+        return None, ["security_not_found_in_supported_directory"]
+    candidate = _security_candidate_payload(row)
+    candidate_name = _normalize(candidate["company_name"])
+    if normalized_name and normalized_name not in candidate_name and candidate_name not in normalized_name:
+        reasons.append("company_name_and_ticker_do_not_match_same_directory_record")
+    if reasons:
+        return candidate, reasons
+    return candidate, []
+
+
+def search_security_directory(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    query: str,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    del dataset_id
+    needle = _normalize(query)
+    if not needle:
+        return []
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn)
+        rows = conn.execute(
+            """
+            SELECT * FROM valuation_security_directory
+            WHERE cache_status='active'
+              AND (normalized_name LIKE ? OR normalized_ticker LIKE ?)
+            ORDER BY CASE WHEN normalized_ticker=? THEN 0 ELSE 1 END,
+                     company_name
+            LIMIT ?
+            """,
+            (f"%{needle}%", f"%{needle}%", needle, max(1, min(limit, 20))),
+        ).fetchall()
+        return [_security_candidate_payload(row) for row in rows]
+
 def ensure_valuation_schema(conn: sqlite3.Connection, dataset_id: str | None = None) -> None:
     """Create the additive valuation-tracking schema in one collection DB."""
 
@@ -186,6 +334,9 @@ def ensure_valuation_schema(conn: sqlite3.Connection, dataset_id: str | None = N
             name TEXT NOT NULL,
             company_name TEXT,
             company_ticker TEXT,
+            identity_source TEXT NOT NULL DEFAULT 'auto_detected',
+            identity_status TEXT NOT NULL DEFAULT 'unverified',
+            identity_updated_at TEXT,
             model_type TEXT,
             current_model_version_id TEXT,
             current_version_no INTEGER NOT NULL DEFAULT 0,
@@ -328,6 +479,38 @@ def ensure_valuation_schema(conn: sqlite3.Connection, dataset_id: str | None = N
             updated_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS valuation_security_directory (
+            security_id TEXT PRIMARY KEY,
+            market TEXT NOT NULL,
+            exchange TEXT NOT NULL,
+            company_name TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            normalized_name TEXT NOT NULL,
+            normalized_ticker TEXT NOT NULL,
+            source TEXT NOT NULL,
+            source_updated_at TEXT NOT NULL,
+            cache_status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(market, normalized_ticker)
+        );
+
+        CREATE TABLE IF NOT EXISTS valuation_model_identity_audit (
+            audit_id TEXT PRIMARY KEY,
+            dataset_id TEXT NOT NULL,
+            series_id TEXT NOT NULL,
+            old_company_name TEXT,
+            old_company_ticker TEXT,
+            new_company_name TEXT,
+            new_company_ticker TEXT,
+            change_source TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            validation_status TEXT NOT NULL,
+            validation_reasons_json TEXT NOT NULL DEFAULT '[]',
+            candidate_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS valuation_tracking_jobs (
             job_id TEXT PRIMARY KEY,
             dataset_id TEXT NOT NULL,
@@ -414,6 +597,20 @@ def ensure_valuation_schema(conn: sqlite3.Connection, dataset_id: str | None = N
             ON valuation_derived_models(series_id, created_at DESC);
         """
     )
+    series_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(valuation_model_series)")
+    }
+    for column_name, definition in (
+        ("identity_source", "TEXT NOT NULL DEFAULT 'auto_detected'"),
+        ("identity_status", "TEXT NOT NULL DEFAULT 'unverified'"),
+        ("identity_updated_at", "TEXT"),
+    ):
+        if column_name not in series_columns:
+            conn.execute(
+                f"ALTER TABLE valuation_model_series ADD COLUMN {column_name} {definition}"
+            )
+    _ensure_security_directory_cache(conn)
+
     derived_columns = {
         str(row[1]) for row in conn.execute("PRAGMA table_info(valuation_derived_models)")
     }
@@ -517,12 +714,6 @@ def _ensure_series(
              model_type, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(dataset_id, series_key) DO UPDATE SET
-            company_name=COALESCE(
-                NULLIF(excluded.company_name,''), valuation_model_series.company_name
-            ),
-            company_ticker=COALESCE(
-                NULLIF(excluded.company_ticker,''), valuation_model_series.company_ticker
-            ),
             model_type=COALESCE(NULLIF(excluded.model_type,''), valuation_model_series.model_type),
             updated_at=excluded.updated_at
         """,
@@ -1249,11 +1440,32 @@ def enqueue_job(
     priority: int = 100,
     max_attempts: int = 4,
     requeue_failed: bool = False,
+    replace_pending: bool = False,
 ) -> dict[str, Any]:
     now = _now_iso()
     job_id = f"vtj_{_digest(dataset_id, job_type, source_id, VALUATION_ANALYZER_VERSION)}"
     with _connect(collection_db) as conn:
         ensure_valuation_schema(conn, dataset_id)
+        scope = payload or {}
+        if replace_pending and scope.get("series_id") and scope.get("model_version_id"):
+            conn.execute(
+                """
+                UPDATE valuation_tracking_jobs
+                SET status='failed', finished_at=?, locked_at=NULL,
+                    last_error='Superseded by a newer refresh request.', updated_at=?
+                WHERE dataset_id=? AND job_type=? AND status='queued'
+                  AND json_extract(payload_json, '$.series_id')=?
+                  AND json_extract(payload_json, '$.model_version_id')=?
+                """,
+                (
+                    now,
+                    now,
+                    dataset_id,
+                    job_type,
+                    str(scope["series_id"]),
+                    str(scope["model_version_id"]),
+                ),
+            )
         conn.execute(
             """
             INSERT OR IGNORE INTO valuation_tracking_jobs
@@ -1359,27 +1571,86 @@ def enqueue_context_refresh(
     dataset_id: str,
     *,
     source_id: str = "",
+    series_id: str = "",
+    model_version_id: str = "",
     requeue_failed: bool = False,
+    replace_pending: bool = False,
+    document_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Queue auxiliary cards plus a fresh model-versus-actual comparison.
-
-    A content fingerprint makes automatic discovery idempotent.  Callers may
-    supply an ingest job id to expose the upstream trigger in the job payload.
-    """
+    """Queue one version-scoped auxiliary-card and impact-card refresh."""
 
     with _connect(collection_db) as conn:
         ensure_valuation_schema(conn, dataset_id)
         fingerprint = _current_document_fingerprint(conn, dataset_id)
         conn.commit()
-    refresh_source = f"{fingerprint}:{source_id}" if source_id else fingerprint
+    selected_document_ids = list(
+        dict.fromkeys(
+            str(item).strip() for item in (document_ids or []) if str(item).strip()
+        )
+    )
+    normalized_document_ids = selected_document_ids or None
+    selection_mode = "selected_documents" if normalized_document_ids else "all_current"
+    scope = {
+        "document_fingerprint": fingerprint,
+        "parent_ingest_job_id": source_id,
+        "series_id": str(series_id or ""),
+        "model_version_id": str(model_version_id or ""),
+        "selection_mode": selection_mode,
+        "document_ids": normalized_document_ids,
+    }
+    manual_run_key = source_id if str(source_id).startswith("manual-") else ""
+    refresh_source = (
+        "context:"
+        f"{scope['model_version_id']}:{fingerprint}:"
+        f"{private_fund_valuation_impact_agent.EXTRACTOR_VERSION}:"
+        f"{selection_mode}:{_digest(_json(normalized_document_ids))}:{manual_run_key}"
+        if scope["model_version_id"]
+        else f"{fingerprint}:{source_id}" if source_id else fingerprint
+    )
     return enqueue_job(
         collection_db,
         dataset_id,
         job_type="valuation_context_refresh",
         source_id=refresh_source,
-        payload={"document_fingerprint": fingerprint, "parent_ingest_job_id": source_id},
-        priority=70,
+        payload=scope,
+        priority=90,
         requeue_failed=requeue_failed,
+        replace_pending=replace_pending,
+    )
+
+
+def enqueue_model_metric_refresh(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    series_id: str,
+    model_version_id: str,
+    refresh_bucket: str,
+    trigger: str = "manual_refresh",
+    requeue_failed: bool = False,
+    replace_pending: bool = False,
+) -> dict[str, Any]:
+    """Queue a scoped model-only five-metric rebuild before market refresh."""
+
+    bucket = str(refresh_bucket or "").strip()
+    if not bucket:
+        raise ValueError("model metric refresh bucket is required")
+    scope = {
+        "refresh_bucket": bucket,
+        "trigger": str(trigger or "manual_refresh"),
+        "series_id": str(series_id),
+        "model_version_id": str(model_version_id),
+    }
+    return enqueue_job(
+        collection_db,
+        dataset_id,
+        job_type="model_metric_refresh",
+        source_id=f"model-metrics:{scope['model_version_id']}:{bucket}",
+        payload=scope,
+        priority=70,
+        max_attempts=2,
+        requeue_failed=requeue_failed,
+        replace_pending=replace_pending,
     )
 
 
@@ -1388,23 +1659,94 @@ def enqueue_market_data_refresh(
     dataset_id: str,
     *,
     refresh_bucket: str,
+    trigger: str = "scheduled_interval",
+    series_id: str = "",
+    model_version_id: str = "",
     requeue_failed: bool = False,
+    replace_pending: bool = False,
 ) -> dict[str, Any]:
-    """Queue one idempotent market refresh for a scheduled time bucket."""
+    """Queue one idempotent, optionally version-scoped market refresh."""
 
     bucket = str(refresh_bucket or "").strip()
     if not bucket:
         raise ValueError("market refresh bucket is required")
+    scope = {
+        "refresh_bucket": bucket,
+        "trigger": str(trigger or "scheduled_interval"),
+        "series_id": str(series_id or ""),
+        "model_version_id": str(model_version_id or ""),
+    }
+    source = (
+        f"market-data:{scope['model_version_id']}:{bucket}"
+        if scope["model_version_id"]
+        else f"market-data:{bucket}"
+    )
     return enqueue_job(
         collection_db,
         dataset_id,
         job_type="market_data_refresh",
-        source_id=f"market-data:{bucket}",
-        payload={"refresh_bucket": bucket, "trigger": "scheduled_interval"},
+        source_id=source,
+        payload=scope,
         priority=80,
         max_attempts=4,
         requeue_failed=requeue_failed,
+        replace_pending=replace_pending,
     )
+
+
+def refresh_current_model_metrics(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    series_id: str = "",
+    model_version_id: str = "",
+) -> dict[str, Any]:
+    """Recompute current model values without depending on a market provider."""
+
+    refreshed: list[dict[str, Any]] = []
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn, dataset_id)
+        series_rows = conn.execute(
+            """
+            SELECT * FROM valuation_model_series
+            WHERE dataset_id=? AND current_model_version_id IS NOT NULL
+              AND (?='' OR series_id=?)
+              AND (?='' OR current_model_version_id=?)
+            ORDER BY updated_at DESC
+            """,
+            (
+                dataset_id,
+                str(series_id or ""),
+                str(series_id or ""),
+                str(model_version_id or ""),
+                str(model_version_id or ""),
+            ),
+        ).fetchall()
+        for series_row in series_rows:
+            version_row = conn.execute(
+                """
+                SELECT * FROM valuation_model_versions
+                WHERE dataset_id=? AND model_version_id=?
+                """,
+                (dataset_id, series_row["current_model_version_id"]),
+            ).fetchone()
+            if version_row is None:
+                continue
+            result = private_fund_valuation_metrics.refresh_model_metric_values(
+                conn,
+                dataset_id=dataset_id,
+                series=dict(series_row),
+                version=dict(version_row),
+            )
+            refreshed.append(
+                {
+                    "series_id": series_row["series_id"],
+                    "model_version_id": version_row["model_version_id"],
+                    "model_metric_count": result["model_metric_count"],
+                }
+            )
+        conn.commit()
+    return {"series": refreshed, "series_count": len(refreshed)}
 
 
 def refresh_current_market_data(
@@ -1412,6 +1754,8 @@ def refresh_current_market_data(
     dataset_id: str,
     *,
     provider: private_fund_valuation_metrics.MarketDataProvider | None = None,
+    series_id: str = "",
+    model_version_id: str = "",
 ) -> dict[str, Any]:
     """Refresh market snapshots without rerunning cards or LLM analysis."""
 
@@ -1424,9 +1768,11 @@ def refresh_current_market_data(
             """
             SELECT * FROM valuation_model_series
             WHERE dataset_id=? AND current_model_version_id IS NOT NULL
+              AND (?='' OR series_id=?)
+              AND (?='' OR current_model_version_id=?)
             ORDER BY updated_at DESC
             """,
-            (dataset_id,),
+            (dataset_id, str(series_id or ""), str(series_id or ""), str(model_version_id or ""), str(model_version_id or "")),
         ).fetchall()
         for series_row in series_rows:
             version_row = conn.execute(
@@ -1446,7 +1792,12 @@ def refresh_current_market_data(
                 provider=provider,
             )
             status = str(comparison.get("status") or "unknown")
-            if status == "failed":
+            error_message = str(comparison.get("error_message") or "").lower()
+            retryable_unavailable = status == "unavailable" and any(
+                marker in error_message
+                for marker in ("did not respond within", "timed out", "timeout", "connection")
+            )
+            if status == "failed" or retryable_unavailable:
                 failed_series.append(str(series_row["series_id"]))
             refreshed.append(
                 {
@@ -1465,12 +1816,73 @@ def refresh_current_market_data(
     return {"series": refreshed, "series_count": len(refreshed)}
 
 
+def refresh_current_context_cards(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    llm_client: Any | None = None,
+    series_id: str = "",
+    model_version_id: str = "",
+    document_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Generate auxiliary context and valuation-impact cards from stored facts."""
+
+    refreshed: list[dict[str, Any]] = []
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn, dataset_id)
+        series_rows = conn.execute(
+            """
+            SELECT * FROM valuation_model_series
+            WHERE dataset_id=? AND current_model_version_id IS NOT NULL
+              AND (?='' OR series_id=?)
+              AND (?='' OR current_model_version_id=?)
+            ORDER BY updated_at DESC
+            """,
+            (dataset_id, str(series_id or ""), str(series_id or ""), str(model_version_id or ""), str(model_version_id or "")),
+        ).fetchall()
+        for series_row in series_rows:
+            version_row = conn.execute(
+                """
+                SELECT * FROM valuation_model_versions
+                WHERE dataset_id=? AND model_version_id=?
+                """,
+                (dataset_id, series_row["current_model_version_id"]),
+            ).fetchone()
+            if version_row is None:
+                continue
+            cards = private_fund_valuation_metrics.refresh_context_cards(
+                conn,
+                dataset_id=dataset_id,
+                model_version_id=str(version_row["model_version_id"]),
+            )
+            valuation_impacts = private_fund_valuation_metrics.refresh_valuation_impacts(
+                conn,
+                dataset_id=dataset_id,
+                series_id=str(series_row["series_id"]),
+                model_version_id=str(version_row["model_version_id"]),
+                llm_client=llm_client,
+                document_ids=document_ids,
+            )
+            refreshed.append(
+                {
+                    "series_id": series_row["series_id"],
+                    "model_version_id": version_row["model_version_id"],
+                    "context_card_count": len(cards),
+                    "valuation_impact_status": valuation_impacts.get("status"),
+                    "valuation_impact_count": len(valuation_impacts.get("cards") or []),
+                }
+            )
+        conn.commit()
+    return {"series": refreshed, "series_count": len(refreshed)}
+
+
 def refresh_current_metric_analysis(
     collection_db: Path,
     dataset_id: str,
     *,
     provider: private_fund_valuation_metrics.MarketDataProvider | None = None,
     llm_client: Any | None = None,
+    document_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Refresh the five comparisons and auxiliary cards for every current model."""
 
@@ -1515,6 +1927,7 @@ def refresh_current_metric_analysis(
                 series_id=str(series_row["series_id"]),
                 model_version_id=str(version_row["model_version_id"]),
                 llm_client=llm_client,
+                document_ids=document_ids,
             )
             refreshed.append(
                 {
@@ -1611,21 +2024,65 @@ def process_next_job(
     if job is None:
         return None
     try:
+        job_payload = _decode(job["payload_json"], {})
+        scope_series_id = str(job_payload.get("series_id") or "")
+        scope_model_version_id = str(job_payload.get("model_version_id") or "")
         if job["job_type"] == "model_version_ingested":
             result = build_model_version(collection_db, dataset_id, str(job["source_id"]))
-            result["metric_analysis"] = refresh_current_metric_analysis(
+            scope_series_id = str(result.get("series_id") or "")
+            scope_model_version_id = str(result.get("model_version_id") or "")
+            if scope_series_id and scope_model_version_id:
+                enqueue_model_metric_refresh(
+                    collection_db,
+                    dataset_id,
+                    refresh_bucket=f"model-{scope_model_version_id}",
+                    trigger="model_ingested",
+                    series_id=scope_series_id,
+                    model_version_id=scope_model_version_id,
+                )
+                enqueue_market_data_refresh(
+                    collection_db,
+                    dataset_id,
+                    refresh_bucket=f"model-{scope_model_version_id}",
+                    trigger="model_ingested",
+                    series_id=scope_series_id,
+                    model_version_id=scope_model_version_id,
+                )
+                enqueue_context_refresh(
+                    collection_db,
+                    dataset_id,
+                    source_id=str(job["job_id"]),
+                    series_id=scope_series_id,
+                    model_version_id=scope_model_version_id,
+                )
+        elif job["job_type"] == "model_metric_refresh":
+            result = refresh_current_model_metrics(
                 collection_db,
                 dataset_id,
-                llm_client=llm_client,
-            )
-        elif job["job_type"] == "valuation_context_refresh":
-            result = refresh_current_metric_analysis(
-                collection_db,
-                dataset_id,
-                llm_client=llm_client,
+                series_id=scope_series_id,
+                model_version_id=scope_model_version_id,
             )
         elif job["job_type"] == "market_data_refresh":
-            result = refresh_current_market_data(collection_db, dataset_id)
+            result = refresh_current_market_data(
+                collection_db,
+                dataset_id,
+                series_id=scope_series_id,
+                model_version_id=scope_model_version_id,
+            )
+        elif job["job_type"] == "valuation_context_refresh":
+            selected_document_ids = [
+                str(item).strip()
+                for item in (job_payload.get("document_ids") or [])
+                if str(item).strip()
+            ]
+            result = refresh_current_context_cards(
+                collection_db,
+                dataset_id,
+                llm_client=llm_client,
+                series_id=scope_series_id,
+                model_version_id=scope_model_version_id,
+                document_ids=selected_document_ids or None,
+            )
         elif job["job_type"] == "agent_analysis":
             from omnigent.server import private_fund_valuation_agent
 
@@ -1737,6 +2194,24 @@ def list_series(collection_db: Path, dataset_id: str) -> list[dict[str, Any]]:
                 versions[0] if versions else None,
             )
             payload["current_version"] = latest
+            payload["identity_audit"] = [
+                {
+                    **dict(audit_row),
+                    "validation_reasons": _decode(audit_row["validation_reasons_json"], []),
+                    "candidate": _decode(audit_row["candidate_json"], {}),
+                }
+                for audit_row in conn.execute(
+                    """
+                    SELECT * FROM valuation_model_identity_audit
+                    WHERE dataset_id=? AND series_id=?
+                    ORDER BY created_at DESC LIMIT 20
+                    """,
+                    (dataset_id, row["series_id"]),
+                )
+            ]
+            for audit_item in payload["identity_audit"]:
+                audit_item.pop("validation_reasons_json", None)
+                audit_item.pop("candidate_json", None)
             payload["metric_analysis"] = (
                 private_fund_valuation_metrics.latest_metric_payload(
                     conn,
@@ -1855,6 +2330,122 @@ def compare_versions(
             "changes": changes,
         }
 
+
+
+
+def update_model_series_identity(
+    collection_db: Path,
+    dataset_id: str,
+    series_id: str,
+    *,
+    company_name: str,
+    company_ticker: str,
+    actor: str = "user",
+    change_source: str = "manual_entry",
+) -> dict[str, Any]:
+    name = str(company_name or "").strip()
+    ticker = str(company_ticker or "").strip()
+    if not name:
+        raise ValueError("company_name is required")
+    if not ticker:
+        raise ValueError("company_ticker is required")
+    with _connect(collection_db) as conn:
+        ensure_valuation_schema(conn, dataset_id)
+        series = conn.execute(
+            "SELECT * FROM valuation_model_series WHERE dataset_id=? AND series_id=?",
+            (dataset_id, series_id),
+        ).fetchone()
+        if series is None:
+            raise KeyError(series_id)
+        candidate, validation_reasons = _find_security_candidate(
+            conn,
+            company_name=name,
+            ticker=ticker,
+        )
+        if validation_reasons:
+            raise ValueError("; ".join(validation_reasons))
+        if candidate is None:
+            raise ValueError("security_not_found_in_supported_directory")
+        canonical_ticker = str(candidate["ticker"])
+        canonical_name = str(candidate["company_name"])
+        now = _now_iso()
+        audit_id = f"vmia_{_digest(dataset_id, series_id, now, change_source)}"
+        conn.execute(
+            """
+            INSERT INTO valuation_model_identity_audit
+                (audit_id, dataset_id, series_id, old_company_name, old_company_ticker,
+                 new_company_name, new_company_ticker, change_source, actor,
+                 validation_status, validation_reasons_json, candidate_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'validated_directory_match', ?, ?, ?)
+            """,
+            (
+                audit_id,
+                dataset_id,
+                series_id,
+                series["company_name"],
+                series["company_ticker"],
+                canonical_name,
+                canonical_ticker,
+                change_source,
+                actor or "user",
+                _json([]),
+                _json(candidate),
+                now,
+            ),
+        )
+        conn.execute(
+            """
+            UPDATE valuation_model_series
+            SET company_name=?, company_ticker=?, identity_source=?,
+                identity_status='validated_directory_match', identity_updated_at=?, updated_at=?
+            WHERE dataset_id=? AND series_id=?
+            """,
+            (canonical_name, canonical_ticker, change_source, now, now, dataset_id, series_id),
+        )
+        if "valuation_market_snapshots" in _tables(conn):
+            snapshot_columns = {
+                str(row[1]) for row in conn.execute("PRAGMA table_info(valuation_market_snapshots)")
+            }
+            if "is_stale" in snapshot_columns:
+                conn.execute(
+                    """
+                    UPDATE valuation_market_snapshots
+                    SET is_stale=1
+                    WHERE dataset_id=? AND series_id=? AND COALESCE(is_stale,0)=0
+                    """,
+                    (dataset_id, series_id),
+                )
+        updated = conn.execute(
+            "SELECT * FROM valuation_model_series WHERE dataset_id=? AND series_id=?",
+            (dataset_id, series_id),
+        ).fetchone()
+        current_model_version_id = str(updated["current_model_version_id"] or "") if updated else ""
+        conn.commit()
+    jobs: list[dict[str, Any]] = []
+    if current_model_version_id:
+        bucket = f"identity-{_digest(series_id, canonical_ticker, _now_iso(), length=16)}"
+        jobs.append(
+            enqueue_market_data_refresh(
+                collection_db,
+                dataset_id,
+                refresh_bucket=bucket,
+                trigger="identity_update",
+                series_id=series_id,
+                model_version_id=current_model_version_id,
+                requeue_failed=True,
+                replace_pending=True,
+            )
+        )
+    series_payload = next(
+        (item for item in list_series(collection_db, dataset_id) if item["series_id"] == series_id),
+        None,
+    )
+    return {
+        "series": series_payload,
+        "jobs": jobs,
+        "audit_id": audit_id,
+        "candidate": candidate,
+    }
 
 def list_jobs(collection_db: Path, dataset_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
     with _connect(collection_db) as conn:

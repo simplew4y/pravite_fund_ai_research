@@ -356,6 +356,12 @@ class RunValuationAgentAnalysisRequest(BaseModel):
     focus: str = Field(default="", max_length=2000)
 
 
+class UpdateValuationModelIdentityRequest(BaseModel):
+    company_name: str = Field(default="", max_length=240)
+    company_ticker: str = Field(default="", max_length=40)
+    change_source: str = Field(default="manual_entry", max_length=80)
+
+
 def _jsonable(value: Any) -> Any:
     if hasattr(value, "to_dict"):
         return _jsonable(value.to_dict())
@@ -2673,13 +2679,8 @@ def _project_pipeline_worker_in_scope(job_id: str, payload: dict[str, Any]) -> N
                         include_history=False,
                     )
                 )
-                valuation_tracking_jobs.append(
-                    private_fund_valuation_tracking.enqueue_context_refresh(
-                        _collection_db_path(dataset_id),
-                        dataset_id,
-                        source_id=job_id,
-                    )
-                )
+                # Model-version jobs enqueue their own version-scoped market and
+                # context work after the model identity is known.
             except Exception as exc:
                 valuation_tracking_enqueue_error = str(exc)
                 _logger.exception(
@@ -4761,22 +4762,107 @@ def create_private_fund_pdf_router(
         "/private-fund/projects/{dataset_id}/valuation-tracking/run",
         status_code=202,
     )
-    def run_project_valuation_tracking(dataset_id: str) -> dict[str, Any]:
+    def run_project_valuation_tracking(
+        dataset_id: str,
+        series_id: str = Query("", max_length=128),
+        model_version_id: str = Query("", max_length=128),
+        document_ids: list[str] = Query(default_factory=list),
+    ) -> dict[str, Any]:
         _require_project_row(dataset_id)
-        jobs = private_fund_valuation_tracking.enqueue_model_documents(
-            _collection_db_path(dataset_id),
-            dataset_id,
-            include_history=True,
-            requeue_failed=True,
-        )
-        private_fund_valuation_tracking.enqueue_context_refresh(
-            _collection_db_path(dataset_id),
-            dataset_id,
-            source_id=f"manual-{_now_iso()}",
-            requeue_failed=True,
-        )
+        collection_db = _collection_db_path(dataset_id)
+        manual_source_id = f"manual-{_now_iso()}"
+        jobs: list[dict[str, Any]] = []
+        if series_id and model_version_id:
+            version = private_fund_valuation_tracking.get_model_version(
+                collection_db, dataset_id, model_version_id
+            )
+            if str(version.get("series_id") or "") != series_id:
+                raise HTTPException(status_code=400, detail="model version does not belong to series")
+            jobs.append(
+                private_fund_valuation_tracking.enqueue_model_metric_refresh(
+                    collection_db,
+                    dataset_id,
+                    refresh_bucket=manual_source_id,
+                    trigger="manual_refresh",
+                    series_id=series_id,
+                    model_version_id=model_version_id,
+                    requeue_failed=True,
+                    replace_pending=True,
+                )
+            )
+            jobs.append(
+                private_fund_valuation_tracking.enqueue_market_data_refresh(
+                    collection_db,
+                    dataset_id,
+                    refresh_bucket=manual_source_id,
+                    trigger="manual_refresh",
+                    series_id=series_id,
+                    model_version_id=model_version_id,
+                    requeue_failed=True,
+                    replace_pending=True,
+                )
+            )
+            jobs.append(
+                private_fund_valuation_tracking.enqueue_context_refresh(
+                    collection_db,
+                    dataset_id,
+                    source_id=manual_source_id,
+                    series_id=series_id,
+                    model_version_id=model_version_id,
+                    requeue_failed=True,
+                    replace_pending=True,
+                    document_ids=document_ids or None,
+                )
+            )
+        else:
+            jobs = private_fund_valuation_tracking.enqueue_model_documents(
+                collection_db,
+                dataset_id,
+                include_history=True,
+                requeue_failed=True,
+            )
         return {"jobs": jobs}
 
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-securities")
+    def search_project_valuation_securities(
+        dataset_id: str,
+        query: str = Query(..., min_length=1, max_length=120),
+        limit: int = Query(default=10, ge=1, le=20),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "candidates": private_fund_valuation_tracking.search_security_directory(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                query=query,
+                limit=limit,
+            )
+        }
+
+    @router.patch("/private-fund/projects/{dataset_id}/valuation-models/{series_id}/identity")
+    def update_project_valuation_model_identity(
+        dataset_id: str,
+        series_id: str,
+        request: UpdateValuationModelIdentityRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_valuation_tracking.update_model_series_identity(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                series_id,
+                company_name=request.company_name,
+                company_ticker=request.company_ticker,
+                actor="user",
+                change_source=request.change_source or "manual_entry",
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="Valuation model series was not found."
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     @router.get("/private-fund/projects/{dataset_id}/valuation-models/{series_id}/compare")
     def compare_project_valuation_model_versions(
         dataset_id: str,

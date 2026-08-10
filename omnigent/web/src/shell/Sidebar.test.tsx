@@ -355,6 +355,10 @@ beforeEach(() => {
     pendingComposerAttachmentRemovals: [],
     activeComposerAttachments: [],
   });
+  usePrivateFundWorkspaceStore.setState({
+    documentPreviewRequest: null,
+    selectedSourceDocumentIdsByDataset: {},
+  });
 });
 afterEach(cleanup);
 
@@ -614,7 +618,7 @@ describe("Sidebar private fund corpus attachments", () => {
     expect(screen.queryByText("Acme direct chat")).toBeNull();
   });
 
-  it("queues a normalized file attachment when a file checkbox is checked", () => {
+  it("queues a normalized file attachment when a file checkbox is checked", async () => {
     seedPrivateFundCorpus();
     mockConversations([]);
     renderSidebar();
@@ -631,6 +635,11 @@ describe("Sidebar private fund corpus attachments", () => {
       { path: "reports/alpha.pdf", isDir: false },
     ]);
     expect(alphaCheckbox.checked).toBe(true);
+    await waitFor(() =>
+      expect(
+        usePrivateFundWorkspaceStore.getState().selectedSourceDocumentIdsByDataset.acme,
+      ).toEqual(["alpha.pdf"]),
+    );
   });
 
   it("opens a document preview when its file name is clicked without attaching it", () => {
