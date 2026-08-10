@@ -51,10 +51,12 @@ class _VerifiedTrackingClient:
         if any("chunk:risk-2" in message.get("content", "") for message in messages):
             payload = json.loads(response)
             payload[0]["evidence_ids"] = ["chunk:risk-2"]
-            payload[0]["evidence_quotes"] = [{
-                "evidence_id": "chunk:risk-2",
-                "quote": "海外订单存在延期风险，可能显著影响2026年收入确认",
-            }]
+            payload[0]["evidence_quotes"] = [
+                {
+                    "evidence_id": "chunk:risk-2",
+                    "quote": "海外订单存在延期风险，可能显著影响2026年收入确认",
+                }
+            ]
             payload[0]["content"] += " updated"
             return json.dumps(payload)
         return response
@@ -291,24 +293,37 @@ def test_legacy_unstructured_tracking_items_are_hidden_from_user_ledger(tmp_path
     governed = private_fund_tracking.list_low_quality_items(collection_db, "demo")
     assert governed[0]["quality_issue"] == "旧版关键词降级记录，未形成完整事件结构"
     item_id = governed[0]["item_id"]
-    assert private_fund_tracking.archive_low_quality_items(collection_db, "demo", [item_id])[
-        "archived_count"
-    ] == 1
+    assert (
+        private_fund_tracking.archive_low_quality_items(collection_db, "demo", [item_id])[
+            "archived_count"
+        ]
+        == 1
+    )
     assert private_fund_tracking.list_low_quality_items(collection_db, "demo") == []
     archived = private_fund_tracking.list_low_quality_items(
         collection_db, "demo", archive_status="archived"
     )
     assert archived[0]["archived_at"]
-    assert private_fund_tracking.restore_archived_items(collection_db, "demo", [item_id])[
-        "restored_count"
-    ] == 1
+    assert (
+        private_fund_tracking.restore_archived_items(collection_db, "demo", [item_id])[
+            "restored_count"
+        ]
+        == 1
+    )
     private_fund_tracking.archive_low_quality_items(collection_db, "demo", [item_id])
-    assert private_fund_tracking.purge_archived_items(collection_db, "demo", [item_id])[
-        "purged_count"
-    ] == 1
-    assert private_fund_tracking.list_items(
-        collection_db, "demo", include_unqualified=True, archive_status="all"
-    ) == []
+    assert (
+        private_fund_tracking.purge_archived_items(collection_db, "demo", [item_id])[
+            "purged_count"
+        ]
+        == 1
+    )
+    assert (
+        private_fund_tracking.list_items(
+            collection_db, "demo", include_unqualified=True, archive_status="all"
+        )
+        == []
+    )
+
 
 def test_new_document_version_updates_existing_risk_instead_of_creating_duplicate(
     tmp_path: Path,
@@ -444,6 +459,17 @@ def test_memo_artifacts_are_grouped_into_versions_and_comparable(tmp_path: Path)
     assert second["markdown_path"] == str(second_md)
     assert first["html_path"] == str(first_html)
     assert first["pdf_path"] == str(first_pdf)
+    series = private_fund_tracking.list_memo_series(collection_db, "demo")
+    assert series[0]["topic"] == "订单与交付"
+    current = private_fund_tracking.current_memo_version_for_topic(
+        collection_db, "demo", "订单与交付"
+    )
+    assert current is not None
+    assert current["memo_version_id"] == second["memo_version_id"]
+    resolved = private_fund_tracking.resolve_memo_revision_target(
+        collection_db, "demo", first["memo_version_id"]
+    )
+    assert resolved["memo_version_id"] == first["memo_version_id"]
 
     memo_jobs = private_fund_tracking.enqueue_current_memo_versions(collection_db, "demo")
     assert [job["source_id"] for job in memo_jobs] == [second["memo_version_id"]]
@@ -457,6 +483,102 @@ def test_memo_artifacts_are_grouped_into_versions_and_comparable(tmp_path: Path)
     changes = {item["title"]: item["change_type"] for item in comparison["section_changes"]}
     assert changes["主要风险"] == "changed"
     assert changes["催化剂"] == "added"
+
+
+def test_memo_revision_rejects_unknown_parent_instead_of_creating_series(
+    tmp_path: Path,
+) -> None:
+    collection_db = _collection_db(tmp_path)
+    memo_dir = tmp_path / "demo" / "memos"
+    memo_dir.mkdir()
+    markdown_path = memo_dir / "memo.md"
+    markdown_path.write_text("# Demo", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unknown memo revision target"):
+        private_fund_tracking.register_memo_version(
+            collection_db,
+            "demo",
+            topic="Should not be created",
+            markdown_path=markdown_path,
+            revision_of="mv_missing",
+            enqueue=False,
+        )
+
+    assert private_fund_tracking.list_memo_versions(collection_db, "demo") == []
+
+
+def test_memo_backfill_skips_registered_agent_artifacts(tmp_path: Path) -> None:
+    collection_db = _collection_db(tmp_path)
+    memo_dir = tmp_path / "demo" / "memos"
+    memo_dir.mkdir()
+    markdown_path = memo_dir / "private_fund_memo_demo_20260805_161416.md"
+    html_path = markdown_path.with_suffix(".html")
+    pdf_path = markdown_path.with_suffix(".pdf")
+    markdown_path.write_text("# Demo\n\n## Conclusion\n\nSupported conclusion.", encoding="utf-8")
+    html_path.write_text("<h1>Demo</h1>", encoding="utf-8")
+    pdf_path.write_bytes(b"%PDF-1.4")
+
+    generated = private_fund_tracking.register_memo_version(
+        collection_db,
+        "demo",
+        topic="Focused research topic",
+        markdown_path=markdown_path,
+        html_path=html_path,
+        pdf_path=pdf_path,
+        source_type="agent_generated",
+        enqueue=False,
+    )
+
+    assert private_fund_tracking.backfill_memo_artifacts(collection_db, "demo", memo_dir) == 0
+    versions = private_fund_tracking.list_memo_versions(collection_db, "demo")
+    assert [version["memo_version_id"] for version in versions] == [generated["memo_version_id"]]
+    assert versions[0]["topic"] == "Focused research topic"
+
+
+def test_memo_backfill_recovers_topic_from_artifact_metadata(tmp_path: Path) -> None:
+    collection_db = _collection_db(tmp_path)
+    memo_dir = tmp_path / "demo" / "memos"
+    memo_dir.mkdir()
+    markdown_path = memo_dir / "private_fund_memo_demo_20260805_161416.md"
+    markdown_path.write_text(
+        "# Demo Memo\n\n- 主题: 近况交流会要点分析\n\n## 核心观点\n\n订单增长。",
+        encoding="utf-8",
+    )
+
+    assert private_fund_tracking.backfill_memo_artifacts(collection_db, "demo", memo_dir) == 1
+    versions = private_fund_tracking.list_memo_versions(collection_db, "demo")
+    assert versions[0]["topic"] == "近况交流会要点分析"
+
+
+def test_memo_backfill_removes_existing_duplicate_legacy_catalog_row(tmp_path: Path) -> None:
+    collection_db = _collection_db(tmp_path)
+    memo_dir = tmp_path / "demo" / "memos"
+    memo_dir.mkdir()
+    markdown_path = memo_dir / "private_fund_memo_demo_20260805_161416.md"
+    markdown_path.write_text("# Demo\n\n## Conclusion\n\nSupported conclusion.", encoding="utf-8")
+
+    generated = private_fund_tracking.register_memo_version(
+        collection_db,
+        "demo",
+        topic="Focused research topic",
+        markdown_path=markdown_path,
+        source_type="agent_generated",
+        enqueue=False,
+    )
+    private_fund_tracking.register_memo_version(
+        collection_db,
+        "demo",
+        topic="Legacy fallback topic",
+        markdown_path=markdown_path,
+        source_type="legacy_backfill",
+        enqueue=False,
+    )
+    assert len(private_fund_tracking.list_memo_versions(collection_db, "demo")) == 2
+
+    assert private_fund_tracking.backfill_memo_artifacts(collection_db, "demo", memo_dir) == 0
+    versions = private_fund_tracking.list_memo_versions(collection_db, "demo")
+    assert [version["memo_version_id"] for version in versions] == [generated["memo_version_id"]]
+    assert markdown_path.is_file()
 
 
 def test_alert_lifecycle_and_watch_rule_are_persistent(tmp_path: Path) -> None:

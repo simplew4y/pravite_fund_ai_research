@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from omnigent.server import private_fund_tracking
+from omnigent.tools.base import ToolContext
 from omnigent.tools.builtins.private_fund_dataset import (
+    PrivateFundDatasetMemoTool,
     _DatasetStore,
     _memo_claims_to_markdown,
+    _strip_memo_generation_directives,
 )
 
 
@@ -36,13 +40,122 @@ def _sections() -> list[dict[str, object]]:
                     "excerpt": "2025 年收入同比增长 17.4%。",
                     "citation": "经营数据.xlsx Sheet1!B2",
                     "markdown_citation": (
-                        "[经营数据.xlsx Sheet1!B2]"
-                        f"(#source?evidence_id={evidence_id})"
+                        f"[经营数据.xlsx Sheet1!B2](#source?evidence_id={evidence_id})"
                     ),
                 }
             ],
         }
     ]
+
+
+def _tool_context() -> ToolContext:
+    return ToolContext(task_id="task-test", agent_id="agent-test")
+
+
+def test_memo_schema_requires_explicit_semantic_operation() -> None:
+    schema = PrivateFundDatasetMemoTool(None).get_schema()["function"]["parameters"]
+
+    assert schema["required"] == ["operation"]
+    assert schema["properties"]["operation"]["enum"] == ["create", "revise"]
+    assert "[memo:<memo_version_id>]" in schema["properties"]["revision_of"]["description"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    [
+        ({"topic": "Demo"}, "operation must be either"),
+        (
+            {"operation": "revise", "topic": "Demo"},
+            "revision_of is required when operation='revise'",
+        ),
+        (
+            {"operation": "create", "topic": "Demo", "revision_of": "mv_parent"},
+            "revision_of must be omitted when operation='create'",
+        ),
+    ],
+)
+def test_memo_tool_rejects_inconsistent_version_intent(
+    payload: dict[str, str], expected_error: str
+) -> None:
+    raw = PrivateFundDatasetMemoTool(None).invoke(json.dumps(payload), _tool_context())
+
+    assert expected_error in json.loads(raw)["error"]
+
+
+def test_memo_create_reuses_existing_topic_without_rendering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(monkeypatch)
+    dataset_root = tmp_path / "demo"
+    info: dict[str, object] = {
+        **_info(),
+        "name": "Demo dataset",
+        "company_ticker": "000001",
+        "dataset_root": str(dataset_root),
+        "collection_db_path": str(dataset_root / "meta" / "collection.sqlite3"),
+    }
+    monkeypatch.setattr(store, "dataset_info", lambda _dataset_id=None: info)
+    monkeypatch.setattr(
+        store,
+        "search",
+        lambda **_kwargs: pytest.fail("duplicate create must not search or render"),
+    )
+    monkeypatch.setattr(
+        private_fund_tracking,
+        "current_memo_version_for_topic",
+        lambda *_args, **_kwargs: {
+            "topic": "收入增长",
+            "markdown_path": str(dataset_root / "memos" / "memo.md"),
+            "html_path": None,
+            "pdf_path": None,
+            "series_id": "ms_demo",
+            "memo_version_id": "mv_demo",
+            "version_no": 1,
+            "revision_of_version_id": None,
+            "inputs": {},
+            "sections": [],
+        },
+    )
+
+    result = store.memo(operation="create", topic="收入增长", dataset_id="demo")
+
+    assert result["memo_version_id"] == "mv_demo"
+    assert result["idempotent_replay"] is True
+    assert not (dataset_root / "memos").exists()
+
+
+def test_memo_revision_is_validated_before_artifacts_are_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(monkeypatch)
+    dataset_root = tmp_path / "demo"
+    info: dict[str, object] = {
+        **_info(),
+        "name": "Demo dataset",
+        "company_ticker": "000001",
+        "dataset_root": str(dataset_root),
+        "collection_db_path": str(dataset_root / "meta" / "collection.sqlite3"),
+    }
+    monkeypatch.setattr(store, "dataset_info", lambda _dataset_id=None: info)
+    monkeypatch.setattr(
+        private_fund_tracking,
+        "resolve_memo_revision_target",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("Unknown memo revision target: mv_missing")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="Unknown memo revision target"):
+        store.memo(
+            operation="revise",
+            topic="收入增长",
+            dataset_id="demo",
+            revision_of="mv_missing",
+        )
+
+    assert not (dataset_root / "memos").exists()
 
 
 def test_dataset_memo_gate_renders_canonical_source_link(
@@ -94,6 +207,78 @@ def test_structured_memo_claims_preserve_explicit_review_status() -> None:
     assert markdown == "## 财务\n\n- 收入增长口径仍需确认。 **（待复核）**"
 
 
+def test_memo_artifacts_exclude_generation_directives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(monkeypatch)
+    info = {
+        **_info(),
+        "name": "Demo dataset",
+        "company_ticker": "000001",
+        "collection_db_path": "/tmp/demo/collection.sqlite3",
+    }
+    body = (
+        "## 用户要求\n\n加入氢能业务。\n\n"
+        "## 对话上下文摘要\n\n用户要求全面分析业务范围。\n\n"
+        "## 核心观点\n\n- 氢能业务仍需验证。"
+    )
+
+    assert _strip_memo_generation_directives(body) == "## 核心观点\n\n- 氢能业务仍需验证。"
+
+    markdown = store._render_supplied_memo_markdown(
+        info,
+        "业务分析",
+        body,
+        instructions="加入氢能业务。",
+        conversation_context="用户要求全面分析业务范围。",
+        revision_of="mv_parent",
+        key_questions=["新业务是否形成收入？"],
+    )
+    html = store._render_supplied_memo_html(
+        info,
+        "业务分析",
+        body,
+        instructions="加入氢能业务。",
+        conversation_context="用户要求全面分析业务范围。",
+        revision_of="mv_parent",
+        key_questions=["新业务是否形成收入？"],
+    )
+    draft_markdown = store._render_memo_markdown(
+        info,
+        "业务分析",
+        _sections(),
+        instructions="加入氢能业务。",
+        conversation_context="用户要求全面分析业务范围。",
+        revision_of="mv_parent",
+        key_questions=["新业务是否形成收入？"],
+    )
+    draft_html = store._render_memo_html(
+        info,
+        "业务分析",
+        _sections(),
+        instructions="加入氢能业务。",
+        conversation_context="用户要求全面分析业务范围。",
+        revision_of="mv_parent",
+        key_questions=["新业务是否形成收入？"],
+    )
+
+    for artifact in (markdown, html, draft_markdown, draft_html):
+        assert "用户要求" not in artifact
+        assert "加入氢能业务。" not in artifact
+        assert "对话上下文摘要" not in artifact
+        assert "用户要求全面分析业务范围。" not in artifact
+        assert "关键问题" not in artifact
+        assert "新业务是否形成收入？" not in artifact
+        assert "修订来源" not in artifact
+        assert "mv_parent" not in artifact
+        assert "证据库" not in artifact
+        assert "/tmp/demo/collection.sqlite3" not in artifact
+        assert "Memo 正文" not in artifact
+    assert "核心观点" in markdown
+    assert "核心观点" in html
+    assert html.count("氢能业务仍需验证。") == 1
+
+
 def test_structured_memo_is_gated_and_persists_audit_before_artifact_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -129,6 +314,11 @@ def test_structured_memo_is_gated_and_persists_audit_before_artifact_write(
             "revision_of_version_id": None,
             "tracking_job": None,
         },
+    )
+    monkeypatch.setattr(
+        private_fund_tracking,
+        "current_memo_version_for_topic",
+        lambda *_args, **_kwargs: None,
     )
 
     result = store.memo(

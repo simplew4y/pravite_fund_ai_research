@@ -3361,9 +3361,9 @@ function AssistantBubble({
   // gap is rendered at the page level, not inside this component.
   const sessionStatus = useChatStore((s) => s.sessionStatus);
   const [isCopied, setIsCopied] = useState(false);
-  const [answerNoteStatus, setAnswerNoteStatus] = useState<
-    "idle" | "saving" | "saved" | "error"
-  >("idle");
+  const [answerNoteStatus, setAnswerNoteStatus] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
   const [answerNoteError, setAnswerNoteError] = useState("");
   const copyTimeoutRef = useRef<number>(0);
   // null outside AppShell's provider (isolated tests) → hide the action.
@@ -3411,7 +3411,11 @@ function AssistantBubble({
         className={isWide ? "max-w-full" : "max-w-3xl"}
       >
         <MessageContent className={isWide ? "w-full" : undefined}>
-          <BlockRenderer items={bubble.items} sessionStatus={sessionStatus} />
+          <BlockRenderer
+            items={bubble.items}
+            sessionStatus={sessionStatus}
+            collapsePostCompactionActivity={bubble.afterCompaction === true}
+          />
         </MessageContent>
         {bubble.lifecycle === "cancelled" && (
           <p

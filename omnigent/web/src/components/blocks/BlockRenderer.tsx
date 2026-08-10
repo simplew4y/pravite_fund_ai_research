@@ -13,6 +13,7 @@
 // idle), the run collapses entirely except for still-in-progress
 // spinners.
 
+import { ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import type React from "react";
@@ -20,6 +21,7 @@ import { defaultRemarkPlugins } from "streamdown";
 import remarkBreaks from "remark-breaks";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ZoomableImage } from "@/components/ImageLightbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useThrottledValue } from "@/hooks/useThrottledValue";
 import type { RenderItem } from "@/lib/renderItems";
 import type { SessionStatus } from "@/lib/types";
@@ -784,9 +786,37 @@ const STREAMING_TAIL = 3;
 interface BlockRendererProps {
   items: RenderItem[];
   sessionStatus: SessionStatus;
+  collapsePostCompactionActivity?: boolean;
 }
 
-export function BlockRenderer({ items, sessionStatus }: BlockRendererProps) {
+export function BlockRenderer({
+  items,
+  sessionStatus,
+  collapsePostCompactionActivity = false,
+}: BlockRendererProps) {
+  if (collapsePostCompactionActivity) {
+    const finalTextIndex = items.findLastIndex((item) => item.kind === "text");
+    if (finalTextIndex > 0) {
+      return (
+        <>
+          <Collapsible
+            defaultOpen={false}
+            className="group/post-compaction not-prose w-full"
+            data-testid="post-compaction-plan"
+          >
+            <CollapsibleTrigger className="flex cursor-pointer items-center gap-1.5 py-1 text-left text-muted-foreground text-xs transition-colors hover:text-foreground">
+              <ChevronRightIcon className="size-3.5 shrink-0 transition-transform group-data-[state=open]/post-compaction:rotate-90" />
+              <span>压缩后的计划</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-1 ml-2 space-y-2 border-l pl-3 py-1 data-[state=closed]:animate-out data-[state=open]:animate-in">
+              <BlockRenderer items={items.slice(0, finalTextIndex)} sessionStatus="idle" />
+            </CollapsibleContent>
+          </Collapsible>
+          <BlockRenderer items={items.slice(finalTextIndex)} sessionStatus={sessionStatus} />
+        </>
+      );
+    }
+  }
   const rendered: ReactNode[] = [];
   let previousRenderedItemWasText = false;
   const isAgentActive = sessionStatus === "running" || sessionStatus === "waiting";

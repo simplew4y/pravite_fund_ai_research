@@ -671,6 +671,55 @@ def _resolve_revision(conn: sqlite3.Connection, series_id: str, revision_of: str
     return str(row["memo_version_id"]) if row else None
 
 
+def resolve_memo_revision_target(
+    collection_db: Path, dataset_id: str, revision_of: str
+) -> dict[str, Any]:
+    """Resolve an explicit Memo revision target before rendering artifacts."""
+
+    explicit = str(revision_of or "").strip()
+    if not explicit:
+        raise ValueError("revision_of is required")
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        row = conn.execute(
+            """
+            SELECT v.*, s.dataset_id, s.topic, s.title AS series_title
+            FROM research_memo_versions v
+            JOIN research_memo_series s ON s.series_id=v.series_id
+            WHERE s.dataset_id=? AND (
+                v.memo_version_id=? OR v.markdown_path=?
+                OR v.html_path=? OR v.pdf_path=?
+            )
+            ORDER BY v.version_no DESC LIMIT 1
+            """,
+            (dataset_id, explicit, explicit, explicit, explicit),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Unknown memo revision target: {explicit}")
+        return _memo_version_payload(conn, row)
+
+
+def current_memo_version_for_topic(
+    collection_db: Path, dataset_id: str, topic: str
+) -> dict[str, Any] | None:
+    """Return the current version for an exact canonical Memo topic."""
+
+    key = _series_key(topic)
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        row = conn.execute(
+            """
+            SELECT v.*, s.dataset_id, s.topic, s.title AS series_title
+            FROM research_memo_series s
+            JOIN research_memo_versions v ON v.series_id=s.series_id
+            WHERE s.dataset_id=? AND s.series_key=?
+            ORDER BY v.version_no DESC LIMIT 1
+            """,
+            (dataset_id, key),
+        ).fetchone()
+        return _memo_version_payload(conn, row) if row is not None else None
+
+
 def register_memo_version(
     collection_db: Path,
     dataset_id: str,
@@ -692,7 +741,6 @@ def register_memo_version(
     markdown = markdown_path.read_text(encoding="utf-8") if markdown_path.is_file() else ""
     content_hash = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
     clean_topic = str(topic or "").strip() or "综合投研"
-    key = _series_key(clean_topic)
     now = created_at or _now_iso()
     with _connect(collection_db) as conn:
         ensure_tracking_schema(conn, dataset_id)
@@ -701,7 +749,7 @@ def register_memo_version(
         if explicit_revision:
             revision_row = conn.execute(
                 """
-                SELECT v.memo_version_id, v.series_id
+                SELECT v.memo_version_id, v.series_id, s.topic
                 FROM research_memo_versions v
                 JOIN research_memo_series s ON s.series_id=v.series_id
                 WHERE s.dataset_id=? AND (
@@ -718,6 +766,10 @@ def register_memo_version(
                     explicit_revision,
                 ),
             ).fetchone()
+            if revision_row is None:
+                raise ValueError(f"Unknown memo revision target: {explicit_revision}")
+            clean_topic = str(revision_row["topic"])
+        key = _series_key(clean_topic)
         series_id = (
             str(revision_row["series_id"])
             if revision_row is not None
@@ -861,6 +913,8 @@ def backfill_memo_artifacts(collection_db: Path, dataset_id: str, memo_dir: Path
 
     if not memo_dir.is_dir():
         return 0
+    _remove_duplicate_legacy_memo_versions(collection_db, dataset_id)
+    registered_paths = _registered_memo_artifact_paths(collection_db, dataset_id)
     groups: dict[str, dict[str, Path]] = {}
     for path in memo_dir.iterdir():
         if path.is_file() and path.suffix.lower() in {".md", ".html", ".pdf"}:
@@ -869,6 +923,9 @@ def backfill_memo_artifacts(collection_db: Path, dataset_id: str, memo_dir: Path
     for stem, artifacts in sorted(groups.items()):
         markdown_path = artifacts.get(".md")
         if markdown_path is None:
+            continue
+        artifact_paths = {str(path) for path in artifacts.values()}
+        if artifact_paths & registered_paths:
             continue
         timestamp_match = re.search(r"_(20\d{6}_\d{6})$", stem)
         created_at = None
@@ -881,10 +938,11 @@ def backfill_memo_artifacts(collection_db: Path, dataset_id: str, memo_dir: Path
             except ValueError:
                 created_at = None
         before = len(list_memo_versions(collection_db, dataset_id))
+        topic = _memo_topic_from_artifact(markdown_path)
         register_memo_version(
             collection_db,
             dataset_id,
-            topic="综合投研",
+            topic=topic,
             markdown_path=markdown_path,
             html_path=artifacts.get(".html"),
             pdf_path=artifacts.get(".pdf"),
@@ -894,7 +952,80 @@ def backfill_memo_artifacts(collection_db: Path, dataset_id: str, memo_dir: Path
         )
         after = len(list_memo_versions(collection_db, dataset_id))
         count += int(after > before)
+        registered_paths.update(artifact_paths)
     return count
+
+
+def _memo_topic_from_artifact(markdown_path: Path) -> str:
+    """Recover a useful legacy Memo topic without inventing ``综合投研``."""
+
+    try:
+        markdown = markdown_path.read_text(encoding="utf-8")
+    except OSError:
+        return "历史 Memo"
+    topic_match = re.search(r"^\s*-\s*主题\s*[:：]\s*(.+?)\s*$", markdown, flags=re.MULTILINE)
+    if topic_match:
+        return topic_match.group(1).strip()
+    heading_match = re.search(r"^#\s+(.+?)\s*$", markdown, flags=re.MULTILINE)
+    if heading_match:
+        return heading_match.group(1).strip()
+    return "历史 Memo"
+
+
+def _registered_memo_artifact_paths(collection_db: Path, dataset_id: str) -> set[str]:
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        rows = conn.execute(
+            """
+            SELECT v.markdown_path, v.html_path, v.pdf_path
+            FROM research_memo_versions v
+            JOIN research_memo_series s ON s.series_id=v.series_id
+            WHERE s.dataset_id=?
+            """,
+            (dataset_id,),
+        ).fetchall()
+    return {
+        str(path)
+        for row in rows
+        for path in (row["markdown_path"], row["html_path"], row["pdf_path"])
+        if path
+    }
+
+
+def _remove_duplicate_legacy_memo_versions(collection_db: Path, dataset_id: str) -> int:
+    """Remove legacy catalog rows that point at an already registered memo artifact."""
+
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        rows = conn.execute(
+            """
+            SELECT DISTINCT legacy.memo_version_id
+            FROM research_memo_versions legacy
+            JOIN research_memo_series legacy_series
+              ON legacy_series.series_id=legacy.series_id
+            JOIN research_memo_versions current
+              ON current.memo_version_id<>legacy.memo_version_id
+             AND current.source_type<>'legacy_backfill'
+             AND (
+                  (legacy.markdown_path IS NOT NULL
+                   AND legacy.markdown_path=current.markdown_path)
+               OR (legacy.html_path IS NOT NULL
+                   AND legacy.html_path=current.html_path)
+               OR (legacy.pdf_path IS NOT NULL
+                   AND legacy.pdf_path=current.pdf_path)
+             )
+            JOIN research_memo_series current_series
+              ON current_series.series_id=current.series_id
+             AND current_series.dataset_id=legacy_series.dataset_id
+            WHERE legacy_series.dataset_id=?
+              AND legacy.source_type='legacy_backfill'
+            """,
+            (dataset_id,),
+        ).fetchall()
+    removed = 0
+    for row in rows:
+        removed += int(delete_memo_version(collection_db, dataset_id, str(row["memo_version_id"])))
+    return removed
 
 
 def _memo_version_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
@@ -1427,14 +1558,10 @@ def _ground_llm_evidence(
                 key=lambda unit: len(_quote_fingerprint(unit.get("content"))),
             )
             reassigned = True
-        grounded_quotes.append(
-            {"evidence_id": str(selected["evidence_id"]), "quote": quote[:500]}
-        )
+        grounded_quotes.append({"evidence_id": str(selected["evidence_id"]), "quote": quote[:500]})
 
     grounded = dict(raw)
-    grounded["evidence_ids"] = list(
-        dict.fromkeys(item["evidence_id"] for item in grounded_quotes)
-    )
+    grounded["evidence_ids"] = list(dict.fromkeys(item["evidence_id"] for item in grounded_quotes))
     grounded["evidence_quotes"] = grounded_quotes
     grounded["evidence_grounded"] = True
     grounded["evidence_reassigned"] = reassigned
@@ -2492,9 +2619,7 @@ def _change_event_payload(row: sqlite3.Row) -> dict[str, Any]:
     return payload
 
 
-def _evidence_source_payload(
-    conn: sqlite3.Connection, evidence_id: str
-) -> dict[str, Any] | None:
+def _evidence_source_payload(conn: sqlite3.Connection, evidence_id: str) -> dict[str, Any] | None:
     kind, _, raw_id = evidence_id.partition(":")
     if kind not in {"chunk", "fact"} or not raw_id:
         return None
@@ -3035,18 +3160,14 @@ def _normalize_watch_query(query: dict[str, Any] | None) -> dict[str, list[str]]
             values = raw
         else:
             raise ValueError(f"watch rule {key} must be a list")
-        cleaned = list(
-            dict.fromkeys(str(value).strip() for value in values if str(value).strip())
-        )
+        cleaned = list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
         if len(cleaned) > maximum:
             raise ValueError(f"watch rule {key} contains too many values")
         if any(len(value) > 80 for value in cleaned):
             raise ValueError(f"watch rule {key} contains an overlong value")
         if key == "impacts" and any(value not in _PRIORITY_RANK for value in cleaned):
             raise ValueError("unsupported impact filter")
-        if key == "change_types" and any(
-            value not in _WATCH_CHANGE_TYPES for value in cleaned
-        ):
+        if key == "change_types" and any(value not in _WATCH_CHANGE_TYPES for value in cleaned):
             raise ValueError("unsupported change type filter")
         if cleaned:
             normalized[key] = cleaned

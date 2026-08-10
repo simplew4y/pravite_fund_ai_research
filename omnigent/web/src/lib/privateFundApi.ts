@@ -3554,6 +3554,7 @@ export function privateFundProjectPreamble(
   return [
     `当前会话必须基于私募投研资料项目「${project.name}」回答。`,
     `dataset_id: ${project.datasetId}`,
+    "除非用户明确要求其他语言，投研会话始终使用简体中文；上下文压缩后也必须保持用户原有语言，不得因内部英文摘要切换为英文。",
     modeInstruction,
     "所有资料状态、检索、source detail 和 memo 工具调用都必须显式使用上述 dataset_id；如果资料索引未完成，请先提示需要运行该项目的 pipeline。",
     "回答和 memo 生成都要优先使用该项目的本地资料、索引和 citation。",
