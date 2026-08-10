@@ -4251,17 +4251,7 @@ function SubagentComposerTray({ label }: { label: string }) {
 
 function PrivateFundContextTray({ actions }: { actions: WorkbenchActionContextValue }) {
   if (actions.contextAssets.length === 0) {
-    return (
-      <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
-        <button
-          type="button"
-          onClick={actions.openSourcePicker}
-          className="w-full rounded-xl border border-dashed border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-3 py-2 text-left text-[11px] text-[var(--pf-ink-muted)] transition-colors hover:border-[var(--pf-accent)] hover:text-[var(--pf-ink-secondary)]"
-        >
-          尚未添加问题上下文 · 点击此处打开资料，再勾选文件加入上下文
-        </button>
-      </section>
-    );
+    return null;
   }
   return (
     <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>

@@ -308,7 +308,11 @@ def ensure_global_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def ensure_collection_schema(conn: sqlite3.Connection) -> None:
+def ensure_collection_schema(
+    conn: sqlite3.Connection,
+    *,
+    initialize_current_data_version: bool = False,
+) -> None:
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS documents (
@@ -545,6 +549,13 @@ def ensure_collection_schema(conn: sqlite3.Connection) -> None:
         """
     )
     _ensure_collection_schema_migrations(conn)
+    if initialize_current_data_version:
+        # Imported lazily so the standalone pipeline keeps its existing import surface.
+        from omnigent.server.private_fund_data_migrations import (
+            initialize_current_collection_version,
+        )
+
+        initialize_current_collection_version(conn)
     conn.commit()
 
 
@@ -2779,8 +2790,12 @@ def ingest_directory(
     doc_ids: list[str] = []
     seen_logical_doc_ids: set[str] = set()
     try:
+        collection_is_new = not collection_db_path.exists()
         with connect_sqlite(collection_db_path) as conn:
-            ensure_collection_schema(conn)
+            ensure_collection_schema(
+                conn,
+                initialize_current_data_version=collection_is_new,
+            )
             conn.execute(
                 """
                 INSERT OR REPLACE INTO ingest_jobs (

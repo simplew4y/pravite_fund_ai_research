@@ -29,6 +29,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ProductVersionLabel } from "@/components/ProductVersionLabel";
 import {
   clearUserScopedBrowserState,
   getMe,
@@ -236,6 +237,7 @@ export function LoginPage() {
           .
         </p>}
       </div>
+      <ProductVersionLabel className="fixed right-4 bottom-4 z-10 text-[11px]" />
     </div>
   );
 }

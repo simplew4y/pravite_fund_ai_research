@@ -197,6 +197,17 @@ def test_create_project_generates_internal_dataset_id(
     assert second["dataset_id"].startswith("dataset_")
     assert first["dataset_id"] != second["dataset_id"]
     assert first["name"] == second["name"] == "阳光电源"
+    first_collection = workspace / first["dataset_id"] / "meta" / "collection.sqlite3"
+    with sqlite3.connect(first_collection) as conn:
+        versions = conn.execute(
+            """
+            SELECT component, from_version, to_version
+            FROM workbench_schema_migrations
+            ORDER BY component
+            """
+        ).fetchall()
+    assert len(versions) == 4
+    assert all(from_version == to_version == "0.2.1" for _, from_version, to_version in versions)
 
 
 def test_update_project_syncs_document_and_valuation_identity(

@@ -113,6 +113,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { showToast } from "@/components/ui/toast";
 import { PermissionsModal } from "@/components/PermissionsModal";
 import { SessionStateBadge } from "@/components/SessionStateBadge";
+import { ProductVersionLabel } from "@/components/ProductVersionLabel";
 import { useSessionRunnerOnline } from "@/hooks/RunnerHealthProvider";
 import { useActiveRootSessionId } from "@/hooks/useSession";
 import { useCommentInbox } from "@/hooks/useCommentInbox";
@@ -599,12 +600,14 @@ export function Sidebar({
                   : "/"
               }
               onClick={onNavClick}
+              aria-label="投研工作台"
               className={cn(
-                "rounded-sm text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/70",
+                "inline-flex items-baseline gap-1.5 rounded-sm text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/70",
                 privateFundWorkspace && "private-fund-brand text-[16px] tracking-[-0.02em]",
               )}
             >
-              投研工作台
+              <span>投研工作台</span>
+              <ProductVersionLabel className="text-[9px] opacity-75" />
             </Link>
             <div className="flex items-center gap-1">
               <ThemeToggle />

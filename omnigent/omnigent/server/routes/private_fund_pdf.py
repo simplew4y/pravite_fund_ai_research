@@ -2371,6 +2371,14 @@ def _create_project_row(
                 ),
             ),
         )
+        collection_db = dataset_root / "meta" / "collection.sqlite3"
+        collection_db.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(collection_db), timeout=30) as collection_conn:
+            from omnigent.server.private_fund_data_migrations import (
+                initialize_current_collection_version,
+            )
+
+            initialize_current_collection_version(collection_conn)
         conn.commit()
         row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
     return _project_payload(row)
