@@ -1263,6 +1263,13 @@ def create_app(
         _log_level_name = _os.environ.get("OMNIGENT_LOG_LEVEL", "INFO").upper()
         logging.getLogger("omnigent").setLevel(getattr(logging, _log_level_name, logging.INFO))
 
+        # Keep direct ASGI/uvicorn entry points behind the same data-version
+        # guard as ``omnigent server``. The helper is process-idempotent, so
+        # the regular CLI startup does not repeat an already completed scan.
+        from omnigent.server.private_fund_data_migrations import run_startup_data_migrations
+
+        run_startup_data_migrations()
+
         harness_pm = HarnessProcessManager()
         await harness_pm.start()
         # Store on both ``app.state`` (canonical, accessible from
