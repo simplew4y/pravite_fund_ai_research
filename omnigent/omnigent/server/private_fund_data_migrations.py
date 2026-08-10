@@ -36,6 +36,7 @@ MIGRATION_COMPONENTS = (
     "valuation_tracking",
 )
 _MIGRATION_CHECKSUM = hashlib.sha256(b"private-fund-data-migration:0.1.1:0.2.1:v1").hexdigest()
+_STARTUP_MIGRATION_COMPLETED = False
 
 
 class MigrationError(RuntimeError):
@@ -473,7 +474,10 @@ def run_data_migrations(
 def run_startup_data_migrations() -> dict[str, Any] | None:
     """Run the same idempotent guard for direct server entry points."""
 
+    global _STARTUP_MIGRATION_COMPLETED
     if os.environ.get("OMNIGENT_SKIP_DATA_MIGRATIONS", "").lower() in {"1", "true", "yes"}:
+        return None
+    if _STARTUP_MIGRATION_COMPLETED:
         return None
     repository_root = Path(__file__).resolve().parents[3]
     data_root = Path(
@@ -485,11 +489,13 @@ def run_startup_data_migrations() -> dict[str, Any] | None:
     manifest_path = Path(
         os.environ.get("PRIVATE_FUND_DATA_MANIFEST") or data_root / "data-manifest.json"
     )
-    return run_data_migrations(
+    result = run_data_migrations(
         data_root=data_root,
         backup_root=backup_root,
         manifest_path=manifest_path,
     )
+    _STARTUP_MIGRATION_COMPLETED = True
+    return result
 
 
 def _build_parser() -> argparse.ArgumentParser:
