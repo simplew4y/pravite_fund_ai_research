@@ -27,7 +27,7 @@ class SkillExecutor:
         max_prompt_instruction_chars: int = 12000,
         allow_python: bool = False,
     ) -> None:
-        if mode not in {"shadow", "active"}:
+        if mode not in {"shadow", "prompt_active", "active"}:
             raise ValueError(f"invalid skill execution mode: {mode}")
         self.router = router
         self.mode = mode
@@ -53,7 +53,9 @@ class SkillExecutor:
             result = await self._execute_one(skill, context)
             results.append(result)
             context.prior_skill_results.append(result)
-            if self.mode == "active":
+            if self.mode == "active" or (
+                self.mode == "prompt_active" and skill.manifest.kind == "prompt"
+            ):
                 self._apply_result(context, result)
         return PhaseExecution(
             context=context,

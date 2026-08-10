@@ -171,6 +171,72 @@ def test_active_mode_applies_prompt_instruction(tmp_path: Path) -> None:
     assert context.prompt_instructions[0]["skill_id"] == "research_thesis"
 
 
+def test_prompt_active_applies_prompt_but_not_formula_mutation(tmp_path: Path) -> None:
+    _write_prompt_skill(tmp_path)
+    _write_formula_skill(tmp_path)
+    registry = RuntimeSkillRegistry(SkillLoader([tmp_path]).discover())
+    executor = SkillExecutor(SkillRouter(registry), mode="prompt_active")
+
+    prompt_context = SkillContext(
+        question="这份研报的投资逻辑是什么？", agent="market_researcher"
+    )
+    asyncio.run(executor.execute_phase("pre_answer", prompt_context))
+    assert prompt_context.prompt_instructions[0]["skill_id"] == "research_thesis"
+
+    formula_context = SkillContext(
+        question="收入增长是多少？",
+        agent="quant",
+        allowed_doc_ids=["doc-1"],
+        metric_facts=[
+            {
+                "metric": "revenue_current", "value": 120,
+                "unit": "CNY", "source_doc_id": "doc-1",
+            },
+            {
+                "metric": "revenue_prior", "value": 100,
+                "unit": "CNY", "source_doc_id": "doc-1",
+            },
+        ],
+    )
+    result = asyncio.run(executor.execute_phase("calculation", formula_context))
+    assert result.results[0].status == "applied"
+    assert formula_context.derived_facts == []
+
+
+def test_prompt_active_instruction_becomes_agent_evidence(tmp_path: Path) -> None:
+    _write_prompt_skill(tmp_path)
+    registry = RuntimeSkillRegistry(SkillLoader([tmp_path]).discover())
+    executor = SkillExecutor(SkillRouter(registry), mode="prompt_active")
+
+    class Runtime:
+        enabled = True
+        mode = "prompt_active"
+
+        async def execute_phase(self, phase, context):
+            return await executor.execute_phase(phase, context)
+
+    evidences = [{
+        "query": "投资逻辑",
+        "chunks": [],
+        "pre_rerank_chunks": [],
+        "retrieval_scope": {
+            "dataset_id": "private-fund-dataset",
+            "source_doc_ids": ["issuer-report"],
+        },
+    }]
+    updated, traces = asyncio.run(apply_retrieval_skills(
+        runtime=Runtime(),
+        question="这份研报的投资逻辑是什么？",
+        agent="market_researcher",
+        evidences=evidences,
+    ))
+
+    assert any(trace["skill_id"] == "research_thesis" for trace in traces)
+    assert updated[-1]["content_type"] == "skill_context"
+    assert "Skill Instruction (research_thesis)" in updated[-1]["context"]
+    assert updated[-1]["retrieval_scope"]["source_doc_ids"] == ["issuer-report"]
+
+
 def test_prompt_instruction_is_bounded_before_trace_or_context(tmp_path: Path) -> None:
     _write_prompt_skill(tmp_path)
     skill_path = tmp_path / "finance" / "research-thesis" / "SKILL.md"

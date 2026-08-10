@@ -16,12 +16,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def test_builtin_skill_packages_are_discoverable() -> None:
     skills = SkillLoader([PROJECT_ROOT / "skills"]).discover()
     registry = RuntimeSkillRegistry(skills)
-    builtin = [skill for skill in skills if skill.manifest.implementation.get("source") != "qwen-dianjin"]
+    builtin = [
+        skill for skill in skills
+        if not skill.manifest.implementation.get("source")
+    ]
     dianjin = [skill for skill in skills if skill.manifest.implementation.get("source") == "qwen-dianjin"]
+    finskillops = [
+        skill for skill in skills
+        if skill.manifest.implementation.get("source") == "finskillops-skill-seeds"
+    ]
 
     assert len(builtin) == 8
     assert len(dianjin) == 83
-    assert registry.summary()["status_counts"] == {"promoted": 5, "experimental": 86}
+    assert len(finskillops) == 2
+    assert registry.summary()["status_counts"] == {"promoted": 7, "experimental": 86}
     assert {skill.manifest.skill_id for skill in builtin} == {
         "answer_coverage",
         "company_profile_boundary",
@@ -42,6 +50,38 @@ def test_builtin_skill_packages_are_discoverable() -> None:
         for skill in dianjin
     )
     assert all((skill.directory / "references" / "UPSTREAM_SKILL.md").is_file() for skill in dianjin)
+    assert all(skill.manifest.public is False for skill in finskillops)
+    assert all(skill.manifest.permissions.network is False for skill in finskillops)
+    assert all(skill.manifest.implementation["selection_policy"] == "explicit_downstream_selection" for skill in finskillops)
+
+
+def test_selected_finskillops_skills_route_into_private_fund_pre_answer() -> None:
+    skills = SkillLoader([PROJECT_ROOT / "skills"]).discover()
+    registry = RuntimeSkillRegistry(
+        skills,
+        promoted_only=True,
+        allow=[
+            "finskillops_financial_numeric_synthesis",
+            "finskillops_source_grounded_issuer_profile",
+        ],
+    )
+    router = SkillRouter(registry)
+
+    numeric = router.select(
+        "pre_answer",
+        SkillContext(question="保时捷2024年归母净利润是多少？", agent="quant"),
+    )
+    profile = router.select(
+        "pre_answer",
+        SkillContext(question="公司现任CEO是谁？", agent="company_researcher"),
+    )
+
+    assert [skill.manifest.skill_id for skill in numeric] == [
+        "finskillops_financial_numeric_synthesis"
+    ]
+    assert [skill.manifest.skill_id for skill in profile] == [
+        "finskillops_source_grounded_issuer_profile"
+    ]
 
 
 def test_promoted_allowlist_controls_activation() -> None:
@@ -101,8 +141,8 @@ def test_public_catalog_hides_internal_hash_and_owner() -> None:
 def test_governance_registry_loads_from_skill_packages() -> None:
     registry = load_skill_registry(PROJECT_ROOT / "skills")
 
-    assert len(registry.all()) == 91
-    assert registry.status_counts() == {"promoted": 5, "experimental": 86}
+    assert len(registry.all()) == 93
+    assert registry.status_counts() == {"promoted": 7, "experimental": 86}
     assert registry.get("table_evidence_verifier").implementation_refs
     assert registry.get("dianjin_investment_researcher_company_deep_analysis").status == "experimental"
 
@@ -114,7 +154,7 @@ def test_package_and_legacy_governance_ids_stay_in_sync() -> None:
     package_identity = {
         (card.skill_id, card.version, card.status)
         for card in packages.all()
-        if not card.skill_id.startswith("dianjin_")
+        if not card.skill_id.startswith(("dianjin_", "finskillops_"))
     }
     legacy_identity = {(card.skill_id, card.version, card.status) for card in legacy.all()}
     assert package_identity == legacy_identity

@@ -16,6 +16,11 @@ GitHub Releases API response via `--release-metadata`. The importer never reads
 private and experimental until downstream routing, quality, safety, and latency
 gates promote them explicitly.
 
+The product owner may explicitly select a proposed portable recipe for a
+private downstream pilot. Those adaptations live as ordinary reviewed packages,
+retain candidate/event/hash provenance, and must be individually allowlisted;
+the candidate tree itself remains non-discoverable.
+
 `skills/` is the single installation root for FinSagent runtime skills. A skill is
 self-contained and lives at:
 

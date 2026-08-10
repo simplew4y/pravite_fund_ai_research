@@ -98,7 +98,9 @@ skill_repair_period_conflict_enabled: true
 # preserving the legacy repair chain; switch to "active" only after regression.
 skills:
   runtime_enabled: false
-  execution_mode: shadow
+  # prompt_active injects allowlisted prompt skills while deterministic answer
+  # mutation hooks remain in shadow until separately validated.
+  execution_mode: prompt_active
   expose_debug_trace: false
   roots:
     - ./skills
@@ -110,6 +112,8 @@ skills:
     - answer_coverage
     - source_conflict
     - period_alignment
+    - finskillops_financial_numeric_synthesis
+    - finskillops_source_grounded_issuer_profile
   deny: []
   execution:
     max_skills_per_request: 8

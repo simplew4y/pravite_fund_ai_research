@@ -1,0 +1,26 @@
+{
+  "applicability_conditions": [
+    "The request concerns <issuer> and requires source-grounded information."
+  ],
+  "capability_summary": "Extract source-grounded issuer information.",
+  "consumer_note": "Translate this recipe for the downstream agent and validate it before use.",
+  "evidence_requirements": [
+    "Use only provided source evidence."
+  ],
+  "input_roles": [
+    "source_evidence"
+  ],
+  "kind": "portable_instruction_recipe",
+  "ordered_steps": [
+    "Identify the requested information about <issuer>.",
+    "Acquire the required concepts from source evidence without copying match syntax.",
+    "Include only claims supported by the required evidence conditions.",
+    "Return a source reference for the supported information."
+  ],
+  "origin_family": "source_family",
+  "output_roles": [
+    "source_reference"
+  ],
+  "schema_version": "finskillops_portable_skill_recipe_v2",
+  "subject": "issuer"
+}

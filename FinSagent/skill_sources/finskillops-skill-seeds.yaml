@@ -20,5 +20,16 @@ planned_capabilities:
   - probe-financial-evidence
   - scope-financial-analysis
 notes:
-  - Current proposed events originated from simplew4y/FinSagent and must not be round-tripped as duplicate runtime skills.
+  - Current proposed events originated from simplew4y/FinSagent and require explicit downstream selection to avoid blind round-tripping.
   - A stable GitHub Release is required before the adapter writes runtime packages.
+explicit_downstream_selections:
+  - target_skill_id: finskillops_financial_numeric_synthesis
+    downstream_status: promoted_private_pilot
+    candidate_ids:
+      - seed_7647fdd481796ea2285c658221eb1b6515c584a9c17baf5859ba5953bdf18a32
+      - seed_c97464ef5ef4f516cf9da93a54923f69624be105b02d51e24f34629cf0e35a8b
+  - target_skill_id: finskillops_source_grounded_issuer_profile
+    downstream_status: promoted_private_pilot
+    candidate_ids:
+      - seed_89934f561643e74493e2bb707e7b6d595bfc838eba2b77636cf5a42e54187989
+      - seed_b1691d750fa58afacf94c83109452b119c2199840d520abb7f29849c031200e1

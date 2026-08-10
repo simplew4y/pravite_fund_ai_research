@@ -52,7 +52,7 @@ async def apply_retrieval_skills(
         execution = await runtime.execute_phase(phase, context)
         traces.extend(result.to_dict() for result in execution.results)
 
-    if getattr(runtime, "mode", "shadow") == "active" and (
+    if getattr(runtime, "mode", "shadow") in {"prompt_active", "active"} and (
         context.derived_facts or context.prompt_instructions
     ):
         skill_context_parts: list[str] = []

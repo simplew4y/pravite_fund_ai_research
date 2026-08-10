@@ -1,0 +1,68 @@
+{
+  "body": {
+    "checks": [
+      {
+        "inputs": [
+          "value"
+        ],
+        "operation": "numeric_value",
+        "tolerance": 0.0
+      }
+    ],
+    "derivations": [],
+    "render": {
+      "style": "concise_numeric_statement"
+    },
+    "request_classes": [
+      "flat_direct"
+    ],
+    "slots": [
+      {
+        "acquisition": "labeled_text_capture",
+        "required": true,
+        "role": "metric",
+        "value_type": "metric_name"
+      },
+      {
+        "acquisition": "labeled_period_capture",
+        "required": true,
+        "role": "period",
+        "value_type": "financial_period"
+      },
+      {
+        "acquisition": "labeled_unit_capture",
+        "required": true,
+        "role": "unit",
+        "value_type": "unit"
+      },
+      {
+        "acquisition": "labeled_numeric_capture",
+        "required": true,
+        "role": "value",
+        "value_type": "decimal"
+      },
+      {
+        "acquisition": "request_basis",
+        "required": true,
+        "role": "comparison_basis",
+        "value_type": "comparison_basis"
+      },
+      {
+        "acquisition": "source_evidence_span",
+        "required": true,
+        "role": "source_span",
+        "value_type": "source_reference"
+      }
+    ],
+    "source_policy": {
+      "accepted_surfaces": [
+        "document_text"
+      ],
+      "mode": "required"
+    }
+  },
+  "capability": "financial_numeric_synthesis",
+  "kind": "numeric_request_recipe",
+  "schema_version": "finskillops_portable_skill_recipe_v2",
+  "subject": "issuer"
+}

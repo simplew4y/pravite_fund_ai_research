@@ -1,0 +1,79 @@
+schema_version: 1
+skill_id: finskillops_source_grounded_issuer_profile
+version: 0.1.0-pf1
+name: FinSkillOps Source-Grounded Issuer Profile
+description: Verify issuer profile and leadership claims against scoped documentary evidence.
+category: verification
+type: prompt
+phase: pre_answer
+priority: 90
+status: promoted
+owner: finsagent
+agents: [company_researcher, general, legal_risk]
+routing:
+  keywords:
+    - 公司概况
+    - 公司信息
+    - 管理层
+    - 高管
+    - 首席执行官
+    - CEO
+    - 董事长
+    - 任命
+    - 辞任
+    - 总部
+    - 控股
+    - 股权
+    - 所有权
+    - 业务范围
+    - management
+    - executive
+    - appointment
+    - ownership
+    - headquarters
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: finskillops-skill-seeds
+  upstream_repository: https://github.com/YanzhangMa/finskillops-skill-seeds
+  upstream_ref: 1e1a0f75d955f3f1dd2c6a83bd5b92ce37f296ee
+  upstream_path: candidates/proposed
+  adapter_version: 0.1.0-pf1
+  selection_policy: explicit_downstream_selection
+  max_instruction_chars: 5000
+  candidate_ids:
+    - seed_89934f561643e74493e2bb707e7b6d595bfc838eba2b77636cf5a42e54187989
+    - seed_b1691d750fa58afacf94c83109452b119c2199840d520abb7f29849c031200e1
+  export_event_ids:
+    - a1b730b777709d5f87143073c2581cdb099406c21fe4595d3d630a889e83b174
+    - 0b21269a58f04919398dc138bc72c028bed7b708041d5dcb2b8ec623b256487d
+  upstream_recipe_sha256:
+    - 464933acdc2ad18d85f36b0a156c4417ec70607af90ce6b7ee061e6706fc4502
+    - 00b36fd68a619cd71a112fc2cbe06a251224fa57397dbac946fabc0962bcb92c
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Downstream-selected issuer evidence and executive appointment verification.
+  failure_types: [profile_boundary_error, period_mismatch, wrong_source, unsupported_claim]
+  trigger: A scoped issuer question requests company profile, ownership, or management facts.
+  inputs: [question, active_dataset, allowed_doc_ids, retrieved_chunks]
+  outputs: [supported_fact, effective_period, source_reference, unresolved_field]
+  risks:
+    - Leadership facts change over time and require an explicit cutoff.
+    - Proposed upstream status does not certify downstream answer quality.
+  eval_sets: [private_fund_issuer_profile_v1]
+  local_changes:
+    - merged generic source-grounding and executive appointment recipes
+    - added time-cutoff and role-transition handling
+    - bound all claims to active_dataset doc_ids
+  last_reviewed: "2026-08-10"
