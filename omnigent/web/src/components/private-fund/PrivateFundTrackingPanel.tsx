@@ -29,6 +29,7 @@ import {
   getPrivateFundResearchItemTimeline,
   getPrivateFundResearchItemGovernance,
   purgePrivateFundResearchItems,
+  rebuildPrivateFundTracking,
   restorePrivateFundResearchItems,
   runPrivateFundTracking,
   updatePrivateFundAlert,
@@ -729,6 +730,11 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["private-fund-tracking", datasetId] }),
   });
+  const rebuildMutation = useMutation({
+    mutationFn: () => rebuildPrivateFundTracking(datasetId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["private-fund-tracking", datasetId] }),
+  });
   const alertMutation = useMutation({
     mutationFn: ({ alertId, status }: { alertId: string; status: "acknowledged" | "dismissed" }) =>
       updatePrivateFundAlert(datasetId, alertId, { status }),
@@ -906,6 +912,38 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
           </button>
         </header>
 
+        {data.rebuildRequired ? (
+          <div className="mt-5 flex flex-col gap-3 rounded-lg border border-amber-500/35 bg-amber-50 px-4 py-3 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold">旧版数据待复核</p>
+              <p className="mt-1 text-[11px] opacity-80">
+                发现 {data.legacyItemCount} 条旧版风险或催化剂记录。它们仍可查看，但不会触发提醒。
+              </p>
+            </div>
+            <button
+              className="pf-secondary-button shrink-0"
+              disabled={rebuildMutation.isPending || Boolean(activeJob)}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "重新分析会调用当前模型并产生用量。旧版记录会保留到分析成功，是否继续？",
+                  )
+                ) {
+                  rebuildMutation.mutate();
+                }
+              }}
+              type="button"
+            >
+              {rebuildMutation.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RotateCcw className="size-3.5" />
+              )}
+              重新分析旧版数据
+            </button>
+          </div>
+        ) : null}
+
         <div className="grid gap-px overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-line)] sm:grid-cols-2 xl:grid-cols-4 mt-5">
           {stats.map((stat) => {
             const active = summaryIsActive(stat.key);
@@ -1064,6 +1102,11 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                         </td>
                         <td className="px-3 py-3">
                           <QualityBadge quality={qualityOf(item)} />
+                          {current?.metadata?.requires_rebuild ? (
+                            <p className="mt-1 text-[9px] font-medium text-amber-700 dark:text-amber-300">
+                              旧版数据
+                            </p>
+                          ) : null}
                           <p className="mt-1 text-[9px] text-[var(--pf-ink-muted)]">
                             {Math.round((current?.confidence ?? 0) * 100)}%
                           </p>

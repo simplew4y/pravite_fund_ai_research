@@ -1930,6 +1930,9 @@ def create_app(
             )
         except ImportError:
             smart_routing_enabled = False
+        from omnigent.product_release import product_release
+
+        release = product_release()
         return {
             "accounts_enabled": accounts_enabled,
             "cloud_accounts_enabled": cloud_accounts_enabled,
@@ -1942,6 +1945,9 @@ def create_app(
             "server_version": _server_version(),
             "smart_routing_enabled": smart_routing_enabled,
             "llm_configuration_enabled": True,
+            "product_version": str(release["productVersion"]),
+            "database_changed": bool(release["databaseChanged"]),
+            "data_version": str(release["databaseTargetVersion"]),
         }
 
     @app.get("/v1/me", response_model=None)  # Union return type (dict | JSONResponse)

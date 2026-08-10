@@ -8,6 +8,7 @@ import {
   createPrivateFundWatchRule,
   getPrivateFundResearchItemTimeline,
   getPrivateFundResearchItemGovernance,
+  rebuildPrivateFundTracking,
   runPrivateFundTracking,
   updatePrivateFundAlert,
   updatePrivateFundWatchRule,
@@ -22,6 +23,7 @@ vi.mock("@/lib/privateFundApi", async (importOriginal) => {
     ...actual,
     getPrivateFundResearchItemTimeline: vi.fn(),
     getPrivateFundResearchItemGovernance: vi.fn(),
+    rebuildPrivateFundTracking: vi.fn(),
     archivePrivateFundResearchItems: vi.fn(),
     createPrivateFundWatchRule: vi.fn(),
     runPrivateFundTracking: vi.fn(),
@@ -32,6 +34,9 @@ vi.mock("@/lib/privateFundApi", async (importOriginal) => {
 
 const overview: PrivateFundTrackingOverview = {
   datasetId: "sungrow",
+  schemaVersion: 2,
+  rebuildRequired: false,
+  legacyItemCount: 0,
   counts: { risk: 1, catalyst: 1 },
   unreadAlertCount: 1,
   qualityCounts: { verified: 1, needs_review: 0 },
@@ -127,6 +132,15 @@ describe("PrivateFundTrackingPanel", () => {
       status: "queued",
       attemptCount: 0,
       maxAttempts: 3,
+      createdAt: "2026-07-14T00:00:00Z",
+    });
+    vi.mocked(rebuildPrivateFundTracking).mockResolvedValue({
+      jobId: "job-rebuild",
+      jobType: "legacy_rebuild",
+      sourceId: "manual:rebuild",
+      status: "queued",
+      attemptCount: 0,
+      maxAttempts: 1,
       createdAt: "2026-07-14T00:00:00Z",
     });
     vi.mocked(updatePrivateFundAlert).mockResolvedValue({

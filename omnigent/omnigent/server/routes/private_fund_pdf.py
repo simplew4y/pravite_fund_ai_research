@@ -5162,6 +5162,22 @@ def create_private_fund_pdf_router(
             )
         }
 
+    @router.post("/private-fund/projects/{dataset_id}/tracking/rebuild", status_code=202)
+    def rebuild_project_tracking(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        overview = private_fund_tracking.tracking_overview(
+            _collection_db_path(dataset_id), dataset_id
+        )
+        if not overview.get("rebuild_required"):
+            raise HTTPException(
+                status_code=409, detail="No legacy tracking data requires rebuild."
+            )
+        return {
+            "job": private_fund_tracking.enqueue_legacy_rebuild(
+                _collection_db_path(dataset_id), dataset_id
+            )
+        }
+
     @router.get("/private-fund/projects/{dataset_id}/tracking/jobs/{job_id}")
     def get_project_tracking_job(dataset_id: str, job_id: str) -> dict[str, Any]:
         _require_project_row(dataset_id)
