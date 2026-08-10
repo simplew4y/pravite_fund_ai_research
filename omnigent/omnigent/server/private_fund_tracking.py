@@ -18,9 +18,18 @@ from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlencode
 
-TRACKING_SCHEMA_VERSION = 1
-EXTRACTOR_VERSION = "research-tracking-v1"
+TRACKING_SCHEMA_VERSION = 2
+EXTRACTOR_VERSION = "risk-catalyst-skill-v8"
+
+_TRACKING_SKILL_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "resources"
+    / "private_fund_skills"
+    / "private-fund-risk-catalyst-tracking"
+    / "SKILL.md"
+)
 
 ITEM_TYPES = frozenset({"thesis", "assumption", "risk", "catalyst", "metric", "question"})
 FINAL_ITEM_STATES = frozenset({"resolved", "dismissed", "achieved", "missed", "cancelled"})
@@ -41,6 +50,7 @@ _RISK_TERMS = (
     "波动",
     "短缺",
     "流失",
+    "成本冲击",
     "risk",
     "decline",
     "delay",
@@ -86,7 +96,7 @@ _ASSUMPTION_TERMS = (
     "target price",
     "risk free rate",
 )
-_DATE_PATTERN = re.compile(r"\b(20\d{2}(?:[-/.年]\d{1,2}(?:[-/.月]\d{1,2}日?)?)?)\b")
+_DATE_PATTERN = re.compile(r"(?<!\d)(20\d{2}(?:[-/.年]\d{1,2}(?:[-/.月]\d{1,2}日?)?)?)(?!\d)")
 _NUMBER_PATTERN = re.compile(r"(?<![A-Za-z0-9])(-?\d+(?:\.\d+)?)\s*(%|pct|bps|倍|亿元|万元|元)?")
 _FENCE_PATTERN = re.compile(r"```(?:json)?\s*([\s\S]*?)```", flags=re.IGNORECASE)
 _RETRY_DELAYS_SECONDS = (30, 120, 600)
@@ -276,6 +286,8 @@ def ensure_tracking_schema(conn: sqlite3.Connection, dataset_id: str | None = No
             last_seen_at TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
+            archived_at TEXT,
+            archive_reason TEXT,
             UNIQUE(dataset_id, item_type, canonical_key)
         );
 
@@ -416,6 +428,11 @@ def ensure_tracking_schema(conn: sqlite3.Connection, dataset_id: str | None = No
             ON research_tracking_jobs(status, available_at, priority, created_at);
         """
     )
+    item_columns = _columns(conn, "research_items")
+    if "archived_at" not in item_columns:
+        conn.execute("ALTER TABLE research_items ADD COLUMN archived_at TEXT")
+    if "archive_reason" not in item_columns:
+        conn.execute("ALTER TABLE research_items ADD COLUMN archive_reason TEXT")
     if dataset_id:
         _ensure_default_watch_rules(conn, dataset_id)
 
@@ -548,6 +565,39 @@ def enqueue_current_documents(
             )
         )
     return jobs
+
+
+def enqueue_current_memo_versions(
+    collection_db: Path,
+    dataset_id: str,
+) -> list[dict[str, Any]]:
+    """Enqueue the current version of every Memo series for this extractor version."""
+
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        rows = conn.execute(
+            """
+            SELECT v.memo_version_id
+            FROM research_memo_series s
+            JOIN research_memo_versions v
+              ON v.series_id=s.series_id AND v.version_no=s.current_version_no
+            WHERE s.dataset_id=? AND v.status NOT IN ('failed', 'cancelled')
+            ORDER BY v.created_at
+            """,
+            (dataset_id,),
+        ).fetchall()
+        conn.commit()
+    return [
+        enqueue_job(
+            collection_db,
+            dataset_id,
+            job_type="memo_version_created",
+            source_id=str(row["memo_version_id"]),
+            payload={"memo_version_id": str(row["memo_version_id"])},
+            priority=60,
+        )
+        for row in rows
+    ]
 
 
 def enqueue_manual_scan(collection_db: Path, dataset_id: str) -> dict[str, Any]:
@@ -1034,7 +1084,169 @@ def _candidate_key(raw: dict[str, Any]) -> str:
         period = _canonical_text(raw.get("period"))
         scenario = _canonical_text(raw.get("scenario") or "base")
         return "/".join(part for part in (metric, scenario, period) if part)[:240]
+    if item_type in {"risk", "catalyst"}:
+        event_parts = (
+            raw.get("entity"),
+            raw.get("event_type"),
+            raw.get("subject"),
+            raw.get("expected_start") or raw.get("expected_end"),
+        )
+        event_key = "/".join(
+            part for part in (_canonical_text(value) for value in event_parts) if part
+        )
+        if len(event_key.split("/")) >= 3:
+            return event_key[:240]
     return (explicit or _canonical_text(raw.get("title") or raw.get("content")))[:240]
+
+
+def _tracking_skill_text() -> str:
+    try:
+        parts = [_TRACKING_SKILL_PATH.read_text(encoding="utf-8")]
+        reference_dir = _TRACKING_SKILL_PATH.parent / "references"
+        for reference_path in sorted(reference_dir.glob("*.md")):
+            parts.append(
+                f"\n\n## Reference: {reference_path.name}\n\n"
+                f"{reference_path.read_text(encoding='utf-8')}"
+            )
+        return "".join(parts)
+    except OSError:
+        return ""
+
+
+def _tracking_metadata(raw: dict[str, Any], item_type: str, confidence: float) -> dict[str, Any]:
+    metadata = dict(raw.get("metadata") or {}) if isinstance(raw.get("metadata"), dict) else {}
+    for field_name in (
+        "entity",
+        "event_type",
+        "subject",
+        "direction",
+        "trigger",
+        "transmission_path",
+        "classification_reason",
+        "extraction_method",
+    ):
+        value = str(raw.get(field_name) or metadata.get(field_name) or "").strip()
+        if value:
+            metadata[field_name] = value[:500]
+    evidence_quotes = raw.get("evidence_quotes")
+    if isinstance(evidence_quotes, list):
+        metadata["evidence_quotes"] = [
+            {
+                "evidence_id": str(item.get("evidence_id") or "")[:160],
+                "quote": str(item.get("quote") or "")[:500],
+            }
+            for item in evidence_quotes
+            if isinstance(item, dict) and item.get("evidence_id") and item.get("quote")
+        ]
+    for field_name in ("evidence_grounded", "evidence_reassigned"):
+        if field_name in raw:
+            metadata[field_name] = bool(raw[field_name])
+    if raw.get("evidence_grounding_method"):
+        metadata["evidence_grounding_method"] = str(raw["evidence_grounding_method"])[:80]
+
+    requested_quality = (
+        str(raw.get("quality_status") or metadata.get("quality_status") or "").strip().lower()
+    )
+    if item_type not in {"risk", "catalyst"}:
+        quality_status = "verified" if confidence >= 0.7 else "needs_review"
+    else:
+        has_identity = bool(
+            metadata.get("entity") and metadata.get("event_type") and metadata.get("subject")
+        )
+        has_reason = bool(metadata.get("classification_reason"))
+        if item_type == "risk":
+            has_structure = bool(metadata.get("trigger") and metadata.get("transmission_path"))
+        else:
+            has_structure = bool(
+                metadata.get("trigger") or raw.get("expected_start") or raw.get("expected_end")
+            )
+        quality_status = (
+            "verified"
+            if requested_quality == "verified"
+            and confidence >= 0.78
+            and has_identity
+            and has_reason
+            and has_structure
+            else "needs_review"
+        )
+    metadata["quality_status"] = quality_status
+    metadata["content_kind"] = (
+        "evidence_lead"
+        if metadata.get("extraction_method") == "keyword_fallback"
+        else "analytical_judgement"
+    )
+    metadata["extractor_version"] = EXTRACTOR_VERSION
+    return metadata
+
+
+def _has_minimum_event_structure(
+    metadata: dict[str, Any], item_type: str, raw: dict[str, Any]
+) -> bool:
+    if item_type not in {"risk", "catalyst"}:
+        return True
+    if not all(metadata.get(field) for field in ("entity", "event_type", "subject")):
+        return False
+    if not metadata.get("classification_reason"):
+        return False
+    if item_type == "risk":
+        return bool(metadata.get("trigger") and metadata.get("transmission_path"))
+    return bool(metadata.get("trigger") or raw.get("expected_start") or raw.get("expected_end"))
+
+
+_EVENT_TITLE_LABELS = {
+    "capacity_expansion": "产能扩张",
+    "local_factory": "本地建厂",
+    "order_growth": "订单增长",
+    "order_win": "订单获取",
+    "order_award": "订单落地",
+    "order_delay": "订单延期",
+    "order_pipeline": "订单储备",
+    "product_launch": "产品发布",
+    "market_demand_shift": "市场需求变化",
+    "cost_pressure": "成本压力",
+    "demand_decline": "需求走弱",
+    "demand_growth": "需求增长",
+    "cost_increase": "成本上升",
+    "margin_pressure": "利润率承压",
+    "regulatory_change": "监管变化",
+    "project_delay": "项目延期",
+}
+
+
+def _clean_tracking_title(value: Any) -> str:
+    title = re.sub(r"[*_#`]+", "", str(value or ""))
+    title = re.sub(r"\s+", "", title)
+    title = re.sub(r"(?:啊|呢|这个|那个|就是说|同时呢|我们)", "", title)
+    return title.strip(" ，。；：、!?！？-—")
+
+
+def _tracking_title(
+    raw: dict[str, Any], item_type: str, content: str, metadata: dict[str, Any]
+) -> str:
+    entity = _clean_tracking_title(metadata.get("entity"))
+    subject = _clean_tracking_title(metadata.get("subject"))
+    event_type = str(metadata.get("event_type") or "").strip().lower()
+    direction = _clean_tracking_title(metadata.get("direction"))
+    event_label = _EVENT_TITLE_LABELS.get(event_type, "")
+    if entity and subject:
+        subject_label = subject if subject not in entity else ""
+        overlap_terms = ("订单", "产品", "需求", "成本", "利润率", "项目", "产能", "监管")
+        event_is_implied = not event_label or any(
+            term in subject_label and term in event_label for term in overlap_terms
+        )
+        core = subject_label if event_is_implied else f"{subject_label}{event_label or direction}"
+        title = f"{entity}：{core}" if core else entity
+    else:
+        source = _clean_tracking_title(raw.get("title") or content)
+        if "建厂" in source and "订单" in source:
+            title = "本地建厂有望提升订单获取能力"
+        elif ("扩产" in source or "产能" in source) and "订单" in source:
+            title = "产能扩张有望支撑订单增长"
+        else:
+            clause = re.split(r"[，。；！？]", source, maxsplit=1)[0]
+            title = clause
+    title = _clean_tracking_title(title)[:48]
+    return title or ("待复核风险" if item_type == "risk" else "待复核催化剂")
 
 
 def _candidate_from_raw(
@@ -1047,13 +1259,12 @@ def _candidate_from_raw(
     if item_type not in ITEM_TYPES:
         return None
     content = str(raw.get("content") or "").strip()
-    title = str(raw.get("title") or content[:80]).strip()[:240]
     evidence_ids = [
         str(item).strip()
         for item in raw.get("evidence_ids") or []
         if str(item).strip() in valid_evidence_ids
     ]
-    if not content or not title or not evidence_ids:
+    if not content or not evidence_ids:
         return None
     canonical_key = _candidate_key(raw)
     if not canonical_key:
@@ -1064,7 +1275,22 @@ def _candidate_from_raw(
     impact = str(raw.get("impact") or "medium").lower()
     if impact not in {"low", "medium", "high", "critical"}:
         impact = "medium"
-    confidence = _safe_float(raw.get("confidence"))
+    confidence_value = _safe_float(raw.get("confidence"))
+    confidence = max(0.0, min(confidence_value if confidence_value is not None else 0.65, 1.0))
+    metadata = _tracking_metadata(raw, item_type, confidence)
+    if not _has_minimum_event_structure(metadata, item_type, raw):
+        return None
+    title = _tracking_title(raw, item_type, content, metadata)
+    if item_type in {"risk", "catalyst"}:
+        title_text = _canonical_text(title)
+        content_text = _canonical_text(content)
+        if title_text == content_text:
+            return None
+        if (
+            min(len(title_text), len(content_text)) >= 10
+            and SequenceMatcher(None, title_text, content_text).ratio() >= 0.9
+        ):
+            return None
     return ResearchCandidate(
         item_type=item_type,
         canonical_key=canonical_key,
@@ -1082,10 +1308,10 @@ def _candidate_from_raw(
         scenario=str(raw.get("scenario") or "")[:80],
         probability=str(raw.get("probability") or "")[:40],
         impact=impact,
-        confidence=max(0.0, min(confidence if confidence is not None else 0.65, 1.0)),
+        confidence=confidence,
         expected_start=_safe_date(raw.get("expected_start")),
         expected_end=_safe_date(raw.get("expected_end")),
-        metadata=raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {},
+        metadata=metadata,
     )
 
 
@@ -1110,6 +1336,110 @@ def _parse_llm_json(text: str) -> list[dict[str, Any]]:
     return (
         [item for item in decoded if isinstance(item, dict)] if isinstance(decoded, list) else []
     )
+
+
+def _quote_fingerprint(value: Any) -> str:
+    """Normalize layout noise while retaining the lexical content of a quote."""
+
+    text = unicodedata.normalize("NFKC", str(value or "")).lower()
+    return re.sub(r"[^a-z0-9\u3400-\u9fff]+", "", text)
+
+
+def _is_boilerplate_evidence(value: Any) -> bool:
+    """Identify moderator transitions that cannot support an event claim."""
+
+    text = _normalize(value)
+    if not text:
+        return True
+    moderator_markers = (
+        "下面有请",
+        "进行提问",
+        "请您优先提供",
+        "姓名和机构",
+        "请发言",
+        "感谢您的提问",
+    )
+    marker_count = sum(marker in text for marker in moderator_markers)
+    return marker_count >= 2 and len(_quote_fingerprint(text)) <= 180
+
+
+def _raw_evidence_quotes(raw: dict[str, Any]) -> list[tuple[str, str]]:
+    value = raw.get("evidence_quotes")
+    if isinstance(value, dict):
+        return [
+            (str(evidence_id).strip(), str(quote).strip())
+            for evidence_id, quote in value.items()
+            if str(evidence_id).strip() and str(quote).strip()
+        ]
+    if isinstance(value, list):
+        return [
+            (
+                str(item.get("evidence_id") or "").strip(),
+                str(item.get("quote") or "").strip(),
+            )
+            for item in value
+            if isinstance(item, dict)
+            and str(item.get("evidence_id") or "").strip()
+            and str(item.get("quote") or "").strip()
+        ]
+    return []
+
+
+def _ground_llm_evidence(
+    raw: dict[str, Any], units: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Verify exact quotes and repair adjacent/combined-chunk ID mistakes conservatively."""
+
+    item_type = str(raw.get("item_type") or "").strip().lower()
+    if item_type not in {"risk", "catalyst"}:
+        return raw
+    quotes = _raw_evidence_quotes(raw)
+    if not quotes:
+        return None
+
+    units_by_id = {
+        str(unit.get("evidence_id") or ""): unit
+        for unit in units
+        if str(unit.get("evidence_id") or "")
+    }
+    grounded_quotes: list[dict[str, str]] = []
+    reassigned = False
+    for requested_id, quote in quotes:
+        quote_key = _quote_fingerprint(quote)
+        if len(quote_key) < 8:
+            return None
+        matching_units = [
+            unit
+            for unit in units
+            if quote_key in _quote_fingerprint(unit.get("content"))
+            and not _is_boilerplate_evidence(unit.get("content"))
+        ]
+        if not matching_units:
+            return None
+        requested_unit = units_by_id.get(requested_id)
+        if requested_unit in matching_units:
+            selected = requested_unit
+        else:
+            # Parent and atomic chunks may contain the same passage. The shortest
+            # exact container produces the most focused evidence preview.
+            selected = min(
+                matching_units,
+                key=lambda unit: len(_quote_fingerprint(unit.get("content"))),
+            )
+            reassigned = True
+        grounded_quotes.append(
+            {"evidence_id": str(selected["evidence_id"]), "quote": quote[:500]}
+        )
+
+    grounded = dict(raw)
+    grounded["evidence_ids"] = list(
+        dict.fromkeys(item["evidence_id"] for item in grounded_quotes)
+    )
+    grounded["evidence_quotes"] = grounded_quotes
+    grounded["evidence_grounded"] = True
+    grounded["evidence_reassigned"] = reassigned
+    grounded["evidence_grounding_method"] = "verbatim_quote"
+    return grounded
 
 
 def _heuristic_candidates(
@@ -1138,6 +1468,8 @@ def _heuristic_candidates(
                 item_type = "assumption"
             else:
                 continue
+            if item_type in {"risk", "catalyst"}:
+                continue
             if counts.get(item_type, 0) >= 40:
                 continue
             number = _NUMBER_PATTERN.search(content)
@@ -1152,7 +1484,9 @@ def _heuristic_candidates(
                 "unit": number.group(2) if number and number.group(2) else "",
                 "expected_start": date if item_type == "catalyst" else "",
                 "impact": "medium",
-                "confidence": 0.55,
+                "confidence": 0.45,
+                "quality_status": "needs_review",
+                "extraction_method": "keyword_fallback",
             }
             candidate = _candidate_from_raw(
                 raw, valid_evidence_ids=valid_evidence_ids, default_date=default_date
@@ -1174,22 +1508,25 @@ def _llm_candidates(
     valid_evidence_ids: set[str],
     default_date: str,
 ) -> list[ResearchCandidate]:
+    skill = _tracking_skill_text()
     evidence_text = "\n\n".join(
         f"[{unit['evidence_id']}] {str(unit.get('content') or '')[:1400]}" for unit in units[:80]
     )[:80_000]
     prompt = f"""
-Extract atomic private-fund research items from the evidence below. Return JSON only: an array.
-Allowed item_type: thesis, assumption, risk, catalyst, metric, question.
-Every item must contain item_type, canonical_key, title, content, evidence_ids, state,
-impact (low/medium/high/critical), confidence (0..1). Use only evidence IDs shown below.
-For assumptions also return metric, value_numeric/value_text, unit, period, scenario.
-For catalysts return expected_start/expected_end when explicitly supported.
-For risks/catalysts distinguish a real business or investment event from finance labels:
-"risk free rate"/"无风险利率" is an assumption, never a risk.
-Preserve explicit lifecycle language such as invalidated, withdrawn, resolved, achieved,
-or missed only when the evidence states it. Do not infer that an item is removed,
-invalidated, or withdrawn merely because it is not mentioned in a later Memo.
-Default source date: {default_date}.
+Apply the tracking skill below exactly. Extract atomic private-fund research items and return
+one JSON array with no prose. Use only the supplied evidence IDs. Keep uncertain candidates as
+quality_status=needs_review; omit unsupported candidates. For every risk/catalyst include entity,
+event_type, subject, direction, trigger, transmission_path, classification_reason, and
+quality_status. Also include evidence_quotes as a list of objects with evidence_id and an exact
+verbatim quote of 8-160 characters copied from that evidence block. Never cite moderator prompts,
+speaker hand-offs, or an adjacent block that does not contain the quote. Add
+extraction_method=llm_skill. The title must be an analytical event label of at
+most 26 Chinese characters, without Markdown, speech fillers, or copied source sentences. Content
+must be a concise analytical judgement in your own words and must not equal the title or copy a
+source passage verbatim. Default source date: {default_date}.
+
+Tracking skill:
+{skill}
 
 Evidence:
 {evidence_text}
@@ -1199,7 +1536,8 @@ Evidence:
             {
                 "role": "system",
                 "content": (
-                    "You are a precise investment-research extraction engine. "
+                    "You are a conservative investment-research event verifier. "
+                    "Evidence fidelity and abstention are more important than recall. "
                     "Output valid JSON only."
                 ),
             },
@@ -1210,6 +1548,9 @@ Evidence:
     )
     candidates = []
     for raw in _parse_llm_json(text):
+        raw = _ground_llm_evidence(raw, units)
+        if raw is None:
+            continue
         candidate = _candidate_from_raw(
             raw, valid_evidence_ids=valid_evidence_ids, default_date=default_date
         )
@@ -1344,7 +1685,7 @@ def _find_item(
         """
         SELECT i.*, v.content, v.value_numeric, v.value_text, v.unit, v.period,
                v.scenario, v.probability, v.impact, v.state, v.expected_start, v.expected_end,
-               v.stance
+               v.stance, v.confidence, v.metadata_json
         FROM research_items i
         LEFT JOIN research_item_versions v ON v.item_version_id=i.current_version_id
         WHERE i.dataset_id=? AND i.item_type=? AND i.canonical_key=?
@@ -1353,11 +1694,32 @@ def _find_item(
     ).fetchone()
     if exact:
         return exact
+    if candidate.evidence_ids:
+        placeholders = ",".join("?" for _ in candidate.evidence_ids)
+        evidence_match = conn.execute(
+            f"""
+            SELECT i.*, v.content, v.value_numeric, v.value_text, v.unit, v.period,
+                   v.scenario, v.probability, v.impact, v.state, v.expected_start,
+                   v.expected_end, v.stance, v.confidence, v.metadata_json,
+                   COUNT(*) AS evidence_overlap
+            FROM research_items i
+            JOIN research_item_versions v ON v.item_version_id=i.current_version_id
+            JOIN research_item_evidence e ON e.item_version_id=v.item_version_id
+            WHERE i.dataset_id=? AND i.item_type=?
+              AND e.evidence_id IN ({placeholders})
+            GROUP BY i.item_id
+            ORDER BY evidence_overlap DESC, i.last_seen_at DESC
+            LIMIT 1
+            """,
+            [dataset_id, candidate.item_type, *candidate.evidence_ids],
+        ).fetchone()
+        if evidence_match and _item_similarity(candidate, evidence_match) >= 0.45:
+            return evidence_match
     rows = conn.execute(
         """
         SELECT i.*, v.content, v.value_numeric, v.value_text, v.unit, v.period,
                v.scenario, v.probability, v.impact, v.state, v.expected_start, v.expected_end,
-               v.stance
+               v.stance, v.confidence, v.metadata_json
         FROM research_items i
         LEFT JOIN research_item_versions v ON v.item_version_id=i.current_version_id
         WHERE i.dataset_id=? AND i.item_type=?
@@ -1374,6 +1736,30 @@ def _find_item(
 
 
 def _meaningful_change(candidate: ResearchCandidate, current: sqlite3.Row) -> bool:
+    if _canonical_text(candidate.title) != _canonical_text(current["title"]):
+        return True
+    current_metadata = _decode(current["metadata_json"], {})
+    tracked_metadata_fields = (
+        "quality_status",
+        "entity",
+        "event_type",
+        "subject",
+        "direction",
+        "trigger",
+        "transmission_path",
+        "classification_reason",
+        "extraction_method",
+        "content_kind",
+        "extractor_version",
+    )
+    if any(
+        _normalize(candidate.metadata.get(field_name))
+        != _normalize(current_metadata.get(field_name))
+        for field_name in tracked_metadata_fields
+    ):
+        return True
+    if abs(candidate.confidence - float(current["confidence"] or 0)) > 1e-9:
+        return True
     fields = (
         (candidate.value_numeric, current["value_numeric"]),
         (candidate.value_text, current["value_text"]),
@@ -1462,6 +1848,7 @@ def _watch_rule_matches(
     state: str,
     impact: str,
     change_type: str,
+    event_type: str,
 ) -> bool:
     query = _decode(rule["query_json"], {})
     if not isinstance(query, dict):
@@ -1480,6 +1867,7 @@ def _watch_rule_matches(
         "states": state,
         "impacts": impact,
         "change_types": change_type,
+        "event_types": event_type,
     }
     for key, actual in filters.items():
         expected = query.get(key)
@@ -1495,6 +1883,18 @@ def _watch_rule_matches(
 
 
 _PRIORITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+_WATCH_FREQUENCIES = frozenset({"on_ingest", "daily", "weekly"})
+_WATCH_CHANGE_TYPES = frozenset(
+    {
+        "new",
+        "status_changed",
+        "value_changed",
+        "timing_changed",
+        "probability_changed",
+        "stance_changed",
+        "content_changed",
+    }
+)
 
 
 def _create_alerts(
@@ -1508,6 +1908,15 @@ def _create_alerts(
 ) -> int:
     if candidate.item_type not in {"risk", "catalyst"}:
         return 0
+    quality_status = str(candidate.metadata.get("quality_status") or "needs_review")
+    if quality_status != "verified":
+        return 0
+    if change_type == "new" and (
+        candidate.confidence < 0.8 or materiality not in {"high", "critical"}
+    ):
+        return 0
+    if change_type != "new" and candidate.confidence < 0.72:
+        return 0
     created = 0
     now = _now_iso()
     for rule in _active_watch_rules(conn, dataset_id, candidate.item_type, item_id):
@@ -1518,10 +1927,25 @@ def _create_alerts(
             state=candidate.state,
             impact=candidate.impact,
             change_type=change_type,
+            event_type=str(candidate.metadata.get("event_type") or ""),
         ):
             continue
         if _PRIORITY_RANK.get(materiality, 1) < _PRIORITY_RANK.get(str(rule["min_priority"]), 1):
             continue
+        frequency = str(rule["frequency"] or "on_ingest")
+        if frequency in {"daily", "weekly"}:
+            interval = timedelta(days=1 if frequency == "daily" else 7)
+            cutoff = (datetime.now(timezone.utc) - interval).isoformat()
+            recent = conn.execute(
+                """
+                SELECT 1 FROM research_alerts
+                WHERE dataset_id=? AND rule_id=? AND item_id=? AND created_at>=?
+                LIMIT 1
+                """,
+                (dataset_id, rule["rule_id"], item_id, cutoff),
+            ).fetchone()
+            if recent is not None:
+                continue
         dedupe_key = _digest(rule["rule_id"], item_id, change_event_id, change_type, length=40)
         alert_id = f"al_{_digest(dataset_id, dedupe_key)}"
         summary = f"{candidate.title}：{change_type.replace('_', ' ')}"
@@ -1662,7 +2086,10 @@ def _reconcile_candidates(
                 """
                 UPDATE research_items
                 SET title=?, status=?, current_version_no=?, current_version_id=?,
-                    last_seen_at=?, updated_at=? WHERE item_id=?
+                    last_seen_at=?, updated_at=?,
+                    archived_at=CASE WHEN ?='verified' THEN NULL ELSE archived_at END,
+                    archive_reason=CASE WHEN ?='verified' THEN NULL ELSE archive_reason END
+                WHERE item_id=?
                 """,
                 (
                     candidate.title,
@@ -1671,6 +2098,8 @@ def _reconcile_candidates(
                     item_version_id,
                     now,
                     now,
+                    str(candidate.metadata.get("quality_status") or "needs_review"),
+                    str(candidate.metadata.get("quality_status") or "needs_review"),
                     item_id,
                 ),
             )
@@ -1763,6 +2192,11 @@ def _scan_due_items(conn: sqlite3.Connection, dataset_id: str) -> dict[str, int]
     ).fetchall()
     created = 0
     for row in rows:
+        metadata = _decode(row["metadata_json"], {})
+        if str(metadata.get("quality_status") or "needs_review") != "verified":
+            continue
+        if float(row["confidence"] or 0) < 0.72:
+            continue
         raw_due = str(row["expected_start"] or row["expected_end"] or "")
         try:
             due_date = datetime.fromisoformat(raw_due[:10]).replace(tzinfo=timezone.utc)
@@ -1933,9 +2367,15 @@ def process_next_job(
                         llm_extracted = _llm_candidates(
                             llm_client, units, valid_evidence_ids, default_date
                         )
+                        llm_evidence_ids = {
+                            evidence_id
+                            for candidate in llm_extracted
+                            for evidence_id in candidate.evidence_ids
+                        }
                         merged = {
                             (candidate.item_type, candidate.canonical_key): candidate
                             for candidate in candidates
+                            if not llm_evidence_ids.intersection(candidate.evidence_ids)
                         }
                         for candidate in llm_extracted:
                             merged[(candidate.item_type, candidate.canonical_key)] = candidate
@@ -1947,7 +2387,17 @@ def process_next_job(
                     "source_id": source_id,
                     "unit_count": len(units),
                     "candidate_count": len(candidates),
+                    "verified_candidate_count": sum(
+                        candidate.metadata.get("quality_status") == "verified"
+                        for candidate in candidates
+                    ),
+                    "review_candidate_count": sum(
+                        candidate.metadata.get("quality_status") != "verified"
+                        for candidate in candidates
+                    ),
                     "llm_used": llm_client is not None,
+                    "skill_name": "private-fund-risk-catalyst-tracking",
+                    "skill_loaded": bool(_tracking_skill_text()),
                     "llm_error": llm_error,
                     **_reconcile_candidates(
                         conn,
@@ -2042,6 +2492,97 @@ def _change_event_payload(row: sqlite3.Row) -> dict[str, Any]:
     return payload
 
 
+def _evidence_source_payload(
+    conn: sqlite3.Connection, evidence_id: str
+) -> dict[str, Any] | None:
+    kind, _, raw_id = evidence_id.partition(":")
+    if kind not in {"chunk", "fact"} or not raw_id:
+        return None
+    record: dict[str, Any] = {}
+    location: dict[str, Any] = {}
+    if kind == "chunk":
+        row = conn.execute("SELECT * FROM chunks WHERE chunk_id=?", (raw_id,)).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        if "chunk_locations" in _tables(conn):
+            location_row = conn.execute(
+                "SELECT * FROM chunk_locations WHERE chunk_id=? ORDER BY rowid LIMIT 1",
+                (raw_id,),
+            ).fetchone()
+            if location_row:
+                location = dict(location_row)
+        excerpt = str(record.get("content") or record.get("summary") or "")
+    else:
+        row = conn.execute("SELECT * FROM metric_facts WHERE fact_id=?", (raw_id,)).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        excerpt = " ".join(
+            str(record.get(key) or "")
+            for key in ("metric_name", "period", "value_text", "unit")
+            if record.get(key) not in (None, "")
+        )
+        location = {
+            "sheet_name": record.get("sheet_name"),
+            "cell_range": record.get("cell_ref"),
+        }
+    doc_id = str(record.get("doc_id") or "")
+    document_row = conn.execute("SELECT * FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
+    if document_row is None:
+        return None
+    document = dict(document_row)
+    document_name = str(document.get("original_filename") or doc_id)
+    page_start = location.get("page_start")
+    page_end = location.get("page_end")
+    sheet_name = location.get("sheet_name")
+    cell_range = location.get("cell_range") or location.get("cell_ref")
+    heading_path = location.get("heading_path")
+    if page_start:
+        position = f"第 {page_start} 页"
+        if page_end and page_end != page_start:
+            position = f"第 {page_start}–{page_end} 页"
+    elif sheet_name:
+        position = f"{sheet_name}!{cell_range}" if cell_range else str(sheet_name)
+    elif heading_path:
+        position = str(heading_path)
+    else:
+        position = "文档片段"
+    source_url = None
+    suffix = Path(document_name).suffix.lower()
+    if page_start and suffix == ".pdf":
+        source_url = "#private-fund-pdf-source?" + urlencode(
+            {
+                "page": str(page_start),
+                "label": position,
+                "pdf_name": document_name,
+                "evidence_id": evidence_id,
+            }
+        )
+    elif sheet_name and suffix in {".xlsx", ".xlsm", ".xls", ".csv"}:
+        params = {
+            "workbook_name": document_name,
+            "sheet_name": str(sheet_name),
+            "label": f"{document_name} {position}",
+        }
+        if cell_range:
+            params["range_ref"] = str(cell_range)
+        source_url = "#private-fund-excel-source?" + urlencode(params)
+    full_content = re.sub(r"\s+", " ", excerpt).strip()[:20_000]
+    return {
+        "evidence_id": evidence_id,
+        "citation": f"{document_name} · {position}",
+        "document_name": document_name,
+        "excerpt": full_content[:800],
+        "full_content": full_content,
+        "source_url": source_url,
+        "page_start": page_start,
+        "page_end": page_end,
+        "sheet_name": sheet_name,
+        "cell_range": cell_range,
+    }
+
+
 def _item_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
     payload = dict(row)
     version_id = payload.get("current_version_id")
@@ -2054,16 +2595,77 @@ def _item_payload(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
         if version_row:
             version = dict(version_row)
             version["metadata"] = _decode(version.pop("metadata_json"), {})
-            evidence_ids = [
-                str(item["evidence_id"])
-                for item in conn.execute(
-                    "SELECT evidence_id FROM research_item_evidence WHERE item_version_id=?",
-                    (version_id,),
-                )
-            ]
+            evidence_rows = conn.execute(
+                """
+                SELECT e.evidence_id, c.content
+                FROM research_item_evidence e
+                LEFT JOIN chunks c ON e.evidence_id=('chunk:' || c.chunk_id)
+                WHERE e.item_version_id=?
+                """,
+                (version_id,),
+            ).fetchall()
+            evidence_ids = [str(item["evidence_id"]) for item in evidence_rows]
             version["evidence_ids"] = evidence_ids
+            evidence_contents = [
+                str(item["content"])
+                for item in evidence_rows
+                if item["content"] is not None and str(item["content"]).strip()
+            ]
+            version["evidence_grounding_failure"] = bool(evidence_contents) and all(
+                _is_boilerplate_evidence(content) for content in evidence_contents
+            )
     payload["current_version"] = version
     return payload
+
+
+def _is_displayable_tracking_item(item: dict[str, Any]) -> bool:
+    if item.get("item_type") not in {"risk", "catalyst"}:
+        return True
+    version = item.get("current_version") or {}
+    metadata = version.get("metadata") or {}
+    if version.get("evidence_grounding_failure"):
+        return False
+    if metadata.get("extraction_method") == "keyword_fallback":
+        return False
+    if not _has_minimum_event_structure(metadata, str(item.get("item_type")), version):
+        return False
+    title = _canonical_text(item.get("title"))
+    content = _canonical_text(version.get("content"))
+    if not title or not content or title == content:
+        return False
+    return not (
+        min(len(title), len(content)) >= 10
+        and SequenceMatcher(None, title, content).ratio() >= 0.9
+    )
+
+
+def _tracking_item_quality_issue(item: dict[str, Any]) -> str:
+    """Return a user-facing reason when a risk/catalyst record fails the quality gate."""
+
+    if item.get("item_type") not in {"risk", "catalyst"}:
+        return ""
+    version = item.get("current_version") or {}
+    metadata = version.get("metadata") or {}
+    if version.get("evidence_grounding_failure"):
+        return "证据仅包含主持人转场或提问提示，无法支持当前判断"
+    if metadata.get("extraction_method") == "keyword_fallback":
+        return "旧版关键词降级记录，未形成完整事件结构"
+    if not _has_minimum_event_structure(metadata, str(item.get("item_type")), version):
+        return "缺少主体、事件类型或影响对象等关键结构"
+    title = _canonical_text(item.get("title"))
+    content = _canonical_text(version.get("content"))
+    if not title:
+        return "标题为空"
+    if not content:
+        return "当前判断为空"
+    if title == content:
+        return "标题与原文判断完全重复"
+    if (
+        min(len(title), len(content)) >= 10
+        and SequenceMatcher(None, title, content).ratio() >= 0.9
+    ):
+        return "标题与原文判断高度重复"
+    return ""
 
 
 def list_items(
@@ -2073,7 +2675,11 @@ def list_items(
     item_type: str | None = None,
     status: str | None = None,
     limit: int = 200,
+    include_unqualified: bool = False,
+    archive_status: str = "active",
 ) -> list[dict[str, Any]]:
+    if archive_status not in {"active", "archived", "all"}:
+        raise ValueError("unsupported archive status")
     with _connect(collection_db) as conn:
         ensure_tracking_schema(conn, dataset_id)
         sql = "SELECT * FROM research_items WHERE dataset_id=?"
@@ -2084,9 +2690,244 @@ def list_items(
         if status:
             sql += " AND status=?"
             params.append(status)
+        if archive_status == "active":
+            sql += " AND archived_at IS NULL"
+        elif archive_status == "archived":
+            sql += " AND archived_at IS NOT NULL"
         sql += " ORDER BY updated_at DESC LIMIT ?"
-        params.append(max(1, min(limit, 500)))
-        return [_item_payload(conn, row) for row in conn.execute(sql, params)]
+        requested_limit = max(1, min(limit, 500))
+        params.append(500 if not include_unqualified else requested_limit)
+        items = [_item_payload(conn, row) for row in conn.execute(sql, params)]
+        if not include_unqualified:
+            items = [item for item in items if _is_displayable_tracking_item(item)]
+        return items[:requested_limit]
+
+
+def list_low_quality_items(
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    archive_status: str = "active",
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """List records rejected by the current quality gate for auditable governance."""
+
+    items = list_items(
+        collection_db,
+        dataset_id,
+        limit=limit,
+        include_unqualified=True,
+        archive_status=archive_status,
+    )
+    governed = []
+    for item in items:
+        issue = _tracking_item_quality_issue(item)
+        if issue:
+            item["quality_issue"] = issue
+            governed.append(item)
+    return governed
+
+
+def archive_low_quality_items(
+    collection_db: Path,
+    dataset_id: str,
+    item_ids: list[str],
+) -> dict[str, Any]:
+    selected = {str(item_id).strip() for item_id in item_ids if str(item_id).strip()}
+    if not selected:
+        raise ValueError("at least one item is required")
+    eligible = {
+        str(item["item_id"]): item
+        for item in list_low_quality_items(
+            collection_db, dataset_id, archive_status="active", limit=500
+        )
+    }
+    invalid = sorted(selected - set(eligible))
+    if invalid:
+        raise ValueError("only active records rejected by the quality gate can be archived")
+    now = _now_iso()
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        for item_id in sorted(selected):
+            conn.execute(
+                """
+                UPDATE research_items
+                SET archived_at=?, archive_reason=?, updated_at=?
+                WHERE dataset_id=? AND item_id=? AND archived_at IS NULL
+                """,
+                (now, str(eligible[item_id]["quality_issue"]), now, dataset_id, item_id),
+            )
+        conn.commit()
+    return {"archived_count": len(selected), "item_ids": sorted(selected)}
+
+
+def restore_archived_items(
+    collection_db: Path,
+    dataset_id: str,
+    item_ids: list[str],
+) -> dict[str, Any]:
+    selected = sorted({str(item_id).strip() for item_id in item_ids if str(item_id).strip()})
+    if not selected:
+        raise ValueError("at least one item is required")
+    now = _now_iso()
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        restored = 0
+        for item_id in selected:
+            cursor = conn.execute(
+                """
+                UPDATE research_items
+                SET archived_at=NULL, archive_reason=NULL, updated_at=?
+                WHERE dataset_id=? AND item_id=? AND archived_at IS NOT NULL
+                """,
+                (now, dataset_id, item_id),
+            )
+            restored += cursor.rowcount
+        conn.commit()
+    return {"restored_count": restored, "item_ids": selected}
+
+
+def purge_archived_items(
+    collection_db: Path,
+    dataset_id: str,
+    item_ids: list[str],
+) -> dict[str, Any]:
+    """Permanently delete selected archived records and their dependent tracking data."""
+
+    selected = sorted({str(item_id).strip() for item_id in item_ids if str(item_id).strip()})
+    if not selected:
+        raise ValueError("at least one item is required")
+    with _connect(collection_db) as conn:
+        ensure_tracking_schema(conn, dataset_id)
+        archived = {
+            str(row["item_id"])
+            for row in conn.execute(
+                """
+                SELECT item_id FROM research_items
+                WHERE dataset_id=? AND archived_at IS NOT NULL
+                """,
+                (dataset_id,),
+            )
+        }
+        if set(selected) - archived:
+            raise ValueError("only archived records can be permanently deleted")
+        placeholders = ",".join("?" for _ in selected)
+        version_ids = [
+            str(row["item_version_id"])
+            for row in conn.execute(
+                f"""
+                SELECT item_version_id FROM research_item_versions
+                WHERE item_id IN ({placeholders})
+                """,
+                selected,
+            )
+        ]
+        if version_ids:
+            version_placeholders = ",".join("?" for _ in version_ids)
+            conn.execute(
+                f"""
+                DELETE FROM research_item_evidence
+                WHERE item_version_id IN ({version_placeholders})
+                """,
+                version_ids,
+            )
+        for table in (
+            "research_alerts",
+            "research_change_events",
+            "research_tracking_observations",
+            "research_item_versions",
+        ):
+            conn.execute(f"DELETE FROM {table} WHERE item_id IN ({placeholders})", selected)
+        conn.execute(
+            f"""
+            DELETE FROM research_item_relations
+            WHERE from_item_id IN ({placeholders}) OR to_item_id IN ({placeholders})
+            """,
+            [*selected, *selected],
+        )
+        conn.execute(
+            f"""
+            DELETE FROM research_watch_rules
+            WHERE dataset_id=? AND target_item_id IN ({placeholders})
+            """,
+            [dataset_id, *selected],
+        )
+        conn.execute(
+            f"DELETE FROM research_items WHERE dataset_id=? AND item_id IN ({placeholders})",
+            [dataset_id, *selected],
+        )
+        conn.commit()
+    return {"purged_count": len(selected), "item_ids": selected}
+
+
+_VERSION_DIFF_FIELDS = (
+    ("title", "标题"),
+    ("content", "当前判断"),
+    ("stance", "判断倾向"),
+    ("state", "状态"),
+    ("value_numeric", "数值"),
+    ("value_text", "文本值"),
+    ("unit", "单位"),
+    ("period", "期间"),
+    ("scenario", "情景"),
+    ("probability", "发生概率"),
+    ("impact", "影响程度"),
+    ("confidence", "置信度"),
+    ("expected_start", "预计开始"),
+    ("expected_end", "预计结束"),
+    ("entity", "主体"),
+    ("event_type", "事件类型"),
+    ("subject", "影响对象"),
+    ("direction", "影响方向"),
+    ("trigger", "触发因素"),
+    ("transmission_path", "传导路径"),
+    ("classification_reason", "分类依据"),
+    ("quality_status", "质量状态"),
+    ("evidence_ids", "证据"),
+)
+
+
+def _version_diff_value(version: dict[str, Any], field: str) -> Any:
+    if field == "title":
+        return version.get("title")
+    if field in {
+        "entity",
+        "event_type",
+        "subject",
+        "direction",
+        "trigger",
+        "transmission_path",
+        "classification_reason",
+        "quality_status",
+    }:
+        return (version.get("metadata") or {}).get(field)
+    return version.get(field)
+
+
+def _version_field_changes(
+    previous: dict[str, Any] | None, current: dict[str, Any]
+) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+    for field_name, label in _VERSION_DIFF_FIELDS:
+        before = _version_diff_value(previous or {}, field_name)
+        after = _version_diff_value(current, field_name)
+        if before == after or (before in (None, "", []) and after in (None, "", [])):
+            continue
+        change_kind = "changed"
+        if before in (None, "", []):
+            change_kind = "added"
+        elif after in (None, "", []):
+            change_kind = "removed"
+        changes.append(
+            {
+                "field": field_name,
+                "label": label,
+                "before": before,
+                "after": after,
+                "change_kind": change_kind,
+            }
+        )
+    return changes
 
 
 def get_item_timeline(collection_db: Path, dataset_id: str, item_id: str) -> dict[str, Any]:
@@ -2098,6 +2939,19 @@ def get_item_timeline(collection_db: Path, dataset_id: str, item_id: str) -> dic
         ).fetchone()
         if item is None:
             raise KeyError(item_id)
+        changes = [
+            _change_event_payload(row)
+            for row in conn.execute(
+                "SELECT * FROM research_change_events WHERE item_id=? ORDER BY created_at",
+                (item_id,),
+            )
+        ]
+        titles_by_version = {
+            str(change.get("new_version_id") or ""): str(
+                (change.get("details") or {}).get("new", {}).get("title") or ""
+            )
+            for change in changes
+        }
         versions = []
         for row in conn.execute(
             "SELECT * FROM research_item_versions WHERE item_id=? ORDER BY version_no",
@@ -2112,14 +2966,18 @@ def get_item_timeline(collection_db: Path, dataset_id: str, item_id: str) -> dic
                     (row["item_version_id"],),
                 )
             ]
-            versions.append(version)
-        changes = [
-            _change_event_payload(row)
-            for row in conn.execute(
-                "SELECT * FROM research_change_events WHERE item_id=? ORDER BY created_at",
-                (item_id,),
+            version["evidence_sources"] = [
+                source
+                for evidence_id in version["evidence_ids"]
+                if (source := _evidence_source_payload(conn, str(evidence_id))) is not None
+            ]
+            version["title"] = titles_by_version.get(str(row["item_version_id"])) or (
+                str(item["title"]) if row["item_version_id"] == item["current_version_id"] else ""
             )
-        ]
+            version["field_changes"] = _version_field_changes(
+                versions[-1] if versions else None, version
+            )
+            versions.append(version)
         observations = []
         for row in conn.execute(
             """
@@ -2156,6 +3014,45 @@ def list_watch_rules(collection_db: Path, dataset_id: str) -> list[dict[str, Any
         return payloads
 
 
+def _normalize_watch_query(query: dict[str, Any] | None) -> dict[str, list[str]]:
+    if query is None:
+        return {}
+    if not isinstance(query, dict):
+        raise ValueError("watch rule query must be an object")
+    normalized: dict[str, list[str]] = {}
+    limits = {
+        "keywords": 30,
+        "event_types": 30,
+        "states": 20,
+        "impacts": 4,
+        "change_types": 10,
+    }
+    for key, maximum in limits.items():
+        raw = query.get(key, [])
+        if isinstance(raw, str):
+            values = [raw]
+        elif isinstance(raw, list):
+            values = raw
+        else:
+            raise ValueError(f"watch rule {key} must be a list")
+        cleaned = list(
+            dict.fromkeys(str(value).strip() for value in values if str(value).strip())
+        )
+        if len(cleaned) > maximum:
+            raise ValueError(f"watch rule {key} contains too many values")
+        if any(len(value) > 80 for value in cleaned):
+            raise ValueError(f"watch rule {key} contains an overlong value")
+        if key == "impacts" and any(value not in _PRIORITY_RANK for value in cleaned):
+            raise ValueError("unsupported impact filter")
+        if key == "change_types" and any(
+            value not in _WATCH_CHANGE_TYPES for value in cleaned
+        ):
+            raise ValueError("unsupported change type filter")
+        if cleaned:
+            normalized[key] = cleaned
+    return normalized
+
+
 def upsert_watch_rule(
     collection_db: Path,
     dataset_id: str,
@@ -2173,9 +3070,14 @@ def upsert_watch_rule(
         raise ValueError("unsupported watch target type")
     if min_priority not in _PRIORITY_RANK:
         raise ValueError("unsupported minimum priority")
+    if frequency not in _WATCH_FREQUENCIES:
+        raise ValueError("unsupported watch frequency")
     clean_name = str(name or "").strip()
     if not clean_name:
         raise ValueError("watch rule name is required")
+    if len(clean_name) > 80:
+        raise ValueError("watch rule name is too long")
+    normalized_query = _normalize_watch_query(query)
     now = _now_iso()
     selected_id = rule_id or f"wr_{_digest(dataset_id, clean_name, target_type, target_item_id)}"
     with _connect(collection_db) as conn:
@@ -2198,7 +3100,7 @@ def upsert_watch_rule(
                 clean_name,
                 target_type,
                 target_item_id or None,
-                _json(query or {}),
+                _json(normalized_query),
                 min_priority,
                 frequency,
                 int(active),
@@ -2285,31 +3187,41 @@ def update_alert_status(
 
 
 def tracking_overview(collection_db: Path, dataset_id: str) -> dict[str, Any]:
-    with _connect(collection_db) as conn:
-        ensure_tracking_schema(conn, dataset_id)
-        conn.commit()
-        counts = {
-            row["item_type"]: int(row["count"])
-            for row in conn.execute(
-                """
-                SELECT item_type, COUNT(*) AS count FROM research_items
-                WHERE dataset_id=? GROUP BY item_type
-                """,
-                (dataset_id,),
-            )
-        }
-        unread = int(
-            conn.execute(
-                "SELECT COUNT(*) FROM research_alerts WHERE dataset_id=? AND status='new'",
-                (dataset_id,),
-            ).fetchone()[0]
-        )
+    items = list_items(collection_db, dataset_id, limit=500)
+    counts: dict[str, int] = {}
+    quality_counts: dict[str, int] = {"verified": 0, "needs_review": 0}
+    visible_item_ids = set()
+    for item in items:
+        item_type = str(item.get("item_type") or "")
+        counts[item_type] = counts.get(item_type, 0) + 1
+        visible_item_ids.add(str(item.get("item_id") or ""))
+        if item_type in {"risk", "catalyst"}:
+            metadata = (item.get("current_version") or {}).get("metadata") or {}
+            quality = str(metadata.get("quality_status") or "needs_review")
+            quality_counts[quality] = quality_counts.get(quality, 0) + 1
+    alerts = [
+        alert
+        for alert in list_alerts(collection_db, dataset_id, limit=500)
+        if str(alert.get("item_id") or "") in visible_item_ids
+    ]
+    unread = sum(alert.get("status") == "new" for alert in alerts)
+    active_unqualified = list_low_quality_items(
+        collection_db, dataset_id, archive_status="active", limit=500
+    )
+    archived_unqualified = list_low_quality_items(
+        collection_db, dataset_id, archive_status="archived", limit=500
+    )
     return {
         "dataset_id": dataset_id,
         "counts": counts,
         "unread_alert_count": unread,
-        "items": list_items(collection_db, dataset_id, limit=100),
-        "alerts": list_alerts(collection_db, dataset_id, limit=100),
+        "quality_counts": quality_counts,
+        "governance_counts": {
+            "active_unqualified": len(active_unqualified),
+            "archived": len(archived_unqualified),
+        },
+        "items": items[:100],
+        "alerts": alerts[:100],
         "watch_rules": list_watch_rules(collection_db, dataset_id),
         "jobs": list_jobs(collection_db, dataset_id, limit=25),
         "memo_series": list_memo_series(collection_db, dataset_id),

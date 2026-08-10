@@ -161,6 +161,23 @@ describe("ResearchAssetLibrary", () => {
     expect(screen.getByRole("button", { name: "进入批量管理" })).toBeInTheDocument();
   });
 
+  it("opens batch management when requested from a conversation action", () => {
+    const props = {
+      assets,
+      contextAssetIds: [] as string[],
+      onDeleteAssets: vi.fn(),
+      onOpenAsset: vi.fn(),
+      onSetContext: vi.fn(),
+    };
+    const { rerender } = render(<ResearchAssetLibrary {...props} />);
+    expect(screen.queryByTestId("asset-management-toolbar")).toBeNull();
+
+    rerender(<ResearchAssetLibrary {...props} managementRequestId={1} />);
+
+    expect(screen.getByTestId("asset-management-toolbar")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择管理 交流会原文.pdf" })).not.toBeChecked();
+  });
+
   it("supports compact type filtering and ascending or descending time sorting", () => {
     const setContext = vi.fn();
     const { rerender } = render(

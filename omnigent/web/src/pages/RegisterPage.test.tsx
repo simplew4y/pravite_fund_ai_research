@@ -194,4 +194,36 @@ describe("RegisterPage", () => {
     );
     await waitFor(() => expect(hrefWrites[0]).toBe("/"));
   });
+
+  it("highlights a duplicate email and preserves valid cloud registration input", async () => {
+    vi.mocked(accountsApi.register).mockResolvedValue({
+      ok: false,
+      error: "email already registered",
+      code: "email_exists",
+      status: 409,
+    });
+    renderCloudRegister();
+
+    const email = screen.getByLabelText(/email/i);
+    const code = screen.getByLabelText(/verification code/i);
+    const nickname = screen.getByLabelText(/nickname/i);
+    fireEvent.change(email, { target: { value: "existing@example.com" } });
+    fireEvent.change(code, { target: { value: "123456" } });
+    fireEvent.change(nickname, { target: { value: "研究员" } });
+    fireEvent.change(screen.getByLabelText(/^password/i), {
+      target: { value: "Valid-Password1!" },
+    });
+    fireEvent.change(screen.getByLabelText(/confirm password/i), {
+      target: { value: "Valid-Password1!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    await waitFor(() => expect(accountsApi.register).toHaveBeenCalled());
+    expect(screen.getByRole("alert")).toHaveTextContent("该邮箱已被注册");
+    expect(email).toHaveAttribute("aria-invalid", "true");
+    expect(email).toHaveValue("existing@example.com");
+    expect(code).toHaveValue("123456");
+    expect(nickname).toHaveValue("研究员");
+    expect(hrefWrites).toHaveLength(0);
+  });
 });

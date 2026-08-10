@@ -723,22 +723,6 @@ describe("Sidebar private fund corpus attachments", () => {
     await waitFor(() => expect(deletePrivateFundProjectSpy).toHaveBeenCalledWith("acme"));
     expect(localStorage.getItem(ACTIVE_PRIVATE_FUND_PROJECT_STORAGE_KEY)).toBeNull();
   });
-
-  it("opens project editing from the menu beside upload", async () => {
-    seedPrivateFundCorpus();
-    mockConversations([]);
-    renderSidebar(true, "/?private_fund_project=acme", "acme", true);
-
-    fireEvent.pointerDown(screen.getByRole("button", { name: "当前研究项目操作" }), {
-      button: 0,
-      ctrlKey: false,
-    });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "编辑项目信息" }));
-
-    expect(screen.getByRole("heading", { name: "编辑研究项目" })).toBeInTheDocument();
-    expect(screen.getByLabelText("编辑研究项目名称")).toHaveValue("Acme Solar");
-    expect(screen.queryByText(/Dataset ID/i)).toBeNull();
-  });
 });
 
 describe("Sidebar session list", () => {

@@ -2875,8 +2875,53 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
   const terminalSpinUp = Boolean(
     terminalFirst?.isTerminalFirst && terminalFirst.terminalStartingUp,
   );
+  const [startupTimedOut, setStartupTimedOut] = useState(false);
+  useEffect(() => {
+    if (!terminalSpinUp || sandboxLabel !== undefined) {
+      setStartupTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setStartupTimedOut(true), 45_000);
+    return () => window.clearTimeout(timer);
+  }, [sandboxLabel, terminalSpinUp]);
   if (sandboxLabel === undefined && !terminalSpinUp) {
     return null;
+  }
+  if (startupTimedOut && sandboxLabel === undefined) {
+    const retry = () => window.location.reload();
+    if (variant === "hero") {
+      return (
+        <ConversationEmptyState data-testid="runner-startup-timeout" role="alert">
+          <AlertTriangleIcon className="size-7 text-destructive" aria-hidden />
+          <div className="space-y-1.5">
+            <h3 className="text-2xl font-medium tracking-[-0.02em]">启动时间过长</h3>
+            <p className="text-muted-foreground text-base">
+              运行服务暂时不可用，请检查服务状态后重试。
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            onClick={retry}
+          >
+            刷新并重试
+          </button>
+        </ConversationEmptyState>
+      );
+    }
+    return (
+      <Message from="assistant" data-testid="runner-startup-timeout" role="alert">
+        <MessageContent>
+          <span className="flex items-center gap-2 text-destructive text-sm">
+            <AlertTriangleIcon className="size-4 shrink-0" aria-hidden />
+            运行服务启动超时。
+            <button type="button" className="underline" onClick={retry}>
+              刷新并重试
+            </button>
+          </span>
+        </MessageContent>
+      </Message>
+    );
   }
   const line = sandboxLabel !== undefined ? `${sandboxLabel}…` : "Starting up…";
   // role=status + aria-live so assistive tech announces the transient wait;
@@ -3316,6 +3361,10 @@ function AssistantBubble({
   // gap is rendered at the page level, not inside this component.
   const sessionStatus = useChatStore((s) => s.sessionStatus);
   const [isCopied, setIsCopied] = useState(false);
+  const [answerNoteStatus, setAnswerNoteStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [answerNoteError, setAnswerNoteError] = useState("");
   const copyTimeoutRef = useRef<number>(0);
   // null outside AppShell's provider (isolated tests) → hide the action.
   const forkDialog = useForkDialog();
@@ -3405,20 +3454,63 @@ function AssistantBubble({
                 size="sm"
                 variant={isTrustedMemoSource ? "secondary" : "ghost"}
                 className="h-7 gap-1 px-2 text-xs"
-                disabled={isTrustedMemoSource}
+                disabled={isTrustedMemoSource || answerNoteStatus === "saving"}
+                disabledReason={
+                  isTrustedMemoSource ? "该回答已经保存到回答笔记。" : "回答笔记正在保存，请稍候。"
+                }
                 onClick={() => {
-                  onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText);
-                  workbenchActions?.markUsefulInformation(
-                    bubble.responseId,
-                    trustedMemoMarkdownText,
-                  );
+                  void (async () => {
+                    setAnswerNoteStatus("saving");
+                    setAnswerNoteError("");
+                    try {
+                      await workbenchActions?.markUsefulInformation(
+                        bubble.responseId,
+                        trustedMemoMarkdownText,
+                      );
+                      onAddTrustedMemoSource(bubble.responseId, trustedMemoMarkdownText);
+                      setAnswerNoteStatus("saved");
+                    } catch (error) {
+                      setAnswerNoteStatus("error");
+                      setAnswerNoteError(
+                        error instanceof Error ? error.message : "保存回答笔记失败，请重试。",
+                      );
+                    }
+                  })();
                 }}
               >
                 {isTrustedMemoSource ? <CheckIcon size={14} /> : <FileTextIcon size={14} />}
                 <span>{isTrustedMemoSource ? "已保存为回答笔记" : "保存为回答笔记"}</span>
               </MessageAction>
             )}
+            {workbenchActions && (
+              <MessageAction
+                tooltip="进入笔记资产批量管理"
+                label="管理回答笔记"
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={workbenchActions.openAssetManagement}
+              >
+                <FolderIcon size={14} />
+                <span>管理回答笔记</span>
+              </MessageAction>
+            )}
           </MessageActions>
+        )}
+        {answerNoteStatus === "saving" && (
+          <p role="status" className="mt-1 text-xs text-muted-foreground">
+            正在保存回答笔记…
+          </p>
+        )}
+        {(answerNoteStatus === "saved" || isTrustedMemoSource) && (
+          <p role="status" className="mt-1 text-xs text-success">
+            回答笔记已保存，可在笔记资产库中管理。
+          </p>
+        )}
+        {answerNoteStatus === "error" && (
+          <p role="alert" className="mt-1 text-xs text-destructive">
+            {answerNoteError || "保存回答笔记失败，请重试。"}
+          </p>
         )}
       </Message>
 
@@ -4154,7 +4246,19 @@ function SubagentComposerTray({ label }: { label: string }) {
 }
 
 function PrivateFundContextTray({ actions }: { actions: WorkbenchActionContextValue }) {
-  if (actions.contextAssets.length === 0) return null;
+  if (actions.contextAssets.length === 0) {
+    return (
+      <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
+        <button
+          type="button"
+          onClick={actions.openSourcePicker}
+          className="w-full rounded-xl border border-dashed border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-3 py-2 text-left text-[11px] text-[var(--pf-ink-muted)] transition-colors hover:border-[var(--pf-accent)] hover:text-[var(--pf-ink-secondary)]"
+        >
+          尚未添加问题上下文 · 点击此处打开资料，再勾选文件加入上下文
+        </button>
+      </section>
+    );
+  }
   return (
     <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
       <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-2.5 py-2">

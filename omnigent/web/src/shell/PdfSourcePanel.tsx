@@ -10,6 +10,7 @@ import {
   Table2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { hostFetch } from "@/lib/host";
 import { cn } from "@/lib/utils";
 import { readActivePrivateFundProjectId } from "@/lib/privateFundApi";
 import type { PdfSourceSelection } from "./FileViewerContext";
@@ -144,12 +145,21 @@ function buildSourceRequest(selection: PdfSourceSelection): { kind: "pdf" | "exc
 }
 
 function errorMessage(value: unknown): string {
+  if (value instanceof TypeError) return "网络连接失败，无法加载引用来源。";
   if (value instanceof Error) return value.message;
-  return "Could not render source.";
+  return "无法加载引用来源。";
+}
+
+function sourceFailureMessage(status: number, detail: string): string {
+  if (status === 403) return "没有权限读取该引用文件，请确认项目访问权限。";
+  if (status === 404) return "引用文件不存在或已被删除，请前往资料管理确认文件状态。";
+  if (status >= 500) return "引用来源服务暂时不可用，请稍后重试。";
+  return detail || `引用加载失败（HTTP ${status}）。`;
 }
 
 export function PdfSourcePanel({ selection }: { selection: PdfSourceSelection | null }) {
   const [state, setState] = useState<PdfSourceState>({ status: "idle" });
+  const [retryKey, setRetryKey] = useState(0);
   const [excelLocation, setExcelLocation] = useState<{
     sheetName?: string;
     rangeRef?: string;
@@ -175,7 +185,7 @@ export function PdfSourcePanel({ selection }: { selection: PdfSourceSelection | 
 
     const controller = new AbortController();
     setState({ status: "loading" });
-    fetch(request.url, { signal: controller.signal })
+    hostFetch(request.url, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           let detail = response.statusText;
@@ -185,7 +195,7 @@ export function PdfSourcePanel({ selection }: { selection: PdfSourceSelection | 
           } catch {
             // Keep the HTTP status text fallback.
           }
-          throw new Error(detail);
+          throw new Error(sourceFailureMessage(response.status, detail));
         }
         return request.kind === "excel"
           ? (response.json() as Promise<ExcelSourcePayload>)
@@ -204,7 +214,7 @@ export function PdfSourcePanel({ selection }: { selection: PdfSourceSelection | 
       });
 
     return () => controller.abort();
-  }, [request]);
+  }, [request, retryKey]);
 
   const pageLabel = effectiveSelection
     ? isExcelSelection(effectiveSelection)
@@ -240,6 +250,24 @@ export function PdfSourcePanel({ selection }: { selection: PdfSourceSelection | 
             <div className="truncate text-xs text-muted-foreground">{state.source.file_name}</div>
           )}
         </div>
+        <span
+          className={cn(
+            "ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px]",
+            state.status === "loading" && "bg-muted text-muted-foreground",
+            (state.status === "ready-pdf" || state.status === "ready-excel") &&
+              "bg-success/10 text-success",
+            state.status === "error" && "bg-destructive/10 text-destructive",
+          )}
+          role="status"
+        >
+          {state.status === "loading"
+            ? "加载中"
+            : state.status === "ready-pdf" || state.status === "ready-excel"
+              ? "加载成功"
+              : state.status === "error"
+                ? "加载失败"
+                : "等待选择"}
+        </span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-muted/20">
@@ -250,17 +278,34 @@ export function PdfSourcePanel({ selection }: { selection: PdfSourceSelection | 
         )}
 
         {state.status === "loading" && (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div role="status" aria-live="polite" className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            Rendering source
+            正在加载引用来源…
           </div>
         )}
 
         {state.status === "error" && (
           <div className="flex h-full items-center justify-center px-4">
-            <div className="flex max-w-sm items-start gap-2 text-sm text-destructive">
-              <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
-              <span className="min-w-0 break-words">{state.message}</span>
+            <div role="alert" className="max-w-sm space-y-3 text-sm">
+              <div className="flex items-start gap-2 text-destructive">
+                <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0 break-words">{state.message}</span>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-6">
+                <button
+                  type="button"
+                  className="rounded-md border border-border bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted"
+                  onClick={() => setRetryKey((value) => value + 1)}
+                >
+                  重试加载
+                </button>
+                <a
+                  className="rounded-md px-3 py-1.5 text-xs text-primary hover:bg-muted hover:underline"
+                  href={`/?private_fund_project=${encodeURIComponent(effectiveSelection?.datasetId || readActivePrivateFundProjectId() || "")}`}
+                >
+                  前往资料管理
+                </a>
+              </div>
             </div>
           </div>
         )}

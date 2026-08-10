@@ -1,0 +1,57 @@
+[
+  {
+    "name": "结构完整的订单延期风险",
+    "expected_admitted": true,
+    "expected_quality": "verified",
+    "raw": {
+      "item_type": "risk",
+      "canonical_key": "sungrow/order_delay/overseas_orders",
+      "title": "海外订单延期影响收入确认",
+      "content": "海外订单存在延期风险，可能影响2026年收入确认。",
+      "evidence_ids": ["chunk:risk-1"],
+      "impact": "high",
+      "confidence": 0.91,
+      "entity": "阳光电源",
+      "event_type": "order_delay",
+      "subject": "海外订单收入确认",
+      "direction": "negative",
+      "trigger": "海外订单延期",
+      "transmission_path": "延期导致收入确认后移",
+      "classification_reason": "证据明确描述未决延期及不利影响",
+      "quality_status": "verified"
+    }
+  },
+  {
+    "name": "把毛利率预测误判为催化剂",
+    "expected_admitted": false,
+    "expected_quality": "needs_review",
+    "raw": {
+      "item_type": "catalyst",
+      "canonical_key": "sungrow/gross_margin/energy_storage",
+      "title": "储能毛利率预计降至27%",
+      "content": "储能毛利率预计降至27%。",
+      "evidence_ids": ["chunk:risk-1"],
+      "impact": "medium",
+      "confidence": 0.88,
+      "entity": "阳光电源",
+      "event_type": "margin_forecast",
+      "subject": "储能毛利率",
+      "quality_status": "verified"
+    }
+  },
+  {
+    "name": "关键词降级候选不能直接验证",
+    "expected_admitted": false,
+    "expected_quality": "needs_review",
+    "raw": {
+      "item_type": "risk",
+      "title": "海外订单风险",
+      "content": "海外订单存在风险。",
+      "evidence_ids": ["chunk:risk-1"],
+      "impact": "medium",
+      "confidence": 0.45,
+      "quality_status": "needs_review",
+      "extraction_method": "keyword_fallback"
+    }
+  }
+]

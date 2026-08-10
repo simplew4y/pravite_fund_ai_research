@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 // button via -translate-y-1/2 would otherwise have its transform replaced on
 // :active, making the button jump out from under the cursor mid-click.
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] outline-none select-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35 active:not-aria-[haspopup]:[transform:translateY(1px)] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-[background-color,border-color,color,box-shadow,transform] outline-none select-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35 active:not-aria-[haspopup]:[transform:translateY(1px)] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -54,12 +54,26 @@ const Button = React.forwardRef<
   React.ComponentProps<"button"> &
     VariantProps<typeof buttonVariants> & {
       asChild?: boolean;
+      /** Explanation shown when a disabled control cannot be used. */
+      disabledReason?: string;
     }
 >(function Button(
-  { className, variant = "default", size = "default", asChild = false, ...props },
+  {
+    className,
+    variant = "default",
+    size = "default",
+    asChild = false,
+    disabledReason,
+    title,
+    ...props
+  },
   ref,
 ) {
   const Comp = asChild ? Slot.Root : "button";
+  const resolvedTitle =
+    props.disabled && !title
+      ? disabledReason || "当前操作暂不可用，请先完成必要条件。"
+      : title;
 
   return (
     <Comp
@@ -67,6 +81,7 @@ const Button = React.forwardRef<
       data-slot="button"
       data-variant={variant}
       data-size={size}
+      title={resolvedTitle}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

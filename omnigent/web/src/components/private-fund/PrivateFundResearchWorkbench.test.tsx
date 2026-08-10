@@ -320,7 +320,6 @@ describe("PrivateFundResearchWorkbench", () => {
   it("sends selected LLM information to the agent instead of creating a preset node", async () => {
     const onGenerateNode = renderWorkbench();
     fireEvent.click(screen.getByRole("button", { name: "勾选回答" }));
-    fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
 
     await waitFor(() =>
       expect(savePrivateFundAsset).toHaveBeenCalledWith(
@@ -332,7 +331,8 @@ describe("PrivateFundResearchWorkbench", () => {
         }),
       ),
     );
-    expect(onGenerateNode).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
+    await waitFor(() => expect(onGenerateNode).toHaveBeenCalledOnce());
     const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
     expect(prompt).toContain("海外收入和现金流同步改善");
     expect(prompt).toContain("private_fund_research_node_save");
@@ -490,7 +490,7 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(screen.getByText("风险催化剂面板")).toBeInTheDocument();
   });
 
-  it("lets the model choose a self-contained HTML/JS chart from the content", () => {
+  it("lets the model choose a self-contained HTML/JS chart from the content", async () => {
     const onGenerateNode = renderWorkbench();
     expect(screen.getByRole("button", { name: "生成模式 文本" })).toHaveAttribute(
       "aria-pressed",
@@ -501,8 +501,10 @@ describe("PrivateFundResearchWorkbench", () => {
       target: { value: "展示海外与国内盈利质量差异，由模型选择最合适图形。" },
     });
     fireEvent.click(screen.getByRole("button", { name: "勾选回答" }));
+    await waitFor(() => expect(savePrivateFundAsset).toHaveBeenCalled());
     fireEvent.click(screen.getByRole("button", { name: "生成研究笔记" }));
 
+    await waitFor(() => expect(onGenerateNode).toHaveBeenCalledOnce());
     const prompt = vi.mocked(onGenerateNode).mock.calls[0][0];
     expect(prompt).toContain("本次节点输出形式: 图表");
     expect(prompt).toContain("饼图/环形图");

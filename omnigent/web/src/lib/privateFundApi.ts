@@ -166,7 +166,12 @@ export type PrivateFundAssetType =
   | string;
 
 export type PrivateFundDisplayGroup =
-  "source" | "answer_note" | "research_note" | "memo" | "report" | "other";
+  | "source"
+  | "answer_note"
+  | "research_note"
+  | "memo"
+  | "report"
+  | "other";
 
 export interface PrivateFundAsset {
   assetId: string;
@@ -245,7 +250,12 @@ export interface PrivateFundAssetCatalog {
 }
 
 export type PrivateFundResearchNodeStatus =
-  "pending" | "ready" | "running" | "completed" | "stale" | "failed";
+  | "pending"
+  | "ready"
+  | "running"
+  | "completed"
+  | "stale"
+  | "failed";
 
 export type PrivateFundRichContentBlock =
   | { type: "markdown"; title?: string; markdown: string; evidenceIds?: string[] }
@@ -395,6 +405,29 @@ export interface PrivateFundResearchItemVersion {
   expectedStart?: string | null;
   expectedEnd?: string | null;
   evidenceIds: string[];
+  evidenceSources?: PrivateFundTrackingEvidenceSource[];
+  metadata?: Record<string, unknown>;
+  title?: string;
+  fieldChanges: Array<{
+    field: string;
+    label: string;
+    before: unknown;
+    after: unknown;
+    changeKind: "added" | "removed" | "changed";
+  }>;
+}
+
+export interface PrivateFundTrackingEvidenceSource {
+  evidenceId: string;
+  citation: string;
+  documentName: string;
+  excerpt: string;
+  fullContent: string;
+  sourceUrl?: string | null;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  sheetName?: string | null;
+  cellRange?: string | null;
 }
 
 export interface PrivateFundResearchItem {
@@ -408,6 +441,9 @@ export interface PrivateFundResearchItem {
   firstSeenAt: string;
   lastSeenAt: string;
   currentVersion?: PrivateFundResearchItemVersion | null;
+  archivedAt?: string | null;
+  archiveReason?: string | null;
+  qualityIssue?: string | null;
 }
 
 export interface PrivateFundResearchAlert {
@@ -491,6 +527,11 @@ export interface PrivateFundTrackingOverview {
   datasetId: string;
   counts: Record<string, number>;
   unreadAlertCount: number;
+  qualityCounts: Record<string, number>;
+  governanceCounts: {
+    activeUnqualified: number;
+    archived: number;
+  };
   items: PrivateFundResearchItem[];
   alerts: PrivateFundResearchAlert[];
   watchRules: PrivateFundWatchRule[];
@@ -1165,6 +1206,27 @@ interface ResearchItemVersionWire {
   expected_start?: string | null;
   expected_end?: string | null;
   evidence_ids?: string[];
+  evidence_sources?: Array<{
+    evidence_id: string;
+    citation: string;
+    document_name: string;
+    excerpt: string;
+    full_content?: string | null;
+    source_url?: string | null;
+    page_start?: number | null;
+    page_end?: number | null;
+    sheet_name?: string | null;
+    cell_range?: string | null;
+  }>;
+  metadata?: Record<string, unknown>;
+  title?: string | null;
+  field_changes?: Array<{
+    field: string;
+    label: string;
+    before?: unknown;
+    after?: unknown;
+    change_kind: "added" | "removed" | "changed";
+  }>;
 }
 
 interface ResearchItemWire {
@@ -1178,6 +1240,9 @@ interface ResearchItemWire {
   first_seen_at: string;
   last_seen_at: string;
   current_version?: ResearchItemVersionWire | null;
+  archived_at?: string | null;
+  archive_reason?: string | null;
+  quality_issue?: string | null;
 }
 
 interface ResearchAlertWire {
@@ -1261,6 +1326,11 @@ interface TrackingOverviewWire {
   dataset_id: string;
   counts?: Record<string, number>;
   unread_alert_count?: number;
+  quality_counts?: Record<string, number>;
+  governance_counts?: {
+    active_unqualified?: number;
+    archived?: number;
+  };
   items?: ResearchItemWire[];
   alerts?: ResearchAlertWire[];
   watch_rules?: WatchRuleWire[];
@@ -1930,6 +2000,27 @@ function researchItemVersionFromWire(
     expectedStart: version.expected_start ?? null,
     expectedEnd: version.expected_end ?? null,
     evidenceIds: version.evidence_ids ?? [],
+    evidenceSources: (version.evidence_sources ?? []).map((source) => ({
+      evidenceId: source.evidence_id,
+      citation: source.citation,
+      documentName: source.document_name,
+      excerpt: source.excerpt,
+      fullContent: source.full_content ?? source.excerpt,
+      sourceUrl: source.source_url ?? null,
+      pageStart: source.page_start ?? null,
+      pageEnd: source.page_end ?? null,
+      sheetName: source.sheet_name ?? null,
+      cellRange: source.cell_range ?? null,
+    })),
+    metadata: version.metadata ?? {},
+    title: version.title ?? undefined,
+    fieldChanges: (version.field_changes ?? []).map((change) => ({
+      field: change.field,
+      label: change.label,
+      before: change.before,
+      after: change.after,
+      changeKind: change.change_kind,
+    })),
   };
 }
 
@@ -1945,6 +2036,9 @@ function researchItemFromWire(item: ResearchItemWire): PrivateFundResearchItem {
     firstSeenAt: item.first_seen_at,
     lastSeenAt: item.last_seen_at,
     currentVersion: item.current_version ? researchItemVersionFromWire(item.current_version) : null,
+    archivedAt: item.archived_at ?? null,
+    archiveReason: item.archive_reason ?? null,
+    qualityIssue: item.quality_issue ?? null,
   };
 }
 
@@ -2026,6 +2120,11 @@ function trackingOverviewFromWire(payload: TrackingOverviewWire): PrivateFundTra
     datasetId: payload.dataset_id,
     counts: payload.counts ?? {},
     unreadAlertCount: payload.unread_alert_count ?? 0,
+    qualityCounts: payload.quality_counts ?? {},
+    governanceCounts: {
+      activeUnqualified: payload.governance_counts?.active_unqualified ?? 0,
+      archived: payload.governance_counts?.archived ?? 0,
+    },
     items: (payload.items ?? []).map(researchItemFromWire),
     alerts: (payload.alerts ?? []).map(researchAlertFromWire),
     watchRules: (payload.watch_rules ?? []).map(watchRuleFromWire),
@@ -2612,6 +2711,7 @@ export async function deletePrivateFundAssets(
 
 export async function createPrivateFundProject(input: {
   name: string;
+  datasetId?: string;
   companyName?: string;
   companyTicker?: string;
 }): Promise<PrivateFundProject> {
@@ -2621,6 +2721,7 @@ export async function createPrivateFundProject(input: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: input.name,
+        dataset_id: input.datasetId ?? "",
         company_name: input.companyName ?? "",
         company_ticker: input.companyTicker ?? "",
       }),
@@ -2863,6 +2964,44 @@ export async function getPrivateFundTrackingOverview(
   );
   return trackingOverviewFromWire(payload);
 }
+
+export async function getPrivateFundResearchItemGovernance(
+  datasetId: string,
+  archiveStatus: "active" | "archived",
+): Promise<PrivateFundResearchItem[]> {
+  const payload = await jsonOrThrow<{ items?: ResearchItemWire[] }>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/research-items-governance?archive_status=${archiveStatus}`,
+    ),
+  );
+  return (payload.items ?? []).map(researchItemFromWire);
+}
+
+async function mutatePrivateFundResearchItemGovernance(
+  datasetId: string,
+  action: "archive" | "restore" | "purge",
+  itemIds: string[],
+): Promise<Record<string, unknown>> {
+  return jsonOrThrow<Record<string, unknown>>(
+    await authenticatedFetch(
+      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/research-items-governance/${action}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_ids: itemIds }),
+      },
+    ),
+  );
+}
+
+export const archivePrivateFundResearchItems = (datasetId: string, itemIds: string[]) =>
+  mutatePrivateFundResearchItemGovernance(datasetId, "archive", itemIds);
+
+export const restorePrivateFundResearchItems = (datasetId: string, itemIds: string[]) =>
+  mutatePrivateFundResearchItemGovernance(datasetId, "restore", itemIds);
+
+export const purgePrivateFundResearchItems = (datasetId: string, itemIds: string[]) =>
+  mutatePrivateFundResearchItemGovernance(datasetId, "purge", itemIds);
 
 export async function runPrivateFundTracking(datasetId: string): Promise<PrivateFundTrackingJob> {
   const body = await jsonOrThrow<{ job: TrackingJobWire }>(
