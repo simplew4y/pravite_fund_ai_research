@@ -32,8 +32,7 @@ def _stop(_signum: int, _frame: Any) -> None:
 def _workspace_root() -> Path:
     return (
         Path(
-            os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
-            or _PROJECT_ROOT / "output" / "users"
+            os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE") or _PROJECT_ROOT / "output" / "users"
         )
         .expanduser()
         .resolve()
@@ -80,7 +79,7 @@ def _load_llm_client(data_namespace: str, dataset_id: str) -> Any | None:
             source="user-scoped local gateway",
         )
         return OpenAICompatibleChatClient(config)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - worker must degrade to deterministic extraction
         _LOGGER.warning(
             "tracking LLM is unavailable; using deterministic extraction", exc_info=True
         )
@@ -98,13 +97,18 @@ def _write_health(workspace: Path, payload: dict[str, Any]) -> None:
 def run_cycle(workspace: Path, llm_client: Any | None, *, max_jobs_per_db: int = 5) -> int:
     processed = 0
     errors: list[dict[str, str]] = []
+    llm_available = llm_client is not None
     for data_namespace, dataset_id, collection_db in _collection_dbs(workspace):
         try:
             dataset_llm_client = llm_client or _load_llm_client(data_namespace, dataset_id)
+            llm_available = llm_available or dataset_llm_client is not None
             private_fund_tracking.recover_stale_jobs(collection_db, dataset_id)
             # Reconcile the current document snapshot every cycle so imports that
             # bypass the Omnigent HTTP pipeline still emit idempotent ingest jobs.
             private_fund_tracking.enqueue_current_documents(collection_db, dataset_id)
+            # Extractor upgrades must also rebuild the current Memo baseline;
+            # enqueue_job remains idempotent for an unchanged extractor version.
+            private_fund_tracking.enqueue_current_memo_versions(collection_db, dataset_id)
             private_fund_tracking.enqueue_scheduled_scan(collection_db, dataset_id)
             for _ in range(max_jobs_per_db):
                 result = private_fund_tracking.process_next_job(
@@ -132,7 +136,7 @@ def run_cycle(workspace: Path, llm_client: Any | None, *, max_jobs_per_db: int =
             "checked_at": datetime.now(timezone.utc).isoformat(),
             "processed_jobs": processed,
             "dataset_count": len(_collection_dbs(workspace)),
-            "llm_enabled": llm_client is not None,
+            "llm_enabled": llm_available,
             "errors": errors,
         },
     )

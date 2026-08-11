@@ -65,6 +65,8 @@ export interface ServerInfo {
    * live server always reports it.
    */
   server_version: string | null;
+  /** Workbench product release, e.g. ``"0.2.1"``. */
+  product_version?: string | null;
   /**
    * True when the server has a routing client configured
    * (``OMNIGENT_SMART_ROUTING=1`` + ``llm:`` config). Hidden by default.
@@ -85,6 +87,7 @@ const _OFF: ServerInfo = {
   managed_sandboxes_enabled: false,
   sandbox_provider: null,
   server_version: null,
+  product_version: null,
   smart_routing_enabled: false,
   llm_configuration_enabled: false,
 };
@@ -125,6 +128,8 @@ export async function resolveServerInfo(): Promise<ServerInfo> {
           sandbox_provider:
             typeof data.sandbox_provider === "string" ? data.sandbox_provider : null,
           server_version: typeof data.server_version === "string" ? data.server_version : null,
+          product_version:
+            typeof data.product_version === "string" ? data.product_version : null,
           smart_routing_enabled: data.smart_routing_enabled === true,
           llm_configuration_enabled: data.llm_configuration_enabled === true,
         };

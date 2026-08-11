@@ -1843,6 +1843,8 @@ describe("NewChatLandingScreen private-fund research mode", () => {
     expect(prompt).toContain("可点击的 Markdown 引用");
     expect(prompt).toContain("资料未覆盖/需复核");
     expect(prompt).toContain("核验最近业绩变化");
+    expect(prompt).toContain("<!-- omnigent-private-fund-context:start -->");
+    expect(prompt).toContain("<!-- omnigent-private-fund-context:end -->");
   });
 
   it("creates a private-fund session without exposing a host or absolute workspace", async () => {
@@ -1937,6 +1939,7 @@ describe("NewChatLandingScreen private-fund research mode", () => {
     const [, payload] = setPendingInitialPromptMock.mock.calls[0]!;
     const prompt = (payload as { text: string }).text;
     expect(prompt).toMatch(/^\/deep-research 核验业绩\n\n/);
+    expect(prompt).toContain("<!-- omnigent-private-fund-context:start -->");
     expect(prompt).toContain("dataset_id: 阳光电源");
     expect(prompt).toContain("关键事实、时间、金额和事件必须逐条溯源");
   });

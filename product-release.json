@@ -1,0 +1,38 @@
+{
+  "productVersion": "0.2.1",
+  "legacyDataBaseline": "0.1.1",
+  "databaseChanged": true,
+  "databaseTargetVersion": "0.2.1",
+  "chatDatabase": {
+    "migrationSystem": "alembic",
+    "schemaChanged": false,
+    "productVersion": "0.2.1"
+  },
+  "migrations": [
+    {
+      "id": "collection-core-0.2.1",
+      "component": "collection_core",
+      "fromVersion": "0.1.1",
+      "toVersion": "0.2.1"
+    },
+    {
+      "id": "document-taxonomy-0.2.1",
+      "component": "document_taxonomy",
+      "fromVersion": "0.1.1",
+      "toVersion": "0.2.1"
+    },
+    {
+      "id": "risk-catalyst-tracking-0.2.1",
+      "component": "risk_catalyst_tracking",
+      "fromVersion": "0.1.1",
+      "toVersion": "0.2.1",
+      "legacyDataPolicy": "discard"
+    },
+    {
+      "id": "valuation-tracking-0.2.1",
+      "component": "valuation_tracking",
+      "fromVersion": "0.1.1",
+      "toVersion": "0.2.1"
+    }
+  ]
+}

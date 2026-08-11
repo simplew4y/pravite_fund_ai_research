@@ -1,0 +1,4 @@
+interface:
+  display_name: "风险与催化剂追踪"
+  short_description: "从项目证据中严谨识别、校验、归并并追踪风险与催化剂事项"
+  default_prompt: "使用 $private-fund-risk-catalyst-tracking 从已验证证据中提取、校验并归并风险与催化剂。"

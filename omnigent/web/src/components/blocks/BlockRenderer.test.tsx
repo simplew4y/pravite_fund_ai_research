@@ -22,6 +22,34 @@ const FILE_VIEWER_NOOP = {
 };
 
 describe("BlockRenderer dispatch", () => {
+  it("collapses the post-compaction plan while keeping the final answer visible", () => {
+    const items: RenderItem[] = [
+      {
+        kind: "text",
+        itemId: "plan",
+        text: "I will repeat the previous operation.",
+        final: true,
+      },
+      {
+        kind: "text",
+        itemId: "final",
+        text: "最终回答",
+        final: true,
+      },
+    ];
+
+    render(
+      <BlockRenderer items={items} sessionStatus="idle" collapsePostCompactionActivity={true} />,
+    );
+
+    const trigger = screen.getByText("压缩后的计划");
+    expect(screen.queryByText("I will repeat the previous operation.")).toBeNull();
+    expect(screen.getByText("最终回答")).toBeDefined();
+
+    fireEvent.click(trigger);
+    expect(screen.getByText("I will repeat the previous operation.")).toBeDefined();
+  });
+
   it("renders a slash_command RenderItem via SlashCommandCard", () => {
     const items: RenderItem[] = [
       {

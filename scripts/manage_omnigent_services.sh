@@ -224,6 +224,19 @@ run_control() {
   while :; do sleep 3600; done
 }
 
+run_data_migrations() {
+  local data_root backup_root manifest_path
+  data_root="${PRIVATE_FUND_MIGRATION_DATA_ROOT:-$ROOT_DIR/output}"
+  backup_root="${PRIVATE_FUND_MIGRATION_BACKUP_ROOT:-$data_root/backups}"
+  manifest_path="${PRIVATE_FUND_DATA_MANIFEST:-$data_root/data-manifest.json}"
+  mkdir -p "$data_root" "$backup_root"
+  cd "$OMNIGENT_DIR"
+  uv run --offline python -m omnigent.server.private_fund_data_migrations migrate \
+    --data-root "$data_root" \
+    --backup-root "$backup_root" \
+    --manifest "$manifest_path"
+}
+
 start_stack() {
   require_runtime
   if tmux has-session -t "$STACK_SESSION" 2>/dev/null; then
@@ -236,6 +249,9 @@ start_stack() {
     echo "Existing stack is incomplete; restarting it."
     stop_stack
   fi
+
+  echo "Checking private-fund data migrations..."
+  run_data_migrations
 
   tmux new-session -d -s "$STACK_SESSION" -n control "$SCRIPT_PATH" _run-control
   tmux new-window -d -t "$STACK_SESSION" -n litellm "$SCRIPT_PATH" _run-litellm

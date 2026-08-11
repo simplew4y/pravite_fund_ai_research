@@ -9,6 +9,7 @@ import {
   type PrivateFundValuationMetricComparison,
   type PrivateFundValuationTrackingOverview,
 } from "@/lib/privateFundApi";
+import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
 import { PrivateFundValuationTrackingPanel } from "./PrivateFundValuationTrackingPanel";
 
 vi.mock("@/hooks/usePrivateFundProjects", () => ({
@@ -21,6 +22,12 @@ vi.mock("@/lib/privateFundApi", async (importOriginal) => {
     runPrivateFundValuationTracking: vi.fn(),
   };
 });
+
+const QUARTERLY_METRIC_KEYS = new Set([
+  "quarter_net_profit_yoy",
+  "quarter_gross_margin_qoq_delta",
+  "quarter_revenue_growth_qoq",
+]);
 
 const comparisons: PrivateFundValuationMetricComparison[] = [
   {
@@ -39,7 +46,7 @@ const comparisons: PrivateFundValuationMetricComparison[] = [
     modelPeriod: "2025Q2",
     actualPeriod: "2025Q2",
     modelSource: "QoQ&Results!AF25, QoQ&Results!AD25",
-    actualSource: "Tushare income",
+    actualSource: "Eastmoney F10",
     modelQualityStatus: "derived_from_model_facts",
     evidenceIds: ["fact:net-profit"],
     createdAt: "2026-07-20T05:30:00Z",
@@ -60,7 +67,7 @@ const comparisons: PrivateFundValuationMetricComparison[] = [
     modelPeriod: "2025Q2",
     actualPeriod: "2025Q2",
     modelSource: "QoQ&Results!AF4",
-    actualSource: "Tushare income",
+    actualSource: "Eastmoney F10",
     modelQualityStatus: "derived_from_model_facts",
     evidenceIds: ["fact:gross-profit"],
     createdAt: "2026-07-20T05:30:00Z",
@@ -102,7 +109,7 @@ const comparisons: PrivateFundValuationMetricComparison[] = [
     modelPeriod: "20D",
     actualPeriod: "20D@20260720",
     modelSource: "Market!B5",
-    actualSource: "Tushare daily",
+    actualSource: "AKShare daily",
     modelQualityStatus: "candidate_complete",
     evidenceIds: ["fact:turnover"],
     createdAt: "2026-07-20T05:30:00Z",
@@ -123,7 +130,7 @@ const comparisons: PrivateFundValuationMetricComparison[] = [
     modelPeriod: "2025Q2",
     actualPeriod: "2025Q2",
     modelSource: "QoQ&Results!AF2",
-    actualSource: "Tushare income",
+    actualSource: "Eastmoney F10",
     modelQualityStatus: "derived_from_model_facts",
     evidenceIds: ["fact:revenue"],
     createdAt: "2026-07-20T05:30:00Z",
@@ -173,6 +180,7 @@ const overview: PrivateFundValuationTrackingOverview = {
       name: "阳光电源估值模型",
       companyName: "阳光电源",
       companyTicker: "300274.SZ",
+      identityAudit: [],
       modelType: "integrated_model",
       currentModelVersionId: "vmv-2",
       currentVersionNo: 2,
@@ -196,7 +204,30 @@ const overview: PrivateFundValuationTrackingOverview = {
           status: "completed",
           asOf: "2026-07-20T05:30:00Z",
           errorMessage: "",
+          providerAttempts: [
+            {
+              provider: "akshare",
+              status: "completed",
+              fieldsFound: ["quarter_net_profit_yoy"],
+              errorMessage: "",
+              durationMs: 32,
+            },
+          ],
           createdAt: "2026-07-20T05:30:00Z",
+          isStale: false,
+          identitySnapshot: {},
+        },
+        marketSnapshot: {
+          label: "当前市场快照",
+          asOf: "2026-07-20T05:30:00Z",
+          status: "partial",
+          modelAvailableCount: 2,
+          actualAvailableCount: 2,
+          comparedCount: 1,
+          periodMismatchCount: 1,
+          comparisons: comparisons.filter((metric) =>
+            ["forward_pe", "avg_turnover_amount_20d"].includes(metric.metricKey),
+          ),
         },
         priceComparison: {
           priceComparisonId: "price-1",
@@ -282,6 +313,10 @@ function renderPanel(datasetId = "sungrow") {
 describe("PrivateFundValuationTrackingPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    usePrivateFundWorkspaceStore.setState({
+      documentPreviewRequest: null,
+      selectedSourceDocumentIdsByDataset: {},
+    });
     vi.mocked(usePrivateFundValuationTracking).mockReturnValue({
       data: overview,
       isLoading: false,
@@ -290,23 +325,51 @@ describe("PrivateFundValuationTrackingPanel", () => {
     vi.mocked(runPrivateFundValuationTracking).mockResolvedValue([]);
   });
 
-  it("renders only the five requested model-versus-actual metrics", () => {
+  it("groups three quarterly metrics separately from two non-alerting market snapshots", () => {
     renderPanel();
     const region = screen.getByRole("region", { name: "估值模型五指标对比" });
-    for (const metric of comparisons) {
-      expect(within(region).getByRole("heading", { name: metric.label })).toBeInTheDocument();
+    const quarterlyRegion = screen.getByRole("region", { name: "季度经营指标 · 3项" });
+    const marketRegion = screen.getByRole("region", { name: "当前市场快照" });
+
+    for (const metric of comparisons.filter((item) => QUARTERLY_METRIC_KEYS.has(item.metricKey))) {
+      expect(
+        within(quarterlyRegion).getByRole("heading", { name: metric.label }),
+      ).toBeInTheDocument();
+      expect(within(marketRegion).queryByRole("heading", { name: metric.label })).toBeNull();
     }
+    for (const metric of comparisons.filter((item) => !QUARTERLY_METRIC_KEYS.has(item.metricKey))) {
+      expect(within(marketRegion).getByRole("heading", { name: metric.label })).toBeInTheDocument();
+      expect(within(quarterlyRegion).queryByRole("heading", { name: metric.label })).toBeNull();
+    }
+
     expect(screen.getByText("50.0%", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("38.0%", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("25x")).toBeInTheDocument();
     expect(screen.getByText("20x")).toBeInTheDocument();
     expect(screen.getByText("10.00 亿元")).toBeInTheDocument();
     expect(screen.getAllByText("真实值 · API")).toHaveLength(5);
+    expect(within(marketRegion).queryByText("关注")).toBeNull();
+    expect(within(marketRegion).queryByText("预警")).toBeNull();
     expect(screen.queryByText("临时录入", { exact: false })).not.toBeInTheDocument();
     expect(screen.queryByText("临时硬编码", { exact: false })).not.toBeInTheDocument();
     expect(within(region).queryByText("差距", { exact: true })).not.toBeInTheDocument();
     expect(screen.getAllByText("akshare", { exact: false }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("region", { name: "目标价与市场价格对比" })).toBeNull();
+  });
+
+  it("does not render the market-data error banner", () => {
+    const withMarketWarning = structuredClone(overview);
+    const warning = "market-data warning sentinel";
+    withMarketWarning.series[0].metricAnalysis.marketData.errorMessage = warning;
+    vi.mocked(usePrivateFundValuationTracking).mockReturnValue({
+      data: withMarketWarning,
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+
+    renderPanel();
+
+    expect(screen.queryByText(warning)).not.toBeInTheDocument();
   });
 
   it("owns the vertical scroll area inside the workbench", () => {
@@ -348,11 +411,131 @@ describe("PrivateFundValuationTrackingPanel", () => {
 
   it("refreshes live data", async () => {
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "刷新真实数据" }));
-    await waitFor(() => expect(runPrivateFundValuationTracking).toHaveBeenCalledWith("sungrow"));
+    fireEvent.click(screen.getByRole("button", { name: "刷新模型与真实数据" }));
+    await waitFor(() =>
+      expect(runPrivateFundValuationTracking).toHaveBeenCalledWith("sungrow", {
+        seriesId: "series-1",
+        modelVersionId: "vmv-2",
+      }),
+    );
   });
 
-  it("shows an explicit unavailable state instead of inventing Forward PE", () => {
+  it("passes currently selected source document IDs to the impact refresh", async () => {
+    usePrivateFundWorkspaceStore.setState({
+      selectedSourceDocumentIdsByDataset: {
+        sungrow: ["doc-meeting", "doc-model"],
+      },
+    });
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新模型与真实数据" }));
+
+    await waitFor(() =>
+      expect(runPrivateFundValuationTracking).toHaveBeenCalledWith("sungrow", {
+        seriesId: "series-1",
+        modelVersionId: "vmv-2",
+        documentIds: ["doc-meeting", "doc-model"],
+      }),
+    );
+  });
+
+  it("does not keep spinning while a failed source is waiting for automatic retry", () => {
+    const retrying = structuredClone(overview);
+    retrying.jobs = [
+      {
+        jobId: "market-retry",
+        jobType: "market_data_refresh",
+        sourceId: "market-data:vmv-2:manual",
+        status: "queued",
+        attemptCount: 3,
+        maxAttempts: 4,
+        createdAt: "2026-08-09T01:42:00Z",
+        startedAt: "2026-08-09T01:45:00Z",
+        lastError: "market-data refresh failed for series: series-1",
+        payload: {
+          series_id: "series-1",
+          model_version_id: "vmv-2",
+        },
+      },
+    ];
+    vi.mocked(usePrivateFundValuationTracking).mockReturnValue({
+      data: retrying,
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+
+    renderPanel();
+
+    expect(screen.getByRole("button", { name: "刷新模型与真实数据" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "刷新中" })).toBeNull();
+    expect(screen.getByText("上次执行失败，等待自动重试（已尝试 3/4 次）")).toBeInTheDocument();
+  });
+
+  it("keeps the spinner for a newly queued refresh that has not started yet", () => {
+    const queued = structuredClone(overview);
+    queued.jobs = [
+      {
+        jobId: "market-new",
+        jobType: "market_data_refresh",
+        sourceId: "market-data:vmv-2:manual",
+        status: "queued",
+        attemptCount: 0,
+        maxAttempts: 4,
+        createdAt: "2026-08-09T01:42:00Z",
+        payload: {
+          series_id: "series-1",
+          model_version_id: "vmv-2",
+        },
+      },
+    ];
+    vi.mocked(usePrivateFundValuationTracking).mockReturnValue({
+      data: queued,
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+
+    renderPanel();
+
+    expect(screen.getByRole("button", { name: "刷新中" })).toBeDisabled();
+  });
+
+  it("does not label a completed zero-result extraction as pending", () => {
+    const completedWithoutValues = structuredClone(overview);
+    completedWithoutValues.series[0].metricAnalysis.metricComparisons.forEach((metric) => {
+      metric.modelValue = null;
+    });
+    completedWithoutValues.jobs = [
+      {
+        jobId: "model-completed-empty",
+        jobType: "model_metric_refresh",
+        sourceId: "model-metrics:vmv-2:manual",
+        status: "completed",
+        attemptCount: 1,
+        maxAttempts: 2,
+        createdAt: "2026-08-09T01:42:00Z",
+        startedAt: "2026-08-09T01:42:01Z",
+        finishedAt: "2026-08-09T01:42:03Z",
+        payload: {
+          series_id: "series-1",
+          model_version_id: "vmv-2",
+        },
+      },
+    ];
+    vi.mocked(usePrivateFundValuationTracking).mockReturnValue({
+      data: completedWithoutValues,
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+
+    renderPanel();
+
+    const stage = screen.getByText("抽取五指标").parentElement!;
+    expect(within(stage).getByText("部分完成")).toBeInTheDocument();
+    expect(within(stage).queryByText("待处理")).toBeNull();
+    expect(within(stage).getByText("抽取已完成，未识别到可用模型指标（0/5）")).toBeInTheDocument();
+  });
+
+  it("shows an unavailable Forward PE value without a market-warning badge", () => {
     const unavailable = structuredClone(overview);
     unavailable.series[0].companyTicker = "NVDA";
     const forward = unavailable.series[0].metricAnalysis.metricComparisons.find(
@@ -370,8 +553,10 @@ describe("PrivateFundValuationTrackingPanel", () => {
 
     renderPanel("other-company");
     const forwardRow = screen.getByRole("heading", { name: "Forward PE" }).closest("article")!;
-    expect(within(forwardRow).getByText("待补充")).toBeInTheDocument();
     expect(within(forwardRow).getByText("暂无")).toBeInTheDocument();
+    expect(within(forwardRow).queryByText("待补充")).toBeNull();
+    expect(within(forwardRow).queryByText("关注")).toBeNull();
+    expect(within(forwardRow).queryByText("预警")).toBeNull();
     expect(screen.getByRole("region", { name: "其他资料对估值的综合影响" })).toBeInTheDocument();
   });
 
@@ -420,9 +605,9 @@ describe("PrivateFundValuationTrackingPanel", () => {
           period: "2024Q2",
           label: "2024 Q2",
           status: "comparable",
-          modelAvailableCount: 5,
-          actualAvailableCount: 5,
-          comparedCount: 5,
+          modelAvailableCount: 3,
+          actualAvailableCount: 3,
+          comparedCount: 3,
           alertCount: 2,
           observedAt: "2024-08-24",
           comparisons: historical,
@@ -432,7 +617,7 @@ describe("PrivateFundValuationTrackingPanel", () => {
           label: "2026 Q1",
           status: "actual_only",
           modelAvailableCount: 0,
-          actualAvailableCount: 5,
+          actualAvailableCount: 3,
           comparedCount: 0,
           alertCount: 0,
           observedAt: "2026-04-24",
@@ -456,7 +641,7 @@ describe("PrivateFundValuationTrackingPanel", () => {
 
     netProfitRow = screen.getByRole("heading", { name: "单季净利润增速" }).closest("article")!;
     expect(within(netProfitRow).getByText("+70.0%")).toBeInTheDocument();
-    expect(screen.getByText("API 5/5")).toBeInTheDocument();
+    expect(screen.getByText("季度 API 3/3")).toBeInTheDocument();
   });
 
   it("prioritizes the latest comparable period and folds distant periods on both sides", async () => {

@@ -182,4 +182,51 @@ describe("PdfSourcePanel Excel explorer", () => {
     expect(await screen.findByText("Tail")).toBeInTheDocument();
     expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("window_row=109");
   });
+
+  it("shows a specific missing-file error and recovers through retry", async () => {
+    let attempt = 0;
+    const fetchMock = vi.fn(async () => {
+      attempt += 1;
+      if (attempt === 1) {
+        return new Response(JSON.stringify({ detail: "not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          kind: "pdf",
+          file_name: "annual-report.pdf",
+          page_no: 8,
+          image_url: "data:image/png;base64,AA==",
+          image_width: 1,
+          image_height: 1,
+          highlights: [],
+          matched: false,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <PdfSourcePanel
+        selection={{
+          kind: "pdf",
+          datasetId: "300274",
+          pdfName: "annual-report.pdf",
+          pageNo: 8,
+        }}
+      />,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("文件不存在或已被删除");
+    expect(screen.getByRole("link", { name: "前往资料管理" })).toHaveAttribute(
+      "href",
+      "/?private_fund_project=300274",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "重试加载" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("status")).toHaveTextContent("加载成功");
+  });
 });

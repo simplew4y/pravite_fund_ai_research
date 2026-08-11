@@ -15,7 +15,6 @@ import {
   Database,
   FileSearch,
   FileSpreadsheet,
-  Info,
   RefreshCw,
   Scale,
   ShieldAlert,
@@ -27,18 +26,32 @@ import { useEffect, useRef, useState } from "react";
 import { usePrivateFundValuationTracking } from "@/hooks/usePrivateFundProjects";
 import {
   runPrivateFundValuationTracking,
+  searchPrivateFundValuationSecurities,
+  updatePrivateFundValuationModelIdentity,
   type PrivateFundValuationImpactAnalysis,
   type PrivateFundValuationMetricComparison,
   type PrivateFundValuationMetricTimeline,
+  type PrivateFundValuationMarketSnapshot,
   type PrivateFundValuationPriceComparison,
+  type PrivateFundValuationSecurityCandidate,
+  type PrivateFundValuationTrackingOverview,
 } from "@/lib/privateFundApi";
+import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
 import { cn } from "@/lib/utils";
+
+const EMPTY_SELECTED_DOCUMENT_IDS: string[] = [];
 
 const EXPECTED_METRICS = [
   "quarter_net_profit_yoy",
   "quarter_gross_margin_qoq_delta",
   "forward_pe",
   "avg_turnover_amount_20d",
+  "quarter_revenue_growth_qoq",
+] as const;
+
+const QUARTERLY_METRICS = [
+  "quarter_net_profit_yoy",
+  "quarter_gross_margin_qoq_delta",
   "quarter_revenue_growth_qoq",
 ] as const;
 
@@ -223,26 +236,43 @@ export function PriceComparisonCard({ price }: { price: PrivateFundValuationPric
   );
 }
 
-function ComparisonRow({ metric }: { metric: PrivateFundValuationMetricComparison }) {
-  const style = SEVERITY[metric.severity as keyof typeof SEVERITY] ?? SEVERITY.unavailable;
+function ComparisonRow({
+  metric,
+  showSeverity = true,
+}: {
+  metric: PrivateFundValuationMetricComparison;
+  showSeverity?: boolean;
+}) {
+  const isPeriodMismatch = metric.status === "period_mismatch";
+  const severityStyle = SEVERITY[metric.severity as keyof typeof SEVERITY] ?? SEVERITY.unavailable;
+  const style = isPeriodMismatch ? SEVERITY.warning : severityStyle;
+  const statusLabel = isPeriodMismatch ? "期间不一致" : style.label;
   const StatusIcon = style.icon;
   const isManuallyVerified = metric.modelQualityStatus.startsWith("manual_verified");
   return (
     <article className="group relative grid gap-3 border-t border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-4 first:border-t-0 lg:grid-cols-[minmax(220px,1.35fr)_minmax(140px,0.75fr)_32px_minmax(140px,0.75fr)] lg:items-center lg:px-5">
-      <span aria-hidden className={cn("absolute inset-y-3 left-0 w-0.5 rounded-r", style.rail)} />
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-3 left-0 w-0.5 rounded-r",
+          showSeverity ? style.rail : "bg-[var(--pf-line-strong)]",
+        )}
+      />
       <div className="min-w-0 pl-1">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-semibold tracking-tight text-[var(--pf-ink)]">
             {metric.label}
           </h3>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold",
-              style.badge,
-            )}
-          >
-            <StatusIcon className="size-2.5" /> {style.label}
-          </span>
+          {showSeverity ? (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold",
+                style.badge,
+              )}
+            >
+              <StatusIcon className="size-2.5" /> {statusLabel}
+            </span>
+          ) : null}
         </div>
         <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
           {metric.description}
@@ -299,6 +329,65 @@ function ComparisonRow({ metric }: { metric: PrivateFundValuationMetricCompariso
         </div>
       </details>
     </article>
+  );
+}
+
+function MarketSnapshotSection({
+  snapshot,
+}: {
+  snapshot: PrivateFundValuationMarketSnapshot | undefined;
+}) {
+  if (!snapshot) return null;
+  const statusLabel =
+    snapshot.periodMismatchCount > 0
+      ? "期间待对齐"
+      : snapshot.comparedCount > 0
+        ? "已对比"
+        : snapshot.actualAvailableCount > 0
+          ? "部分完成"
+          : "待补充";
+  return (
+    <section
+      aria-labelledby="valuation-market-snapshot-title"
+      className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] shadow-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-4 py-3">
+        <div>
+          <h2
+            id="valuation-market-snapshot-title"
+            className="text-xs font-semibold text-[var(--pf-ink)]"
+          >
+            当前市场快照
+          </h2>
+          <p className="mt-0.5 text-[9px] text-[var(--pf-ink-muted)]">
+            Forward PE 与近 20 日日均成交额不归入财报季度；窗口不一致时仅展示，不触发预警。
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-full border px-2 py-0.5 text-[9px] font-semibold",
+            snapshot.periodMismatchCount > 0 ? SEVERITY.warning.badge : SEVERITY.normal.badge,
+          )}
+        >
+          {statusLabel}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--pf-line)] px-4 py-2 text-[10px] text-[var(--pf-ink-secondary)]">
+        <span>模型 {snapshot.modelAvailableCount}/2</span>
+        <span>API {snapshot.actualAvailableCount}/2</span>
+        <span>可直接对比 {snapshot.comparedCount}/2</span>
+        <span>快照：{formatTime(snapshot.asOf)}</span>
+      </div>
+      {snapshot.comparisons.length ? (
+        snapshot.comparisons.map((metric) => (
+          <ComparisonRow key={metric.metricKey} metric={metric} showSeverity={false} />
+        ))
+      ) : (
+        <div className="px-5 py-8 text-center text-[10px] text-[var(--pf-ink-muted)]">
+          等待市场指标刷新。
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -602,9 +691,9 @@ function MetricTimeline({
       >
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-[var(--pf-ink-secondary)]">
           <span className="font-semibold text-[var(--pf-ink)]">{active.label}</span>
-          <span>模型 {active.modelAvailableCount}/5</span>
-          <span>API {active.actualAvailableCount}/5</span>
-          <span>可直接对比 {active.comparedCount}/5</span>
+          <span>季度模型 {active.modelAvailableCount}/3</span>
+          <span>季度 API {active.actualAvailableCount}/3</span>
+          <span>可直接对比 {active.comparedCount}/3</span>
         </div>
         <span
           className={cn(
@@ -648,11 +737,13 @@ function ValuationImpactSection({ analysis }: { analysis: PrivateFundValuationIm
   const statusLabel =
     analysis.status === "completed"
       ? `资料综合分析 · ${analysis.cards.length} 张`
-      : analysis.status === "failed"
-        ? "生成失败"
-        : analysis.status === "no_evidence"
-          ? "暂无可引用资料"
-          : "等待生成";
+      : analysis.status === "partial" && analysis.cards.length
+        ? `资料证据卡 · ${analysis.cards.length} 张（待核验）`
+        : analysis.status === "failed"
+          ? "生成失败"
+          : analysis.status === "no_evidence"
+            ? "暂无可引用资料"
+            : "等待生成";
   return (
     <section
       aria-labelledby="valuation-impact-title"
@@ -774,11 +865,422 @@ function LoadingState() {
   );
 }
 
+type ValuationStageState = "pending" | "running" | "completed" | "partial" | "failed" | "blocked";
+
+type ValuationStage = {
+  key: string;
+  label: string;
+  status: ValuationStageState;
+  detail: string;
+};
+
+const STAGE_STYLE: Record<ValuationStageState, { label: string; className: string }> = {
+  pending: { label: "待处理", className: "border-[var(--pf-line)] text-[var(--pf-ink-muted)]" },
+  running: {
+    label: "处理中",
+    className:
+      "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-300",
+  },
+  completed: {
+    label: "完成",
+    className:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300",
+  },
+  partial: {
+    label: "部分完成",
+    className:
+      "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300",
+  },
+  failed: {
+    label: "失败",
+    className:
+      "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300",
+  },
+  blocked: {
+    label: "待补充",
+    className: "border-[var(--pf-line-strong)] bg-[var(--pf-panel-subtle)] text-[var(--pf-ink)]",
+  },
+};
+
+function jobMatchesSeries(
+  job: PrivateFundValuationTrackingOverview["jobs"][number],
+  series: PrivateFundValuationTrackingOverview["series"][number],
+) {
+  const payload = job.payload ?? {};
+  return (
+    payload.series_id === series.seriesId &&
+    payload.model_version_id === series.currentModelVersionId
+  );
+}
+
+function latestJob(
+  data: PrivateFundValuationTrackingOverview | undefined,
+  series: PrivateFundValuationTrackingOverview["series"][number],
+  jobTypes: string[],
+  statuses?: string[],
+) {
+  return data?.jobs.find(
+    (job) =>
+      jobMatchesSeries(job, series) &&
+      jobTypes.includes(job.jobType) &&
+      (!statuses || statuses.includes(job.status)),
+  );
+}
+
+function isJobActivelyRefreshing(
+  job: PrivateFundValuationTrackingOverview["jobs"][number] | undefined,
+) {
+  return Boolean(
+    job && (job.status === "running" || (job.status === "queued" && job.attemptCount === 0)),
+  );
+}
+
+function isJobWaitingForRetry(
+  job: PrivateFundValuationTrackingOverview["jobs"][number] | undefined,
+) {
+  return Boolean(job && job.status === "queued" && job.attemptCount > 0);
+}
+
+function retryWaitingDetail(job: PrivateFundValuationTrackingOverview["jobs"][number]) {
+  return "上次执行失败，等待自动重试（已尝试 " + job.attemptCount + "/" + job.maxAttempts + " 次）";
+}
+
+function buildValuationStages(
+  data: PrivateFundValuationTrackingOverview | undefined,
+  series: PrivateFundValuationTrackingOverview["series"][number],
+): ValuationStage[] {
+  const modelMetricJob = latestJob(data, series, ["model_metric_refresh"]);
+  const marketJob = latestJob(data, series, ["market_data_refresh"]);
+  const contextJob = latestJob(data, series, ["valuation_context_refresh"]);
+  const modelMetricRunning = isJobActivelyRefreshing(modelMetricJob);
+  const modelMetricRetrying = isJobWaitingForRetry(modelMetricJob);
+  const modelMetricFailed = modelMetricJob?.status === "failed" ? modelMetricJob : undefined;
+  const modelMetricCompleted = modelMetricJob?.status === "completed";
+  const marketRunning = isJobActivelyRefreshing(marketJob);
+  const marketRetrying = isJobWaitingForRetry(marketJob);
+  const marketFailed = marketJob?.status === "failed" ? marketJob : undefined;
+  const contextRunning = isJobActivelyRefreshing(contextJob);
+  const contextRetrying = isJobWaitingForRetry(contextJob);
+  const contextFailed = contextJob?.status === "failed" ? contextJob : undefined;
+  const analysis = series.metricAnalysis;
+  const comparisons = analysis.metricComparisons ?? [];
+  const modelMetricCount = EXPECTED_METRICS.filter((key) =>
+    comparisons.some((metric) => metric.metricKey === key && metric.modelValue !== null),
+  ).length;
+  const actualMetricCount = EXPECTED_METRICS.filter((key) =>
+    comparisons.some((metric) => metric.metricKey === key && metric.actualValue !== null),
+  ).length;
+  const marketStatus = analysis.marketData.status;
+  const impactStatus = analysis.valuationImpacts.status;
+  const impactCount = analysis.valuationImpacts.cards.length;
+
+  return [
+    {
+      key: "recognition",
+      label: "识别估值模型",
+      status: series.currentModelVersionId ? "completed" : "pending",
+      detail: series.currentModelVersionId ? "模型已识别" : "等待估值模型文件",
+    },
+    {
+      key: "metrics",
+      label: "抽取五指标",
+      status: modelMetricRunning
+        ? "running"
+        : modelMetricRetrying
+          ? "partial"
+          : modelMetricFailed
+            ? "failed"
+            : modelMetricCount === EXPECTED_METRICS.length
+              ? "completed"
+              : modelMetricCount > 0
+                ? "partial"
+                : modelMetricCompleted
+                  ? "partial"
+                  : "pending",
+      detail: modelMetricRunning
+        ? "正在抽取固定五指标"
+        : modelMetricRetrying && modelMetricJob
+          ? retryWaitingDetail(modelMetricJob)
+          : modelMetricFailed?.lastError ||
+            (modelMetricCompleted && modelMetricCount === 0
+              ? "抽取已完成，未识别到可用模型指标（0/" + EXPECTED_METRICS.length + "）"
+              : modelMetricCount + "/" + EXPECTED_METRICS.length + " 项模型值可用"),
+    },
+    {
+      key: "market",
+      label: "拉真实值并对比",
+      status: !series.companyTicker
+        ? "blocked"
+        : marketRunning
+          ? "running"
+          : marketRetrying
+            ? "partial"
+            : marketFailed || marketStatus === "failed"
+              ? "failed"
+              : actualMetricCount === EXPECTED_METRICS.length
+                ? "completed"
+                : actualMetricCount > 0 || marketStatus === "partial"
+                  ? "partial"
+                  : marketStatus === "pending"
+                    ? "pending"
+                    : "partial",
+      detail: !series.companyTicker
+        ? "缺 ticker，等待补充"
+        : marketRunning
+          ? "免费组合数据源拉取中"
+          : marketRetrying && marketJob
+            ? retryWaitingDetail(marketJob)
+            : marketFailed?.lastError ||
+              actualMetricCount + "/" + EXPECTED_METRICS.length + " 项真实值可用",
+    },
+    {
+      key: "impact",
+      label: "生成影响卡片",
+      status: contextRunning
+        ? "running"
+        : contextRetrying
+          ? "partial"
+          : contextFailed || impactStatus === "failed"
+            ? "failed"
+            : impactStatus === "completed" && impactCount > 0
+              ? "completed"
+              : impactStatus === "partial" || impactCount > 0
+                ? "partial"
+                : "pending",
+      detail: contextRunning
+        ? "正在汇总研究资料、会议纪要和财务资料"
+        : contextRetrying && contextJob
+          ? retryWaitingDetail(contextJob)
+          : contextFailed?.lastError ||
+            (impactCount ? impactCount + " 张影响卡片" : "等待辅助资料分析"),
+    },
+  ];
+}
+
+function ValuationProcessingStages({ stages }: { stages: ValuationStage[] }) {
+  return (
+    <div className="grid gap-2 md:grid-cols-4" aria-label="估值自动处理进度">
+      {stages.map((stage, index) => {
+        const style = STAGE_STYLE[stage.status];
+        return (
+          <div
+            className={cn("rounded-lg border bg-[var(--pf-panel-raised)] p-3", style.className)}
+            key={stage.key}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase text-[var(--pf-ink-muted)]">
+                阶段 {index + 1}
+              </span>
+              <span className="rounded-full border border-current px-2 py-0.5 text-[10px] font-semibold">
+                {style.label}
+              </span>
+            </div>
+            <div className="mt-2 text-xs font-semibold text-[var(--pf-ink)]">{stage.label}</div>
+            <div className="mt-1 min-h-8 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
+              {stage.detail}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ValuationIdentityEditor({
+  datasetId,
+  series,
+}: {
+  datasetId: string;
+  series: PrivateFundValuationTrackingOverview["series"][number];
+}) {
+  const queryClient = useQueryClient();
+  const [companyName, setCompanyName] = useState(series.companyName ?? "");
+  const [companyTicker, setCompanyTicker] = useState(series.companyTicker ?? "");
+  const [candidates, setCandidates] = useState<PrivateFundValuationSecurityCandidate[]>([]);
+  const [isCandidateOpen, setIsCandidateOpen] = useState(false);
+  const [isIdentityDirty, setIsIdentityDirty] = useState(false);
+  const searchGeneration = useRef(0);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setCompanyName(series.companyName ?? "");
+    setCompanyTicker(series.companyTicker ?? "");
+    setCandidates([]);
+    setIsCandidateOpen(false);
+    setIsIdentityDirty(false);
+    searchGeneration.current += 1;
+    setMessage("");
+  }, [series.seriesId, series.companyName, series.companyTicker]);
+
+  useEffect(() => {
+    const query = companyName.trim() || companyTicker.trim();
+    if (!isCandidateOpen || !isIdentityDirty || query.length < 1) {
+      setCandidates([]);
+      return;
+    }
+    let cancelled = false;
+    const generation = ++searchGeneration.current;
+    const timer = window.setTimeout(() => {
+      searchPrivateFundValuationSecurities(datasetId, query)
+        .then((items) => {
+          if (!cancelled && generation === searchGeneration.current) setCandidates(items);
+        })
+        .catch(() => {
+          if (!cancelled && generation === searchGeneration.current) setCandidates([]);
+        });
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [companyName, companyTicker, datasetId, isCandidateOpen, isIdentityDirty]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updatePrivateFundValuationModelIdentity(datasetId, series.seriesId, {
+        companyName,
+        companyTicker,
+        changeSource: "manual_entry",
+      }),
+    onSuccess: async (result) => {
+      const saved = result.series;
+      if (saved) {
+        setCompanyName(saved.companyName ?? "");
+        setCompanyTicker(saved.companyTicker ?? "");
+      }
+      searchGeneration.current += 1;
+      setCandidates([]);
+      setIsCandidateOpen(false);
+      setIsIdentityDirty(false);
+      setMessage("已保存，市场数据刷新已排队");
+      await queryClient.invalidateQueries({
+        queryKey: ["private-fund-valuation-tracking", datasetId],
+      });
+    },
+    onError: (error: Error) => setMessage(error.message),
+  });
+
+  const needsAttention =
+    !series.companyTicker ||
+    !series.companyName ||
+    series.identityStatus !== "validated_directory_match" ||
+    series.metricAnalysis.marketData.isStale;
+  const pickCandidate = (candidate: PrivateFundValuationSecurityCandidate) => {
+    setCompanyName(candidate.companyName);
+    setCompanyTicker(candidate.ticker);
+    searchGeneration.current += 1;
+    setCandidates([]);
+    setIsCandidateOpen(false);
+    setMessage("");
+  };
+
+  const editCompanyName = (value: string) => {
+    setCompanyName(value);
+    setIsIdentityDirty(true);
+    setIsCandidateOpen(Boolean(value.trim() || companyTicker.trim()));
+  };
+
+  const editCompanyTicker = (value: string) => {
+    setCompanyTicker(value);
+    setIsIdentityDirty(true);
+    setIsCandidateOpen(Boolean(companyName.trim() || value.trim()));
+  };
+
+  return (
+    <section
+      className={cn(
+        "rounded-xl border bg-[var(--pf-panel-raised)] p-4 shadow-sm",
+        needsAttention ? "border-amber-300 dark:border-amber-800" : "border-[var(--pf-line)]",
+      )}
+      aria-labelledby="valuation-identity-title"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="valuation-identity-title" className="text-xs font-semibold text-[var(--pf-ink)]">
+            模型证券身份
+          </h2>
+          <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
+            {needsAttention
+              ? "请确认公司名称和股票代码，保存后会刷新该模型系列的市场数据。"
+              : "名称和代码已通过当前证券目录校验。"}
+          </p>
+        </div>
+        <span className="rounded-full border border-[var(--pf-line)] px-2 py-0.5 text-[9px] font-semibold text-[var(--pf-ink-muted)]">
+          {series.identityStatus || "unverified"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]">
+        <label className="relative block">
+          <span className="mb-1 block text-[9px] font-semibold uppercase text-[var(--pf-ink-muted)]">
+            公司名称
+          </span>
+          <input
+            className="h-9 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel)] px-3 text-xs text-[var(--pf-ink)] outline-none focus:border-[var(--pf-accent)]"
+            aria-autocomplete="list"
+            aria-expanded={isCandidateOpen && candidates.length > 0}
+            onChange={(event) => editCompanyName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                searchGeneration.current += 1;
+                setCandidates([]);
+                setIsCandidateOpen(false);
+              }
+            }}
+            value={companyName}
+          />
+          {isCandidateOpen && candidates.length ? (
+            <div
+              className="absolute z-20 mt-1 max-h-44 w-full overflow-auto rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] p-1 shadow-lg"
+              role="listbox"
+            >
+              {candidates.map((candidate) => (
+                <button
+                  className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-[10px] text-[var(--pf-ink)] hover:bg-[var(--pf-panel-subtle)]"
+                  key={candidate.securityId}
+                  onClick={() => pickCandidate(candidate)}
+                  type="button"
+                >
+                  <span>{candidate.label}</span>
+                  <span className="text-[var(--pf-ink-muted)]">{candidate.exchange}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[9px] font-semibold uppercase text-[var(--pf-ink-muted)]">
+            股票代码
+          </span>
+          <input
+            className="h-9 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel)] px-3 font-mono text-xs text-[var(--pf-ink)] outline-none focus:border-[var(--pf-accent)]"
+            onChange={(event) => editCompanyTicker(event.target.value)}
+            value={companyTicker}
+          />
+        </label>
+        <button
+          className="mt-4 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-white transition-opacity disabled:opacity-60 md:mt-5"
+          disabled={saveMutation.isPending || !companyName.trim() || !companyTicker.trim()}
+          onClick={() => saveMutation.mutate()}
+          type="button"
+        >
+          <Check className="size-3.5" />
+          {saveMutation.isPending ? "保存中" : "保存"}
+        </button>
+      </div>
+      {message ? (
+        <p className="mt-2 text-[10px] leading-4 text-[var(--pf-ink-muted)]">{message}</p>
+      ) : null}
+    </section>
+  );
+}
 export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: string }) {
   const queryClient = useQueryClient();
   const valuationQuery = usePrivateFundValuationTracking(datasetId);
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState("");
+  const selectedSourceDocumentIds = usePrivateFundWorkspaceStore(
+    (state) => state.selectedSourceDocumentIdsByDataset[datasetId] ?? EMPTY_SELECTED_DOCUMENT_IDS,
+  );
   const data = valuationQuery.data;
   const activeSeriesId = selectedSeriesId || data?.series[0]?.seriesId || "";
   const activeSeries = data?.series.find((series) => series.seriesId === activeSeriesId);
@@ -793,23 +1295,42 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
   const activeTimelinePeriod = metricTimeline?.periods.find(
     (period) => period.period === effectiveSelectedPeriod,
   );
-  const rawComparisons = EXPECTED_METRICS.map((key) =>
-    (activeTimelinePeriod?.comparisons ?? metricAnalysis?.metricComparisons ?? []).find(
+  const comparisons = QUARTERLY_METRICS.map((key) => {
+    const periodMetric = activeTimelinePeriod?.comparisons.find(
       (metric) => metric.metricKey === key,
-    ),
-  ).filter((metric): metric is PrivateFundValuationMetricComparison => Boolean(metric));
-  const comparisons = rawComparisons;
+    );
+    const currentMetric = metricAnalysis?.metricComparisons.find(
+      (metric) => metric.metricKey === key,
+    );
+    return periodMetric ?? currentMetric;
+  }).filter((metric): metric is PrivateFundValuationMetricComparison => Boolean(metric));
+  const marketSnapshot = metricAnalysis?.marketSnapshot;
   const selectedGapAlerts = comparisons.filter((metric) =>
     ["warning", "critical"].includes(metric.severity),
   );
-  const running = data?.jobs.some((job) => ["queued", "running"].includes(job.status));
+  const refreshRunning = Boolean(
+    activeSeries &&
+    data?.jobs.some(
+      (job) =>
+        jobMatchesSeries(job, activeSeries) &&
+        ["model_metric_refresh", "market_data_refresh", "valuation_context_refresh"].includes(
+          job.jobType,
+        ) &&
+        isJobActivelyRefreshing(job),
+    ),
+  );
 
   useEffect(() => {
     setSelectedPeriod(preferredPeriod);
   }, [activeSeriesId, preferredPeriod]);
 
   const refreshMutation = useMutation({
-    mutationFn: () => runPrivateFundValuationTracking(datasetId),
+    mutationFn: () =>
+      runPrivateFundValuationTracking(datasetId, {
+        seriesId: activeSeries?.seriesId,
+        modelVersionId: activeSeries?.currentModelVersionId ?? undefined,
+        ...(selectedSourceDocumentIds.length ? { documentIds: selectedSourceDocumentIds } : {}),
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ["private-fund-valuation-tracking", datasetId],
@@ -837,6 +1358,7 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
   }
 
   const marketData = metricAnalysis?.marketData;
+  const processingStages = buildValuationStages(data, activeSeries);
   return (
     <section
       className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable] sm:p-5 lg:p-6"
@@ -854,7 +1376,7 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
             估值模型五指标对比
           </h1>
           <p className="mt-1 text-xs text-[var(--pf-ink-muted)]">
-            只比较五项核心指标；偏差达到阈值时才生成预警。
+            五项核心指标分为季度经营与当前市场快照；仅季度经营偏差触发预警。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -881,14 +1403,17 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
           )}
           <button
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--pf-accent)] px-3 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
-            disabled={refreshMutation.isPending || running}
+            disabled={refreshMutation.isPending || refreshRunning}
             onClick={() => refreshMutation.mutate()}
             type="button"
           >
             <RefreshCw
-              className={cn("size-3.5", (refreshMutation.isPending || running) && "animate-spin")}
+              className={cn(
+                "size-3.5",
+                (refreshMutation.isPending || refreshRunning) && "animate-spin",
+              )}
             />
-            {refreshMutation.isPending || running ? "刷新中" : "刷新真实数据"}
+            {refreshMutation.isPending || refreshRunning ? "刷新中" : "刷新模型与真实数据"}
           </button>
         </div>
       </header>
@@ -904,10 +1429,31 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
         </span>
       </div>
 
-      {marketData?.errorMessage ? (
-        <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[10px] leading-4 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-          <Info className="mt-0.5 size-3.5 shrink-0" /> {marketData.errorMessage}
-        </div>
+      <ValuationIdentityEditor datasetId={datasetId} series={activeSeries} />
+
+      <ValuationProcessingStages stages={processingStages} />
+
+      {marketData?.providerAttempts?.length ? (
+        <details className="rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-3 py-2 text-[10px] text-[var(--pf-ink-muted)]">
+          <summary className="cursor-pointer font-semibold text-[var(--pf-ink)]">逐源诊断</summary>
+          <div className="mt-2 grid gap-1.5 md:grid-cols-2">
+            {marketData.providerAttempts.map((attempt, index) => (
+              <div
+                className="rounded-md bg-[var(--pf-panel-subtle)] px-2 py-1.5"
+                key={`${attempt.provider}-${index}`}
+              >
+                <span className="font-semibold text-[var(--pf-ink)]">
+                  {attempt.provider || "unknown"}
+                </span>
+                <span> · {attempt.status || "unknown"}</span>
+                {attempt.fieldsFound.length ? (
+                  <span> · {attempt.fieldsFound.join(", ")}</span>
+                ) : null}
+                {attempt.errorMessage ? <span> · {attempt.errorMessage}</span> : null}
+              </div>
+            ))}
+          </div>
+        </details>
       ) : null}
 
       {metricTimeline?.periods.length ? (
@@ -918,22 +1464,27 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
         />
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] shadow-sm">
+      <MarketSnapshotSection snapshot={marketSnapshot} />
+
+      <section
+        aria-labelledby="valuation-quarterly-metrics-title"
+        className="overflow-hidden rounded-xl border border-[var(--pf-line)] shadow-sm"
+      >
         <div className="hidden grid-cols-[minmax(220px,1.35fr)_minmax(140px,0.75fr)_32px_minmax(140px,0.75fr)] items-center bg-[var(--pf-panel-subtle)] px-5 py-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--pf-ink-muted)] lg:grid">
-          <span>
-            指标与统一口径
+          <span id="valuation-quarterly-metrics-title">
+            季度经营指标 · 3项
             {activeTimelinePeriod ? " · " + activeTimelinePeriod.label : ""}
           </span>
           <span>模型值</span>
           <span />
           <span>真实值</span>
         </div>
-        {comparisons.length === 5 ? (
+        {comparisons.length === QUARTERLY_METRICS.length ? (
           comparisons.map((metric) => <ComparisonRow key={metric.metricKey} metric={metric} />)
         ) : (
           <LoadingState />
         )}
-      </div>
+      </section>
 
       {metricAnalysis?.valuationImpacts ? (
         <ValuationImpactSection analysis={metricAnalysis.valuationImpacts} />

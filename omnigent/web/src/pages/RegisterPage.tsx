@@ -11,6 +11,40 @@ import { Link, useSearchParams } from "@/lib/routing";
 
 const MIN_PASSWORD_LENGTH = 8;
 
+type RegisterField = "identity" | "code" | "nickName" | "password" | "confirm";
+type RegisterFieldErrors = Partial<Record<RegisterField, string>>;
+
+function registrationError(
+  rawMessage: string,
+  status: number,
+  code?: string,
+): { message: string; field?: RegisterField } {
+  const value = `${code ?? ""} ${rawMessage}`.toLocaleLowerCase();
+  if (/already.*registered|email.*exists|邮箱.*注册|邮箱.*存在/.test(value)) {
+    return { message: "该邮箱已被注册，请直接登录或更换邮箱。", field: "identity" };
+  }
+  if (/verification|verify|验证码|invalid.*code|expired.*code/.test(value)) {
+    return { message: "验证码无效或已过期，请重新获取后再试。", field: "code" };
+  }
+  if (/password|密码/.test(value)) {
+    return {
+      message: "密码不符合要求：至少 8 位，并按服务要求包含字母、数字或特殊字符。",
+      field: "password",
+    };
+  }
+  if (/nick.?name|昵称/.test(value)) {
+    return { message: "昵称格式无效，请缩短昵称或移除特殊字符。", field: "nickName" };
+  }
+  if (/valid email|invalid email|email.*required|邮箱/.test(value)) {
+    return { message: "请输入有效的邮箱地址。", field: "identity" };
+  }
+  if (status === 429) return { message: "注册尝试过于频繁，请稍后再试。" };
+  if (status === 0 || status >= 500) {
+    return { message: "账户服务暂时不可用，请检查网络后重试。" };
+  }
+  return { message: rawMessage || "账户注册失败，请检查填写内容后重试。" };
+}
+
 export function RegisterPage() {
   const info = useServerInfo();
   const [params] = useSearchParams();
@@ -28,6 +62,28 @@ export function RegisterPage() {
   const [codeSent, setCodeSent] = useState(false);
   const [resendSeconds, setResendSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<RegisterFieldErrors>({});
+
+  function clearFieldError(field: RegisterField) {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+    setError(null);
+  }
+
+  function showRegistrationError(rawMessage: string, status: number, codeValue?: string) {
+    const mapped = registrationError(rawMessage, status, codeValue);
+    setError(mapped.message);
+    setFieldErrors(mapped.field ? { [mapped.field]: mapped.message } : {});
+    if (mapped.field) {
+      window.requestAnimationFrame(() =>
+        document.getElementById(`register-${mapped.field === "nickName" ? "nick-name" : mapped.field}`)?.focus(),
+      );
+    }
+  }
 
   useEffect(() => {
     document.getElementById("register-identity")?.focus();
@@ -48,10 +104,11 @@ export function RegisterPage() {
 
     setSendingCode(true);
     setError(null);
+    setFieldErrors({});
     const result = await sendRegistrationCode(identity.trim().toLowerCase());
     setSendingCode(false);
     if (!result.ok) {
-      setError(result.error);
+      showRegistrationError(result.error, result.status, result.code);
       return;
     }
     setCodeSent(true);
@@ -62,12 +119,17 @@ export function RegisterPage() {
     event.preventDefault();
     if (submitting) return;
     setError(null);
+    setFieldErrors({});
     if (password !== confirm) {
-      setError("两次输入的密码不一致。");
+      const message = "两次输入的密码不一致。";
+      setError(message);
+      setFieldErrors({ confirm: message });
       return;
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`密码至少需要 ${MIN_PASSWORD_LENGTH} 个字符。`);
+      const message = `密码至少需要 ${MIN_PASSWORD_LENGTH} 个字符。`;
+      setError(message);
+      setFieldErrors({ password: message });
       return;
     }
     setSubmitting(true);
@@ -89,7 +151,7 @@ export function RegisterPage() {
       return;
     }
     setSubmitting(false);
-    setError(result.error);
+    showRegistrationError(result.error, result.status, result.code);
   }
 
   const missingInvite = !cloudRegistration && !openRegistration && !invite;
@@ -129,8 +191,11 @@ export function RegisterPage() {
                   type={openRegistration ? "email" : "text"}
                   autoComplete={openRegistration ? "email" : "username"}
                   value={identity}
+                  aria-invalid={Boolean(fieldErrors.identity)}
+                  aria-describedby={fieldErrors.identity ? "register-identity-error" : undefined}
                   onChange={(event) => {
                     setIdentity(event.target.value);
+                    clearFieldError("identity");
                     if (cloudRegistration && codeSent) {
                       setCodeSent(false);
                       setCode("");
@@ -163,6 +228,11 @@ export function RegisterPage() {
                   </Button>
                 )}
               </div>
+              {fieldErrors.identity && (
+                <p id="register-identity-error" className="text-xs text-destructive">
+                  {fieldErrors.identity}
+                </p>
+              )}
             </div>
             {cloudRegistration && (
               <>
@@ -177,15 +247,23 @@ export function RegisterPage() {
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     value={code}
-                    onChange={(event) =>
-                      setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
-                    }
+                    aria-invalid={Boolean(fieldErrors.code)}
+                    aria-describedby={fieldErrors.code ? "register-code-error" : undefined}
+                    onChange={(event) => {
+                      setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                      clearFieldError("code");
+                    }}
                     disabled={submitting}
                     pattern="\d{6}"
                     maxLength={6}
                     placeholder="6 位数字"
                     required
                   />
+                  {fieldErrors.code && (
+                    <p id="register-code-error" className="text-xs text-destructive">
+                      {fieldErrors.code}
+                    </p>
+                  )}
                   {codeSent && (
                     <p className="text-xs text-muted-foreground">
                       验证码已发送，请检查收件箱和垃圾邮件。
@@ -203,10 +281,20 @@ export function RegisterPage() {
                     type="text"
                     autoComplete="nickname"
                     value={nickName}
-                    onChange={(event) => setNickName(event.target.value)}
+                    aria-invalid={Boolean(fieldErrors.nickName)}
+                    aria-describedby={fieldErrors.nickName ? "register-nick-name-error" : undefined}
+                    onChange={(event) => {
+                      setNickName(event.target.value);
+                      clearFieldError("nickName");
+                    }}
                     disabled={submitting}
                     maxLength={120}
                   />
+                  {fieldErrors.nickName && (
+                    <p id="register-nick-name-error" className="text-xs text-destructive">
+                      {fieldErrors.nickName}
+                    </p>
+                  )}
                 </div>
               </>
             )}
@@ -220,11 +308,21 @@ export function RegisterPage() {
                 type="password"
                 autoComplete="new-password"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.password)}
+                aria-describedby={fieldErrors.password ? "register-password-error" : undefined}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  clearFieldError("password");
+                }}
                 disabled={submitting}
                 minLength={MIN_PASSWORD_LENGTH}
                 required
               />
+              {fieldErrors.password && (
+                <p id="register-password-error" className="text-xs text-destructive">
+                  {fieldErrors.password}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <label htmlFor="register-confirm" className="text-sm font-medium">
@@ -236,11 +334,21 @@ export function RegisterPage() {
                 type="password"
                 autoComplete="new-password"
                 value={confirm}
-                onChange={(event) => setConfirm(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.confirm)}
+                aria-describedby={fieldErrors.confirm ? "register-confirm-error" : undefined}
+                onChange={(event) => {
+                  setConfirm(event.target.value);
+                  clearFieldError("confirm");
+                }}
                 disabled={submitting}
                 minLength={MIN_PASSWORD_LENGTH}
                 required
               />
+              {fieldErrors.confirm && (
+                <p id="register-confirm-error" className="text-xs text-destructive">
+                  {fieldErrors.confirm}
+                </p>
+              )}
             </div>
             {error && (
               <div

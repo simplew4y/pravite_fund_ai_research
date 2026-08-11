@@ -354,6 +354,15 @@ wheels = [
 ]
 
 [[package]]
+name = "backoff"
+version = "2.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/d7/5bbeb12c44d7c4f2fb5b56abce497eb5ed9f34d85701de869acedd602619/backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba", size = 17001, upload-time = "2022-10-05T19:19:32.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/73/b6e24bd22e6720ca8ee9a85a0c4a2971af8497d8f3193fa05390cbd46e09/backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8", size = 15148, upload-time = "2022-10-05T19:19:30.546Z" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3119,6 +3128,7 @@ dependencies = [
     { name = "alembic" },
     { name = "anyio" },
     { name = "argon2-cffi" },
+    { name = "backoff" },
     { name = "cachetools" },
     { name = "cel-expr-python", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64') or (platform_machine != 'aarch64' and sys_platform != 'darwin')" },
     { name = "claude-agent-sdk" },
@@ -3140,6 +3150,7 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
+    { name = "orjson" },
     { name = "packaging" },
     { name = "pandas" },
     { name = "pexpect", marker = "sys_platform != 'win32'" },
@@ -3242,6 +3253,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.0,<2" },
     { name = "anyio", specifier = ">=4.0,<5" },
     { name = "argon2-cffi", specifier = ">=23.1,<24" },
+    { name = "backoff", specifier = ">=2.2.1" },
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.30,<2" },
     { name = "boto3", marker = "extra == 'dev'", specifier = ">=1.30,<2" },
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.30,<2" },
@@ -3288,6 +3300,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0,<1" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0,<1" },
     { name = "opentelemetry-instrumentation-openai-agents-v2", marker = "extra == 'agents-sdk'", specifier = ">=0.1" },
+    { name = "orjson", specifier = "==3.11.9" },
     { name = "packaging", specifier = ">=23,<26" },
     { name = "pandas", specifier = ">=2.2,<3" },
     { name = "pathspec", marker = "extra == 'dev'", specifier = ">=0.12" },

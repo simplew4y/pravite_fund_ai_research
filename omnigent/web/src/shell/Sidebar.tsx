@@ -113,6 +113,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { showToast } from "@/components/ui/toast";
 import { PermissionsModal } from "@/components/PermissionsModal";
 import { SessionStateBadge } from "@/components/SessionStateBadge";
+import { ProductVersionLabel } from "@/components/ProductVersionLabel";
 import { useSessionRunnerOnline } from "@/hooks/RunnerHealthProvider";
 import { useActiveRootSessionId } from "@/hooks/useSession";
 import { useCommentInbox } from "@/hooks/useCommentInbox";
@@ -261,6 +262,7 @@ export function Sidebar({
   const [pinnedConversationIds, setPinnedConversationIds] = useState(readPinnedConversationIds);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (serverInfo !== "loading" && serverInfo.accounts_enabled) {
@@ -277,10 +279,12 @@ export function Sidebar({
   }, []);
 
   const signOut = useCallback(async () => {
+    if (signingOut) return;
+    setSigningOut(true);
     await logout();
     clearUserScopedBrowserState();
     window.location.href = "/login";
-  }, []);
+  }, [signingOut]);
 
   const lastSelectedIdRef = useRef<string | null>(null);
   const visibleIdsRef = useRef<string[]>([]);
@@ -596,12 +600,14 @@ export function Sidebar({
                   : "/"
               }
               onClick={onNavClick}
+              aria-label="投研工作台"
               className={cn(
-                "rounded-sm text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/70",
+                "inline-flex items-baseline gap-1.5 rounded-sm text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/70",
                 privateFundWorkspace && "private-fund-brand text-[16px] tracking-[-0.02em]",
               )}
             >
-              投研工作台
+              <span>投研工作台</span>
+              <ProductVersionLabel className="text-[9px] opacity-75" />
             </Link>
             <div className="flex items-center gap-1">
               <ThemeToggle />
@@ -781,10 +787,11 @@ export function Sidebar({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
+                    disabled={signingOut}
                     onSelect={() => void signOut()}
                   >
                     <LogOutIcon className="size-4" />
-                    退出登录
+                    {signingOut ? "正在退出…" : "退出登录"}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

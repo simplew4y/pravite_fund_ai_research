@@ -140,6 +140,8 @@ export type Bubble =
       lifecycle: ActiveResponse["state"];
       /** Free-form error message when `lifecycle === "failed"`. */
       error: string | null;
+      /** First assistant turn resumed automatically after a compaction boundary. */
+      afterCompaction?: boolean;
       items: RenderItem[];
     }
   | { kind: "compaction_loading"; itemId: string }
@@ -507,6 +509,7 @@ function walkBubbles(
       groupBlocks.find((bk) => bk.type !== "tool_result" && bk.ctx.itemId !== null)?.ctx.itemId ??
       null;
     const stableId = firstItemId ?? `${groupResponseId}:${subIndex}`;
+    const afterCompaction = bubbles[bubbles.length - 1]?.kind === "compaction";
 
     lastBubbleStart = groupStart;
     bubbles.push({
@@ -515,6 +518,7 @@ function walkBubbles(
       stableId,
       lifecycle,
       error,
+      afterCompaction,
       items: buildAssistantItems(groupBlocks, lifecycle, crossBubbleResults),
     });
   }
@@ -879,7 +883,12 @@ function shallowEqual(a: Record<string, unknown>, b: Record<string, unknown>): b
 export function bubblesEqual(a: Bubble, b: Bubble): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "assistant" && b.kind === "assistant") {
-    if (a.stableId !== b.stableId || a.lifecycle !== b.lifecycle || a.error !== b.error) {
+    if (
+      a.stableId !== b.stableId ||
+      a.lifecycle !== b.lifecycle ||
+      a.error !== b.error ||
+      a.afterCompaction !== b.afterCompaction
+    ) {
       return false;
     }
     if (a.items.length !== b.items.length) return false;

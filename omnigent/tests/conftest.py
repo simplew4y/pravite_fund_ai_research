@@ -54,6 +54,11 @@ os.environ.setdefault("OMNIGENT_AUTH_PROVIDER", "header")
 # monkeypatch.delenv-ing this var.
 os.environ.setdefault("OMNIGENT_LOCAL_SINGLE_USER", "1")
 
+# Application lifespan tests construct many servers and must never scan or
+# migrate a developer's real output directory. Migration behavior is exercised
+# explicitly by the dedicated private-fund migration tests.
+os.environ.setdefault("OMNIGENT_SKIP_DATA_MIGRATIONS", "1")
+
 from omnigent.db.utils import _engine_cache, _engine_lock, get_or_create_engine
 from tests import _model_pools
 

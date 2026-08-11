@@ -173,9 +173,23 @@ _SOURCE_DETAIL_SCHEMA: dict[str, Any] = {
 _MEMO_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        "operation": {
+            "type": "string",
+            "enum": ["create", "revise"],
+            "description": (
+                "Required semantic intent chosen by the agent. Use 'revise' when the user "
+                "means to update, correct, extend, or create a new version of an existing "
+                "Memo; otherwise use 'create'. This decision must be based on the user's "
+                "meaning, not keyword matching."
+            ),
+        },
         "topic": {
             "type": "string",
-            "description": "Memo topic, company question, or investment angle.",
+            "description": (
+                "Canonical Memo topic, company question, or investment angle. For a revision, "
+                "reuse the selected Memo's topic exactly; do not append revised/updated, a "
+                "version number, or a date."
+            ),
         },
         "dataset_id": {
             "type": "string",
@@ -201,7 +215,13 @@ _MEMO_SCHEMA: dict[str, Any] = {
         },
         "revision_of": {
             "type": "string",
-            "description": "Optional prior memo path or identifier when revising an earlier memo.",
+            "description": (
+                "Required when operation='revise' and forbidden when operation='create'. Copy "
+                "the exact mv_... version ID from the selected context marker "
+                "'[memo:<memo_version_id>]'; never substitute a file path when that marker is "
+                "available. If the intended target is missing or ambiguous, ask the user "
+                "instead of calling this tool."
+            ),
         },
         "memo_markdown": {
             "type": "string",
@@ -246,6 +266,7 @@ _MEMO_SCHEMA: dict[str, Any] = {
             "description": "Evidence units per memo section. Defaults to 5.",
         },
     },
+    "required": ["operation"],
 }
 
 _RESEARCH_CONTEXT_SCHEMA: dict[str, Any] = {
@@ -638,8 +659,10 @@ def _project_source_detail_for_agent(
 
     evidence_id = str(detail.get("evidence_id") or "")
     if resolved == "auto":
-        if evidence_id.startswith(("fact:", "cell:")) or detail.get("excel_cells") or detail.get(
-            "metric"
+        if (
+            evidence_id.startswith(("fact:", "cell:"))
+            or detail.get("excel_cells")
+            or detail.get("metric")
         ):
             resolved = "excel_window"
         else:
@@ -792,9 +815,7 @@ def _enforce_payload_budget(payload: dict[str, Any], max_chars: int) -> dict[str
         if key in working:
             working.pop(key, None)
             working["truncated"] = True
-            working["truncated_fields"] = list(
-                {*list(working.get("truncated_fields") or []), key}
-            )
+            working["truncated_fields"] = list({*list(working.get("truncated_fields") or []), key})
             encoded = _json(working)
             if len(encoded) <= max_chars:
                 return working
@@ -902,6 +923,54 @@ def _plain_markdown_links(markdown: str) -> str:
     return re.sub(r"\[([^\]\n]+)\]\([^)]+\)", r"\1", markdown)
 
 
+_MEMO_GENERATION_DIRECTIVE_HEADINGS = {
+    "用户要求",
+    "用户需求摘要",
+    "修订要求",
+    "生成要求",
+    "写作要求",
+    "对话上下文摘要",
+    "对话摘要",
+    "上下文摘要",
+    "上下文说明",
+    "生成上下文",
+    "任务上下文",
+    "任务说明",
+    "修改说明",
+    "生成参数",
+    "user requirements",
+    "revision instructions",
+    "generation instructions",
+    "conversation context",
+    "conversation summary",
+    "context summary",
+    "task context",
+    "task instructions",
+}
+
+
+def _strip_memo_generation_directives(markdown: str) -> str:
+    """Remove workflow instructions that do not belong in the client artifact."""
+
+    kept: list[str] = []
+    skipped_heading_level: int | None = None
+    for line in markdown.splitlines():
+        match = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+        if match:
+            level = len(match.group(1))
+            heading = _normalize(match.group(2)).rstrip("：:").casefold()
+            if heading in _MEMO_GENERATION_DIRECTIVE_HEADINGS:
+                skipped_heading_level = level
+                while kept and not kept[-1].strip():
+                    kept.pop()
+                continue
+            if skipped_heading_level is not None and level <= skipped_heading_level:
+                skipped_heading_level = None
+        if skipped_heading_level is None:
+            kept.append(line)
+    return "\n".join(kept).strip()
+
+
 def _memo_claims_to_markdown(raw_claims: list[dict[str, Any]]) -> str:
     """Render the model's structured claims into gateable Markdown."""
 
@@ -915,11 +984,11 @@ def _memo_claims_to_markdown(raw_claims: list[dict[str, Any]]) -> str:
             continue
         status = _normalize(raw.get("status")).lower() or "supported"
         raw_ids = raw.get("evidence_ids") or []
-        evidence_ids = [
-            _normalize(item)
-            for item in raw_ids
-            if isinstance(item, str) and _normalize(item)
-        ] if isinstance(raw_ids, list) else []
+        evidence_ids = (
+            [_normalize(item) for item in raw_ids if isinstance(item, str) and _normalize(item)]
+            if isinstance(raw_ids, list)
+            else []
+        )
         if status == "not_covered":
             line = f"- 资料未覆盖：{text}"
         elif status == "needs_review":
@@ -1203,9 +1272,10 @@ class _DatasetStore:
     def __init__(self, workspace: Path | None) -> None:
         self.project_root = _resolve_project_root(workspace)
         bound_workspace = workspace.expanduser().resolve() if workspace else None
-        if bound_workspace is not None and (
-            bound_workspace / "meta" / "collection.sqlite3"
-        ).exists():
+        if (
+            bound_workspace is not None
+            and (bound_workspace / "meta" / "collection.sqlite3").exists()
+        ):
             registry = bound_workspace.parent / "datasets.sqlite3"
             if not registry.exists():
                 raise RuntimeError(
@@ -1249,9 +1319,13 @@ class _DatasetStore:
         dataset_root = Path(row["dataset_root"]).expanduser().resolve()
         if not dataset_root.is_relative_to(self.workspace_root.resolve()):
             raise RuntimeError("dataset path escapes the current user's workspace")
-        collection_db = Path(
-            metadata.get("collection_db_path") or dataset_root / "meta" / "collection.sqlite3"
-        ).expanduser().resolve()
+        collection_db = (
+            Path(
+                metadata.get("collection_db_path") or dataset_root / "meta" / "collection.sqlite3"
+            )
+            .expanduser()
+            .resolve()
+        )
         if not collection_db.is_relative_to(dataset_root):
             raise RuntimeError("collection path escapes the selected dataset")
         if not collection_db.exists():
@@ -1368,8 +1442,7 @@ class _DatasetStore:
                     "metric_facts + summary chunks"
                 ),
                 "evidence_id": (
-                    "Use chunk:<id>, fact:<id>, or cell:<id> with "
-                    "private_fund_source_detail."
+                    "Use chunk:<id>, fact:<id>, or cell:<id> with private_fund_source_detail."
                 ),
                 "source_links": "Use markdown_citation when producing clickable source citations.",
             },
@@ -1841,17 +1914,11 @@ class _DatasetStore:
         cell_limit = max(1, min(int(max_cells or _MAX_CELL_ROWS), _MAX_CELL_ROWS_HARD))
         with self._connect(collection_db) as conn:
             if kind == "chunk":
-                detail = self._chunk_detail(
-                    conn, info, raw_id, radius, max_cells=cell_limit
-                )
+                detail = self._chunk_detail(conn, info, raw_id, radius, max_cells=cell_limit)
             elif kind == "fact":
-                detail = self._fact_detail(
-                    conn, info, raw_id, radius, max_cells=cell_limit
-                )
+                detail = self._fact_detail(conn, info, raw_id, radius, max_cells=cell_limit)
             elif kind == "cell":
-                detail = self._cell_detail(
-                    conn, info, raw_id, radius, max_cells=cell_limit
-                )
+                detail = self._cell_detail(conn, info, raw_id, radius, max_cells=cell_limit)
             else:
                 raise ValueError(f"unsupported evidence type: {kind}")
         return _project_source_detail_for_agent(
@@ -2106,9 +2173,7 @@ class _DatasetStore:
         bounds = _parse_cell_range(cell_range)
         if bounds is None:
             return []
-        return self._cells_by_bounds(
-            conn, doc_id, sheet_name, *bounds, max_cells=max_cells
-        )
+        return self._cells_by_bounds(conn, doc_id, sheet_name, *bounds, max_cells=max_cells)
 
     def _cells_by_bounds(
         self,
@@ -2275,6 +2340,7 @@ class _DatasetStore:
     def memo(
         self,
         *,
+        operation: str = "create",
         topic: str = "",
         dataset_id: str | None = None,
         sections: list[str] | None = None,
@@ -2287,6 +2353,61 @@ class _DatasetStore:
         top_k_per_section: int = 5,
     ) -> dict[str, Any]:
         info = self.dataset_info(dataset_id)
+        from omnigent.server import private_fund_tracking
+
+        collection_db = Path(info["collection_db_path"])
+        clean_topic = topic.strip() or "综合投研"
+        if operation == "revise":
+            revision_target = private_fund_tracking.resolve_memo_revision_target(
+                collection_db,
+                str(info["dataset_id"]),
+                revision_of,
+            )
+            revision_of = str(revision_target["memo_version_id"])
+            topic = str(revision_target["topic"])
+        elif operation == "create":
+            existing = private_fund_tracking.current_memo_version_for_topic(
+                collection_db,
+                str(info["dataset_id"]),
+                clean_topic,
+            )
+            if existing is not None:
+                markdown_path = Path(str(existing["markdown_path"]))
+                html_path = Path(str(existing["html_path"])) if existing.get("html_path") else None
+                pdf_path = Path(str(existing["pdf_path"])) if existing.get("pdf_path") else None
+                existing_inputs = existing.get("inputs") or {}
+                return {
+                    "dataset": {
+                        "dataset_id": info["dataset_id"],
+                        "name": info["name"],
+                        "company_name": info["company_name"],
+                        "company_ticker": info["company_ticker"],
+                    },
+                    "topic": existing["topic"],
+                    "memo_markdown_path": str(markdown_path),
+                    "memo_html_path": str(html_path) if html_path else None,
+                    "memo_html_url": _memo_artifact_url(html_path) if html_path else None,
+                    "memo_pdf_path": str(pdf_path) if pdf_path else None,
+                    "memo_pdf_url": _memo_artifact_url(pdf_path) if pdf_path else None,
+                    "memo_series_id": existing["series_id"],
+                    "memo_version_id": existing["memo_version_id"],
+                    "memo_version_no": existing["version_no"],
+                    "revision_of_version_id": existing["revision_of_version_id"],
+                    "tracking_job": None,
+                    "citation_gate": existing_inputs.get("citation_gate") or {},
+                    "citation_gate_audit_path": None,
+                    "sections": existing.get("sections") or [],
+                    "inputs": existing_inputs,
+                    "render_mode": existing_inputs.get("render_mode") or "existing_memo",
+                    "idempotent_replay": True,
+                    "message": (
+                        "A Memo with this topic already exists. Returned its current version "
+                        "without generating a duplicate; use operation='revise' with its exact "
+                        "memo_version_id for an intentional update."
+                    ),
+                }
+        else:
+            raise ValueError("operation must be either 'create' or 'revise'")
         section_names = sections or [
             "核心投资逻辑",
             "业务与增长驱动",
@@ -2331,7 +2452,9 @@ class _DatasetStore:
         pdf_path = memo_dir / f"{stem}.pdf"
         citation_gate_path = memo_dir / f"{stem}.citation-gate.json"
         structured_markdown = _memo_claims_to_markdown(memo_claims or [])
-        supplied_markdown = structured_markdown or memo_markdown.strip()
+        supplied_markdown = _strip_memo_generation_directives(
+            structured_markdown or memo_markdown.strip()
+        )
         citation_gate: dict[str, Any] = {
             "status": "not_applicable",
             "attempt_count": 0,
@@ -2347,8 +2470,7 @@ class _DatasetStore:
                 section_payloads=section_payloads,
             )
             citation_gate_path.write_text(
-                json.dumps(citation_gate_audit, ensure_ascii=False, indent=2, default=str)
-                + "\n",
+                json.dumps(citation_gate_audit, ensure_ascii=False, indent=2, default=str) + "\n",
                 encoding="utf-8",
             )
             citation_gate_path.chmod(0o600)
@@ -2398,29 +2520,32 @@ class _DatasetStore:
         markdown_path.write_text(markdown_content, encoding="utf-8")
         html_path.write_text(html, encoding="utf-8")
         self._render_memo_pdf_from_html(html, pdf_path)
-        from omnigent.server import private_fund_tracking
-
-        memo_version = private_fund_tracking.register_memo_version(
-            Path(info["collection_db_path"]),
-            str(info["dataset_id"]),
-            topic=topic or "综合投研",
-            markdown_path=markdown_path,
-            html_path=html_path,
-            pdf_path=pdf_path,
-            revision_of=revision_of,
-            source_type="agent_generated",
-            input_payload={
-                "instructions": instructions,
-                "conversation_context": conversation_context,
-                "revision_of": revision_of,
-                "key_questions": clean_key_questions,
-                "has_memo_markdown": bool(memo_markdown.strip()),
-                "has_memo_claims": bool(structured_markdown),
-                "render_mode": render_mode,
-                "citation_gate": citation_gate,
-            },
-            section_evidence=section_payloads,
-        )
+        try:
+            memo_version = private_fund_tracking.register_memo_version(
+                collection_db,
+                str(info["dataset_id"]),
+                topic=topic or "综合投研",
+                markdown_path=markdown_path,
+                html_path=html_path,
+                pdf_path=pdf_path,
+                revision_of=revision_of,
+                source_type="agent_generated",
+                input_payload={
+                    "instructions": instructions,
+                    "conversation_context": conversation_context,
+                    "revision_of": revision_of,
+                    "key_questions": clean_key_questions,
+                    "has_memo_markdown": bool(memo_markdown.strip()),
+                    "has_memo_claims": bool(structured_markdown),
+                    "render_mode": render_mode,
+                    "citation_gate": citation_gate,
+                },
+                section_evidence=section_payloads,
+            )
+        except Exception:
+            for artifact_path in (markdown_path, html_path, pdf_path, citation_gate_path):
+                artifact_path.unlink(missing_ok=True)
+            raise
         return {
             "dataset": {
                 "dataset_id": info["dataset_id"],
@@ -2440,9 +2565,7 @@ class _DatasetStore:
             "revision_of_version_id": memo_version["revision_of_version_id"],
             "tracking_job": memo_version.get("tracking_job"),
             "citation_gate": citation_gate,
-            "citation_gate_audit_path": (
-                str(citation_gate_path) if supplied_markdown else None
-            ),
+            "citation_gate_audit_path": (str(citation_gate_path) if supplied_markdown else None),
             "sections": section_payloads,
             "inputs": {
                 "instructions": instructions,
@@ -2527,9 +2650,7 @@ class _DatasetStore:
                     or source.get("markdown_citation")
                     or f"[{evidence_id}]"
                 ),
-                source_label=str(
-                    detail.get("citation") or source.get("citation") or evidence_id
-                ),
+                source_label=str(detail.get("citation") or source.get("citation") or evidence_id),
                 dataset_id=str(info["dataset_id"]),
                 company_name=str(info.get("company_name") or ""),
             )
@@ -2587,25 +2708,8 @@ class _DatasetStore:
             f"- 数据集: {info['name']} ({info['dataset_id']})",
             f"- 主题: {topic or '综合投研问题'}",
             f"- 生成时间: {datetime.now().isoformat(timespec='seconds')}",
-            f"- 证据库: {info['collection_db_path']}",
-            "",
-            (
-                "> 本 memo 基于最新 private_fund_directory_ingest pipeline 写入的"
-                "结构化数据库生成。正式 PDF 中的引用使用文件名、页码、Sheet、"
-                "单元格等纯文本来源标签。"
-            ),
             "",
         ]
-        if revision_of:
-            lines.extend([f"- 修订来源: {revision_of}", ""])
-        if instructions:
-            lines.extend(["## 用户要求", "", instructions.strip(), ""])
-        if conversation_context:
-            lines.extend(["## 对话上下文摘要", "", conversation_context.strip(), ""])
-        if key_questions:
-            lines.extend(["## 关键问题", ""])
-            lines.extend(f"- {item}" for item in key_questions)
-            lines.append("")
         for section in sections:
             lines.extend([f"## {section['section']}", ""])
             evidence = section.get("evidence") or []
@@ -2647,25 +2751,10 @@ class _DatasetStore:
             f"- 数据集: {info['name']} ({info['dataset_id']})",
             f"- 主题: {topic or '综合投研问题'}",
             f"- 生成时间: {datetime.now().isoformat(timespec='seconds')}",
-            f"- 证据库: {info['collection_db_path']}",
-            "",
-            (
-                "> 本 memo 正文由对话上下文和结构化数据集证据综合生成。"
-                "文件中的引用已转为纯文本来源标签。"
-            ),
             "",
         ]
-        if revision_of:
-            lines.extend([f"- 修订来源: {revision_of}", ""])
-        if instructions:
-            lines.extend(["## 用户要求", "", instructions.strip(), ""])
-        if conversation_context:
-            lines.extend(["## 对话上下文摘要", "", conversation_context.strip(), ""])
-        if key_questions:
-            lines.extend(["## 关键问题", ""])
-            lines.extend(f"- {item}" for item in key_questions)
-            lines.append("")
-        lines.extend(["## Memo 正文", "", _plain_markdown_links(memo_markdown.strip()), ""])
+        artifact_body = _strip_memo_generation_directives(memo_markdown)
+        lines.extend([_plain_markdown_links(artifact_body), ""])
         lines.extend(
             [
                 "## 资料边界",
@@ -2693,20 +2782,11 @@ class _DatasetStore:
         title = f"{company}{f' ({ticker})' if ticker else ''} 投研 Memo"
         generated_at = datetime.now().isoformat(timespec="seconds")
 
-        def paragraph_block(text: str) -> str:
-            clean = text.strip()
-            if not clean:
-                return ""
-            return "".join(f"<p>{escape(part)}</p>" for part in clean.splitlines() if part.strip())
-
         meta_rows = [
             ("数据集", f"{info['name']} ({info['dataset_id']})"),
             ("主题", topic or "综合投研问题"),
             ("生成时间", generated_at),
-            ("证据库", info["collection_db_path"]),
         ]
-        if revision_of:
-            meta_rows.append(("修订来源", revision_of))
         html_parts = [
             "<!doctype html>",
             "<html>",
@@ -2727,32 +2807,10 @@ class _DatasetStore:
         for key, value in meta_rows:
             html_parts.append(f"<tr><th>{escape(key)}</th><td>{escape(str(value))}</td></tr>")
         html_parts.extend(["</table>", "</section>"])
-        if instructions:
-            html_parts.extend(
-                [
-                    '<section class="context">',
-                    "<h2>用户要求</h2>",
-                    paragraph_block(instructions),
-                    "</section>",
-                ]
-            )
-        if conversation_context:
-            html_parts.extend(
-                [
-                    '<section class="context">',
-                    "<h2>对话上下文摘要</h2>",
-                    paragraph_block(conversation_context),
-                    "</section>",
-                ]
-            )
-        if key_questions:
-            html_parts.extend(['<section class="context">', "<h2>关键问题</h2>", "<ul>"])
-            html_parts.extend(f"<li>{escape(item)}</li>" for item in key_questions)
-            html_parts.extend(["</ul>", "</section>"])
         html_parts.extend(
             [
                 '<section class="memo-body">',
-                _markdown_body_to_html(memo_markdown),
+                _markdown_body_to_html(_strip_memo_generation_directives(memo_markdown)),
                 "</section>",
                 '<section class="boundary">',
                 "<h2>资料边界</h2>",
@@ -2787,20 +2845,11 @@ class _DatasetStore:
         title = f"{company}{f' ({ticker})' if ticker else ''} 投研 Memo"
         generated_at = datetime.now().isoformat(timespec="seconds")
 
-        def paragraph_block(text: str) -> str:
-            clean = text.strip()
-            if not clean:
-                return ""
-            return "".join(f"<p>{escape(part)}</p>" for part in clean.splitlines() if part.strip())
-
         meta_rows = [
             ("数据集", f"{info['name']} ({info['dataset_id']})"),
             ("主题", topic or "综合投研问题"),
             ("生成时间", generated_at),
-            ("证据库", info["collection_db_path"]),
         ]
-        if revision_of:
-            meta_rows.append(("修订来源", revision_of))
         html_parts = [
             "<!doctype html>",
             "<html>",
@@ -2821,28 +2870,6 @@ class _DatasetStore:
         for key, value in meta_rows:
             html_parts.append(f"<tr><th>{escape(key)}</th><td>{escape(str(value))}</td></tr>")
         html_parts.extend(["</table>", "</section>"])
-        if instructions:
-            html_parts.extend(
-                [
-                    '<section class="context">',
-                    "<h2>用户要求</h2>",
-                    paragraph_block(instructions),
-                    "</section>",
-                ]
-            )
-        if conversation_context:
-            html_parts.extend(
-                [
-                    '<section class="context">',
-                    "<h2>对话上下文摘要</h2>",
-                    paragraph_block(conversation_context),
-                    "</section>",
-                ]
-            )
-        if key_questions:
-            html_parts.extend(['<section class="context">', "<h2>关键问题</h2>", "<ul>"])
-            html_parts.extend(f"<li>{escape(item)}</li>" for item in key_questions)
-            html_parts.extend(["</ul>", "</section>"])
         for section in sections:
             html_parts.extend(["<section>", f"<h2>{escape(section['section'])}</h2>"])
             evidence = section.get("evidence") or []
@@ -3218,9 +3245,7 @@ class PrivateFundSourceDetailTool(_PrivateFundDatasetBaseTool):
             evidence_id=evidence_id,
             dataset_id=dataset_id if isinstance(dataset_id, str) else None,
             context_radius=int(
-                payload.get("context_radius")
-                if payload.get("context_radius") is not None
-                else 1
+                payload.get("context_radius") if payload.get("context_radius") is not None else 1
             ),
             mode=str(mode),
             max_chars=int(max_chars) if max_chars is not None else _MAX_DETAIL_CONTENT_CHARS,
@@ -3238,8 +3263,10 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
     @classmethod
     def description(cls) -> str:
         return (
-            "Generate a source-backed private-fund memo draft from the latest structured "
-            "dataset DB. This replaces the deprecated direct PDF memo flow."
+            "Create a new or explicitly version an existing source-backed private-fund Memo "
+            "from the latest structured dataset DB. The agent must choose operation=create or "
+            "operation=revise semantically; revise requires the selected mv_... version ID in "
+            "revision_of. This replaces the deprecated direct PDF memo flow."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -3253,6 +3280,9 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
         }
 
     def _invoke(self, payload: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        operation = payload.get("operation")
+        if operation not in {"create", "revise"}:
+            raise ValueError("operation must be either 'create' or 'revise'")
         topic = payload.get("topic")
         dataset_id = payload.get("dataset_id")
         raw_sections = payload.get("sections")
@@ -3266,6 +3296,14 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
         instructions = payload.get("instructions")
         conversation_context = payload.get("conversation_context")
         revision_of = payload.get("revision_of")
+        normalized_revision = revision_of.strip() if isinstance(revision_of, str) else ""
+        if operation == "revise" and not normalized_revision:
+            raise ValueError(
+                "revision_of is required when operation='revise'; copy the selected "
+                "[memo:mv_...] version ID or ask the user to select a Memo"
+            )
+        if operation == "create" and normalized_revision:
+            raise ValueError("revision_of must be omitted when operation='create'")
         memo_markdown = payload.get("memo_markdown")
         raw_memo_claims = payload.get("memo_claims")
         memo_claims = (
@@ -3274,6 +3312,7 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
             else None
         )
         return self._store(ctx).memo(
+            operation=str(operation),
             topic=topic if isinstance(topic, str) else "",
             dataset_id=dataset_id if isinstance(dataset_id, str) else None,
             sections=sections,
@@ -3281,7 +3320,7 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
             conversation_context=(
                 conversation_context if isinstance(conversation_context, str) else ""
             ),
-            revision_of=revision_of if isinstance(revision_of, str) else "",
+            revision_of=normalized_revision,
             memo_markdown=memo_markdown if isinstance(memo_markdown, str) else "",
             memo_claims=memo_claims,
             key_questions=key_questions,
@@ -3424,9 +3463,7 @@ class PrivateFundResearchContextTool(_PrivateFundDatasetBaseTool):
         selected = set(workflow.get("context_node_ids") or [])
         selected_nodes = [node for node in workflow["nodes"] if node["node_id"] in selected]
         unverified_node_ids = [
-            str(node["node_id"])
-            for node in selected_nodes
-            if not node.get("evidence_sources")
+            str(node["node_id"]) for node in selected_nodes if not node.get("evidence_sources")
         ]
         return {
             "dataset_id": info["dataset_id"],
@@ -3580,9 +3617,7 @@ class PrivateFundResearchTrackingListTool(_PrivateFundDatasetBaseTool):
         info = self._store(ctx).dataset_info(dataset_id if isinstance(dataset_id, str) else None)
         collection_db = Path(info["collection_db_path"])
         resolved_dataset_id = str(info["dataset_id"])
-        overview = private_fund_tracking.tracking_overview(
-            collection_db, resolved_dataset_id
-        )
+        overview = private_fund_tracking.tracking_overview(collection_db, resolved_dataset_id)
         if payload.get("item_type") or payload.get("status"):
             overview["items"] = private_fund_tracking.list_items(
                 collection_db,

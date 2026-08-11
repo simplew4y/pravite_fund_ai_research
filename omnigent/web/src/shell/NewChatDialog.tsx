@@ -2457,6 +2457,7 @@ export function NewChatLandingScreen() {
         selectedPrivateFundProject,
         privateFundResearchMode,
       );
+      const hiddenPrivateFundContext = wrapPrivateFundPromptContext(privateFundContext);
       const userPrompt = sanitizeInitialPrompt(message);
       const matchedSkill = matchSkillInvocation(userPrompt, availableSkills);
       // Native vendor CLIs require `/skill` to remain the first token. Put
@@ -2468,9 +2469,9 @@ export function NewChatLandingScreen() {
         mentionedItems.length === 0 &&
         isSlashCommandText(userPrompt);
       const initialPrompt = preserveNativeSlashPrefix
-        ? `${userPrompt}\n\n${privateFundContext}`.trim()
+        ? `${userPrompt}\n\n${hiddenPrivateFundContext}`.trim()
         : buildMentionPreamble(mentionedItems, selectedAgent?.harness ?? null) +
-          privateFundContext +
+          hiddenPrivateFundContext +
           userPrompt;
       // A first message matching a bundled or tenant-installed skill is
       // handed off as a structured invocation so ChatPage auto-sends it

@@ -1263,6 +1263,13 @@ def create_app(
         _log_level_name = _os.environ.get("OMNIGENT_LOG_LEVEL", "INFO").upper()
         logging.getLogger("omnigent").setLevel(getattr(logging, _log_level_name, logging.INFO))
 
+        # Keep direct ASGI/uvicorn entry points behind the same data-version
+        # guard as ``omnigent server``. The helper is process-idempotent, so
+        # the regular CLI startup does not repeat an already completed scan.
+        from omnigent.server.private_fund_data_migrations import run_startup_data_migrations
+
+        run_startup_data_migrations()
+
         harness_pm = HarnessProcessManager()
         await harness_pm.start()
         # Store on both ``app.state`` (canonical, accessible from
@@ -1339,6 +1346,54 @@ def create_app(
                         exc,
                     )
 
+        valuation_worker_task: asyncio.Task[None] | None = None
+        valuation_worker_enabled = _os.environ.get(
+            "PRIVATE_FUND_VALUATION_BACKGROUND_WORKER", "1"
+        ).strip().lower() not in {"0", "false", "no", "off"}
+        if valuation_worker_enabled:
+            from omnigent.server import private_fund_valuation_worker
+
+            async def _run_private_fund_valuation_worker() -> None:
+                workspace = private_fund_valuation_worker._workspace_root()
+                poll_seconds = max(
+                    1.0,
+                    float(_os.environ.get("PRIVATE_FUND_VALUATION_POLL_SECONDS", "5") or 5),
+                )
+                max_jobs_per_db = max(
+                    1,
+                    int(_os.environ.get("PRIVATE_FUND_VALUATION_MAX_JOBS_PER_DB", "2") or 2),
+                )
+                while True:
+                    try:
+                        await asyncio.to_thread(
+                            private_fund_valuation_worker.run_cycle,
+                            workspace,
+                            None,
+                            max_jobs_per_db=max_jobs_per_db,
+                        )
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:  # noqa: BLE001
+                        _logger.exception("private fund valuation background worker cycle failed")
+                    await asyncio.sleep(poll_seconds)
+
+            try:
+                recovered_jobs = await asyncio.to_thread(
+                    private_fund_valuation_worker.recover_interrupted_jobs,
+                    workspace,
+                )
+                if recovered_jobs:
+                    _logger.info(
+                        "requeued %s valuation jobs interrupted by a previous server process",
+                        recovered_jobs,
+                    )
+            except Exception:  # noqa: BLE001
+                _logger.exception("failed to recover interrupted private fund valuation jobs")
+            valuation_worker_task = asyncio.create_task(
+                _run_private_fund_valuation_worker(),
+                name="private-fund-valuation-worker",
+            )
+
         metrics_publish_task = asyncio.create_task(
             publish_server_metrics_periodically(
                 server_metrics,
@@ -1348,6 +1403,10 @@ def create_app(
         try:
             yield
         finally:
+            if valuation_worker_task is not None:
+                valuation_worker_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await valuation_worker_task
             metrics_publish_task.cancel()
             with suppress(asyncio.CancelledError):
                 await metrics_publish_task
@@ -1878,6 +1937,9 @@ def create_app(
             )
         except ImportError:
             smart_routing_enabled = False
+        from omnigent.product_release import product_release
+
+        release = product_release()
         return {
             "accounts_enabled": accounts_enabled,
             "cloud_accounts_enabled": cloud_accounts_enabled,
@@ -1890,6 +1952,9 @@ def create_app(
             "server_version": _server_version(),
             "smart_routing_enabled": smart_routing_enabled,
             "llm_configuration_enabled": True,
+            "product_version": str(release["productVersion"]),
+            "database_changed": bool(release["databaseChanged"]),
+            "data_version": str(release["databaseTargetVersion"]),
         }
 
     @app.get("/v1/me", response_model=None)  # Union return type (dict | JSONResponse)

@@ -83,7 +83,10 @@ DEFAULT_PDF_PATH = (
 SOURCE_RENDER_DIR = _PRIVATE_FUND_ROOT / "output/pdf_sources"
 SOURCE_RENDER_DPI = 144
 DATASET_WORKSPACE_DIR = _PRIVATE_FUND_ROOT / "output/private_fund_datasets"
-EXCEL_FILE_TYPES = {"xlsx", "xls", "xlsm", "csv"}
+# Older dataset indexes used the generic ``excel`` type while newer ones
+# persist the concrete extension.  Citation resolution must support both or a
+# valid workbook can be cited by the model but rejected by the source viewer.
+EXCEL_FILE_TYPES = {"xlsx", "xls", "xlsm", "csv", "excel"}
 EXCEL_MAX_ROW = 1_048_576
 EXCEL_MAX_COLUMN = 16_384
 EXCEL_SOURCE_MAX_GRID_CELLS = 4_000
@@ -328,6 +331,10 @@ class UpdateResearchWatchRuleRequest(BaseModel):
     active: bool | None = None
 
 
+class ResearchItemGovernanceRequest(BaseModel):
+    item_ids: list[str] = Field(default_factory=list, min_length=1, max_length=500)
+
+
 class UpdateResearchAlertRequest(BaseModel):
     status: str
     snoozed_until: str = ""
@@ -347,6 +354,12 @@ class RunValuationAgentAnalysisRequest(BaseModel):
     base_model_version_id: str = ""
     comparison_model_version_id: str = ""
     focus: str = Field(default="", max_length=2000)
+
+
+class UpdateValuationModelIdentityRequest(BaseModel):
+    company_name: str = Field(default="", max_length=240)
+    company_ticker: str = Field(default="", max_length=40)
+    change_source: str = Field(default="manual_entry", max_length=80)
 
 
 def _jsonable(value: Any) -> Any:
@@ -2344,6 +2357,14 @@ def _create_project_row(
                 ),
             ),
         )
+        collection_db = dataset_root / "meta" / "collection.sqlite3"
+        collection_db.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(str(collection_db), timeout=30) as collection_conn:
+            from omnigent.server.private_fund_data_migrations import (
+                initialize_current_collection_version,
+            )
+
+            initialize_current_collection_version(collection_conn)
         conn.commit()
         row = conn.execute("SELECT * FROM datasets WHERE dataset_id = ?", (dataset_id,)).fetchone()
     return _project_payload(row)
@@ -2666,13 +2687,8 @@ def _project_pipeline_worker_in_scope(job_id: str, payload: dict[str, Any]) -> N
                         include_history=False,
                     )
                 )
-                valuation_tracking_jobs.append(
-                    private_fund_valuation_tracking.enqueue_context_refresh(
-                        _collection_db_path(dataset_id),
-                        dataset_id,
-                        source_id=job_id,
-                    )
-                )
+                # Model-version jobs enqueue their own version-scoped market and
+                # context work after the model identity is known.
             except Exception as exc:
                 valuation_tracking_enqueue_error = str(exc)
                 _logger.exception(
@@ -2919,7 +2935,7 @@ def _dataset_document_by_name(
     params: list[Any] = [clean_name, clean_name, Path(clean_name).stem, f"%/{clean_name}"]
     if file_types:
         placeholders = ",".join("?" for _ in file_types)
-        type_filter = f"AND lower(file_type) IN ({placeholders})"
+        type_filter = f"AND ltrim(lower(file_type), '.') IN ({placeholders})"
         params.extend(sorted(file_types))
     try:
         with sqlite3.connect(str(collection_db), timeout=5) as conn:
@@ -2931,11 +2947,11 @@ def _dataset_document_by_name(
                 FROM documents
                 WHERE deleted_at IS NULL
                   AND (
-                    original_filename = ?
-                    OR source_name = ?
-                    OR title = ?
-                    OR stored_path LIKE ?
-                    OR ? LIKE '%' || original_filename
+                    original_filename = ? COLLATE NOCASE
+                    OR source_name = ? COLLATE NOCASE
+                    OR title = ? COLLATE NOCASE
+                    OR stored_path LIKE ? COLLATE NOCASE
+                    OR ? LIKE '%' || original_filename COLLATE NOCASE
                   )
                   {type_filter}
                 ORDER BY original_filename
@@ -4754,22 +4770,107 @@ def create_private_fund_pdf_router(
         "/private-fund/projects/{dataset_id}/valuation-tracking/run",
         status_code=202,
     )
-    def run_project_valuation_tracking(dataset_id: str) -> dict[str, Any]:
+    def run_project_valuation_tracking(
+        dataset_id: str,
+        series_id: str = Query("", max_length=128),
+        model_version_id: str = Query("", max_length=128),
+        document_ids: list[str] = Query(default_factory=list),
+    ) -> dict[str, Any]:
         _require_project_row(dataset_id)
-        jobs = private_fund_valuation_tracking.enqueue_model_documents(
-            _collection_db_path(dataset_id),
-            dataset_id,
-            include_history=True,
-            requeue_failed=True,
-        )
-        private_fund_valuation_tracking.enqueue_context_refresh(
-            _collection_db_path(dataset_id),
-            dataset_id,
-            source_id=f"manual-{_now_iso()}",
-            requeue_failed=True,
-        )
+        collection_db = _collection_db_path(dataset_id)
+        manual_source_id = f"manual-{_now_iso()}"
+        jobs: list[dict[str, Any]] = []
+        if series_id and model_version_id:
+            version = private_fund_valuation_tracking.get_model_version(
+                collection_db, dataset_id, model_version_id
+            )
+            if str(version.get("series_id") or "") != series_id:
+                raise HTTPException(status_code=400, detail="model version does not belong to series")
+            jobs.append(
+                private_fund_valuation_tracking.enqueue_model_metric_refresh(
+                    collection_db,
+                    dataset_id,
+                    refresh_bucket=manual_source_id,
+                    trigger="manual_refresh",
+                    series_id=series_id,
+                    model_version_id=model_version_id,
+                    requeue_failed=True,
+                    replace_pending=True,
+                )
+            )
+            jobs.append(
+                private_fund_valuation_tracking.enqueue_market_data_refresh(
+                    collection_db,
+                    dataset_id,
+                    refresh_bucket=manual_source_id,
+                    trigger="manual_refresh",
+                    series_id=series_id,
+                    model_version_id=model_version_id,
+                    requeue_failed=True,
+                    replace_pending=True,
+                )
+            )
+            jobs.append(
+                private_fund_valuation_tracking.enqueue_context_refresh(
+                    collection_db,
+                    dataset_id,
+                    source_id=manual_source_id,
+                    series_id=series_id,
+                    model_version_id=model_version_id,
+                    requeue_failed=True,
+                    replace_pending=True,
+                    document_ids=document_ids or None,
+                )
+            )
+        else:
+            jobs = private_fund_valuation_tracking.enqueue_model_documents(
+                collection_db,
+                dataset_id,
+                include_history=True,
+                requeue_failed=True,
+            )
         return {"jobs": jobs}
 
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-securities")
+    def search_project_valuation_securities(
+        dataset_id: str,
+        query: str = Query(..., min_length=1, max_length=120),
+        limit: int = Query(default=10, ge=1, le=20),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "candidates": private_fund_valuation_tracking.search_security_directory(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                query=query,
+                limit=limit,
+            )
+        }
+
+    @router.patch("/private-fund/projects/{dataset_id}/valuation-models/{series_id}/identity")
+    def update_project_valuation_model_identity(
+        dataset_id: str,
+        series_id: str,
+        request: UpdateValuationModelIdentityRequest,
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_valuation_tracking.update_model_series_identity(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                series_id,
+                company_name=request.company_name,
+                company_ticker=request.company_ticker,
+                actor="user",
+                change_source=request.change_source or "manual_entry",
+            )
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404, detail="Valuation model series was not found."
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     @router.get("/private-fund/projects/{dataset_id}/valuation-models/{series_id}/compare")
     def compare_project_valuation_model_versions(
         dataset_id: str,
@@ -5069,6 +5170,22 @@ def create_private_fund_pdf_router(
             )
         }
 
+    @router.post("/private-fund/projects/{dataset_id}/tracking/rebuild", status_code=202)
+    def rebuild_project_tracking(dataset_id: str) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        overview = private_fund_tracking.tracking_overview(
+            _collection_db_path(dataset_id), dataset_id
+        )
+        if not overview.get("rebuild_required"):
+            raise HTTPException(
+                status_code=409, detail="No legacy tracking data requires rebuild."
+            )
+        return {
+            "job": private_fund_tracking.enqueue_legacy_rebuild(
+                _collection_db_path(dataset_id), dataset_id
+            )
+        }
+
     @router.get("/private-fund/projects/{dataset_id}/tracking/jobs/{job_id}")
     def get_project_tracking_job(dataset_id: str, job_id: str) -> dict[str, Any]:
         _require_project_row(dataset_id)
@@ -5096,6 +5213,56 @@ def create_private_fund_pdf_router(
                 status=status,
             )
         }
+
+    @router.get("/private-fund/projects/{dataset_id}/research-items-governance")
+    def list_project_research_item_governance(
+        dataset_id: str,
+        archive_status: str = Query(default="active", pattern="^(active|archived)$"),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        return {
+            "items": private_fund_tracking.list_low_quality_items(
+                _collection_db_path(dataset_id),
+                dataset_id,
+                archive_status=archive_status,
+            )
+        }
+
+    @router.post("/private-fund/projects/{dataset_id}/research-items-governance/archive")
+    def archive_project_research_items(
+        dataset_id: str, request: ResearchItemGovernanceRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_tracking.archive_low_quality_items(
+                _collection_db_path(dataset_id), dataset_id, request.item_ids
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/research-items-governance/restore")
+    def restore_project_research_items(
+        dataset_id: str, request: ResearchItemGovernanceRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_tracking.restore_archived_items(
+                _collection_db_path(dataset_id), dataset_id, request.item_ids
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/private-fund/projects/{dataset_id}/research-items-governance/purge")
+    def purge_project_research_items(
+        dataset_id: str, request: ResearchItemGovernanceRequest
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        try:
+            return private_fund_tracking.purge_archived_items(
+                _collection_db_path(dataset_id), dataset_id, request.item_ids
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.get("/private-fund/projects/{dataset_id}/research-items/{item_id}/timeline")
     def get_project_research_item_timeline(
