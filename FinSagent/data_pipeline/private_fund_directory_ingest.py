@@ -23,11 +23,13 @@ from __future__ import annotations
 import argparse
 import bisect
 import hashlib
+import importlib
 import json
 import os
 import re
 import shutil
 import sqlite3
+import sys
 import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
@@ -308,6 +310,64 @@ def ensure_global_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _initialize_current_collection_data_version(conn: sqlite3.Connection) -> None:
+    """Initialize data migrations in both installed and monorepo deployments."""
+    try:
+        from omnigent.server.private_fund_data_migrations import (
+            initialize_current_collection_version,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name not in {
+            "omnigent",
+            "omnigent.server",
+            "omnigent.server.private_fund_data_migrations",
+        }:
+            raise
+
+        repository_root = Path(__file__).resolve().parents[2]
+        omnigent_package_root = repository_root / "omnigent"
+        migration_module = (
+            omnigent_package_root
+            / "omnigent"
+            / "server"
+            / "private_fund_data_migrations.py"
+        )
+        if not migration_module.is_file():
+            raise RuntimeError(
+                "Collection data-version initialization requires either an installed "
+                "'omnigent' package or the sibling 'omnigent/' monorepo package."
+            ) from exc
+
+        package_root_text = str(omnigent_package_root)
+        if package_root_text not in sys.path:
+            sys.path.insert(0, package_root_text)
+
+        # Editable installs and a repository-root cwd can cache ``omnigent``
+        # (or ``omnigent.server``) from another worktree. Prefer the sibling
+        # package for this worktree so its migration code and release metadata
+        # cannot be mixed with an older checkout.
+        package_paths = {
+            "omnigent": omnigent_package_root / "omnigent",
+            "omnigent.server": omnigent_package_root / "omnigent" / "server",
+        }
+        for module_name, current_path in package_paths.items():
+            cached_module = sys.modules.get(module_name)
+            cached_path = getattr(cached_module, "__path__", None)
+            if cached_path is None:
+                continue
+            current_path_text = str(current_path)
+            cached_module.__path__ = [
+                current_path_text,
+                *(path for path in cached_path if path != current_path_text),
+            ]
+        importlib.invalidate_caches()
+        from omnigent.server.private_fund_data_migrations import (
+            initialize_current_collection_version,
+        )
+
+    initialize_current_collection_version(conn)
+
+
 def ensure_collection_schema(
     conn: sqlite3.Connection,
     *,
@@ -550,12 +610,7 @@ def ensure_collection_schema(
     )
     _ensure_collection_schema_migrations(conn)
     if initialize_current_data_version:
-        # Imported lazily so the standalone pipeline keeps its existing import surface.
-        from omnigent.server.private_fund_data_migrations import (
-            initialize_current_collection_version,
-        )
-
-        initialize_current_collection_version(conn)
+        _initialize_current_collection_data_version(conn)
     conn.commit()
 
 
