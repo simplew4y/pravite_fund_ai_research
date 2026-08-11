@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from utils.chunk_utils import dedupe_chunks, get_chunk_source_id
+from utils.retrieval_scope import RetrievalScope
 from utils.prompt_budget import join_with_budget, truncate_text
 from skills_runtime.integration import apply_retrieval_skills
 from retrieval_control import decide_retrieval_policy, fuse_evidence
@@ -468,6 +469,18 @@ async def retrieve_evidence(
             prior_user_queries,
             dataset_id=active_dataset,
         )
+        explicit_allowed = {
+            str(doc_id)
+            for doc_id in (rag_config.get("retrieval_scope_allowed_doc_ids") or [])
+            if doc_id
+        }
+        if explicit_allowed:
+            scope = RetrievalScope.from_doc_ids(
+                scope.source_query,
+                [doc_id for doc_id in scope.source_doc_ids if doc_id in explicit_allowed],
+                explicit_company=scope.explicit_company,
+                dataset_id=scope.dataset_id,
+            )
         lg.info(
             "[retrieval_scope] dataset=%s explicit_company=%s source_query=%r source_doc_ids=%s",
             scope.dataset_id,
@@ -503,7 +516,7 @@ async def retrieve_evidence(
         # ── DCI retrieval ────────────────────────────────────────────
         r1 = None
         r2 = None
-        if _c is not None:
+        if _c is not None and _mode != "rag_only":
             allowed_doc_ids = list(scope.source_doc_ids) if scope is not None else []
             scope_explicit = bool(scope and scope.explicit_company)
             r1 = _c.search_metric(
@@ -538,7 +551,10 @@ async def retrieve_evidence(
                         agent=agent,
                         allowed_source_doc_ids=allowed_doc_ids,
                     )
-                    rag_succeeded = True
+                    if isinstance(rag_result, dict):
+                        rag_succeeded = bool(rag_result.get("final_chunks") or [])
+                    elif isinstance(rag_result, tuple):
+                        rag_succeeded = len(rag_result) > 1 and bool(rag_result[1])
                 except Exception as e:
                     # A failed semantic fallback must not erase structured DCI evidence.
                     lg.error(
@@ -630,6 +646,7 @@ async def retrieve_evidence(
             else:
                 context, chunks, time_info = retrieval_result
                 pre_rerank_chunks = chunks
+            rag_nonempty = bool(chunks)
             return (
                 query,
                 context,
@@ -648,7 +665,7 @@ async def retrieve_evidence(
                     "conflicts": [],
                     "retrieval_trace": [],
                     "rag_executed": True,
-                    "rag_succeeded": True,
+                    "rag_succeeded": rag_nonempty,
                 },
             )
         except Exception as e:

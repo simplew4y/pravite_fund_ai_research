@@ -1361,6 +1361,42 @@ class RAG:
             return 0.30
         return 0.0
 
+    @staticmethod
+    def _financial_row_label_bonus(query: str, chunk: Dict) -> float:
+        """Prefer the row whose explicit label matches the requested metric.
+
+        Numeric table rows often repeat neighboring values as column context.
+        Token overlap alone can therefore rank a margin row above the requested
+        revenue row.  Only the canonical ``row_label`` earns this bonus.
+        """
+        query_lower = str(query or "").lower()
+        row_label = str((chunk.get("metadata") or {}).get("row_label") or "").lower().strip()
+        aliases = (
+            (("营业收入", "营收", "revenue"), ("营业收入", "revenue", "total revenue", "sales_ind")),
+            (("营业成本", "销售成本", "cost of revenue", "cost of goods sold"), ("营业成本", "cost of goods sold", "cost of revenue", "cogs_ind")),
+            (("毛利润", "gross profit"), ("毛利润", "gross profit", "gp_ind")),
+            (("营业利润", "ebit"), ("营业利润", "ebit", "ebit (operating profits)", "ebit_ind")),
+            (("归母净利润", "归属于母公司", "net income"), ("归母净利润", "net profit attributable", "np_xord_ind")),
+            (("基本每股收益", "basic eps"), ("基本每股收益", "basic eps (cny/share)", "eps (reported)", "eps_rp_ind")),
+            (("毛利率", "gross margin"), ("毛利率", "gross margin", "gross_margin_ind")),
+            (("经营活动现金流", "经营性现金流", "operating cash flow"), ("经营活动现金流", "operating cash flow", "net cash from operating activities", "cf_op_ind")),
+            (("资本开支", "资本支出", "capex", "capital expenditure"), ("资本开支", "资本支出", "capital expenditure", "capex_ind", "purchase of ppe", "total capex (cny m)")),
+            (("自由现金流", "free cash flow"), ("自由现金流", "free cash flow", "fcf_ind")),
+            (("总资产", "total assets"), ("总资产", "total assets", "tot_assets_ind")),
+            (("总负债", "total liabilities"), ("总负债", "total liabilities", "tot_liabs_ind")),
+            (("股东权益", "shareholders' equity"), ("股东权益", "shareholders' equity", "shr_eqty")),
+            (("现金及等价物", "现金及现金等价物", "cash and cash equivalent"), ("现金及等价物", "cash and equivalent", "cash and equivalents", "cash and cash equivalents", "cash_ind")),
+            (("应收账款", "accounts receivable"), ("应收账款", "account receivables", "accounts receivable", "accts_rec_ind")),
+            (("存货", "inventory", "inventories"), ("存货", "inventories", "inventory", "inventories_ind")),
+            (("有息负债", "interest-bearing debt"), ("short term debt", "long term debt", "st_debt_ind", "lt_debt_ind")),
+            (("总股本", "shares outstanding"), ("shares outstanding", "shares outstanding (m, period-end)", "num_sh1", "ord_capital", "share capital", "总股本")),
+        )
+        for query_aliases, exact_labels in aliases:
+            if any(alias in query_lower for alias in query_aliases):
+                normalized = row_label.strip(" +()-")
+                return 1.25 if normalized in exact_labels else 0.0
+        return 0.0
+
     def _rescue_recent_evidence_chunks(
         self,
         chunks: List[Dict],
@@ -1412,12 +1448,16 @@ class RAG:
             number_bonus = 0.15
             source_bonus = 0.08 if chunk.get("retriever") in {"BM25", "PageIndex", "Title Summary"} else 0.0
             entity_bonus = self._numeric_entity_bonus(text_lower)
+            row_label_bonus = self._financial_row_label_bonus(query, chunk)
             period_bonus = self._period_match_bonus(query, text_lower, chunk_date)
             recency_bonus = 0.0
             if chunk_date and min_year is not None:
                 recency_bonus = min(0.25, max(0, chunk_date.year - min_year + 1) * 0.06)
 
-            rescue_score = overlap + number_bonus + source_bonus + entity_bonus + period_bonus + recency_bonus
+            rescue_score = (
+                overlap + number_bonus + source_bonus + entity_bonus
+                + row_label_bonus + period_bonus + recency_bonus
+            )
             if rescue_score < min_score:
                 continue
 
@@ -1427,6 +1467,7 @@ class RAG:
             rescued_metadata["evidence_rescue_score"] = round(float(rescue_score), 4)
             rescued_metadata["evidence_rescue_matched_terms"] = sorted(matched_terms)[:20]
             rescued_metadata["evidence_rescue_period_bonus"] = round(float(period_bonus), 4)
+            rescued_metadata["evidence_rescue_row_label_bonus"] = round(float(row_label_bonus), 4)
             rescued_chunk["metadata"] = rescued_metadata
             rescue_candidates.append(
                 (

@@ -1,0 +1,3165 @@
+{
+  "suite_id": "finsagent_formal_90_v1",
+  "formal_metric_system": "IS1-IS7, BS1-BS7, CF1-CF3, D1-D7, V1-V7, R1-R5",
+  "cases": [
+    {
+      "case_id": "FORMAL_IS1_001",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS1"
+      ],
+      "question": "阳光电源2024年营业收入是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS1",
+          "value": 77856.96696,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R42"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS1_002",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS1"
+      ],
+      "question": "阳光电源2026E年营业收入是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS1",
+          "value": 97870.96054476,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T42"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS2_003",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS2"
+      ],
+      "question": "阳光电源2024年营业成本是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS2",
+          "value": 54544.61043,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R43"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS2_004",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS2"
+      ],
+      "question": "阳光电源2026E年营业成本是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS2",
+          "value": 67704.35533196,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T43"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS3_005",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS3"
+      ],
+      "question": "阳光电源2024年毛利润是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS3",
+          "value": 23312.35653,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R44"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS3_006",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS3"
+      ],
+      "question": "阳光电源2026E年毛利润是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS3",
+          "value": 30166.6052128,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T44"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS4_007",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS4"
+      ],
+      "question": "阳光电源2024年毛利率是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS4",
+          "value": 29.94254392,
+          "unit": "%",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R196"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS4_008",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS4"
+      ],
+      "question": "阳光电源2026E年毛利率是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS4",
+          "value": 30.82283554,
+          "unit": "%",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T196"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS5_009",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS5"
+      ],
+      "question": "阳光电源2024年营业利润（EBIT）是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS5",
+          "value": 13004.28878,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R55"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS5_010",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS5"
+      ],
+      "question": "阳光电源2026E年营业利润（EBIT）是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS5",
+          "value": 16042.56569055,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T55"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS6_011",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS6"
+      ],
+      "question": "阳光电源2024年归母净利润是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS6",
+          "value": 11036.2789,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R69"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS6_012",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS6"
+      ],
+      "question": "阳光电源2026E年归母净利润是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS6",
+          "value": 14427.88976551,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T69"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS7_013",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS7"
+      ],
+      "question": "阳光电源2024年基本每股收益是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS7",
+          "value": 5.32329624,
+          "unit": "CNY/share",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R180"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_IS7_014",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "IS7"
+      ],
+      "question": "阳光电源2026E年基本每股收益是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS7",
+          "value": 6.95919847,
+          "unit": "CNY/share",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T180"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS1_015",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS1"
+      ],
+      "question": "阳光电源2024年总资产是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS1",
+          "value": 115073.77115,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R147"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS1_016",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS1"
+      ],
+      "question": "阳光电源2026E年总资产是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS1",
+          "value": 138829.19293594,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T147"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS2_017",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS2"
+      ],
+      "question": "阳光电源2024年总负债是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS2",
+          "value": 74875.02307,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R158"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS2_018",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS2"
+      ],
+      "question": "阳光电源2026E年总负债是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS2",
+          "value": 76070.88093735,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T158"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS3_019",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS3"
+      ],
+      "question": "阳光电源2024年股东权益是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS3",
+          "value": 36905.06413,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R165"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS3_020",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS3"
+      ],
+      "question": "阳光电源2026E年股东权益是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS3",
+          "value": 59520.60946185,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T165"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS4_021",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS4"
+      ],
+      "question": "阳光电源2024年现金及等价物是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS4",
+          "value": 19799.44556,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R139"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS4_022",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS4"
+      ],
+      "question": "阳光电源2026E年现金及等价物是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS4",
+          "value": 36002.1046519,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T139"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS5_023",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS5"
+      ],
+      "question": "阳光电源2024年应收账款是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS5",
+          "value": 27640.23684,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R143"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS5_024",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS5"
+      ],
+      "question": "阳光电源2026E年应收账款是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS5",
+          "value": 25788.42869636,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T143"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS6_025",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS6"
+      ],
+      "question": "阳光电源2024年存货是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS6",
+          "value": 29027.56128,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R142"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS6_026",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "BS6"
+      ],
+      "question": "阳光电源2026E年存货是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS6",
+          "value": 28110.10876365,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T142"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_CF1_027",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "CF1"
+      ],
+      "question": "阳光电源2024年经营活动现金流是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "CF1",
+          "value": 12068.32666,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R106"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_CF1_028",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "CF1"
+      ],
+      "question": "阳光电源2026E年经营活动现金流是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "CF1",
+          "value": 16561.24322812,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T106"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_CF2_029",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "CF2"
+      ],
+      "question": "阳光电源2024年资本开支（绝对值）是多少？请注明这是实际值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "CF2",
+          "value": 2785.95276,
+          "unit": "CNYm",
+          "period": "2024",
+          "actual_or_estimate": "actual",
+          "source_ref": "Upload Sheet!R107"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_CF2_030",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "formal_metric",
+      "metric_ids": [
+        "CF2"
+      ],
+      "question": "阳光电源2026E年资本开支（绝对值）是多少？请注明这是预测值、单位和模型单元格来源。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "CF2",
+          "value": 2931.41409076,
+          "unit": "CNYm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate",
+          "source_ref": "Upload Sheet!T107"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS7_031",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "derived_metric",
+      "metric_ids": [
+        "BS7"
+      ],
+      "question": "按正式口径计算阳光电源2024年有息负债，列出公式和两个操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS7",
+          "value": 9077.14387,
+          "unit": "CNYm",
+          "period": "2024",
+          "formula": "abs(ST_DEBT_IND)+abs(LT_DEBT_IND)"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_BS7_032",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "derived_metric",
+      "metric_ids": [
+        "BS7"
+      ],
+      "question": "按正式口径计算阳光电源2026E年有息负债，列出公式和两个操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "BS7",
+          "value": 8487.32811737,
+          "unit": "CNYm",
+          "period": "2026E",
+          "formula": "abs(ST_DEBT_IND)+abs(LT_DEBT_IND)"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_CF3_033",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "derived_metric",
+      "metric_ids": [
+        "CF3"
+      ],
+      "question": "按正式口径计算阳光电源2024年自由现金流，列出公式和两个操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "CF3",
+          "value": 9282.3739,
+          "unit": "CNYm",
+          "period": "2024",
+          "formula": "CF_OP_IND-abs(CAPEX_IND)"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_CF3_034",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "derived_metric",
+      "metric_ids": [
+        "CF3"
+      ],
+      "question": "按正式口径计算阳光电源2026E年自由现金流，列出公式和两个操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "CF3",
+          "value": 13629.82913736,
+          "unit": "CNYm",
+          "period": "2026E",
+          "formula": "CF_OP_IND-abs(CAPEX_IND)"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D1_035",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D1"
+      ],
+      "question": "计算阳光电源1Q24单季营收同比增速，列出当季和上年同期收入。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D1",
+          "value": 0.26419085,
+          "unit": "%",
+          "period": "1Q24",
+          "comparison_period": "1Q23"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D1_036",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D1"
+      ],
+      "question": "计算阳光电源2Q24单季营收同比增速，列出当季和上年同期收入。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D1",
+          "value": 14.73834069,
+          "unit": "%",
+          "period": "2Q24",
+          "comparison_period": "2Q23"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D2_037",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D2"
+      ],
+      "question": "计算阳光电源1Q24单季归母净利润同比增速，列出两个操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D2",
+          "value": 39.04453032,
+          "unit": "%",
+          "period": "1Q24",
+          "comparison_period": "1Q23"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D2_038",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D2"
+      ],
+      "question": "计算阳光电源2Q24单季归母净利润同比增速，列出两个操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D2",
+          "value": 0.57386646,
+          "unit": "%",
+          "period": "2Q24",
+          "comparison_period": "2Q23"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D3_039",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D3"
+      ],
+      "question": "计算阳光电源1Q24单季营收环比增速，基期为4Q23。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D3",
+          "value": -51.17833042,
+          "unit": "%",
+          "period": "1Q24",
+          "comparison_period": "4Q23"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D3_040",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D3"
+      ],
+      "question": "计算阳光电源2Q24单季营收环比增速，基期为1Q24。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D3",
+          "value": 45.92344957,
+          "unit": "%",
+          "period": "2Q24",
+          "comparison_period": "1Q24"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D4_041",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D4"
+      ],
+      "question": "阳光电源1Q24单季毛利率是多少？请同时用毛利润/收入验算。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D4",
+          "value": 36.67067455,
+          "unit": "%",
+          "period": "1Q24",
+          "comparison_period": ""
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D4_042",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D4"
+      ],
+      "question": "阳光电源2Q24单季毛利率是多少？请同时用毛利润/收入验算。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D4",
+          "value": 29.50123274,
+          "unit": "%",
+          "period": "2Q24",
+          "comparison_period": ""
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D5_043",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D5"
+      ],
+      "question": "阳光电源1Q24单季毛利率较4Q23环比变化多少个百分点？",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D5",
+          "value": 8.04323396,
+          "unit": "ppt",
+          "period": "1Q24",
+          "comparison_period": "4Q23"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D5_044",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "quarterly_derived",
+      "metric_ids": [
+        "D5"
+      ],
+      "question": "阳光电源2Q24单季毛利率较1Q24环比变化多少个百分点？",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D5",
+          "value": -7.16944182,
+          "unit": "ppt",
+          "period": "2Q24",
+          "comparison_period": "1Q24"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D6_045",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "derived_metric",
+      "metric_ids": [
+        "D6"
+      ],
+      "question": "使用平均股东权益计算阳光电源2024年ROE，并列出归母净利润及期初期末权益。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D6",
+          "value": 34.16260841,
+          "unit": "%",
+          "period": "2024"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D6_046",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "derived_metric",
+      "metric_ids": [
+        "D6"
+      ],
+      "question": "使用平均股东权益计算阳光电源2026E年ROE，并列出归母净利润及期初期末权益。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D6",
+          "value": 27.1887073,
+          "unit": "%",
+          "period": "2026E"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D7_047",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "derived_metric",
+      "metric_ids": [
+        "D7"
+      ],
+      "question": "计算阳光电源2024年资产负债率，并列出总负债和总资产。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D7",
+          "value": 65.06697601,
+          "unit": "%",
+          "period": "2024"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_D7_048",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "derived_metric",
+      "metric_ids": [
+        "D7"
+      ],
+      "question": "计算阳光电源2026E年资产负债率，并列出总负债和总资产。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D7",
+          "value": 54.79458558,
+          "unit": "%",
+          "period": "2026E"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R1_049",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R1"
+      ],
+      "question": "计算阳光电源2024年营收同比增速，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R1",
+          "value": 7.75950124,
+          "unit": "%",
+          "period": "2024",
+          "comparison_period": "2023"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R1_050",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R1"
+      ],
+      "question": "计算阳光电源2026E年营收同比增速，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R1",
+          "value": 9.74005249,
+          "unit": "%",
+          "period": "2026E",
+          "comparison_period": "2025"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R2_051",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R2"
+      ],
+      "question": "计算阳光电源2024年归母净利润同比增速，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R2",
+          "value": 16.91516138,
+          "unit": "%",
+          "period": "2024",
+          "comparison_period": "2023"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R2_052",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R2"
+      ],
+      "question": "计算阳光电源2026E年归母净利润同比增速，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R2",
+          "value": 7.18066791,
+          "unit": "%",
+          "period": "2026E",
+          "comparison_period": "2025"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R3_053",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R3"
+      ],
+      "question": "计算阳光电源2024年EBIT利润率，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R3",
+          "value": 16.70279397,
+          "unit": "%",
+          "period": "2024",
+          "comparison_period": "2023"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R3_054",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R3"
+      ],
+      "question": "计算阳光电源2026E年EBIT利润率，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R3",
+          "value": 16.39154822,
+          "unit": "%",
+          "period": "2026E",
+          "comparison_period": "2025"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R4_055",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R4"
+      ],
+      "question": "计算阳光电源2024年归母净利润率，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R4",
+          "value": 14.17506914,
+          "unit": "%",
+          "period": "2024",
+          "comparison_period": "2023"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R4_056",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R4"
+      ],
+      "question": "计算阳光电源2026E年归母净利润率，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R4",
+          "value": 14.74174738,
+          "unit": "%",
+          "period": "2026E",
+          "comparison_period": "2025"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R5_057",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R5"
+      ],
+      "question": "计算阳光电源2024年经营性现金流占营业收入比率，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R5",
+          "value": 15.50063807,
+          "unit": "%",
+          "period": "2024",
+          "comparison_period": "2023"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_R5_058",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "annual_ratio",
+      "metric_ids": [
+        "R5"
+      ],
+      "question": "计算阳光电源2026E年经营性现金流占营业收入比率，列出公式和操作数。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "R5",
+          "value": 16.92150883,
+          "unit": "%",
+          "period": "2026E",
+          "comparison_period": "2025"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V1_059",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V1"
+      ],
+      "question": "根据Control panel当前价110.94元，计算阳光电源2021E的Forward PE（当前价/2021E EPS）。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V1",
+          "value": 143.93761972,
+          "unit": "x",
+          "period": "2021E"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V1_060",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V1"
+      ],
+      "question": "根据Control panel当前价110.94元，计算阳光电源2022E的Forward PE（当前价/2022E EPS）。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V1",
+          "value": 64.00843528,
+          "unit": "x",
+          "period": "2022E"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V2_061",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V2"
+      ],
+      "question": "根据Control panel当前价110.94元，计算阳光电源2020的Trailing PE（当前价/2020 EPS）。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V2",
+          "value": 115.45415404,
+          "unit": "x",
+          "period": "2020"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V2_062",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V2"
+      ],
+      "question": "根据Control panel当前价110.94元，计算阳光电源2020的Trailing PE（换算复核）。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V2",
+          "value": 115.45415404,
+          "unit": "x",
+          "period": "2020"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V3_063",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V3"
+      ],
+      "question": "根据Control panel当前价110.94元，计算阳光电源2020的PB市净率（当前价/2020 BVPS）。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V3",
+          "value": 21.57745254,
+          "unit": "x",
+          "period": "2020"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V3_064",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V3"
+      ],
+      "question": "根据Control panel当前价110.94元，计算阳光电源2021E的PB市净率（当前价/2021E BVPS）。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V3",
+          "value": 14.69240186,
+          "unit": "x",
+          "period": "2021E"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V6_065",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V6"
+      ],
+      "question": "阳光电源2024年总股本是多少百万股？",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V6",
+          "value": 2073.211424,
+          "unit": "million shares",
+          "period": "2024"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V6_066",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V6"
+      ],
+      "question": "阳光电源2024年总股本是多少百万股？ 请同时换算单位。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V6",
+          "value": 2073.211424,
+          "unit": "million shares",
+          "period": "2024"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V7_067",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V7"
+      ],
+      "question": "按当前价110.94元和2024年总股本计算阳光电源总市值。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V7",
+          "value": 230002.07537856,
+          "unit": "CNYm",
+          "period": "2024"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V7_068",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "valuation",
+      "metric_ids": [
+        "V7"
+      ],
+      "question": "按当前价110.94元和2024年总股本计算阳光电源总市值。 请同时换算单位。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "V7",
+          "value": 230002.07537856,
+          "unit": "CNYm",
+          "period": "2024"
+        }
+      ],
+      "tolerance_rule": "formal_metric",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V4_069",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "external_data_gap",
+      "metric_ids": [
+        "V4"
+      ],
+      "question": "仅根据当前入库资料，计算阳光电源截至模型估值日的近20日日均成交额；若缺少20个交易日明细必须明确拒答。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [],
+      "tolerance_rule": "must_refuse",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": true,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V4_070",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "external_data_gap",
+      "metric_ids": [
+        "V4"
+      ],
+      "question": "仅根据当前入库资料，计算阳光电源截至2024年6月30日的近20日日均成交额；若缺少20个交易日明细必须明确拒答。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [],
+      "tolerance_rule": "must_refuse",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": true,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V5_071",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "external_data_gap",
+      "metric_ids": [
+        "V5"
+      ],
+      "question": "仅根据当前入库资料，计算阳光电源截至模型估值日的近20日日均成交量；若缺少20个交易日明细必须明确拒答。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [],
+      "tolerance_rule": "must_refuse",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": true,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "FORMAL_V5_072",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "external_data_gap",
+      "metric_ids": [
+        "V5"
+      ],
+      "question": "仅根据当前入库资料，计算阳光电源截至2024年6月30日的近20日日均成交量；若缺少20个交易日明细必须明确拒答。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [],
+      "tolerance_rule": "must_refuse",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": true,
+      "data_class": "real",
+      "formal_metric_coverage": true
+    },
+    {
+      "case_id": "SMOKE_IS6_PORSCHE_001",
+      "priority": "P0",
+      "dataset_id": "test_real_data",
+      "task_family": "financial_metric_cross_company",
+      "metric_ids": [
+        "IS6"
+      ],
+      "question": "根据保时捷模型的估值表，2024年归母净利润是多少？2025E和2026E的预测分别是多少？",
+      "company": "Porsche AG",
+      "ticker": "P911.DE",
+      "answer_atoms": [
+        {
+          "metric_id": "IS6",
+          "value": 3596,
+          "unit": "EURm",
+          "period": "2024",
+          "actual_or_estimate": "actual"
+        },
+        {
+          "metric_id": "IS6",
+          "value": 1627.0609529557637,
+          "unit": "EURm",
+          "period": "2025E",
+          "actual_or_estimate": "estimate"
+        },
+        {
+          "metric_id": "IS6",
+          "value": 2562.233316074994,
+          "unit": "EURm",
+          "period": "2026E",
+          "actual_or_estimate": "estimate"
+        }
+      ],
+      "tolerance_rule": "extract",
+      "allowed_doc_ids": [
+        "e24f16bdb6bfcaab85a9ac74b362b5b6b3b1b783"
+      ],
+      "forbidden_doc_ids": [
+        "aad79c9a9c558bc2ca01915f35b7bc23ba054e33",
+        "4a1a3bb0aecab2feb2090b26de5403b56e0491e2",
+        "fed2fa002ec86c3cefe36eb105d15467a3a2f44b",
+        "76e51660b59bb3e0f5f855fdf235edf6eb82e5c7"
+      ],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier",
+        "source_conflict"
+      ],
+      "must_refuse": false,
+      "data_class": "real"
+    },
+    {
+      "case_id": "SMOKE_D4_QUALIFIED_002",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "qualified_financial_metric",
+      "metric_ids": [
+        "D4"
+      ],
+      "question": "剔除阶段性影响因素后，阳光电源2025年第四季度至2026年第一季度的实际毛利率是多少？",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D4",
+          "operator": ">=",
+          "value": 30,
+          "unit": "%",
+          "period": "2025Q4-2026Q1",
+          "qualifier": "剔除阶段性影响因素后实际"
+        }
+      ],
+      "tolerance_rule": "extract",
+      "allowed_doc_ids": [
+        "5247883d65d96322f65e3bee12e9384e6d3e5d67"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "source_conflict"
+      ],
+      "must_refuse": false,
+      "data_class": "real"
+    },
+    {
+      "case_id": "SMOKE_IS1_R1_SEQUENCE_003",
+      "priority": "P0",
+      "dataset_id": "test_real_data",
+      "task_family": "financial_sequence_derived",
+      "metric_ids": [
+        "IS1",
+        "R1"
+      ],
+      "question": "地平线机器人汽车解决方案收入从2021年到2024年分别是多少？请同时计算各年同比增速。",
+      "company": "Horizon Robotics",
+      "ticker": "9660.HK",
+      "answer_atoms": [
+        {
+          "metric_id": "IS1",
+          "values": [
+            410.164,
+            801.138,
+            1470.364,
+            2311.703
+          ],
+          "unit": "CNYm",
+          "periods": [
+            "2021",
+            "2022",
+            "2023",
+            "2024"
+          ]
+        },
+        {
+          "metric_id": "R1",
+          "values": [
+            95.32,
+            83.53,
+            57.22
+          ],
+          "unit": "%",
+          "periods": [
+            "2022",
+            "2023",
+            "2024"
+          ],
+          "tolerance_relative": 0.005
+        }
+      ],
+      "formula": "(revenue_t-revenue_t_minus_1)/abs(revenue_t_minus_1)",
+      "tolerance_rule": "derived",
+      "allowed_doc_ids": [
+        "76e51660b59bb3e0f5f855fdf235edf6eb82e5c7"
+      ],
+      "forbidden_doc_ids": [
+        "aad79c9a9c558bc2ca01915f35b7bc23ba054e33",
+        "4a1a3bb0aecab2feb2090b26de5403b56e0491e2",
+        "fed2fa002ec86c3cefe36eb105d15467a3a2f44b",
+        "e24f16bdb6bfcaab85a9ac74b362b5b6b3b1b783"
+      ],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real"
+    },
+    {
+      "case_id": "SMOKE_D4_FORECAST_004",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "forecast_metric",
+      "metric_ids": [
+        "D4"
+      ],
+      "question": "中性情景测算下，阳光电源2026年储能业务的毛利率和单位盈利预计是多少？",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D4",
+          "min": 25,
+          "max": 30,
+          "unit": "%",
+          "period": "2026E",
+          "actual_or_estimate": "estimate"
+        },
+        {
+          "metric_id": "CASE_UNIT_PROFIT",
+          "value": 0.1,
+          "unit": "CNY/Wh",
+          "period": "2026E",
+          "qualifier": "出头"
+        }
+      ],
+      "tolerance_rule": "range",
+      "allowed_doc_ids": [
+        "5247883d65d96322f65e3bee12e9384e6d3e5d67"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis"
+      ],
+      "must_refuse": false,
+      "data_class": "real"
+    },
+    {
+      "case_id": "SMOKE_IS6_PROFIT_BRIDGE_005",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "multi_value_forecast",
+      "metric_ids": [
+        "IS6"
+      ],
+      "question": "对阳光电源2027年的利润预期是多少？其中传统业务贡献多少？",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS6",
+          "min": 180,
+          "max": 200,
+          "unit": "CNY100m",
+          "period": "2027E",
+          "scope": "company_total"
+        },
+        {
+          "metric_id": "IS6",
+          "min": 150,
+          "max": 160,
+          "unit": "CNY100m",
+          "period": "2027E",
+          "scope": "traditional_business_ex_AIDC"
+        }
+      ],
+      "tolerance_rule": "range",
+      "allowed_doc_ids": [
+        "5247883d65d96322f65e3bee12e9384e6d3e5d67"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "answer_coverage"
+      ],
+      "must_refuse": false,
+      "data_class": "real"
+    },
+    {
+      "case_id": "SMOKE_D6_V1_PEER_006",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "peer_comparison",
+      "metric_ids": [
+        "D6",
+        "V1"
+      ],
+      "question": "根据300274模型Control panel表中的同业比较，阳光电源与锦浪科技的2020E ROE和2021E PER分别是多少？",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "D6",
+          "company": "Sungrow",
+          "value": 20.5,
+          "unit": "%",
+          "period": "2020E"
+        },
+        {
+          "metric_id": "D6",
+          "company": "Ginlong",
+          "values": [
+            25.67,
+            30.08
+          ],
+          "unit": "%",
+          "period": "2020E"
+        },
+        {
+          "metric_id": "V1",
+          "company": "Sungrow",
+          "values": [
+            26.3,
+            21.4
+          ],
+          "unit": "x",
+          "period": "2021E"
+        },
+        {
+          "metric_id": "V1",
+          "company": "Ginlong",
+          "values": [
+            52.6,
+            33.9
+          ],
+          "unit": "x",
+          "period": "2021E"
+        }
+      ],
+      "tolerance_rule": "extract",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier",
+        "dianjin_investment_advisor_comparable_company_analysis"
+      ],
+      "must_refuse": false,
+      "data_class": "real"
+    },
+    {
+      "case_id": "SMOKE_VALUATION_PORSCHE_007",
+      "priority": "P1",
+      "dataset_id": "test_real_data",
+      "task_family": "valuation_method",
+      "metric_ids": [],
+      "question": "根据保时捷模型，PE和EV/EBIT估值分别采用什么目标倍数？50/50加权后2025E目标价是多少？",
+      "company": "Porsche AG",
+      "ticker": "P911.DE",
+      "answer_atoms": [
+        {
+          "metric_id": "TARGET_PE",
+          "value": 18,
+          "unit": "x",
+          "period": "2021+"
+        },
+        {
+          "metric_id": "TARGET_EV_EBIT",
+          "value": 14,
+          "unit": "x",
+          "period": "2021+"
+        },
+        {
+          "metric_id": "WEIGHTED_TARGET_PRICE",
+          "value": 34.05,
+          "unit": "EUR/share",
+          "period": "2025E"
+        }
+      ],
+      "tolerance_rule": "extract",
+      "allowed_doc_ids": [
+        "e24f16bdb6bfcaab85a9ac74b362b5b6b3b1b783"
+      ],
+      "forbidden_doc_ids": [
+        "aad79c9a9c558bc2ca01915f35b7bc23ba054e33",
+        "4a1a3bb0aecab2feb2090b26de5403b56e0491e2",
+        "fed2fa002ec86c3cefe36eb105d15467a3a2f44b",
+        "76e51660b59bb3e0f5f855fdf235edf6eb82e5c7"
+      ],
+      "expected_skills": [
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "label_note": "DCF value/WACC/target multiples are not V1/V2 under the formal metric definitions."
+    },
+    {
+      "case_id": "SMOKE_COMPANY_FACT_NVDA_008",
+      "priority": "P1",
+      "dataset_id": "test_real_data",
+      "task_family": "company_fact",
+      "metric_ids": [],
+      "question": "NVIDIA模型（NVDA.OQ 2025年7月15日版本）封面页上列出的覆盖分析师是谁？",
+      "company": "NVIDIA Corporation",
+      "ticker": "NVDA.OQ",
+      "answer_atoms": [
+        {
+          "metric_id": "COVERAGE_ANALYST",
+          "values": [
+            "Ross Seymore",
+            "Melissa Weathers"
+          ],
+          "period": "2025-07-15"
+        }
+      ],
+      "tolerance_rule": "exact_text",
+      "allowed_doc_ids": [
+        "4a1a3bb0aecab2feb2090b26de5403b56e0491e2"
+      ],
+      "forbidden_doc_ids": [
+        "aad79c9a9c558bc2ca01915f35b7bc23ba054e33",
+        "fed2fa002ec86c3cefe36eb105d15467a3a2f44b",
+        "76e51660b59bb3e0f5f855fdf235edf6eb82e5c7",
+        "e24f16bdb6bfcaab85a9ac74b362b5b6b3b1b783"
+      ],
+      "expected_skills": [
+        "finskillops_source_grounded_issuer_profile",
+        "company_profile_boundary"
+      ],
+      "must_refuse": false,
+      "data_class": "real"
+    },
+    {
+      "case_id": "SMOKE_NOANSWER_SUNGROW_009",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "no_answer_future_company_fact",
+      "metric_ids": [],
+      "question": "仅根据当前已入库资料，阳光电源2028年首席执行官是谁、具体任命日期是哪一天？如果资料没有披露，请明确说明无法回答。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [],
+      "tolerance_rule": "must_refuse",
+      "allowed_doc_ids": [
+        "7c512f613540ee7590f9d63d2648344633f07e12",
+        "5247883d65d96322f65e3bee12e9384e6d3e5d67",
+        "432c9a28b68669905ca879bcd34a668d7e6ef62b"
+      ],
+      "forbidden_doc_ids": [],
+      "expected_skills": [
+        "finskillops_source_grounded_issuer_profile",
+        "company_profile_boundary",
+        "source_conflict",
+        "period_alignment"
+      ],
+      "must_refuse": true,
+      "data_class": "synthetic_holdout"
+    },
+    {
+      "case_id": "SMOKE_NOANSWER_PORSCHE_010",
+      "priority": "P0",
+      "dataset_id": "test_real_data",
+      "task_family": "no_answer_future_metric",
+      "metric_ids": [
+        "IS6"
+      ],
+      "question": "仅根据当前保时捷模型，2035E归母净利润是多少？如果模型没有该预测期，请明确说明资料未披露，不要外推。",
+      "company": "Porsche AG",
+      "ticker": "P911.DE",
+      "answer_atoms": [],
+      "tolerance_rule": "must_refuse",
+      "allowed_doc_ids": [
+        "e24f16bdb6bfcaab85a9ac74b362b5b6b3b1b783"
+      ],
+      "forbidden_doc_ids": [
+        "aad79c9a9c558bc2ca01915f35b7bc23ba054e33",
+        "4a1a3bb0aecab2feb2090b26de5403b56e0491e2",
+        "fed2fa002ec86c3cefe36eb105d15467a3a2f44b",
+        "76e51660b59bb3e0f5f855fdf235edf6eb82e5c7"
+      ],
+      "expected_skills": [
+        "period_alignment",
+        "source_conflict",
+        "table_evidence_verifier"
+      ],
+      "must_refuse": true,
+      "data_class": "synthetic_holdout"
+    },
+    {
+      "case_id": "SMOKE_DCF_HORIZON_011",
+      "priority": "P1",
+      "dataset_id": "test_real_data",
+      "task_family": "valuation_dcf",
+      "metric_ids": [],
+      "question": "根据地平线机器人模型的DCF估值，每股价值是多少港元？采用的WACC和永续增长率是多少？",
+      "company": "Horizon Robotics",
+      "ticker": "9660.HK",
+      "answer_atoms": [
+        {
+          "metric_id": "DCF_VALUE_PER_SHARE",
+          "value": 10.381221611147184,
+          "unit": "HKD/share"
+        },
+        {
+          "metric_id": "WACC",
+          "value": 5.81235229559448,
+          "unit": "%"
+        },
+        {
+          "metric_id": "TERMINAL_GROWTH",
+          "value": 0.5,
+          "unit": "%"
+        }
+      ],
+      "tolerance_rule": "extract",
+      "allowed_doc_ids": [
+        "76e51660b59bb3e0f5f855fdf235edf6eb82e5c7"
+      ],
+      "forbidden_doc_ids": [
+        "aad79c9a9c558bc2ca01915f35b7bc23ba054e33",
+        "4a1a3bb0aecab2feb2090b26de5403b56e0491e2",
+        "fed2fa002ec86c3cefe36eb105d15467a3a2f44b",
+        "e24f16bdb6bfcaab85a9ac74b362b5b6b3b1b783"
+      ],
+      "expected_skills": [
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier",
+        "source_conflict"
+      ],
+      "must_refuse": false,
+      "data_class": "real",
+      "label_note": "DCF value and WACC are intentionally not labeled V1/V2."
+    },
+    {
+      "case_id": "SMOKE_REPORT_SUNGROW_012",
+      "priority": "P0",
+      "dataset_id": "ygdy_report_skill_lab",
+      "task_family": "multi_document_report",
+      "metric_ids": [
+        "IS1",
+        "IS4",
+        "IS6",
+        "D4",
+        "R1",
+        "R2"
+      ],
+      "question": "请基于数据集中的全部材料，对阳光电源做一份“2026—2027年盈利质量与利润桥”财务报表深度分析和业绩点评。重点回答：1. 区分历史实际、公司指引和分析师预测，列出关键收入、毛利率、单位盈利及利润假设；2. 解释储能、逆变器、AIDC/SST等业务对利润增长的贡献及主要驱动；3. 检查初稿、修订版和Excel预测之间是否存在口径或版本冲突，并说明采用哪个数字；4. 分析现金流、应收、毛利率与利润增长是否匹配，判断盈利质量；5. 给出基准、乐观、悲观三种情景以及最需要验证的风险。要求：所有关键判断尽量给出资料依据；资料没有提供的数据必须明确写“资料未披露”，不要自行编造。",
+      "company": "阳光电源",
+      "ticker": "300274.CH",
+      "answer_atoms": [
+        {
+          "metric_id": "IS1",
+          "values": [
+            89000,
+            108000,
+            132000
+          ],
+          "unit": "CNYm",
+          "periods": [
+            "2025E",
+            "2026E",
+            "2027E"
+          ]
+        },
+        {
+          "metric_id": "D4",
+          "values": [
+            28.5,
+            27.0,
+            26.5
+          ],
+          "unit": "%",
+          "periods": [
+            "2025E",
+            "2026E",
+            "2027E"
+          ],
+          "scope": "storage"
+        },
+        {
+          "metric_id": "CASE_UNIT_PROFIT",
+          "values": [
+            0.095,
+            0.105,
+            0.11
+          ],
+          "unit": "CNY/Wh",
+          "periods": [
+            "2025E",
+            "2026E",
+            "2027E"
+          ]
+        },
+        {
+          "metric_id": "IS6",
+          "values": [
+            145,
+            190
+          ],
+          "unit": "CNY100m",
+          "periods": [
+            "2026E",
+            "2027E"
+          ],
+          "scope": "company_total"
+        },
+        {
+          "metric_id": "SCENARIO_VOLUME",
+          "values": [
+            45,
+            52,
+            58
+          ],
+          "unit": "GWh",
+          "scenarios": [
+            "bear",
+            "base",
+            "bull"
+          ]
+        },
+        {
+          "metric_id": "SENSITIVITY_UNIT_COST",
+          "value": 0.006,
+          "unit": "CNY/Wh",
+          "condition": "lithium_carbonate_plus_10000_CNY_per_ton"
+        }
+      ],
+      "tolerance_rule": "mixed",
+      "allowed_doc_ids": [
+        "789a9fb304a85fa97a4187b99e4bd8470c69f6ec",
+        "78f63499febfa36aac7ac727626bc084e1b4b9ac",
+        "373f6b501a196ca2334f04b4b583ac323c4dffc7",
+        "91bc3fa9999d6dd6cb76f21968b26a3a5a47b152",
+        "91041138cac8aaa4844be36f14f567b14839fdd6"
+      ],
+      "forbidden_doc_ids": [
+        "7fdc00f97f7bc37fa9ff71a1dee3529529b257cc"
+      ],
+      "expected_skills": [
+        "finskillops_source_grounded_issuer_profile",
+        "period_alignment",
+        "finskillops_financial_numeric_synthesis",
+        "table_evidence_verifier",
+        "source_conflict",
+        "dianjin_corporate_banker_financial_report_analysis",
+        "dianjin_investment_researcher_earnings_commentary_generator",
+        "dianjin_investment_researcher_company_deep_analysis"
+      ],
+      "must_refuse": false,
+      "data_class": "synthetic_holdout"
+    },
+    {
+      "case_id": "UX_COMPOSITE_085",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "ux_composite",
+      "metric_ids": [
+        "IS1",
+        "IS6"
+      ],
+      "question": "同时列出阳光电源2024年实际和2026E预测的营业收入、归母净利润，并标明实际/预测。",
+      "company": "multi",
+      "ticker": "",
+      "answer_atoms": [],
+      "tolerance_rule": "llm_judge_plus_evidence",
+      "allowed_doc_ids": [],
+      "forbidden_doc_ids": [],
+      "expected_skills": [],
+      "must_refuse": false,
+      "data_class": "real_or_isolated",
+      "formal_metric_coverage": false
+    },
+    {
+      "case_id": "UX_COMPOSITE_086",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "ux_composite",
+      "metric_ids": [
+        "D1",
+        "D3",
+        "D4",
+        "D5"
+      ],
+      "question": "对阳光电源2024年一、二季度做单季收入同比/环比和毛利率变化的小结，列出计算过程。",
+      "company": "multi",
+      "ticker": "",
+      "answer_atoms": [],
+      "tolerance_rule": "llm_judge_plus_evidence",
+      "allowed_doc_ids": [],
+      "forbidden_doc_ids": [],
+      "expected_skills": [],
+      "must_refuse": false,
+      "data_class": "real_or_isolated",
+      "formal_metric_coverage": false
+    },
+    {
+      "case_id": "UX_COMPOSITE_087",
+      "priority": "P0",
+      "dataset_id": "ygdy_data",
+      "task_family": "ux_composite",
+      "metric_ids": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "question": "基于2024年数据生成收入增长、利润增长、EBIT率、净利率及经营现金流/收入的质量摘要。",
+      "company": "multi",
+      "ticker": "",
+      "answer_atoms": [],
+      "tolerance_rule": "llm_judge_plus_evidence",
+      "allowed_doc_ids": [],
+      "forbidden_doc_ids": [],
+      "expected_skills": [],
+      "must_refuse": false,
+      "data_class": "real_or_isolated",
+      "formal_metric_coverage": false
+    },
+    {
+      "case_id": "UX_COMPOSITE_088",
+      "priority": "P0",
+      "dataset_id": "test_real_data",
+      "task_family": "ux_composite",
+      "metric_ids": [],
+      "question": "仅使用保时捷文档回答其2024、2025E、2026E归母净利润；不得引用NVIDIA、Hermès、地平线或其他公司。",
+      "company": "multi",
+      "ticker": "",
+      "answer_atoms": [],
+      "tolerance_rule": "llm_judge_plus_evidence",
+      "allowed_doc_ids": [],
+      "forbidden_doc_ids": [],
+      "expected_skills": [],
+      "must_refuse": false,
+      "data_class": "real_or_isolated",
+      "formal_metric_coverage": false
+    },
+    {
+      "case_id": "UX_COMPOSITE_089",
+      "priority": "P0",
+      "dataset_id": "test_real_data",
+      "task_family": "ux_composite",
+      "metric_ids": [],
+      "question": "比较NVIDIA模型封面分析师事实与地平线DCF结果，分别注明公司和文档，不得混用证据。",
+      "company": "multi",
+      "ticker": "",
+      "answer_atoms": [],
+      "tolerance_rule": "llm_judge_plus_evidence",
+      "allowed_doc_ids": [],
+      "forbidden_doc_ids": [],
+      "expected_skills": [],
+      "must_refuse": false,
+      "data_class": "real_or_isolated",
+      "formal_metric_coverage": false
+    },
+    {
+      "case_id": "UX_COMPOSITE_090",
+      "priority": "P0",
+      "dataset_id": "ygdy_report_skill_lab",
+      "task_family": "ux_composite",
+      "metric_ids": [
+        "IS1",
+        "IS6",
+        "D4"
+      ],
+      "question": "生成阳光电源盈利桥的一页式投资委员会摘要，必须列出Excel中的2025E-2027E收入和三种情景。",
+      "company": "multi",
+      "ticker": "",
+      "answer_atoms": [],
+      "tolerance_rule": "llm_judge_plus_evidence",
+      "allowed_doc_ids": [],
+      "forbidden_doc_ids": [],
+      "expected_skills": [],
+      "must_refuse": false,
+      "data_class": "real_or_isolated",
+      "formal_metric_coverage": false
+    }
+  ]
+}

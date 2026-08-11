@@ -47,7 +47,7 @@ TABLE_CONTENT_TYPES = {
     "excel_sheet_summary",
     "excel_workbook_summary",
 }
-BUILDER_VERSION = "private-fund-index-bundle-v1"
+BUILDER_VERSION = "private-fund-index-bundle-v2"
 
 
 def _scalar(value: Any) -> str | int | float | bool:
@@ -212,6 +212,8 @@ def _title_documents(conn: sqlite3.Connection, dataset_id: str) -> list[Document
             "filename": row["original_filename"],
             "content_type": "document_title",
             "date_published": row["document_date"] or "",
+            "company_name": row["company_name"] or "",
+            "company_ticker": row["company_ticker"] or "",
         }))
     return documents
 
@@ -361,6 +363,12 @@ def main() -> None:
         current = validate_index_bundle(
             final_path, dataset_id, source_db=sqlite_path, require_manifest=True
         )
+        if current.ready and (current.manifest or {}).get("builder_version") != BUILDER_VERSION:
+            current.ready = False
+            current.errors.append(
+                f"builder version changed: current={(current.manifest or {}).get('builder_version')!r}, "
+                f"required={BUILDER_VERSION!r}"
+            )
         if current.ready and not args.force:
             print(json.dumps({
                 "status": "reused",

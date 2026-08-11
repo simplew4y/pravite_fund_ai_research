@@ -29,6 +29,12 @@ routing:
     - capex
     - yoy
     - qoq
+    - PE
+    - PB
+    - EPS
+    - BVPS
+    - 股本
+    - 市值
 evidence_contract:
   company_scope_required: true
   same_company_required: true

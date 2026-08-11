@@ -25,7 +25,33 @@ NUMERIC_KEYWORDS = {
 }
 
 METRIC_EXPANSIONS = {
-    "归母净利润": ("归母净利润", "net profit", "net income", "attributable", "profit attributable"),
+    "自由现金流": ("自由现金流", "free cash flow", "fcf", "fcf_ind", "cf_op_ind", "net cash from operating activities", "capex_ind", "purchase of ppe", "total capex"),
+    "资产负债率": ("资产负债率", "debt asset ratio", "tot_liabs_ind", "total liabilities", "tot_assets_ind", "total assets"),
+    "归母净利润率": ("归母净利润", "net profit attributable", "np_xord_ind", "营业收入", "revenue", "sales_ind"),
+    "净利润率": ("净利润", "net profit", "net income", "np_xord_ind", "营业收入", "revenue", "sales_ind"),
+    "trailing pe": ("trailing pe", "current price", "share price", "eps (reported)", "eps_rp_ind", "basic eps"),
+    "pb市净率": ("current pbr", "current price", "share price", "bps", "bvps", "shr_eqty", "num_sh1"),
+    "市净率": ("current pbr", "current price", "share price", "bps", "bvps", "shr_eqty", "num_sh1"),
+    "当前价": ("current price", "share price", "price"),
+    "bvps": ("bps", "bvps", "book value per share", "shr_eqty", "num_sh1"),
+    "经营活动现金流": ("经营活动现金流", "经营性现金流", "operating cash flow", "net cash from operating activities", "cf_op_ind"),
+    "经营性现金流": ("经营活动现金流", "经营性现金流", "operating cash flow", "net cash from operating activities", "cf_op_ind"),
+    "资本开支": ("资本开支", "资本支出", "capital expenditure", "capex", "capex_ind", "purchase of ppe", "total capex"),
+    "资本支出": ("资本开支", "资本支出", "capital expenditure", "capex", "capex_ind", "purchase of ppe", "total capex"),
+    "总资产": ("总资产", "total assets", "tot_assets_ind"),
+    "总负债": ("总负债", "total liabilities", "tot_liabs_ind"),
+    "股东权益": ("股东权益", "shareholders' equity", "shareholder equity", "shr_eqty"),
+    "现金及等价物": ("现金及等价物", "现金及现金等价物", "cash and equivalents", "cash and cash equivalents", "cash_ind"),
+    "现金及现金等价物": ("现金及等价物", "现金及现金等价物", "cash and equivalents", "cash and cash equivalents", "cash_ind"),
+    "应收账款": ("应收账款", "accounts receivable", "account receivables", "accts_rec_ind"),
+    "存货": ("存货", "inventory", "inventories", "inventories_ind"),
+    "有息负债": ("有息负债", "interest-bearing debt", "st_debt_ind", "lt_debt_ind", "short-term borrowings", "long-term borrowings"),
+    "总股本": ("总股本", "shares outstanding", "num_sh1", "ord_capital", "share capital"),
+    "毛利润": ("毛利润", "gross profit", "gp_ind"),
+    "营业成本": ("营业成本", "cost of revenue", "cost of goods sold", "cogs_ind"),
+    "营业利润": ("营业利润", "operating profit", "ebit", "ebit_ind"),
+    "基本每股收益": ("基本每股收益", "basic eps", "eps (reported)", "eps_rp_ind"),
+    "归母净利润": ("np_xord_ind", "net profit attributable to shareholders", "net profit attributable", "归母净利润", "profit attributable", "net profit", "net income"),
     "净利润": ("净利润", "net profit", "net income"),
     "毛利率": ("毛利率", "gross margin"),
     "毛利": ("毛利", "gross profit"),
@@ -77,8 +103,70 @@ def _metric_terms(query: str) -> List[str]:
 
 
 def _extract_periods(query: str) -> List[str]:
-    periods = re.findall(r"(?:19|20)\d{2}(?:\s*(?:年)?\s*(?:q[1-4]|[一二三四1-4]季度|上半年|下半年|全年))?", query, re.I)
-    return [re.sub(r"\s+", "", p).casefold() for p in periods]
+    periods = [
+        re.sub(r"\s+", "", p).casefold()
+        for p in re.findall(
+            r"(?:19|20)\d{2}(?:e)?(?:\s*(?:年)?\s*(?:q[1-4]|[一二三四1-4]季度|上半年|下半年|全年))?|[1-4]q\d{2}",
+            query,
+            re.I,
+        )
+    ]
+    lowered = query.casefold()
+    inferred: List[str] = []
+    if "同比" in query or "yoy" in lowered or "year-over-year" in lowered:
+        for period in periods:
+            quarter = re.fullmatch(r"([1-4])q(\d{2})", period)
+            year = re.match(r"((?:19|20)\d{2})", period)
+            if quarter:
+                inferred.append(f"{quarter.group(1)}q{int(quarter.group(2)) - 1:02d}")
+            elif year:
+                inferred.append(str(int(year.group(1)) - 1))
+    if any(trigger in lowered for trigger in ("平均股东权益", "期初期末", "roe")):
+        for period in periods:
+            year = re.match(r"((?:19|20)\d{2})", period)
+            if year:
+                inferred.append(str(int(year.group(1)) - 1))
+    if "环比" in query or "qoq" in lowered or "quarter-over-quarter" in lowered:
+        for period in periods:
+            quarter = re.fullmatch(r"([1-4])q(\d{2})", period)
+            if quarter:
+                q, yy = int(quarter.group(1)), int(quarter.group(2))
+                inferred.append(f"{q - 1}q{yy:02d}" if q > 1 else f"4q{yy - 1:02d}")
+    estimate_compatible = [p[:-1] for p in periods if p.endswith("e")]
+    return list(dict.fromkeys([*periods, *estimate_compatible, *inferred]))
+
+
+def _metric_row_rank(query: str, row: Dict[str, Any], periods: Sequence[str]) -> int:
+    """Put canonical operands ahead of similarly named checks and aggregates."""
+    query_lower = query.casefold()
+    name = str(row.get("metric_name") or "").casefold()
+    normalized = _normalize(name)
+    rank = 0
+    if "check" in name or "检查" in name:
+        rank -= 200
+    if "归母" in query and (
+        normalized == "npxordind" or name.startswith("net profit attributable")
+    ):
+        rank += 120
+    if "股东权益" in query and (
+        normalized == "shreqty" or name.startswith("shareholders")
+    ):
+        rank += 120
+    if any(term in query_lower for term in ("pb市净率", "市净率", "bvps")) and (
+        normalized in {"bps", "bvps", "currentpbr"} or "book value per share" in name
+    ):
+        rank += 120
+    if "自由现金流" in query and "正式口径" in query and (
+        normalized in {"cfopind", "capexind"}
+        or name in {"net cash from operating activities", "purchase of ppe", "total capex (cny m)"}
+    ):
+        rank += 140
+    period = str(row.get("period") or "").casefold()
+    for index, requested in enumerate(periods):
+        if requested and requested in period:
+            rank += max(1, 30 - index)
+            break
+    return rank
 
 
 def _qualifiers_match(query: str, metric_names: Sequence[str]) -> bool:
@@ -95,6 +183,31 @@ def _keyword_terms(query: str) -> List[str]:
     terms.extend(re.findall(r"[\u4e00-\u9fff]{2,}", query))
     stop = {"多少", "是什么", "怎么样", "请问", "数据", "情况", "实际", "后的"}
     return list(dict.fromkeys(t for t in terms if _normalize(t) and t not in stop))[:12]
+
+
+def _positive_scope_query(query: str) -> str:
+    """Keep issuer mentions that define scope and drop explicitly forbidden peers."""
+    text = str(query or "")
+    restrictive = re.search(
+        r"(?:仅|只)(?:能|需|要)?(?:使用|基于|依据|参考)?\s*(.{1,80}?)(?:文档|资料|模型|数据)",
+        text,
+        flags=re.I,
+    )
+    if restrictive:
+        return restrictive.group(1)
+    text = re.sub(
+        r"(?:不得|不要|禁止|避免)(?:引用|使用|混用|采用|参考)?[^。；;]*",
+        " ",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r"(?:do\s+not|don't|must\s+not|never)\s+(?:cite|use|mix|include)[^.;]*",
+        " ",
+        text,
+        flags=re.I,
+    )
+    return text
 
 
 class CascadeRetriever:
@@ -125,6 +238,50 @@ class CascadeRetriever:
             return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         except sqlite3.Error:
             return set()
+
+    @staticmethod
+    def _infer_sheet_unit(
+        conn: sqlite3.Connection,
+        doc_id: Any,
+        sheet_name: Any,
+        cell_ref: Any,
+    ) -> str:
+        """Infer a missing row unit from the nearest preceding sheet heading."""
+        if not doc_id or not sheet_name or not CascadeRetriever._columns(conn, "excel_cells"):
+            return ""
+        match = re.search(r"(\d+)$", str(cell_ref or ""))
+        if not match:
+            return ""
+        target_row = int(match.group(1))
+        try:
+            headings = conn.execute(
+                """SELECT display_value FROM excel_cells
+                   WHERE doc_id = ? AND sheet_name = ? AND row_index <= ?
+                     AND display_value IS NOT NULL
+                     AND (
+                       LOWER(display_value) LIKE '%eurm%'
+                       OR LOWER(display_value) LIKE '%cnym%'
+                       OR LOWER(display_value) LIKE '%rmbm%'
+                       OR LOWER(display_value) LIKE '%usdm%'
+                       OR LOWER(display_value) LIKE '%hkdm%'
+                       OR LOWER(display_value) LIKE '%eur million%'
+                       OR LOWER(display_value) LIKE '%cny million%'
+                       OR LOWER(display_value) LIKE '%rmb million%'
+                       OR LOWER(display_value) LIKE '%usd million%'
+                       OR LOWER(display_value) LIKE '%hkd million%'
+                     )
+                   ORDER BY row_index DESC, col_index ASC LIMIT 32""",
+                (str(doc_id), str(sheet_name), target_row),
+            ).fetchall()
+        except sqlite3.Error:
+            return ""
+        unit_map = {"rmb": "CNYm", "cny": "CNYm", "eur": "EURm", "usd": "USDm", "hkd": "HKDm"}
+        for heading in headings:
+            text = str(heading[0] or "")
+            unit_match = re.search(r"\b(RMB|CNY|EUR|USD|HKD)\s*(?:m|mn|million)\b", text, re.I)
+            if unit_match:
+                return unit_map[unit_match.group(1).casefold()]
+        return ""
 
     def _document_aliases(self, row: Dict[str, Any]) -> set[str]:
         values = {
@@ -159,7 +316,7 @@ class CascadeRetriever:
             if conn is None or not self._columns(conn, "documents"):
                 return [], False
             rows = [dict(r) for r in conn.execute("SELECT * FROM documents").fetchall()]
-        query_norm = _normalize(query)
+        query_norm = _normalize(_positive_scope_query(query))
         matched: List[str] = []
         all_ids: List[str] = []
         for row in rows:
@@ -238,23 +395,40 @@ class CascadeRetriever:
             if "metric_name" not in cols or "doc_id" not in cols:
                 return None
             selected = [c for c in (
-                "metric_name", "value_numeric", "value_text", "unit", "currency",
+                "metric_name", "metric_alias", "value_numeric", "value_text", "unit", "currency",
                 "doc_id", "period", "actual_or_estimate", "sheet_name", "cell_ref",
-                "confidence", "quality_flag",
+                "formula", "confidence", "quality_flag",
             ) if c in cols]
             scope_sql, params = self._scope_clause(doc_ids)
-            term_sql = " OR ".join("LOWER(metric_name) LIKE ?" for _ in terms)
-            params.extend(f"%{term}%" for term in terms)
+            searchable_cols = ["metric_name"]
+            if "metric_alias" in cols:
+                searchable_cols.append("metric_alias")
+            term_sql = " OR ".join(
+                f"LOWER(COALESCE({column},'')) LIKE ?"
+                for term in terms
+                for column in searchable_cols
+            )
+            params.extend(f"%{term}%" for term in terms for _ in searchable_cols)
             sql = f"SELECT {', '.join(selected)} FROM metric_facts WHERE {scope_sql} AND ({term_sql})"
             if "period" in cols and periods:
                 sql += " AND (" + " OR ".join("LOWER(COALESCE(period,'')) LIKE ?" for _ in periods) + ") ORDER BY rowid"
-                params.extend(f"%{p[:4]}%" for p in periods)
+                params.extend(f"%{p}%" for p in periods)
             else:
                 sql += " ORDER BY rowid"
-            rows = conn.execute(sql + " LIMIT 12", params).fetchall()
-        if not rows:
+            rows = conn.execute(sql + " LIMIT 96", params).fetchall()
+            row_dicts = [dict(r) for r in rows]
+            for row in row_dicts:
+                if not str(row.get("unit") or "").strip():
+                    row["unit"] = self._infer_sheet_unit(
+                        conn,
+                        row.get("doc_id"),
+                        row.get("sheet_name"),
+                        row.get("cell_ref"),
+                    )
+        if not row_dicts:
             return None
-        row_dicts = [dict(r) for r in rows]
+        row_dicts.sort(key=lambda row: _metric_row_rank(validation_query, row, periods), reverse=True)
+        row_dicts = row_dicts[:24]
         period_match = not periods or any(any(p[:4] in str(r.get("period") or "").casefold() for p in periods) for r in row_dicts)
         source_ids = {str(r.get("doc_id") or "") for r in row_dicts}
         metric_names = [str(r.get("metric_name") or "") for r in row_dicts]
@@ -342,7 +516,14 @@ class CascadeRetriever:
             value = str(value_num) if value_num is not None else str(row.get("value_text") or "?")
             period = str(row.get("period") or "")
             metric = str(row.get("metric_name") or "")
-            text = " ".join(x for x in (period, f"{metric}: {value}", str(row.get("unit") or "")) if x).strip()
+            text = " ".join(
+                x for x in (
+                    period,
+                    f"{metric}: {value}",
+                    str(row.get("unit") or ""),
+                    f"formula={row.get('formula')}" if row.get("formula") else "",
+                ) if x
+            ).strip()
             chunks.append({
                 "page_content": text,
                 "metadata": {
@@ -352,6 +533,7 @@ class CascadeRetriever:
                     "actual_or_estimate": str(row.get("actual_or_estimate") or ""),
                     "source_doc_id": str(row.get("doc_id") or ""),
                     "source_ref": " ".join(x for x in (str(row.get("sheet_name") or ""), str(row.get("cell_ref") or "")) if x),
+                    "formula": str(row.get("formula") or ""),
                     "confidence": row.get("confidence"), "quality_flag": row.get("quality_flag", ""),
                 },
             })

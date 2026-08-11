@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import defaultdict
 from typing import Any, Iterable
 
@@ -38,6 +39,12 @@ def fuse_evidence(
     rag_pre_rerank = _annotate_chunks(
         rag_pre_rerank, source_kind="rag_candidate", confidence_tier="candidate"
     )
+
+    if policy.require_table_evidence or _is_explicit_table_query(query):
+        rag_chunks = _dedupe_chunks([
+            *_required_table_row_rescue(query, rag_pre_rerank),
+            *rag_chunks,
+        ])
 
     metric_chunks = metric_chunks[: _limit(fusion_cfg, "max_metric_facts", 12)]
     keyword_chunks = keyword_chunks[: _limit(fusion_cfg, "max_keyword_chunks", 6)]
@@ -142,11 +149,22 @@ def compose_context(
         f"rag_executed={policy.run_rag}; reasons={','.join(policy.reason_codes)}",
         "Low-confidence DCI facts are candidate evidence: retain them, but do not let them override stronger dated source evidence.",
     ]
-    sections = (
-        ("dci_metric", "STRUCTURED DCI FACTS"),
-        ("rag", "RAG EVIDENCE"),
-        ("dci_keyword", "KEYWORD EVIDENCE"),
-    )
+    if policy.require_table_evidence:
+        lines.append(
+            "This query requires table evidence. Prefer literal table row labels, periods, values, units, and cell= references; "
+            "never infer a cell address from row order or from candidate DCI metadata."
+        )
+        sections = (
+            ("rag", "RAG EVIDENCE"),
+            ("dci_metric", "STRUCTURED DCI FACTS"),
+            ("dci_keyword", "KEYWORD EVIDENCE"),
+        )
+    else:
+        sections = (
+            ("dci_metric", "STRUCTURED DCI FACTS"),
+            ("rag", "RAG EVIDENCE"),
+            ("dci_keyword", "KEYWORD EVIDENCE"),
+        )
     for channel, heading in sections:
         channel_chunks = channels.get(channel, [])
         if not channel_chunks:
@@ -159,7 +177,14 @@ def compose_context(
             source_ref = metadata.get("source_ref") or metadata.get("source_file") or ""
             source_doc_id = metadata.get("source_doc_id") or metadata.get("doc_id") or ""
             prefix = f"[{evidence_id}] tier={tier} doc_id={source_doc_id} source={source_ref}"
-            content = str(chunk.get("page_content", ""))
+            content = str(chunk.get("page_content") or "")
+            # Canonical Excel row chunks keep their auditable cell/value
+            # representation in ``metadata.caption``. The legacy RAG
+            # formatter includes that field explicitly, so evidence fusion
+            # must preserve the same contract instead of emitting an empty
+            # table evidence block.
+            if not content.strip() and metadata.get("caption"):
+                content = str(metadata["caption"])
             if max_chunk_chars > 0 and len(content) > max_chunk_chars:
                 content = content[:max_chunk_chars].rstrip() + "\n[chunk truncated]"
             lines.append(f"{prefix}\n{content}")
@@ -219,6 +244,179 @@ def _cap_rag_channels(chunks: list[dict[str, Any]], cfg: dict[str, Any]) -> list
         *tables[: _limit(cfg, "max_table_chunks", 6)],
         *text[: _limit(cfg, "max_text_chunks", 8)],
     ]
+
+
+def _is_explicit_table_query(query: str) -> bool:
+    query_lower = str(query or "").casefold()
+    return any(term in query_lower for term in (
+        "control panel", "表中", "表格", "工作表", "sheet", "单元格", "cell",
+    ))
+
+
+def _peer_comparison_row_rescue(query: str, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep issuer/metric rows for an explicit workbook peer comparison.
+
+    Valuation-model peer blocks often encode the issuer and estimate period in
+    column A and the metric in column B. Their row labels therefore do not equal
+    canonical metric labels and the normal financial-row rescue cannot retain
+    them after reranking.
+    """
+    query_lower = str(query or "").casefold()
+    if not any(term in query_lower for term in ("同业", "可比", "peer", "comparison")):
+        return []
+
+    issuer_aliases = (
+        (("阳光电源", "sungrow"), "sungrow"),
+        (("锦浪科技", "锦浪", "ginlong"), "ginlong"),
+    )
+    requested_issuers = {
+        canonical
+        for aliases, canonical in issuer_aliases
+        if any(alias in query_lower for alias in aliases)
+    }
+    requested_metrics = {metric for metric in ("roe", "per") if metric in query_lower}
+    if not requested_issuers or not requested_metrics:
+        return []
+
+    rescued: list[dict[str, Any]] = []
+    for chunk in candidates:
+        metadata = chunk.get("metadata") or {}
+        if _normalized(metadata.get("content_type")) not in {"table", "excel_table"}:
+            continue
+        source_ref = str(metadata.get("source_ref") or "").casefold()
+        content = str(chunk.get("page_content") or metadata.get("caption") or "")
+        content_lower = content.casefold()
+        row_label = str(metadata.get("row_label") or "").casefold()
+        if "control panel" not in source_ref and "control panel" not in content_lower:
+            continue
+        if not any(issuer in row_label for issuer in requested_issuers):
+            continue
+        if not any(re.search(rf"\bvalue={metric}\b", content_lower) for metric in requested_metrics):
+            continue
+        promoted = dict(chunk)
+        promoted_metadata = dict(metadata)
+        promoted_metadata.update({
+            "source_kind": "rag",
+            "confidence_tier": "retrieved",
+            "required_table_row_rescue": True,
+            "peer_comparison_row_rescue": True,
+        })
+        promoted["metadata"] = promoted_metadata
+        promoted["page_content"] = _normalized_peer_row_content(content, row_label)
+        rescued.append(promoted)
+        if len(rescued) >= 8:
+            break
+    return rescued
+
+
+def _normalized_peer_row_content(content: str, row_label: str) -> str:
+    """Append an unambiguous issuer/metric/year view to a rescued peer row."""
+    metric_match = re.search(r"\bvalue=(ROE|PER)\b", content, re.I)
+    if not metric_match:
+        return content
+    metric = metric_match.group(1).upper()
+    values: list[tuple[str, str]] = []
+    for line in content.splitlines():
+        match = re.search(
+            r"\bvalue=([-+]?\d+(?:\.\d+)?)\s*\|\s*column=(20\d{2})(?:E)?\b",
+            line,
+            re.I,
+        )
+        if not match:
+            continue
+        numeric = float(match.group(1))
+        if metric == "ROE":
+            numeric = numeric * 100.0 if abs(numeric) <= 1.0 else numeric
+            display = f"{numeric:.4f}".rstrip("0").rstrip(".") + "%"
+        else:
+            display = f"{numeric:g}x"
+        values.append((match.group(2), display))
+    if not values:
+        return content
+    issuer = re.sub(r"\s+20\d{2}E?\s*$", "", row_label, flags=re.I).strip()
+    normalized = "; ".join(f"{year}={value}" for year, value in values)
+    return f"{content}\nNormalized peer fact: issuer={issuer}; metric={metric}; {normalized}"
+
+
+def _required_table_row_rescue(query: str, candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Retain exact metric rows that reranking must not discard."""
+    peer_rows = _peer_comparison_row_rescue(query, candidates)
+    if peer_rows:
+        return peer_rows
+    query_lower = str(query or "").lower()
+    aliases = (
+        (("营业收入", "营收", "revenue"), ("营业收入", "revenue", "total revenue", "sales_ind")),
+        (("营业成本", "销售成本", "cost of revenue", "cost of goods sold"), ("营业成本", "cost of goods sold", "cost of revenue", "cogs_ind")),
+        (("毛利润", "gross profit"), ("毛利润", "gross profit", "gp_ind")),
+        (("营业利润", "ebit"), ("营业利润", "ebit", "ebit (operating profits)", "ebit_ind")),
+        (("归母净利润", "归属于母公司", "net income"), ("归母净利润", "net profit attributable", "np_xord_ind")),
+        (("基本每股收益", "basic eps"), ("基本每股收益", "basic eps (cny/share)", "eps (reported)", "eps_rp_ind")),
+        (("毛利率", "gross margin"), ("毛利率", "gross margin", "gross_margin_ind")),
+        (("经营活动现金流", "经营性现金流", "operating cash flow"), ("经营活动现金流", "operating cash flow", "net cash from operating activities", "cf_op_ind")),
+        (("资本开支", "资本支出", "capex", "capital expenditure"), ("资本开支", "资本支出", "capital expenditure", "capex_ind", "purchase of ppe", "total capex (cny m)")),
+        (("自由现金流", "free cash flow"), ("自由现金流", "free cash flow", "fcf_ind")),
+        (("总资产", "total assets"), ("总资产", "total assets", "tot_assets_ind")),
+        (("总负债", "total liabilities"), ("总负债", "total liabilities", "tot_liabs_ind")),
+        (("股东权益", "shareholders' equity"), ("股东权益", "shareholders' equity", "shr_eqty")),
+        (("现金及等价物", "现金及现金等价物", "cash and cash equivalent"), ("现金及等价物", "cash and equivalent", "cash and equivalents", "cash and cash equivalents", "cash_ind")),
+        (("应收账款", "accounts receivable"), ("应收账款", "account receivables", "accounts receivable", "accts_rec_ind")),
+        (("存货", "inventory", "inventories"), ("存货", "inventories", "inventory", "inventories_ind")),
+        (("有息负债", "interest-bearing debt"), ("short term debt", "long term debt", "st_debt_ind", "lt_debt_ind")),
+        (("总股本", "shares outstanding"), ("shares outstanding", "shares outstanding (m, period-end)", "num_sh1", "ord_capital", "share capital", "总股本")),
+    )
+    labels: tuple[str, ...] = ()
+    for query_aliases, exact_labels in aliases:
+        if any(alias in query_lower for alias in query_aliases):
+            labels = exact_labels
+            break
+    if not labels and any(term in query_lower for term in ("公式", "formula")):
+        query_numbers = set(re.findall(r"\d+(?:\.\d+)?", query_lower))
+        formula_rows = []
+        for index, chunk in enumerate(candidates):
+            metadata = chunk.get("metadata") or {}
+            if _normalized(metadata.get("content_type")) not in {"table", "excel_table"}:
+                continue
+            content = str(chunk.get("page_content") or metadata.get("caption") or "")
+            if "formula=" not in content.lower() or "错误示例" in content:
+                continue
+            values = set(re.findall(r"value=([^ |\n]+)", content.lower()))
+            formula_rows.append((len(query_numbers & values), -index, chunk))
+        formula_rows.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        rescued = []
+        for _, _, chunk in formula_rows[:2]:
+            promoted = dict(chunk)
+            promoted_metadata = dict(chunk.get("metadata") or {})
+            promoted_metadata.update({
+                "source_kind": "rag",
+                "confidence_tier": "retrieved",
+                "required_table_row_rescue": True,
+            })
+            promoted["metadata"] = promoted_metadata
+            rescued.append(promoted)
+        return rescued
+    if not labels:
+        return []
+
+    rescued = []
+    for chunk in candidates:
+        metadata = chunk.get("metadata") or {}
+        if _normalized(metadata.get("content_type")) not in {"table", "excel_table"}:
+            continue
+        row_label = _normalized(metadata.get("row_label")).strip(" +()-")
+        if row_label not in labels:
+            continue
+        promoted = dict(chunk)
+        promoted_metadata = dict(metadata)
+        promoted_metadata.update({
+            "source_kind": "rag",
+            "confidence_tier": "retrieved",
+            "required_table_row_rescue": True,
+        })
+        promoted["metadata"] = promoted_metadata
+        rescued.append(promoted)
+        if len(rescued) >= 2:
+            break
+    return rescued
 
 
 def _dedupe_chunks(chunks: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

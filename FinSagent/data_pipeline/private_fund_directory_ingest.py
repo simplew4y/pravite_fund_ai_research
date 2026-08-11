@@ -1891,6 +1891,17 @@ def _nonempty_cells(ws) -> dict[tuple[int, int], Any]:
     return cells
 
 
+_NON_RESEARCH_SHEET_NAMES = {
+    "__fdscache__",
+    "db disclaimer",
+}
+
+
+def _is_non_research_sheet(sheet_name: str) -> bool:
+    """Return True for vendor cache/legal boilerplate sheets with no research value."""
+    return normalize_text(sheet_name).casefold() in _NON_RESEARCH_SHEET_NAMES
+
+
 def _sheet_bounds(cells: dict[tuple[int, int], Any]) -> Optional[tuple[int, int, int, int]]:
     if not cells:
         return None
@@ -1988,6 +1999,8 @@ def ingest_excel(conn: sqlite3.Connection, *, dataset_id: str, doc_id: str, path
     chunks: list[dict[str, Any]] = []
 
     for sheet_index, ws in enumerate(wb_formula.worksheets, start=1):
+        if _is_non_research_sheet(ws.title):
+            continue
         values_ws = wb_values[ws.title] if ws.title in wb_values.sheetnames else None
         cells = _nonempty_cells(ws)
         bounds = _sheet_bounds(cells)

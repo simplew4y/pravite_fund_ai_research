@@ -24,6 +24,7 @@ def execute_builtin(skill: RegisteredSkill, context: SkillContext) -> SkillResul
         "evidence_rescue_audit": _evidence_rescue_audit,
         "period_alignment_audit": _period_alignment_audit,
         "quant_skill_hints": _quant_skill_hints,
+        "financial_formula_verifier": _financial_formula_verifier,
     }
     if entrypoint not in handlers:
         return _result(skill, False, "no_action", warnings=[f"unknown_builtin:{entrypoint}"])
@@ -89,6 +90,19 @@ def _quant_skill_hints(skill: RegisteredSkill, context: SkillContext) -> SkillRe
         bool(hints),
         "applied" if hints else "no_action",
         derived_facts=hints,
+    )
+
+
+def _financial_formula_verifier(skill: RegisteredSkill, context: SkillContext) -> SkillResult:
+    from utils.financial_formula_repair import repair_financial_formula_answer
+
+    return _repair_result(
+        skill,
+        repair_financial_formula_answer(
+            context.question,
+            context.final_answer,
+            context.metric_facts,
+        ),
     )
 
 

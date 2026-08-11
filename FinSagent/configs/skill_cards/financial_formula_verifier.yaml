@@ -1,0 +1,30 @@
+skill_id: financial_formula_verifier
+version: "0.1.0"
+name: Deterministic Financial Formula Verifier
+scope: "Recomputes supported financial formulas from same-period scoped metric facts and repairs arithmetic, sign, or unit conversion errors."
+failure_types:
+  - formula_error
+  - unit_conversion_error
+  - period_mismatch
+trigger: "Question asks for FCF, trailing PE, PB, or market capitalization and all required operands are present."
+inputs:
+  - question
+  - generated_answer
+  - metric_facts
+outputs:
+  - repaired_answer
+  - formula
+  - variables
+  - source_refs
+  - skill_trace
+risks:
+  - "Unsupported formulas or incomplete operands intentionally produce no repair."
+eval_sets:
+  - formal_90_v2
+status: promoted
+owner: finsagent
+last_reviewed: "2026-08-11"
+implementation_refs:
+  - src/utils/financial_formula_repair.py
+  - src/skills_runtime/legacy_adapters.py
+notes: "Fail-closed deterministic repair for common private-fund financial formulas."

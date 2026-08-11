@@ -29,6 +29,10 @@ _CALCULATION_PATTERNS = (
     r"yoy", r"qoq", r"percentage\s+points?", r"growth\s+rate", r"calculate",
 )
 
+_EXPLICIT_TABLE_PATTERNS = (
+    r"excel", r"表格", r"单元格", r"工作表", r"sheet\b", r"cell\b",
+)
+
 
 def classify_query_type(question: str) -> str:
     text = str(question or "").casefold()
@@ -102,6 +106,15 @@ def decide_retrieval_policy(
             run_rag=True,
             require_table_evidence=True,
             reason_codes=("CALCULATION_OPERANDS_NOT_CONFIRMED",),
+        )
+
+    if _matches_any(str(original_question or "").casefold(), _EXPLICIT_TABLE_PATTERNS):
+        return RetrievalPolicy(
+            mode=mode,
+            query_type=query_type,
+            run_rag=True,
+            require_table_evidence=True,
+            reason_codes=("EXPLICIT_TABLE_EVIDENCE_REQUEST",),
         )
 
     if metric_high_confidence:

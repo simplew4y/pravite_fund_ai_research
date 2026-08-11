@@ -138,7 +138,11 @@ ORCHESTRATOR_PROMPT = (Path(__file__).resolve().parent.parent / "agents" / "syst
 
 
 def _has_explicit_year(text: str) -> bool:
-    return bool(re.search(r"20\d{2}", text))
+    return bool(re.search(
+        r"(?:20\d{2}|[1-4]q\d{2}|q[1-4][-_ ]?\d{2,4}|\d{2}q[1-4])",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    ))
 
 
 def _is_time_sensitive(text: str) -> bool:
@@ -152,6 +156,28 @@ def _is_time_sensitive(text: str) -> bool:
         "retail stores", "delivery centers", "sales network", "销售网络"
     ]
     return any(k in text_lower for k in keywords)
+
+
+def _is_finance_domain_question(text: str) -> bool:
+    """Deterministic guard against LLM off-topic false positives."""
+    text_lower = str(text or "").lower()
+    finance_signals = (
+        "财报", "营收", "营业收入", "营业成本", "毛利", "净利", "利润",
+        "现金流", "总资产", "总负债", "应收", "存货", "同比", "环比",
+        "估值", "市盈率", "市净率", "roe", "ebit", "eps", "收入",
+        "revenue", "gross margin", "net income", "cash flow", "balance sheet",
+        "income statement", "valuation", "earnings",
+    )
+    return any(signal in text_lower for signal in finance_signals)
+
+
+def _is_nonlegal_version_comparison(text: str) -> bool:
+    text_lower = str(text or "").lower()
+    version_signals = ("初稿", "修订版", "最终版", "版本", "draft", "revised version", "final version")
+    legal_signals = ("合同", "协议", "条款", "诉讼", "监管", "合规", "法律", "contract", "agreement", "legal")
+    return any(signal in text_lower for signal in version_signals) and not any(
+        signal in text_lower for signal in legal_signals
+    )
 
 
 def _inject_latest_time(question: str, latest_time: str) -> str:
@@ -267,6 +293,15 @@ async def orchestrator_node(state: MASState) -> Dict[str, Any]:
     reason = decision.get("reason", "")
     off_topic = bool(decision.get("off_topic", False))
     direct_answer = decision.get("answer", "")
+    if off_topic and _is_finance_domain_question(question):
+        off_topic = False
+        if not selected:
+            selected = ["quant"]
+        reason = f"finance_domain_guard: {reason or 'LLM off-topic false positive'}"
+    if selected == ["legal_risk"] and _is_nonlegal_version_comparison(question):
+        selected = ["company_researcher"]
+        off_topic = False
+        reason = f"nonlegal_version_guard: {reason or 'business document comparison'}"
     resolved_enable_query_decompose = default_enable_query_decompose
     if off_topic:
         msg = direct_answer or (

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import unicodedata
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,28 @@ def _active_document_sql(columns: set[str]) -> str:
     if "status" in columns:
         clauses.append("status = 'indexed'")
     return " WHERE " + " AND ".join(clauses) if clauses else ""
+
+
+def _normalize(value: Any) -> str:
+    return unicodedata.normalize("NFKC", str(value or "")).casefold().strip()
+
+
+def _metadata_company_mismatch(
+    metadata: dict[str, Any], authoritative: dict[str, dict[str, str]]
+) -> str:
+    source_doc_id = str(metadata.get("source_doc_id") or "")
+    expected = authoritative.get(source_doc_id)
+    if not expected:
+        return ""
+    actual_company = str(metadata.get("company_name") or metadata.get("company") or "")
+    expected_company = str(expected.get("company_name") or "")
+    if expected_company and _normalize(actual_company) != _normalize(expected_company):
+        return f"{source_doc_id}: company={actual_company!r} expected={expected_company!r}"
+    actual_ticker = str(metadata.get("ticker") or metadata.get("company_ticker") or "")
+    expected_ticker = str(expected.get("company_ticker") or "")
+    if expected_ticker and _normalize(actual_ticker) != _normalize(expected_ticker):
+        return f"{source_doc_id}: ticker={actual_ticker!r} expected={expected_ticker!r}"
+    return ""
 
 
 def audit_sqlite(collection_db: Path) -> dict[str, Any]:
@@ -58,12 +81,14 @@ def audit_sqlite(collection_db: Path) -> dict[str, Any]:
             "SELECT chunk_id, doc_id, dataset_id, content_type FROM chunks"
         ).fetchall()
         chunk_ids = {str(row["chunk_id"]) for row in chunk_rows}
-        expected_main_ids = {
+        expected_main_ids = chunk_ids
+        expected_table_ids = {
             str(row["chunk_id"])
             for row in chunk_rows
-            if str(row["content_type"] or "") == "excel_workbook_summary"
+            if str(row["content_type"] or "") in {
+                "excel_region_summary", "excel_sheet_summary", "excel_workbook_summary"
+            }
         }
-        expected_table_ids = chunk_ids - expected_main_ids
         companies = Counter(
             str(row.get("company_name") or row.get("company_ticker") or "<unknown>")
             for row in documents
@@ -73,6 +98,41 @@ def audit_sqlite(collection_db: Path) -> dict[str, Any]:
             for row in chunk_rows
             if dataset_ids and str(row["dataset_id"] or "") not in dataset_ids
         )
+        duplicate_chunk_hashes = []
+        if "content_hash" in _columns(conn, "chunks"):
+            duplicate_chunk_hashes = [
+                {
+                    "content_hash": str(row[0]),
+                    "document_count": int(row[1]),
+                    "chunk_count": int(row[2]),
+                    "doc_ids": str(row[3] or "").split(","),
+                }
+                for row in conn.execute(
+                    """
+                    SELECT content_hash, COUNT(DISTINCT doc_id), COUNT(*),
+                           GROUP_CONCAT(DISTINCT doc_id)
+                    FROM chunks
+                    WHERE COALESCE(content_hash, '') <> ''
+                    GROUP BY content_hash
+                    HAVING COUNT(DISTINCT doc_id) > 1
+                    ORDER BY COUNT(DISTINCT doc_id) DESC, content_hash
+                    """
+                )
+            ]
+        duplicate_documents: dict[str, list[dict[str, Any]]] = {}
+        for field in ("checksum", "logical_doc_id", "original_filename"):
+            if field not in document_columns:
+                continue
+            groups: dict[str, list[str]] = {}
+            for row in documents:
+                value = str(row.get(field) or "").strip()
+                if value:
+                    groups.setdefault(value, []).append(str(row.get("doc_id") or ""))
+            duplicate_documents[field] = [
+                {"value": value, "doc_ids": sorted(ids), "document_count": len(ids)}
+                for value, ids in sorted(groups.items())
+                if len(ids) > 1
+            ]
         return {
             "document_ids": sorted(doc_ids),
             "dataset_ids": sorted(dataset_ids),
@@ -80,6 +140,17 @@ def audit_sqlite(collection_db: Path) -> dict[str, Any]:
             "table_counts": table_counts,
             "orphan_doc_ids": orphan_doc_ids,
             "mismatched_chunk_dataset_rows": mismatched_dataset_rows,
+            "cross_document_duplicate_content_hashes": duplicate_chunk_hashes,
+            "duplicate_documents": duplicate_documents,
+            "document_metadata": {
+                str(row.get("doc_id")): {
+                    "dataset_id": str(row.get("dataset_id") or ""),
+                    "company_name": str(row.get("company_name") or ""),
+                    "company_ticker": str(row.get("company_ticker") or ""),
+                }
+                for row in documents
+                if row.get("doc_id")
+            },
             "chunk_ids": chunk_ids,
             "expected_main_ids": expected_main_ids,
             "expected_table_ids": expected_table_ids,
@@ -97,6 +168,7 @@ def audit_chroma(
 
     allowed_doc_ids = set(sqlite_report["document_ids"])
     allowed_dataset_ids = set(sqlite_report["dataset_ids"])
+    authoritative = sqlite_report["document_metadata"]
     components: dict[str, Any] = {}
     errors: list[str] = []
     warnings: list[str] = []
@@ -118,6 +190,11 @@ def audit_chroma(
         missing_dataset = sum(not value for value in dataset_ids)
         foreign_source_ids = sorted({value for value in source_ids if value and value not in allowed_doc_ids})
         foreign_dataset_ids = sorted({value for value in dataset_ids if value and value not in allowed_dataset_ids})
+        company_mismatches = sorted(
+            mismatch
+            for metadata in metadatas
+            if (mismatch := _metadata_company_mismatch(metadata or {}, authoritative))
+        )
 
         if missing_source:
             errors.append(f"{component}: {missing_source} records lack source_doc_id")
@@ -127,8 +204,14 @@ def audit_chroma(
             warnings.append(f"{component}: {missing_dataset} records lack dataset_id metadata")
         if foreign_dataset_ids:
             errors.append(f"{component}: foreign dataset_ids={foreign_dataset_ids}")
+        if company_mismatches:
+            errors.append(f"{component}: company/ticker metadata mismatches={company_mismatches}")
 
         vector_ids = set(ids)
+        metadata_by_id = {
+            vector_id: (metadata or {})
+            for vector_id, metadata in zip(ids, metadatas)
+        }
         if component == "chroma":
             expected_ids = set(sqlite_report["expected_main_ids"])
         elif component == "table_chroma":
@@ -137,7 +220,18 @@ def audit_chroma(
             expected_ids = set()
 
         missing_vector_ids = sorted(expected_ids - vector_ids)
-        extra_vector_ids = sorted(vector_ids - expected_ids) if component != "ts_chroma" else []
+        allowed_derived_types = {
+            "chroma": {"table"},
+            "table_chroma": {"table"},
+            "ts_chroma": {"document_title"},
+        }[component]
+        derived_vector_ids = {
+            vector_id
+            for vector_id in vector_ids - expected_ids
+            if str(metadata_by_id.get(vector_id, {}).get("content_type") or "")
+            in allowed_derived_types
+        }
+        extra_vector_ids = sorted(vector_ids - expected_ids - derived_vector_ids)
         if missing_vector_ids:
             errors.append(f"{component}: {len(missing_vector_ids)} SQLite chunks are missing")
         if extra_vector_ids:
@@ -150,8 +244,10 @@ def audit_chroma(
             "missing_dataset_id": missing_dataset,
             "foreign_source_doc_ids": foreign_source_ids,
             "foreign_dataset_ids": foreign_dataset_ids,
+            "company_metadata_mismatches": company_mismatches,
             "missing_vector_id_count": len(missing_vector_ids),
             "extra_vector_id_count": len(extra_vector_ids),
+            "derived_vector_id_count": len(derived_vector_ids),
         }
 
     return components, errors, warnings
@@ -178,6 +274,19 @@ def main() -> None:
         errors.append(
             "sqlite chunks: "
             f"{sqlite_report['mismatched_chunk_dataset_rows']} rows have an unexpected dataset_id"
+        )
+    if sqlite_report["cross_document_duplicate_content_hashes"]:
+        errors.append(
+            "sqlite chunks: "
+            f"{len(sqlite_report['cross_document_duplicate_content_hashes'])} content hashes "
+            "occur across multiple companies/documents"
+        )
+    duplicate_document_groups = sum(
+        len(groups) for groups in sqlite_report["duplicate_documents"].values()
+    )
+    if duplicate_document_groups:
+        errors.append(
+            f"sqlite documents: {duplicate_document_groups} duplicate active-document groups"
         )
 
     report = {

@@ -1,0 +1,70 @@
+schema_version: 1
+max_skills_per_request: 8
+combos:
+  C0:
+    label: 无Skills融合基线
+    runtime_enabled: false
+    allow: []
+  C1:
+    label: 财务数字口径对齐
+    allow: [period_alignment, finskillops_financial_numeric_synthesis]
+  C2:
+    label: 财务证据闭环
+    execution_mode: active
+    allow: [period_alignment, finskillops_financial_numeric_synthesis, financial_formula_verifier, table_evidence_verifier, source_conflict, answer_coverage]
+  C3:
+    label: 防幻觉与拒答
+    allow: [period_alignment, table_evidence_verifier, source_conflict, company_profile_boundary]
+  C4:
+    label: 跨公司污染防护
+    allow: [finskillops_source_grounded_issuer_profile, company_profile_boundary, source_conflict, period_alignment, finskillops_financial_numeric_synthesis]
+  C5:
+    label: 财报深读
+    allow: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, answer_coverage, dianjin_corporate_banker_financial_report_analysis]
+  C6:
+    label: 季度业绩点评
+    allow: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_investment_researcher_earnings_commentary_generator]
+  C7:
+    label: 公司一页纸
+    allow: [finskillops_source_grounded_issuer_profile, period_alignment, finskillops_financial_numeric_synthesis, source_conflict, dianjin_investment_researcher_company_one_page_analysis]
+  C8:
+    label: 公司深度研报
+    allow: [finskillops_source_grounded_issuer_profile, period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_corporate_banker_financial_report_analysis, dianjin_investment_researcher_company_deep_analysis]
+  C9:
+    label: 多文档完整投研
+    allow: [finskillops_source_grounded_issuer_profile, period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_corporate_banker_financial_report_analysis, dianjin_investment_researcher_earnings_commentary_generator, dianjin_investment_researcher_company_deep_analysis]
+  C10:
+    label: 可比公司估值
+    allow: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_investment_advisor_comparable_company_analysis]
+    external_dependencies: [market_data]
+  C11:
+    label: 行情与估值联动
+    allow: [finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_investment_advisor_stock_quote_analysis, dianjin_investment_advisor_comparable_company_analysis]
+    external_dependencies: [market_data]
+  C12:
+    label: 行业估值与景气
+    allow: [dianjin_investment_researcher_industry_deep_analysis, dianjin_investment_researcher_valuation_prosperity_tracking, dianjin_investment_researcher_sector_allocation, dianjin_investment_researcher_global_macro_linkage, source_conflict]
+    external_dependencies: [market_data, macro_data]
+  C13:
+    label: 管理层与公司事实
+    allow: [finskillops_source_grounded_issuer_profile, company_profile_boundary, source_conflict, period_alignment, dianjin_investment_researcher_announcement_analysis]
+  C14:
+    label: 股权穿透与关联方
+    allow: [finskillops_source_grounded_issuer_profile, company_profile_boundary, source_conflict, dianjin_investment_advisor_stock_shareholder_analysis, dianjin_corporate_banker_equity_penetration_analysis]
+    external_dependencies: [shareholder_data, corporate_registry]
+  C15:
+    label: 重大公告解读
+    allow: [finskillops_source_grounded_issuer_profile, period_alignment, source_conflict, finskillops_financial_numeric_synthesis, dianjin_investment_researcher_announcement_analysis, dianjin_investment_researcher_earnings_commentary_generator]
+  C16:
+    label: 机构调研准备
+    allow: [finskillops_source_grounded_issuer_profile, period_alignment, finskillops_financial_numeric_synthesis, source_conflict, dianjin_investment_researcher_company_deep_analysis, dianjin_investment_researcher_institutional_research_outline, dianjin_corporate_banker_pre_visit_plan]
+  C17:
+    label: 企业信用尽调
+    allow: [finskillops_source_grounded_issuer_profile, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_corporate_banker_financial_report_analysis, dianjin_corporate_banker_equity_penetration_analysis, dianjin_credit_risk_manager_credit_risk_extraction, dianjin_corporate_banker_credit_due_diligence]
+    external_dependencies: [corporate_registry, credit_data]
+  C18:
+    label: 产业债财务排雷
+    allow: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_corporate_banker_financial_report_analysis, dianjin_credit_risk_manager_credit_risk_extraction, dianjin_investment_researcher_industry_bond_risk_control]
+  C19:
+    label: 财报事实与业绩叙事闭环
+    allow: [period_alignment, finskillops_financial_numeric_synthesis, source_conflict, answer_coverage, dianjin_corporate_banker_financial_report_analysis, dianjin_investment_researcher_earnings_commentary_generator]

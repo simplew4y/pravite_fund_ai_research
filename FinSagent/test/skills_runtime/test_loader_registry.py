@@ -26,15 +26,16 @@ def test_builtin_skill_packages_are_discoverable() -> None:
         if skill.manifest.implementation.get("source") == "finskillops-skill-seeds"
     ]
 
-    assert len(builtin) == 8
+    assert len(builtin) == 9
     assert len(dianjin) == 83
     assert len(finskillops) == 2
-    assert registry.summary()["status_counts"] == {"promoted": 7, "experimental": 86}
+    assert registry.summary()["status_counts"] == {"promoted": 8, "experimental": 86}
     assert {skill.manifest.skill_id for skill in builtin} == {
         "answer_coverage",
         "company_profile_boundary",
         "evidence_rescue_scorer",
         "exact_evidence_probe",
+        "financial_formula_verifier",
         "period_alignment",
         "quant_skill_hints",
         "source_conflict",
@@ -141,8 +142,8 @@ def test_public_catalog_hides_internal_hash_and_owner() -> None:
 def test_governance_registry_loads_from_skill_packages() -> None:
     registry = load_skill_registry(PROJECT_ROOT / "skills")
 
-    assert len(registry.all()) == 93
-    assert registry.status_counts() == {"promoted": 7, "experimental": 86}
+    assert len(registry.all()) == 94
+    assert registry.status_counts() == {"promoted": 8, "experimental": 86}
     assert registry.get("table_evidence_verifier").implementation_refs
     assert registry.get("dianjin_investment_researcher_company_deep_analysis").status == "experimental"
 

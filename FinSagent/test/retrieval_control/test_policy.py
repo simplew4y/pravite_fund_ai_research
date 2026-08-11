@@ -82,3 +82,17 @@ def test_dci_only_retains_evidence_without_rag() -> None:
 
     assert policy.run_rag is False
     assert policy.retain_metric_dci is True
+
+
+def test_explicit_excel_cell_request_requires_table_rag() -> None:
+    policy = decide_retrieval_policy(
+        original_question="只根据盈利预测汇总Excel表列出营业收入并给出单元格",
+        agent="quant",
+        metric_result=None,
+        keyword_result={"chunks": [{"page_content": "summary"}]},
+        mode="evidence_fusion",
+    )
+
+    assert policy.run_rag is True
+    assert policy.require_table_evidence is True
+    assert policy.reason_codes == ("EXPLICIT_TABLE_EVIDENCE_REQUEST",)

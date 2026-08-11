@@ -1,5 +1,6 @@
 import logging
 import torch
+import re
 logger = logging.getLogger(__name__)
 
 from typing import Dict, List, Optional, Set, Union, Any
@@ -198,8 +199,11 @@ class EnsembleRetriever:
         if (seed_score <= 0.72) or (not self.enable_expand):
             return ids
 
-        prev_doc_id = doc_metadata['prev_chunk_id']
-        next_doc_id = doc_metadata['next_chunk_id']
+        # Generated table-row/title chunks are standalone and legitimately do
+        # not have sequential neighbours.  Missing adjacency metadata must
+        # disable expansion, not fail the entire retrieval request.
+        prev_doc_id = doc_metadata.get('prev_chunk_id', '')
+        next_doc_id = doc_metadata.get('next_chunk_id', '')
         expanded_ids = list(ids)
         while len(expanded_ids) < 4:
             flag = False
@@ -209,7 +213,7 @@ class EnsembleRetriever:
                     flag = True
                     seen_ids.add(prev_id)
                     expanded_ids.insert(0, prev_id)
-                    prev_doc_id = self.chunk_metadata[prev_id]['prev_chunk_id']
+                    prev_doc_id = self.chunk_metadata[prev_id].get('prev_chunk_id', '')
 
             if next_doc_id != "" and self.docid2idx.get(next_doc_id, -1) != -1:
                 next_id = self.docid2idx[next_doc_id]
@@ -217,7 +221,7 @@ class EnsembleRetriever:
                     flag = True
                     seen_ids.add(next_id)
                     expanded_ids.append(next_id)
-                    next_doc_id = self.chunk_metadata[next_id]['next_chunk_id']
+                    next_doc_id = self.chunk_metadata[next_id].get('next_chunk_id', '')
             if not flag:
                 break
         return expanded_ids
@@ -470,9 +474,12 @@ class EnsembleRetriever:
         Returns None to keep all (no filter).
         """
         if agent == "quant":
-            # quant: prefer tables and metric facts, skip pure text
+            # Quant primarily uses tables/metrics, but qualified financial
+            # metrics and management guidance are often stated only in PDFs.
             return {"excel_region_summary", "excel_sheet_summary",
-                    "excel_workbook_summary", "metric_fact", "table"}
+                    "excel_workbook_summary", "metric_fact", "table",
+                    "pdf_page", "pdf_speaker_turn", "pdf_document_summary",
+                    "text", "pdf_section"}
         if agent == "market_researcher":
             # market_researcher: prefer text, skip raw table region dumps
             return {"text", "excel_model_section", "pdf_section"}
@@ -526,7 +533,7 @@ class EnsembleRetriever:
         table_ids_list, table_scores_list = self.table_faiss_retriever.invoke([input], search_k)
         table_ids, table_scores = table_ids_list[0], table_scores_list[0]
 
-        table_chunks = []
+        ranked_tables = []
         for idx, score in zip(table_ids, table_scores):
             if idx < 0 or idx >= len(self.table_metadata):
                 continue
@@ -535,6 +542,19 @@ class EnsembleRetriever:
                 and self._source_doc_id(self.table_metadata[idx]) not in allowed_source_doc_ids
             ):
                 continue
+            caption = self.table_captions[idx]
+            metadata = self.table_metadata[idx] or {}
+            lexical_score = self._table_lexical_score(input, caption, metadata)
+            ranked_tables.append((lexical_score, float(score), idx))
+
+        # Financial table lookup is not purely semantic: an explicit sheet,
+        # metric and period must outrank a semantically similar but wrong row.
+        # Keep vector relevance as the tie breaker after deterministic lexical
+        # constraints have been applied.
+        ranked_tables.sort(key=lambda item: (item[0], item[1]), reverse=True)
+
+        table_chunks = []
+        for lexical_score, score, idx in ranked_tables:
             caption = self.table_captions[idx]
             # copy metadata so we don't mutate cached objects
             metadata = dict(self.table_metadata[idx]) if idx < len(self.table_metadata) else {}
@@ -551,7 +571,7 @@ class EnsembleRetriever:
             table_chunks.append(
                 {
                     "retriever": "Table",
-                    "score": float(score),
+                    "score": float(score) + float(lexical_score),
                     "page_content": content,
                     "metadata": {
                         **metadata,
@@ -568,6 +588,59 @@ class EnsembleRetriever:
         profiler.end("retrieve_tables")
         profiler.add_metric("retrieved_tables", len(table_chunks))
         return table_chunks
+
+    @staticmethod
+    def _table_lexical_score(query: str, caption: str, metadata: Dict[str, Any]) -> float:
+        """Score auditable sheet/metric/period matches before dense tie-breaking."""
+        query_text = str(query or "").lower()
+        source_ref = str(metadata.get("source_ref") or "").lower()
+        row_label = str(metadata.get("row_label") or "").lower()
+        haystack = f"{str(caption or '').lower()}\n{source_ref}\n{row_label}"
+        score = 0.0
+
+        sheet_names = (
+            "qoq&results", "pl_bs_cfs", "upload sheet", "盈利预测汇总",
+            "储能情景分析", "碳酸锂敏感性", "公式审计", "口径与来源",
+        )
+        for sheet in sheet_names:
+            if sheet in query_text:
+                score += 12.0 if sheet in haystack else -6.0
+
+        periods = set(re.findall(r"(?<![a-z0-9])(?:[1-4]q\d{2}|fy\d{2}|\d{4}[ae]?)(?![a-z0-9])", query_text))
+        for period in periods:
+            if period in haystack:
+                score += 5.0
+
+        aliases = (
+            (("营业收入", "营收"), ("营业收入", "revenue", "total revenue", "sales_ind"), ("revenue", "total revenue", "total revenue (+)", "sales_ind", "营业收入")),
+            (("营业成本",), ("营业成本", "cogs", "cost of goods sold", "cost of revenue"), ("cogs", "cost of goods sold", "cost of revenue", "营业成本")),
+            (("毛利润",), ("毛利润", "gross profit", "gp_ind"), ("gross profit", "gp_ind", "毛利润")),
+            (("毛利率",), ("毛利率", "gross margin", "gross_margin_ind"), ("gross margin", "gross_margin_ind", "毛利率")),
+            (("归母净利润", "归属于母公司"), ("归母净利润", "net profit attributable", "np_xord_ind"), ("net profit attributable to shareholders", "attributable net profit", "np_xord_ind", "归母净利润")),
+            (("经营活动现金流", "经营性现金流"), ("经营活动现金流", "operating cash flow", "cf_op_ind"), ("operating cash flow", "cash flow from operating activities", "cf_op_ind", "经营活动现金流")),
+            (("总资产",), ("总资产", "total assets", "tot_assets_ind"), ("total assets", "tot_assets_ind", "总资产")),
+            (("总负债",), ("总负债", "total liabilities", "tot_liabs_ind"), ("total liabilities", "tot_liabs_ind", "总负债")),
+            (("应收账款",), ("应收账款", "accounts receivable", "accts_rec_ind"), ("accounts receivable", "accts_rec_ind", "应收账款")),
+        )
+        for query_aliases, content_aliases, exact_labels in aliases:
+            if any(alias in query_text for alias in query_aliases):
+                metric_prefix = f"{row_label}\n{str(caption or '')[:260].lower()}"
+                if any(alias in metric_prefix for alias in content_aliases):
+                    score += 10.0
+                if row_label.strip(" +()-") in exact_labels:
+                    score += 20.0
+                if not any(term in query_text for term in ("同比", "环比", "增速", "增长", "growth", "yoy", "qoq")):
+                    if any(term in row_label for term in ("growth", "yoy", "qoq", "增速", "增长")):
+                        score -= 10.0
+
+        if "pl_bs_cfs" in source_ref:
+            score += 5.0
+        elif "upload sheet" in source_ref:
+            score += 4.0
+
+        if row_label:
+            score += 1.0
+        return score
 
     def compute_similarity(self, chunks: List[str], selected_indices: List[int], candidate_index: int) -> List[float]:
         """

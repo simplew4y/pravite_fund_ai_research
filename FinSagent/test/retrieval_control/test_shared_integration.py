@@ -78,10 +78,11 @@ class _Manager:
 
 
 class _RAG:
-    def __init__(self, *, fail: bool = False) -> None:
+    def __init__(self, *, fail: bool = False, empty: bool = False) -> None:
         self.rag_manager = _Manager()
         self.calls: list[dict] = []
         self.fail = fail
+        self.empty = empty
 
     def retrieve(self, query, query_time, *, agent, allowed_source_doc_ids, **kwargs):
         self.calls.append({
@@ -91,6 +92,13 @@ class _RAG:
         })
         if self.fail:
             raise RuntimeError("test RAG failure")
+        if self.empty:
+            return {
+                "rag_context": "",
+                "final_chunks": [],
+                "pre_rerank_chunks": [],
+                "time_info": [],
+            }
         chunk = {
             "page_content": "Annual report narrative for Porsche FY2024.",
             "metadata": {
@@ -217,3 +225,60 @@ def test_rag_failure_keeps_dci_evidence(tmp_path: Path) -> None:
     assert evidences[0]["rag_executed"] is True
     assert evidences[0]["rag_succeeded"] is False
     assert any(chunk["metadata"]["source_kind"] == "dci_metric" for chunk in evidences[0]["chunks"])
+
+
+def test_empty_rag_result_is_not_reported_as_success(tmp_path: Path) -> None:
+    db_path = tmp_path / "collection.sqlite3"
+    _build_db(db_path)
+    rag = _RAG(empty=True)
+
+    evidences = _retrieve(
+        db_path,
+        rag,
+        "保时捷 2024 年归母净利润是多少？",
+        "2024 net profit",
+    )
+
+    assert evidences[0]["rag_executed"] is True
+    assert evidences[0]["rag_succeeded"] is False
+    trace = evidences[0]["retrieval_trace"][0]
+    assert trace["rag_chunks"] == 0
+    assert trace["rag_succeeded"] is False
+
+
+def test_rag_only_skips_dci_and_runs_scoped_rag(tmp_path: Path) -> None:
+    db_path = tmp_path / "collection.sqlite3"
+    _build_db(db_path)
+    rag = _RAG()
+    rag.rag_manager = _Manager(mode="rag_only")
+
+    evidences = _retrieve(
+        db_path,
+        rag,
+        "保时捷 2024 年净利润是多少？",
+        "2024 net profit",
+    )
+
+    assert rag.calls[0]["allowed_source_doc_ids"] == ["porsche-doc"]
+    evidence = evidences[0]
+    assert len(evidence["chunks"]) == 1
+    assert evidence["chunks"][0]["metadata"]["source_doc_id"] == "porsche-doc"
+    assert evidence["retrieval_policy"]["mode"] == "rag_only"
+    assert evidence["retrieval_policy"]["reason_codes"] == ["LEGACY_RAG_FALLBACK"]
+
+
+def test_explicit_allowed_doc_ids_intersect_company_scope_fail_closed(tmp_path: Path) -> None:
+    db_path = tmp_path / "collection.sqlite3"
+    _build_db(db_path)
+    rag = _RAG()
+    rag.rag_manager._config["retrieval_scope_allowed_doc_ids"] = ["different-doc"]
+
+    evidences = _retrieve(
+        db_path,
+        rag,
+        "保时捷 2024 年归母净利润是多少？",
+        "2024 net profit",
+    )
+
+    assert evidences == []
+    assert rag.calls == []
