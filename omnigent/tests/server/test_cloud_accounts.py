@@ -26,9 +26,14 @@ def cloud_store(
     monkeypatch: pytest.MonkeyPatch,
 ) -> SqlAlchemyAccountStore:
     monkeypatch.setenv("OMNIGENT_USER_SECRETS_KEY", secrets.token_hex(32))
+    user_root = tmp_path / "output" / "users"
     monkeypatch.setattr(
-        "omnigent.server.private_fund_locale.project_root",
-        lambda: tmp_path,
+        "omnigent.server.private_fund_locale.user_data_root",
+        lambda: user_root,
+    )
+    monkeypatch.setattr(
+        "omnigent.server.private_fund_memory.user_data_root",
+        lambda: user_root,
     )
     db_url = f"sqlite:///{tmp_path}/cloud-accounts.db"
     get_or_create_engine(db_url)

@@ -10,7 +10,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal
 
-from omnigent.server.private_fund_tenant import project_root
+from omnigent.server.private_fund_tenant import user_data_root
 
 AppLocale = Literal["zh-CN", "en-US"]
 DEFAULT_APP_LOCALE: AppLocale = "zh-CN"
@@ -25,14 +25,7 @@ def normalize_app_locale(value: Any) -> AppLocale:
 
 def _preferences_path(data_namespace: str) -> Path:
     namespace = str(uuid.UUID(data_namespace))
-    return (
-        project_root()
-        / "output"
-        / "users"
-        / namespace
-        / "settings"
-        / "preferences.json"
-    )
+    return user_data_root() / namespace / "settings" / "preferences.json"
 
 
 def write_user_locale(data_namespace: str, locale: AppLocale | str) -> Path:

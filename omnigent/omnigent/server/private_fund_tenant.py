@@ -36,6 +36,7 @@ def project_root() -> Path:
 
 
 def user_data_root() -> Path:
+    """Return the configured root that owns all per-user workbench data."""
     configured = os.environ.get("PRIVATE_FUND_USER_DATA_ROOT", "").strip()
     if configured:
         return Path(configured).expanduser().resolve()

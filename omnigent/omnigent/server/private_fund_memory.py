@@ -10,7 +10,7 @@ from contextlib import suppress
 from pathlib import Path
 
 from omnigent.runner.identity import RUNNER_USER_MEMORY_DIR_ENV_VAR
-from omnigent.server.private_fund_tenant import current_tenant, project_root
+from omnigent.server.private_fund_tenant import current_tenant, user_data_root
 
 POLICY_FILE_NAME = "POLICY.md"
 MEMORY_FILE_NAME = "MEMORY.md"
@@ -49,7 +49,7 @@ def _normalized_namespace(data_namespace: str) -> str:
 def user_memory_dir(data_namespace: str) -> Path:
     """Return the server-owned memory directory for one authenticated user."""
     namespace = _normalized_namespace(data_namespace)
-    return project_root() / "output" / "users" / namespace / "memory"
+    return user_data_root() / namespace / "memory"
 
 
 def policy_text(locale: str) -> str:
