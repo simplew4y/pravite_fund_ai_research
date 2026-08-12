@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { usePrivateFundValuationTracking } from "@/hooks/usePrivateFundProjects";
 import {
@@ -38,6 +39,7 @@ import {
 } from "@/lib/privateFundApi";
 import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
 import { cn } from "@/lib/utils";
+import { currentAppLocale } from "@/lib/localeFormat";
 
 const EMPTY_SELECTED_DOCUMENT_IDS: string[] = [];
 
@@ -113,7 +115,7 @@ function formatTime(value?: string | null): string {
     : value;
   const timestamp = Date.parse(compactDate);
   if (!Number.isFinite(timestamp)) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(currentAppLocale(), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -125,7 +127,7 @@ function formatTime(value?: string | null): string {
 function formatMetricValue(value: number | null, unit: string): string {
   if (value === null || !Number.isFinite(value)) return "暂无";
   if (unit === "percent" || unit === "percentage_point") {
-    return new Intl.NumberFormat("zh-CN", {
+    return new Intl.NumberFormat(currentAppLocale(), {
       style: "percent",
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
@@ -133,21 +135,30 @@ function formatMetricValue(value: number | null, unit: string): string {
     }).format(value);
   }
   if (unit === "multiple") {
-    return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value)}x`;
+    return `${new Intl.NumberFormat(currentAppLocale(), { maximumFractionDigits: 2 }).format(value)}x`;
   }
   if (unit === "currency") {
     const absolute = Math.abs(value);
-    if (absolute >= 100_000_000) return `${(value / 100_000_000).toFixed(2)} 亿元`;
-    if (absolute >= 10_000) return `${(value / 10_000).toFixed(1)} 万元`;
-    return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value)} 元`;
+    const english = currentAppLocale() === "en-US";
+    if (absolute >= 100_000_000) {
+      return english
+        ? `CNY ${(value / 1_000_000_000).toFixed(2)}bn`
+        : `${(value / 100_000_000).toFixed(2)} 亿元`;
+    }
+    if (absolute >= 10_000) {
+      return english
+        ? `CNY ${(value / 1_000_000).toFixed(1)}m`
+        : `${(value / 10_000).toFixed(1)} 万元`;
+    }
+    return `${new Intl.NumberFormat(currentAppLocale(), { maximumFractionDigits: 0 }).format(value)} ${currentAppLocale() === "en-US" ? "CNY" : "元"}`;
   }
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat(currentAppLocale(), { maximumFractionDigits: 2 }).format(value);
 }
 
 function formatPrice(value: number | null, currency: string): string {
   if (value === null || !Number.isFinite(value)) return "暂无";
   try {
-    return new Intl.NumberFormat("zh-CN", {
+    return new Intl.NumberFormat(currentAppLocale(), {
       style: "currency",
       currency: currency || "CNY",
       minimumFractionDigits: 2,
@@ -160,7 +171,7 @@ function formatPrice(value: number | null, currency: string): string {
 
 function formatUpside(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "暂无";
-  return new Intl.NumberFormat("zh-CN", {
+  return new Intl.NumberFormat(currentAppLocale(), {
     style: "percent",
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
@@ -842,9 +853,10 @@ function ValuationImpactSection({ analysis }: { analysis: PrivateFundValuationIm
 }
 
 function LoadingState() {
+  const { t } = useTranslation();
   return (
     <div
-      aria-label="正在加载估值对比"
+      aria-label={t("valuation.loading")}
       className="overflow-hidden rounded-xl border border-[var(--pf-line)]"
     >
       {EXPECTED_METRICS.map((key) => (
@@ -1274,6 +1286,7 @@ function ValuationIdentityEditor({
   );
 }
 export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: string }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const valuationQuery = usePrivateFundValuationTracking(datasetId);
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
@@ -1341,7 +1354,7 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
   if (valuationQuery.isError) {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-        无法加载估值模型分析：{valuationQuery.error.message}
+        {t("valuation.loadFailed")}：{valuationQuery.error.message}
       </div>
     );
   }
@@ -1349,9 +1362,11 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
     return (
       <section className="rounded-xl border border-dashed border-[var(--pf-line-strong)] bg-[var(--pf-panel-raised)] p-10 text-center">
         <FileSpreadsheet className="mx-auto size-8 text-[var(--pf-ink-muted)]" />
-        <h2 className="mt-3 text-sm font-semibold text-[var(--pf-ink)]">还没有可分析的估值模型</h2>
+        <h2 className="mt-3 text-sm font-semibold text-[var(--pf-ink)]">
+          {t("valuation.emptyTitle")}
+        </h2>
         <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-[var(--pf-ink-muted)]">
-          上传 Excel 估值模型后，系统会自动解析并启动五指标对比。其他文件只会成为辅助分析卡片。
+          {t("valuation.emptyDetail")}
         </p>
       </section>
     );
@@ -1367,22 +1382,20 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
       <header className="flex flex-col gap-4 border-b border-[var(--pf-line)] pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--pf-accent)]">
-            <Database className="size-3.5" /> Model vs actual
+            <Database className="size-3.5" /> {t("valuation.eyebrow")}
           </div>
           <h1
             id="valuation-five-metrics-title"
             className="mt-2 text-xl font-semibold tracking-tight text-[var(--pf-ink)]"
           >
-            估值模型五指标对比
+            {t("valuation.title")}
           </h1>
-          <p className="mt-1 text-xs text-[var(--pf-ink-muted)]">
-            五项核心指标分为季度经营与当前市场快照；仅季度经营偏差触发预警。
-          </p>
+          <p className="mt-1 text-xs text-[var(--pf-ink-muted)]">{t("valuation.description")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {data && data.series.length > 1 ? (
             <label className="relative">
-              <span className="sr-only">选择估值模型</span>
+              <span className="sr-only">{t("valuation.selectModel")}</span>
               <select
                 className="h-9 appearance-none rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-3 pr-8 text-xs font-medium text-[var(--pf-ink)] outline-none focus:border-[var(--pf-accent)]"
                 onChange={(event) => setSelectedSeriesId(event.target.value)}
@@ -1413,7 +1426,9 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
                 (refreshMutation.isPending || refreshRunning) && "animate-spin",
               )}
             />
-            {refreshMutation.isPending || refreshRunning ? "刷新中" : "刷新模型与真实数据"}
+            {refreshMutation.isPending || refreshRunning
+              ? t("valuation.refreshing")
+              : t("privateFund.refreshModel")}
           </button>
         </div>
       </header>
@@ -1425,7 +1440,7 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Database className="size-3" />
-          {marketData?.provider || "真实数据 API 未配置"} · {formatTime(marketData?.asOf)}
+          {marketData?.provider || t("valuation.noProvider")} · {formatTime(marketData?.asOf)}
         </span>
       </div>
 
@@ -1435,7 +1450,9 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
 
       {marketData?.providerAttempts?.length ? (
         <details className="rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-3 py-2 text-[10px] text-[var(--pf-ink-muted)]">
-          <summary className="cursor-pointer font-semibold text-[var(--pf-ink)]">逐源诊断</summary>
+          <summary className="cursor-pointer font-semibold text-[var(--pf-ink)]">
+            {t("valuation.diagnostics")}
+          </summary>
           <div className="mt-2 grid gap-1.5 md:grid-cols-2">
             {marketData.providerAttempts.map((attempt, index) => (
               <div
@@ -1472,12 +1489,12 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
       >
         <div className="hidden grid-cols-[minmax(220px,1.35fr)_minmax(140px,0.75fr)_32px_minmax(140px,0.75fr)] items-center bg-[var(--pf-panel-subtle)] px-5 py-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--pf-ink-muted)] lg:grid">
           <span id="valuation-quarterly-metrics-title">
-            季度经营指标 · 3项
+            {t("valuation.quarterlyMetrics")}
             {activeTimelinePeriod ? " · " + activeTimelinePeriod.label : ""}
           </span>
-          <span>模型值</span>
+          <span>{t("valuation.modelValue")}</span>
           <span />
-          <span>真实值</span>
+          <span>{t("valuation.actualValue")}</span>
         </div>
         {comparisons.length === QUARTERLY_METRICS.length ? (
           comparisons.map((metric) => <ComparisonRow key={metric.metricKey} metric={metric} />)
@@ -1502,7 +1519,7 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
                 id="valuation-alerts-title"
                 className="text-xs font-semibold text-[var(--pf-ink)]"
               >
-                所选期间差距预警
+                {t("valuation.gapAlerts")}
               </h2>
             </div>
             <span className="font-mono text-[10px] text-[var(--pf-ink-muted)]">
@@ -1528,7 +1545,9 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
                           : SEVERITY.warning.badge,
                       )}
                     >
-                      {metric.severity === "critical" ? "重大" : "关注"}
+                      {metric.severity === "critical"
+                        ? t("valuation.critical")
+                        : t("valuation.attention")}
                     </span>
                   </div>
                 </article>
@@ -1537,9 +1556,11 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
           ) : (
             <div className="px-5 py-8 text-center">
               <Check className="mx-auto size-5 text-emerald-600" />
-              <p className="mt-2 text-xs font-medium text-[var(--pf-ink)]">当前没有指标差距预警</p>
+              <p className="mt-2 text-xs font-medium text-[var(--pf-ink)]">
+                {t("valuation.noGapAlerts")}
+              </p>
               <p className="mt-1 text-[10px] text-[var(--pf-ink-muted)]">
-                缺失数据不会误触发预警。
+                {t("valuation.missingNoAlert")}
               </p>
             </div>
           )}
@@ -1556,10 +1577,12 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
                 id="valuation-context-title"
                 className="text-xs font-semibold text-[var(--pf-ink)]"
               >
-                辅助分析卡片
+                {t("valuation.contextCards")}
               </h2>
             </div>
-            <span className="text-[9px] text-[var(--pf-ink-muted)]">不参与指标数值与预警</span>
+            <span className="text-[9px] text-[var(--pf-ink-muted)]">
+              {t("valuation.contextCardsHint")}
+            </span>
           </div>
           {metricAnalysis?.contextCards.length ? (
             <div className="grid gap-px bg-[var(--pf-line)] sm:grid-cols-2">
@@ -1587,7 +1610,7 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
             </div>
           ) : (
             <div className="px-5 py-8 text-center text-[10px] leading-5 text-[var(--pf-ink-muted)]">
-              上传财报、调研纪要或研究报告后，会在这里形成辅助分析卡片。
+              {t("valuation.noContextCards")}
             </div>
           )}
         </section>

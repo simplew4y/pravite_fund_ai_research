@@ -152,37 +152,40 @@ def run_cycle(
     databases = _collection_dbs(workspace)
     for data_namespace, dataset_id, collection_db in databases:
         try:
-            dataset_llm_client = llm_client or _load_llm_client(data_namespace, dataset_id)
-            private_fund_valuation_tracking.recover_stale_jobs(
-                collection_db,
-                dataset_id,
-                stale_after_minutes=int(
-                    os.environ.get("PRIVATE_FUND_VALUATION_STALE_JOB_MINUTES", "5")
-                ),
-            )
-            # This idempotent discovery also backfills historical model versions
-            # and catches imports that bypass the HTTP pipeline.
-            model_jobs = private_fund_valuation_tracking.enqueue_model_documents(
-                collection_db,
-                dataset_id,
-                include_history=True,
-            )
-            # Model ingestion queues version-scoped market and context jobs.
-            # Avoid a project-wide refresh here: it would keep an unrelated
-            # selected model in a perpetual polling state.
-            for _ in range(max_jobs_per_db):
-                result = private_fund_valuation_tracking.process_next_job(
-                    collection_db, dataset_id, llm_client=dataset_llm_client
-                )
-                if result is None:
-                    break
-                processed += 1
-                _LOGGER.info(
-                    "valuation tracking job %s for %s finished with status=%s",
-                    result.get("job_id"),
+            from omnigent.server.private_fund_tenant import bind_tenant_namespace
+
+            with bind_tenant_namespace(data_namespace):
+                dataset_llm_client = llm_client or _load_llm_client(data_namespace, dataset_id)
+                private_fund_valuation_tracking.recover_stale_jobs(
+                    collection_db,
                     dataset_id,
-                    result.get("status"),
+                    stale_after_minutes=int(
+                        os.environ.get("PRIVATE_FUND_VALUATION_STALE_JOB_MINUTES", "5")
+                    ),
                 )
+                # This idempotent discovery also backfills historical model versions
+                # and catches imports that bypass the HTTP pipeline.
+                private_fund_valuation_tracking.enqueue_model_documents(
+                    collection_db,
+                    dataset_id,
+                    include_history=True,
+                )
+                # Model ingestion queues version-scoped market and context jobs.
+                # Avoid a project-wide refresh here: it would keep an unrelated
+                # selected model in a perpetual polling state.
+                for _ in range(max_jobs_per_db):
+                    result = private_fund_valuation_tracking.process_next_job(
+                        collection_db, dataset_id, llm_client=dataset_llm_client
+                    )
+                    if result is None:
+                        break
+                    processed += 1
+                    _LOGGER.info(
+                        "valuation tracking job %s for %s finished with status=%s",
+                        result.get("job_id"),
+                        dataset_id,
+                        result.get("status"),
+                    )
         except Exception as exc:
             _LOGGER.exception("valuation worker failed for dataset=%s", dataset_id)
             errors.append({"dataset_id": dataset_id, "error": str(exc)})

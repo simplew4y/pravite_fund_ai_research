@@ -9,6 +9,8 @@ import {
   X,
 } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,33 +39,37 @@ const ACTIVE_ITEM_STATUSES = new Set([
   "indexing",
 ]);
 
-function statusPresentation(item: PrivateFundGlobalUploadItem) {
+function statusPresentation(item: PrivateFundGlobalUploadItem, t: TFunction) {
   if (item.status === "completed" || item.status === "duplicate") {
     return {
-      label: item.status === "duplicate" ? "项目中已有相同文件" : "已完成索引",
+      label:
+        item.status === "duplicate" ? t("globalUpload.duplicate") : t("globalUpload.indexed"),
       className: "text-[var(--pf-success-ink)]",
       icon: Check,
     };
   }
   if (item.status === "completed_with_warnings") {
     return {
-      label: "已归类，索引有提示",
+      label: t("globalUpload.completedWithWarnings"),
       className: "text-[var(--pf-warning-ink)]",
       icon: AlertTriangle,
     };
   }
   if (item.status === "needs_review") {
     return {
-      label: "需要确认项目",
+      label: t("globalUpload.confirmProject"),
       className: "text-[var(--pf-warning-ink)]",
       icon: AlertTriangle,
     };
   }
   if (item.status === "failed") {
-    return { label: "处理失败", className: "text-destructive", icon: X };
+    return { label: t("globalUpload.failed"), className: "text-destructive", icon: X };
   }
   return {
-    label: item.status === "identifying" ? "正在识别公司" : "正在归类并建立索引",
+    label:
+      item.status === "identifying"
+        ? t("globalUpload.identifying")
+        : t("globalUpload.routing"),
     className: "text-primary",
     icon: Loader2,
   };
@@ -80,6 +86,7 @@ function GlobalUploadItemRow({
   routing: boolean;
   onRoute: (itemId: string, datasetId: string) => void;
 }) {
+  const { t } = useTranslation();
   const projectOptions = useMemo(() => {
     const candidateIds = new Set(item.candidateProjects.map((candidate) => candidate.datasetId));
     const candidates = item.candidateProjects
@@ -90,7 +97,7 @@ function GlobalUploadItemRow({
   const [datasetId, setDatasetId] = useState(
     item.candidateProjects[0]?.datasetId ?? projectOptions[0]?.datasetId ?? "",
   );
-  const presentation = statusPresentation(item);
+  const presentation = statusPresentation(item, t);
   const StatusIcon = presentation.icon;
   const active = ACTIVE_ITEM_STATUSES.has(item.status);
 
@@ -120,9 +127,9 @@ function GlobalUploadItemRow({
 
           {item.companyName || item.companyTicker ? (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--pf-ink-secondary)]">
-              <span>识别公司</span>
+              <span>{t("globalUpload.detectedCompany")}</span>
               <strong className="text-[var(--pf-ink)]">
-                {item.companyName || "公司名称待确认"}
+                {item.companyName || t("globalUpload.companyPending")}
                 {item.companyTicker ? ` · ${item.companyTicker}` : ""}
               </strong>
               {item.companyConfidence > 0 ? (
@@ -133,10 +140,10 @@ function GlobalUploadItemRow({
 
           {item.matchedProjectName ? (
             <p className="mt-1.5 text-[10px] text-[var(--pf-ink-secondary)]">
-              归入项目：
+              {t("globalUpload.routedTo")}
               <strong className="text-[var(--pf-ink)]">{item.matchedProjectName}</strong>
               {item.projectMatchConfidence > 0
-                ? ` · 匹配度 ${Math.round(item.projectMatchConfidence * 100)}%`
+                ? ` · ${t("globalUpload.matchConfidence", { value: Math.round(item.projectMatchConfidence * 100) })}`
                 : ""}
             </p>
           ) : null}
@@ -144,12 +151,12 @@ function GlobalUploadItemRow({
           {item.status === "needs_review" || item.status === "failed" ? (
             <div className="mt-3 flex items-center gap-2">
               <select
-                aria-label={`为 ${item.fileName} 选择研究项目`}
+                aria-label={t("globalUpload.selectProjectFor", { fileName: item.fileName })}
                 className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring"
                 value={datasetId}
                 onChange={(event) => setDatasetId(event.target.value)}
               >
-                <option value="">选择研究项目</option>
+                <option value="">{t("globalUpload.selectProject")}</option>
                 {projectOptions.map((project) => (
                   <option key={project.datasetId} value={project.datasetId}>
                     {project.name}
@@ -164,7 +171,9 @@ function GlobalUploadItemRow({
                 onClick={() => onRoute(item.itemId, datasetId)}
               >
                 {routing ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                {item.status === "failed" ? "重新归类" : "确认归类"}
+                {item.status === "failed"
+                  ? t("globalUpload.reroute")
+                  : t("globalUpload.confirmRoute")}
               </Button>
             </div>
           ) : null}
@@ -209,6 +218,7 @@ export function PrivateFundGlobalUploadDialog({
   onRoute: (itemId: string, datasetId: string) => void;
   onStartAnotherBatch: () => void;
 }) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -227,17 +237,15 @@ export function PrivateFundGlobalUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent aria-label="统一上传并自动归类资料" className="sm:max-w-2xl">
+      <DialogContent aria-label={t("globalUpload.dialogLabel")} className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>统一上传资料</DialogTitle>
-          <DialogDescription>
-            系统会自动识别公司、合并同公司资料并创建缺少的研究项目；只有无法可靠识别时才需要你确认。
-          </DialogDescription>
+          <DialogTitle>{t("globalUpload.title")}</DialogTitle>
+          <DialogDescription>{t("globalUpload.description")}</DialogDescription>
         </DialogHeader>
 
         {!batch ? (
           <div
-            aria-label="统一资料拖入区"
+            aria-label={t("globalUpload.dropzoneLabel")}
             className={cn(
               "flex min-h-44 flex-col items-center justify-center rounded-xl border border-dashed px-6 py-7 text-center transition-colors",
               dragActive
@@ -267,15 +275,15 @@ export function PrivateFundGlobalUploadDialog({
               )}
             </span>
             <p className="mt-3 text-sm font-semibold text-[var(--pf-ink)]">
-              拖入来自不同公司的资料
+              {t("globalUpload.dropTitle")}
             </p>
             <p className="mt-1 text-xs text-[var(--pf-ink-secondary)]">
-              支持 PDF、Excel、Word、PPT、CSV、Markdown 和文本
+              {t("globalUpload.supportedTypes")}
             </p>
             <input
               ref={inputRef}
               accept={ACCEPTED_FILES}
-              aria-label="在统一入口选择资料文档"
+              aria-label={t("globalUpload.fileInputLabel")}
               className="hidden"
               multiple
               onChange={onFileChange}
@@ -288,7 +296,7 @@ export function PrivateFundGlobalUploadDialog({
               size="sm"
             >
               <FileUp className="size-4" />
-              {uploading ? "正在上传" : "选择文档"}
+              {uploading ? t("globalUpload.uploading") : t("globalUpload.selectFiles")}
             </Button>
           </div>
         ) : (
@@ -298,27 +306,31 @@ export function PrivateFundGlobalUploadDialog({
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-[var(--pf-ink)]">
                   {batch.status === "queued"
-                    ? "已进入后台队列"
+                    ? t("globalUpload.queued")
                     : batch.status === "identifying"
-                      ? "正在识别公司"
+                      ? t("globalUpload.identifying")
                       : ["routing", "routed", "index_queued", "indexing"].includes(batch.status)
-                        ? "正在归类并建立索引"
+                        ? t("globalUpload.routing")
                         : batch.status === "needs_review"
-                          ? "部分资料需要确认"
+                          ? t("globalUpload.needsReview")
                           : batch.status === "completed"
-                            ? "全部处理完成"
-                            : "批次处理已结束"}
+                            ? t("globalUpload.completed")
+                            : t("globalUpload.finished")}
                 </p>
                 <p className="mt-0.5 text-[10px] text-[var(--pf-ink-secondary)]">
-                  {progressLabel} · 可关闭窗口，后台处理不会中断
+                  {progressLabel} · {t("globalUpload.backgroundHint")}
                 </p>
               </div>
               {processing ? <Loader2 className="size-4 animate-spin text-primary" /> : null}
             </div>
             <div className="space-y-1.5 px-0.5">
-              <Progress aria-label="后台处理进度" value={progressPercent} />
+              <Progress aria-label={t("globalUpload.progressLabel")} value={progressPercent} />
               <div className="flex items-center justify-between text-[10px] text-[var(--pf-ink-secondary)]">
-                <span>{processing ? "可继续使用其他功能" : "本批次处理结果"}</span>
+                <span>
+                  {processing
+                    ? t("globalUpload.continueWorking")
+                    : t("globalUpload.batchResult")}
+                </span>
                 <span>{progressPercent}%</span>
               </div>
             </div>
@@ -348,11 +360,11 @@ export function PrivateFundGlobalUploadDialog({
               disabled={uploading || routing}
             >
               <RefreshCw className="size-3.5" />
-              上传另一批
+              {t("globalUpload.uploadAnother")}
             </Button>
           ) : null}
           <Button onClick={() => onOpenChange(false)} variant={batch ? "default" : "secondary"}>
-            {processing ? "转到后台" : "关闭"}
+            {processing ? t("globalUpload.sendToBackground") : t("common.close")}
           </Button>
         </DialogFooter>
       </DialogContent>

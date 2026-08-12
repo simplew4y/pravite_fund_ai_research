@@ -15,7 +15,7 @@ Translate current supporting evidence into auditable valuation-impact cards. Do 
 4. Select only distinct, decision-relevant impact paths. Prefer fewer supported cards over speculative coverage.
 5. Separate the factual `evidence_summary` from the inferred `valuation_impact`.
 6. Map each impact to one direction and one or more controlled `affected_inputs`.
-7. Write every human-facing field in Simplified Chinese when the supplied documents are primarily Chinese. Keep only controlled keys and evidence IDs in English.
+7. Keep controlled keys, evidence IDs, and direct quotations unchanged.
 8. Return one JSON object matching the schema. Return an empty `impacts` array when evidence is insufficient.
 
 ## Direction and Confidence

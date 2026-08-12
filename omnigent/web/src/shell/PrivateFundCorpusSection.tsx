@@ -13,6 +13,8 @@ import {
 } from "@dnd-kit/core";
 import type { KeyboardEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -122,13 +124,14 @@ function normalizeFilePath(file: PrivateFundFile, project: PrivateFundProject | 
 function folderNameError(
   name: string,
   folders: PrivateFundSourceFolder[],
+  t: TFunction,
   currentId?: string,
 ): string {
   const normalized = name.trim();
-  if (!normalized) return "请输入文件夹名称";
-  if (normalized.length > 40) return "文件夹名称不能超过 40 个字符";
+  if (!normalized) return t("sourceLibrary.folderNameRequired");
+  if (normalized.length > 40) return t("sourceLibrary.folderNameTooLong");
   if (/[\\/]/.test(normalized) || normalized === "." || normalized === "..") {
-    return "文件夹名称不能包含路径字符";
+    return t("sourceLibrary.folderNameInvalid");
   }
   if (
     folders.some(
@@ -137,43 +140,54 @@ function folderNameError(
         folder.name.trim().toLocaleLowerCase() === normalized.toLocaleLowerCase(),
     )
   ) {
-    return "已存在同名文件夹";
+    return t("sourceLibrary.folderNameDuplicate");
   }
   return "";
 }
 
-function projectStatus(project: PrivateFundProject): { label: string; className: string } {
+function projectStatus(
+  project: PrivateFundProject,
+  t: TFunction,
+): { label: string; className: string } {
   const status = (project.latestJob?.status ?? project.status).toLowerCase();
   if (["running", "queued", "indexing"].includes(status)) {
-    return { label: "更新中", className: "text-primary" };
+    return { label: t("sourceLibrary.projectUpdating"), className: "text-primary" };
   }
-  if (status === "failed") return { label: "需处理", className: "text-destructive" };
+  if (status === "failed") {
+    return { label: t("sourceLibrary.projectNeedsAttention"), className: "text-destructive" };
+  }
   if (project.indexReady || ["completed", "ready"].includes(status)) {
-    return { label: "可研究", className: "text-success" };
+    return { label: t("sourceLibrary.projectReady"), className: "text-success" };
   }
-  return { label: "待索引", className: "text-warning" };
+  return { label: t("sourceLibrary.projectPendingIndex"), className: "text-warning" };
 }
 
-function formatFileSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "大小未知";
+function formatFileSize(bytes: number, t: TFunction): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return t("sourceLibrary.unknownSize");
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
-function formatFileUpdatedAt(value: string | null | undefined): string {
-  if (!value) return "时间未知";
+function formatFileUpdatedAt(
+  value: string | null | undefined,
+  locale: string,
+  t: TFunction,
+): string {
+  if (!value) return t("sourceLibrary.unknownTime");
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "时间未知";
-  return new Intl.DateTimeFormat("zh-CN", {
+  if (Number.isNaN(date.getTime())) return t("sourceLibrary.unknownTime");
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(date);
 }
 
-function fileClassification(file: PrivateFundFile): string {
+function fileClassification(file: PrivateFundFile, t: TFunction): string {
   const value = file.docSubtype || file.docType;
-  return value && value !== "unknown" ? value.replaceAll("_", " ") : "待分类";
+  return value && value !== "unknown"
+    ? value.replaceAll("_", " ")
+    : t("sourceLibrary.unclassified");
 }
 
 function AttachmentCheckbox({
@@ -233,6 +247,11 @@ function DraggableFileRow({
   onPreview: () => void;
   onRestore: () => void;
 }) {
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language;
+  const date = formatFileUpdatedAt(row.file.uploadedAt, locale, t);
+  const size = formatFileSize(row.file.size, t);
+  const classification = fileClassification(row.file, t);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `private-fund-file:${row.file.name}`,
     data: { fileName: row.file.name, folderId },
@@ -252,7 +271,7 @@ function DraggableFileRow({
     >
       <button
         type="button"
-        aria-label={`拖动资料 ${row.file.name}`}
+        aria-label={t("sourceLibrary.dragSource", { name: row.file.name })}
         className="flex size-6 shrink-0 touch-none items-center justify-center rounded text-muted-foreground opacity-40 hover:bg-background hover:opacity-100 focus-visible:opacity-100 disabled:cursor-default"
         disabled={manageMode || movePending}
         {...attributes}
@@ -264,23 +283,34 @@ function DraggableFileRow({
         checked={manageMode ? managed : attached}
         label={
           manageMode
-            ? `选择资料来源 ${row.file.name} 用于管理`
-            : `选择资料来源 ${row.file.name} 用于当前提问`
+            ? t("sourceLibrary.selectSourceManage", { name: row.file.name })
+            : t("sourceLibrary.selectSourceQuestion", { name: row.file.name })
         }
         onChange={onToggle}
       />
       <button
         type="button"
-        aria-label={`预览资料 ${row.file.name}`}
+        aria-label={t("sourceLibrary.previewSource", { name: row.file.name })}
         className="flex min-w-0 flex-1 items-start gap-1.5 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onPreview}
-        title={`${row.file.name} · ${formatFileSize(row.file.size)} · 上传于 ${formatFileUpdatedAt(row.file.uploadedAt)} · ${row.file.chunkCount} 个索引片段 · ${fileClassification(row.file)}`}
+        title={t("sourceLibrary.sourceMetadata", {
+          name: row.file.name,
+          size,
+          date,
+          count: row.file.chunkCount,
+          classification,
+        })}
       >
         <FileTextIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium">{row.file.name}</span>
           <span className="mt-0.5 block truncate text-[9px] text-muted-foreground">
-            {formatFileUpdatedAt(row.file.uploadedAt)} · {formatFileSize(row.file.size)} · {row.file.chunkCount} 个片段 · {fileClassification(row.file)}
+            {t("sourceLibrary.sourceSummary", {
+              date,
+              size,
+              count: row.file.chunkCount,
+              classification,
+            })}
           </span>
         </span>
         <span className="mt-0.5 shrink-0 text-[9px] font-medium text-muted-foreground">
@@ -294,7 +324,7 @@ function DraggableFileRow({
               type="button"
               size="icon-sm"
               variant="ghost"
-              aria-label={`资料 ${row.file.name} 的目录操作`}
+              aria-label={t("sourceLibrary.sourceFolderActions", { name: row.file.name })}
               className="size-6 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
             >
               <MoreHorizontalIcon className="size-3" />
@@ -303,7 +333,7 @@ function DraggableFileRow({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onRestore}>
               <RotateCcwIcon className="size-3.5" />
-              恢复自动归类
+              {t("sourceLibrary.restoreAutomatic")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -343,6 +373,7 @@ function FolderDropRow({
   onStartRename: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const { setNodeRef, isOver } = useDroppable({
     id: `private-fund-folder:${folder.folderId}`,
     data: { folderId: folder.folderId },
@@ -357,7 +388,9 @@ function FolderDropRow({
     >
       <button
         type="button"
-        aria-label={`${expanded ? "收起" : "展开"}文件夹 ${folder.name}`}
+        aria-label={t(expanded ? "sourceLibrary.collapseFolder" : "sourceLibrary.expandFolder", {
+          name: folder.name,
+        })}
         aria-expanded={expanded}
         className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-background"
         onClick={onToggleExpanded}
@@ -370,14 +403,17 @@ function FolderDropRow({
         checked={allSelected}
         mixed={someSelected}
         disabled={folder.fileCount === 0}
-        label={`${manageMode ? "选择" : "加入"}文件夹 ${folder.name} 的全部资料`}
+        label={t(
+          manageMode ? "sourceLibrary.selectFolderManage" : "sourceLibrary.addFolderQuestion",
+          { name: folder.name },
+        )}
         onChange={onToggleSelection}
       />
       {editing ? (
         <input
           autoFocus
           value={editName}
-          aria-label={`重命名文件夹 ${folder.name}`}
+          aria-label={t("sourceLibrary.renameFolderLabel", { name: folder.name })}
           onChange={(event) => onEditNameChange(event.target.value)}
           onKeyDown={onEditKeyDown}
           className="min-w-0 flex-1 rounded border border-input bg-background px-1.5 py-0.5 text-xs outline-none focus:ring-2 focus:ring-ring"
@@ -401,7 +437,7 @@ function FolderDropRow({
               type="button"
               size="icon-sm"
               variant="ghost"
-              aria-label={`文件夹 ${folder.name} 的操作`}
+              aria-label={t("sourceLibrary.folderActions", { name: folder.name })}
               className="size-6 shrink-0 text-muted-foreground"
               disabled={busy}
             >
@@ -411,7 +447,7 @@ function FolderDropRow({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onStartRename}>
               <PencilIcon className="size-3.5" />
-              重命名
+              {t("sourceLibrary.rename")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -419,7 +455,7 @@ function FolderDropRow({
               onClick={onDelete}
             >
               <Trash2Icon className="size-3.5" />
-              删除文件夹
+              {t("sourceLibrary.deleteFolder")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -440,6 +476,7 @@ export function PrivateFundCorpusSection({
   selectedDatasetId: string | null;
   workbench?: boolean;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const projectQuery = usePrivateFundProject(selectedDatasetId);
@@ -686,9 +723,9 @@ export function PrivateFundCorpusSection({
   }
 
   async function submitNewFolder() {
-    const error = folderNameError(newFolderName, folderQuery.data?.folders ?? []);
-    if (error) {
-      showToast(error);
+    const validationError = folderNameError(newFolderName, folderQuery.data?.folders ?? [], t);
+    if (validationError) {
+      showToast(validationError);
       return;
     }
     try {
@@ -696,18 +733,19 @@ export function PrivateFundCorpusSection({
       setNewFolderName("");
       setCreatingFolder(false);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "创建文件夹失败");
+      showToast(error instanceof Error ? error.message : t("sourceLibrary.createFolderFailed"));
     }
   }
 
   async function submitFolderRename(folder: PrivateFundSourceFolder) {
-    const error = folderNameError(
+    const validationError = folderNameError(
       editingFolderName,
       folderQuery.data?.folders ?? [],
+      t,
       folder.folderId,
     );
-    if (error) {
-      showToast(error);
+    if (validationError) {
+      showToast(validationError);
       return;
     }
     try {
@@ -717,7 +755,7 @@ export function PrivateFundCorpusSection({
       });
       setEditingFolderId("");
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "重命名文件夹失败");
+      showToast(error instanceof Error ? error.message : t("sourceLibrary.renameFolderFailed"));
     }
   }
 
@@ -734,7 +772,7 @@ export function PrivateFundCorpusSection({
       setManagedNames(new Set());
       setManageMode(false);
       setSourceDeleteOpen(false);
-      showToast(`已删除 ${names.length} 份资料来源`);
+      showToast(t("sourceLibrary.deletedSources", { count: names.length }));
     } catch {
       // The mutation error remains visible in the confirmation dialog.
     }
@@ -753,8 +791,11 @@ export function PrivateFundCorpusSection({
       setFolderDeleteTarget(null);
       showToast(
         target.fileCount > 0
-          ? `已删除文件夹「${target.name}」及其中 ${target.fileCount} 份资料`
-          : `已删除文件夹「${target.name}」`,
+          ? t("sourceLibrary.deletedFolderWithSources", {
+              name: target.name,
+              count: target.fileCount,
+            })
+          : t("sourceLibrary.deletedFolder", { name: target.name }),
       );
     } catch {
       // The mutation error remains visible in the confirmation dialog.
@@ -768,7 +809,7 @@ export function PrivateFundCorpusSection({
       writeActivePrivateFundProjectId("");
       setProjectDeleteOpen(false);
       navigate("/");
-      showToast(`已删除研究项目「${project?.name ?? selectedDatasetId}」`);
+      showToast(t("sourceLibrary.deletedProject", { name: project?.name ?? selectedDatasetId }));
     } catch {
       // The mutation error remains visible in the confirmation dialog.
     }
@@ -800,7 +841,7 @@ export function PrivateFundCorpusSection({
       { fileName, folderId: targetFolderId },
       {
         onError: (error) =>
-          showToast(error instanceof Error ? error.message : "移动资料失败，已恢复原目录"),
+          showToast(error instanceof Error ? error.message : t("sourceLibrary.moveSourceFailed")),
       },
     );
   }
@@ -839,26 +880,32 @@ export function PrivateFundCorpusSection({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除研究项目？</DialogTitle>
+            <DialogTitle>{t("sourceLibrary.deleteProjectTitle")}</DialogTitle>
             <DialogDescription>
-              将永久删除「{project?.name ?? selectedDatasetId}」的资料、索引、分析资产和报告产物。
+              {t("sourceLibrary.deleteProjectDescription", {
+                name: project?.name ?? selectedDatasetId,
+              })}
             </DialogDescription>
           </DialogHeader>
           {deleteProject.isError ? (
             <p className="text-sm text-destructive" role="alert">
-              {deleteProject.error instanceof Error ? deleteProject.error.message : "删除项目失败"}
+              {deleteProject.error instanceof Error
+                ? deleteProject.error.message
+                : t("sourceLibrary.deleteProjectFailed")}
             </p>
           ) : null}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setProjectDeleteOpen(false)}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
               disabled={deleteProject.isPending}
               onClick={() => void confirmDeleteProject()}
             >
-              {deleteProject.isPending ? "正在删除…" : "确认删除"}
+              {deleteProject.isPending
+                ? t("sourceLibrary.deleting")
+                : t("sourceLibrary.confirmDelete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -869,26 +916,30 @@ export function PrivateFundCorpusSection({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除 {managedNames.size} 份资料来源？</DialogTitle>
-            <DialogDescription>
-              将从当前项目移除所选资料；历史版本证据保留，重新索引后检索范围才会更新。
-            </DialogDescription>
+            <DialogTitle>
+              {t("sourceLibrary.deleteSourcesTitle", { count: managedNames.size })}
+            </DialogTitle>
+            <DialogDescription>{t("sourceLibrary.deleteSourcesDescription")}</DialogDescription>
           </DialogHeader>
           {deleteFiles.isError ? (
             <p className="text-sm text-destructive" role="alert">
-              {deleteFiles.error instanceof Error ? deleteFiles.error.message : "删除资料失败"}
+              {deleteFiles.error instanceof Error
+                ? deleteFiles.error.message
+                : t("sourceLibrary.deleteSourcesFailed")}
             </p>
           ) : null}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setSourceDeleteOpen(false)}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
               disabled={deleteFiles.isPending}
               onClick={() => void confirmDeleteSources()}
             >
-              {deleteFiles.isPending ? "正在删除…" : "确认删除"}
+              {deleteFiles.isPending
+                ? t("sourceLibrary.deleting")
+                : t("sourceLibrary.confirmDelete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -901,28 +952,36 @@ export function PrivateFundCorpusSection({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除文件夹「{folderDeleteTarget?.name}」？</DialogTitle>
+            <DialogTitle>
+              {t("sourceLibrary.deleteFolderTitle", { name: folderDeleteTarget?.name })}
+            </DialogTitle>
             <DialogDescription>
               {folderDeleteTarget?.fileCount
-                ? `此操作会从当前项目删除文件夹内全部 ${folderDeleteTarget.fileCount} 份资料；历史版本证据仍按项目规则保留。`
-                : "此操作会永久删除该空文件夹，且无法撤销。"}
+                ? t("sourceLibrary.deleteFolderWithSourcesDescription", {
+                    count: folderDeleteTarget.fileCount,
+                  })
+                : t("sourceLibrary.deleteEmptyFolderDescription")}
             </DialogDescription>
           </DialogHeader>
           {deleteFolder.isError ? (
             <p className="text-sm text-destructive" role="alert">
-              {deleteFolder.error instanceof Error ? deleteFolder.error.message : "删除文件夹失败"}
+              {deleteFolder.error instanceof Error
+                ? deleteFolder.error.message
+                : t("sourceLibrary.deleteFolderFailed")}
             </p>
           ) : null}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setFolderDeleteTarget(null)}>
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
               disabled={deleteFolder.isPending}
               onClick={() => void confirmDeleteFolder()}
             >
-              {deleteFolder.isPending ? "正在删除…" : "确认删除"}
+              {deleteFolder.isPending
+                ? t("sourceLibrary.deleting")
+                : t("sourceLibrary.confirmDelete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -941,14 +1000,17 @@ export function PrivateFundCorpusSection({
           <UploadCloudIcon className="size-4 shrink-0 text-primary" />
         )}
         <span className="min-w-0 flex-1">
-          <span className="block text-xs font-semibold">统一上传资料</span>
+          <span className="block text-xs font-semibold">{t("sidebar.upload")}</span>
           <span className="block truncate text-[10px] font-normal text-muted-foreground">
             {globalUpload.progressLabel}
           </span>
         </span>
         {globalUpload.attentionCount > 0 ? (
           <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:text-amber-300">
-            {globalUpload.attentionCount} 待确认
+            {t("sidebar.pendingConfirmation", {
+              count: globalUpload.attentionCount,
+              defaultValue: `${globalUpload.attentionCount} pending`,
+            })}
           </span>
         ) : null}
       </Button>
@@ -959,12 +1021,12 @@ export function PrivateFundCorpusSection({
             <button
               type="button"
               data-testid="private-fund-project-switcher"
-              aria-label={`切换研究项目：${project?.name ?? selectedDatasetId ?? "未选择项目"}`}
+              aria-label={`${t("privateFund.researchProject")}: ${project?.name ?? selectedDatasetId ?? t("common.noData")}`}
               className="relative z-[101] flex min-w-0 flex-1 pointer-events-auto isolate items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">
-                {project?.name ?? selectedDatasetId ?? "选择研究项目"}
+                {project?.name ?? selectedDatasetId ?? t("privateFund.researchProject")}
               </span>
               <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
             </button>
@@ -981,21 +1043,23 @@ export function PrivateFundCorpusSection({
                 type="search"
                 value={projectSearch}
                 onChange={(event) => setProjectSearch(event.target.value)}
-                placeholder="搜索研究项目"
-                aria-label="搜索研究项目"
+                placeholder={t("sidebar.searchProjects", "Search research projects")}
+                aria-label={t("sidebar.searchProjects", "Search research projects")}
                 className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
               />
             </div>
             <div className="max-h-64 overflow-y-auto py-1">
               {projectsLoading ? (
-                <p className="px-2 py-3 text-center text-xs text-muted-foreground">正在加载项目…</p>
+                <p className="px-2 py-3 text-center text-xs text-muted-foreground">
+                  {t("common.loading")}
+                </p>
               ) : visibleProjects.length === 0 ? (
                 <p className="px-2 py-3 text-center text-xs text-muted-foreground">
-                  未找到研究项目
+                  {t("sidebar.noProjects")}
                 </p>
               ) : (
                 visibleProjects.map((candidate) => {
-                  const status = projectStatus(candidate);
+                  const status = projectStatus(candidate, t);
                   return (
                     <button
                       key={candidate.datasetId}
@@ -1009,7 +1073,10 @@ export function PrivateFundCorpusSection({
                       />
                       <span className="min-w-0 flex-1 truncate">{candidate.name}</span>
                       <span className="shrink-0 text-[10px] text-muted-foreground">
-                        {candidate.uploadCount || candidate.fileCount} 份
+                        {t("sidebar.fileCount", {
+                          count: candidate.uploadCount || candidate.fileCount,
+                          defaultValue: `${candidate.uploadCount || candidate.fileCount} files`,
+                        })}
                       </span>
                       {candidate.datasetId === selectedDatasetId ? (
                         <CheckIcon className="size-3.5 shrink-0 text-primary" />
@@ -1030,7 +1097,7 @@ export function PrivateFundCorpusSection({
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <PlusIcon className="size-3.5 text-muted-foreground" />
-                  新建研究项目
+                  {t("sidebar.newProject")}
                 </button>
               </div>
             </div>
@@ -1042,7 +1109,7 @@ export function PrivateFundCorpusSection({
               type="button"
               size="icon-sm"
               variant="ghost"
-              aria-label={`上传资料到${project?.name ?? selectedDatasetId ?? "当前项目"}`}
+              aria-label={`${t("sidebar.upload")}: ${project?.name ?? selectedDatasetId ?? t("privateFund.researchProject")}`}
               data-testid="private-fund-upload-button"
               disabled={!selectedDatasetId || upload.isPending}
               onClick={upload.openDialog}
@@ -1055,7 +1122,7 @@ export function PrivateFundCorpusSection({
               )}
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">上传资料</TooltipContent>
+          <TooltipContent side="right">{t("sidebar.upload")}</TooltipContent>
         </Tooltip>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1063,7 +1130,7 @@ export function PrivateFundCorpusSection({
               type="button"
               size="icon-sm"
               variant="ghost"
-              aria-label="当前研究项目操作"
+              aria-label={t("sidebar.projectActions", "Project actions")}
               className="size-7 shrink-0"
               disabled={!selectedDatasetId}
             >
@@ -1073,7 +1140,7 @@ export function PrivateFundCorpusSection({
           <DropdownMenuContent align="end">
             <DropdownMenuItem disabled={!project} onClick={() => setEditProjectOpen(true)}>
               <PencilIcon className="size-3.5" />
-              编辑项目信息
+              {t("sidebar.editProject")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -1081,7 +1148,7 @@ export function PrivateFundCorpusSection({
               onClick={() => setProjectDeleteOpen(true)}
             >
               <Trash2Icon className="size-3.5" />
-              删除当前项目
+              {t("sidebar.deleteProject")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1091,11 +1158,17 @@ export function PrivateFundCorpusSection({
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex min-h-8 items-center gap-1 px-1">
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs font-semibold">资料来源</h3>
+              <h3 className="text-xs font-semibold">{t("sidebar.sources")}</h3>
               <p className="truncate text-[10px] text-muted-foreground">
                 {attachedCount > 0
-                  ? `已加入当前提问 ${attachedCount} 份`
-                  : "点击资料复选框添加到问题上下文"}
+                  ? t("sidebar.attachedCount", {
+                      count: attachedCount,
+                      defaultValue: `${attachedCount} sources added to this question`,
+                    })
+                  : t(
+                      "sidebar.selectSourceHint",
+                      "Select source checkboxes to add them to the question context",
+                    )}
               </p>
             </div>
             {manageMode ? (
@@ -1108,7 +1181,7 @@ export function PrivateFundCorpusSection({
                   disabled={managedNames.size === 0}
                   onClick={() => setSourceDeleteOpen(true)}
                 >
-                  删除 {managedNames.size || ""}
+                  {t("sourceLibrary.deleteSelected", { count: managedNames.size || "" })}
                 </Button>
                 <Button
                   type="button"
@@ -1120,7 +1193,7 @@ export function PrivateFundCorpusSection({
                     setManagedNames(new Set());
                   }}
                 >
-                  完成
+                  {t("common.done", "Done")}
                 </Button>
               </>
             ) : (
@@ -1131,7 +1204,7 @@ export function PrivateFundCorpusSection({
                       type="button"
                       size="icon-sm"
                       variant="ghost"
-                      aria-label="新建资料文件夹"
+                      aria-label={t("sourceLibrary.newFolderLabel")}
                       className="size-7"
                       onClick={() => {
                         setCreatingFolder(true);
@@ -1141,7 +1214,9 @@ export function PrivateFundCorpusSection({
                       <PlusIcon className="size-3.5" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">新建文件夹</TooltipContent>
+                  <TooltipContent side="right">
+                    {t("sidebar.newFolder", "New folder")}
+                  </TooltipContent>
                 </Tooltip>
                 <Button
                   type="button"
@@ -1150,7 +1225,7 @@ export function PrivateFundCorpusSection({
                   className="h-7 px-2 text-[11px]"
                   onClick={() => setManageMode(true)}
                 >
-                  管理
+                  {t("privateFund.batchManage")}
                 </Button>
               </>
             )}
@@ -1162,11 +1237,11 @@ export function PrivateFundCorpusSection({
                 checked={allManaged}
                 mixed={someManaged}
                 disabled={allRows.length === 0}
-                label="选择当前项目全部资料用于管理"
+                label={t("sourceLibrary.selectAllManage")}
                 onChange={() => toggleRows(allRows)}
               />
               <span className="min-w-0 flex-1 truncate text-[11px] font-medium">
-                {managedNames.size} 份待管理
+                {t("sourceLibrary.selectedForManagement", { count: managedNames.size })}
               </span>
             </div>
           ) : null}
@@ -1177,8 +1252,8 @@ export function PrivateFundCorpusSection({
               <input
                 autoFocus
                 value={newFolderName}
-                aria-label="新文件夹名称"
-                placeholder="新文件夹"
+                aria-label={t("sourceLibrary.newFolderName")}
+                placeholder={t("sidebar.newFolder", "New folder")}
                 onChange={(event) => setNewFolderName(event.target.value)}
                 onKeyDown={(event) => onFolderNameKeyDown(event, () => void submitNewFolder())}
                 className="min-w-0 flex-1 rounded border border-input bg-background px-1.5 py-1 text-xs outline-none focus:ring-2 focus:ring-ring"
@@ -1187,7 +1262,7 @@ export function PrivateFundCorpusSection({
                 type="button"
                 size="icon-sm"
                 variant="ghost"
-                aria-label="保存新文件夹"
+                aria-label={t("sourceLibrary.saveNewFolder")}
                 className="size-6"
                 disabled={createFolder.isPending}
                 onClick={() => void submitNewFolder()}
@@ -1210,11 +1285,13 @@ export function PrivateFundCorpusSection({
           >
             <div className="mt-1 max-h-[36vh] min-h-10 overflow-y-auto pr-0.5 [scrollbar-gutter:stable]">
               {projectQuery.isLoading || folderQuery.isLoading ? (
-                <p className="px-2 py-2 text-xs text-muted-foreground">正在加载项目资料…</p>
+                <p className="px-2 py-2 text-xs text-muted-foreground">{t("common.loading")}</p>
               ) : folderQuery.isError ? (
-                <p className="px-2 py-2 text-xs text-destructive">资料目录加载失败</p>
+                <p className="px-2 py-2 text-xs text-destructive">
+                  {t("sidebar.sourceLoadFailed", "Could not load sources")}
+                </p>
               ) : folderRows.length === 0 ? (
-                <p className="px-2 py-2 text-xs text-muted-foreground">暂无项目资料</p>
+                <p className="px-2 py-2 text-xs text-muted-foreground">{t("sidebar.noSources")}</p>
               ) : (
                 folderRows.map(({ folder, rows }) => {
                   const expanded = expandedFolders.has(folder.folderId);
@@ -1272,7 +1349,9 @@ export function PrivateFundCorpusSection({
                                   {
                                     onError: (error) =>
                                       showToast(
-                                        error instanceof Error ? error.message : "恢复自动归类失败",
+                                        error instanceof Error
+                                          ? error.message
+                                          : t("sourceLibrary.restoreAutomaticFailed"),
                                       ),
                                   },
                                 )

@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import {
   getPrivateFundGlobalUploadBatch,
@@ -43,10 +45,10 @@ function isActiveBatch(batch: PrivateFundGlobalUploadBatch | null): boolean {
   return Boolean(batch && ACTIVE_BATCH_STATUSES.has(batch.status));
 }
 
-function completedMessage(batch: PrivateFundGlobalUploadBatch): string {
-  if (batch.status === "needs_review") return "少量未能可靠识别的资料需要人工确认。";
-  if (batch.status === "completed") return "全部资料已自动建项目、归类并完成索引。";
-  return "后台处理已结束，请检查有提示的文件。";
+function completedMessage(batch: PrivateFundGlobalUploadBatch, t: TFunction): string {
+  if (batch.status === "needs_review") return t("globalUpload.reviewComplete");
+  if (batch.status === "completed") return t("globalUpload.allComplete");
+  return t("globalUpload.processFinished");
 }
 
 function waitForNextPoll(): Promise<void> {
@@ -54,6 +56,7 @@ function waitForNextPoll(): Promise<void> {
 }
 
 export function usePrivateFundGlobalUpload() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [batch, setBatch] = useState<PrivateFundGlobalUploadBatch | null>(null);
@@ -101,34 +104,34 @@ export function usePrivateFundGlobalUpload() {
             current = await getPrivateFundGlobalUploadBatch(current.batchId);
           } catch {
             if (!mounted.current || requestId !== monitorRequestId.current) return;
-            setMessage("后台处理仍在继续，正在重新连接进度…");
+            setMessage(t("globalUpload.reconnecting"));
             continue;
           }
           if (!mounted.current || requestId !== monitorRequestId.current) return;
           setBatch(current);
           if (ACTIVE_BATCH_STATUSES.has(current.status)) {
-            setMessage("资料已交给后台处理，可以关闭窗口或继续使用其他功能。");
+            setMessage(t("globalUpload.processingInBackground"));
           }
         }
         if (!mounted.current || requestId !== monitorRequestId.current) return;
         setBatch(current);
-        setMessage(completedMessage(current));
+        setMessage(completedMessage(current, t));
         refreshProjects(current);
       };
 
       void run();
     },
-    [refreshProjects],
+    [refreshProjects, t],
   );
 
   const uploadMutation = useMutation({
     mutationFn: (files: File[]) => uploadPrivateFundFilesGlobally(files),
     onSuccess: (initial) => {
-      setMessage("上传已完成，资料已转入后台自动识别和建项目。");
+      setMessage(t("globalUpload.uploadComplete"));
       monitorBatch(initial);
     },
     onError: (error) => {
-      setMessage(error instanceof Error ? error.message : "全局资料上传失败");
+      setMessage(error instanceof Error ? error.message : t("globalUpload.uploadFailed"));
     },
   });
 
@@ -136,11 +139,11 @@ export function usePrivateFundGlobalUpload() {
     mutationFn: ({ itemId, datasetId }: { itemId: string; datasetId: string }) =>
       routePrivateFundGlobalUploadItem(itemId, datasetId),
     onSuccess: (initial) => {
-      setMessage("已确认归类，后续索引在后台继续。");
+      setMessage(t("globalUpload.routeConfirmed"));
       monitorBatch(initial);
     },
     onError: (error) => {
-      setMessage(error instanceof Error ? error.message : "手动归类失败");
+      setMessage(error instanceof Error ? error.message : t("globalUpload.routeFailed"));
     },
   });
 
@@ -155,7 +158,7 @@ export function usePrivateFundGlobalUpload() {
           recent[0];
         if (!restored) return;
         if (ACTIVE_BATCH_STATUSES.has(restored.status)) {
-          setMessage("已恢复正在后台处理的上传批次。");
+          setMessage(t("globalUpload.restored"));
           monitorBatch(restored);
         } else {
           setBatch(restored);
@@ -165,7 +168,7 @@ export function usePrivateFundGlobalUpload() {
       .catch(() => {
         // Upload remains available even if historical progress cannot be restored.
       });
-  }, [monitorBatch, refreshProjects]);
+  }, [monitorBatch, refreshProjects, t]);
 
   useEffect(() => {
     mounted.current = true;
@@ -179,7 +182,7 @@ export function usePrivateFundGlobalUpload() {
   const selectFiles = useCallback(
     (files: File[]) => {
       if (isActiveBatch(batch)) {
-        setMessage("当前批次仍在后台处理中，请等待完成后再上传下一批。");
+        setMessage(t("globalUpload.activeBatch"));
         return;
       }
       historyRequestId.current += 1;
@@ -189,16 +192,16 @@ export function usePrivateFundGlobalUpload() {
       });
       const skipped = files.length - supported.length;
       if (supported.length === 0) {
-        setMessage("未发现支持的文档；可上传 PDF、Excel、Word、PPT、CSV、Markdown 或文本文件");
+        setMessage(t("globalUpload.unsupported"));
         return;
       }
       setBatch(null);
       setMessage(
-        skipped > 0 ? `已忽略 ${skipped} 个不支持的文件，正在上传其余资料。` : "正在上传资料。",
+        skipped > 0 ? t("globalUpload.skipped", { count: skipped }) : t("globalUpload.uploadStarted"),
       );
       uploadMutation.mutate(supported);
     },
-    [batch, uploadMutation],
+    [batch, t, uploadMutation],
   );
 
   const openDialog = useCallback(() => {
@@ -233,14 +236,20 @@ export function usePrivateFundGlobalUpload() {
   }, [batch]);
   const processing = isActiveBatch(batch);
   const progressLabel = uploadMutation.isPending
-    ? "正在上传文件…"
+    ? t("globalUpload.uploadingFiles")
     : processing
-      ? `后台处理中 · ${progress.processed}/${progress.total}`
+      ? t("globalUpload.processingCount", {
+          processed: progress.processed,
+          total: progress.total,
+        })
       : batch?.status === "needs_review"
-        ? `${progress.attention} 份资料需要确认`
+        ? t("globalUpload.reviewCount", { count: progress.attention })
         : batch
-          ? `处理完成 · ${progress.processed}/${progress.total}`
-          : "上传后自动识别公司并创建项目";
+          ? t("globalUpload.completedCount", {
+              processed: progress.processed,
+              total: progress.total,
+            })
+          : t("globalUpload.automaticRouting");
 
   return {
     open,

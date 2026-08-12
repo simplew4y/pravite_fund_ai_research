@@ -67,6 +67,14 @@ describe("settingsNavGroups", () => {
     expect(withAccounts).toContain("account");
     // Account leads its group — it's the most-visited section on accounts deploys.
     expect(withAccounts[0]).toBe("account");
+    expect(withAccounts[1]).toBe("language");
+  });
+
+  it("exposes Language as its own section", () => {
+    const withoutAccounts = settingsNavGroups(false, false)
+      .flatMap((group) => group.items)
+      .map((item) => item.id);
+    expect(withoutAccounts[0]).toBe("language");
   });
 
   it("shows user feedback only for cloud accounts", () => {
@@ -116,7 +124,7 @@ describe("SettingsSidebarBody", () => {
     // sidebar swaps back to the conversation list rather than closing onto the
     // homepage behind it.
     const { onNavClick } = renderBody();
-    fireEvent.click(screen.getByRole("link", { name: "Back" }));
+    fireEvent.click(screen.getByRole("link", { name: "返回" }));
     expect(onNavClick).not.toHaveBeenCalled();
   });
 

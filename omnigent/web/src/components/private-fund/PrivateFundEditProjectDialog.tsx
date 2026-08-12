@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,10 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { showToast } from "@/components/ui/toast";
-import {
-  type PrivateFundProject,
-  updatePrivateFundProject,
-} from "@/lib/privateFundApi";
+import { type PrivateFundProject, updatePrivateFundProject } from "@/lib/privateFundApi";
 
 export type PrivateFundEditProjectDialogProps = {
   open: boolean;
@@ -29,6 +27,7 @@ export function PrivateFundEditProjectDialog({
   project,
   onOpenChange,
 }: PrivateFundEditProjectDialogProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -64,7 +63,11 @@ export function PrivateFundEditProjectDialog({
         }),
       ]);
       onOpenChange(false);
-      showToast(tickerChanged ? "项目信息已更新，正在刷新真实数据" : "研究项目信息已更新");
+      showToast(
+        tickerChanged
+          ? t("privateFund.projectUpdatedRefreshing", "Project updated; refreshing market data")
+          : t("privateFund.projectUpdated", "Project updated"),
+      );
     },
   });
 
@@ -81,7 +84,7 @@ export function PrivateFundEditProjectDialog({
       }}
     >
       <DialogContent
-        aria-label="编辑研究项目"
+        aria-label={t("privateFund.editProject")}
         className="sm:max-w-md"
         showCloseButton={!mutation.isPending}
         onEscapeKeyDown={(event) => {
@@ -93,39 +96,46 @@ export function PrivateFundEditProjectDialog({
       >
         <form className="contents" onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>编辑研究项目</DialogTitle>
+            <DialogTitle>{t("privateFund.editProject")}</DialogTitle>
             <DialogDescription>
-              修改项目与公司信息。股票代码用于查询行情和真实财务数据。
+              {t(
+                "privateFund.editProjectDescription",
+                "Edit project and company details. The ticker is used to retrieve market and financial data.",
+              )}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <label className="block space-y-1.5">
-              <span className="text-xs font-medium">项目名称</span>
+              <span className="text-xs font-medium">{t("privateFund.projectName")}</span>
               <Input
                 autoFocus
-                aria-label="编辑研究项目名称"
+                aria-label={t("privateFund.projectName")}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="例如：阳光电源"
+                placeholder={t("privateFund.projectNamePlaceholder", "For example: Sungrow Power")}
                 value={name}
               />
             </label>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium">公司名称（可选）</span>
+                <span className="text-xs font-medium">
+                  {t("privateFund.companyName")} ({t("auth.optional", "Optional")})
+                </span>
                 <Input
-                  aria-label="编辑研究项目公司名称"
+                  aria-label={t("privateFund.companyName")}
                   onChange={(event) => setCompanyName(event.target.value)}
-                  placeholder="公司全称"
+                  placeholder={t("privateFund.companyNamePlaceholder", "Full company name")}
                   value={companyName}
                 />
               </label>
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium">股票代码（可选）</span>
+                <span className="text-xs font-medium">
+                  {t("privateFund.stockCode")} ({t("auth.optional", "Optional")})
+                </span>
                 <Input
-                  aria-label="编辑研究项目股票代码"
+                  aria-label={t("privateFund.stockCode")}
                   onChange={(event) => setCompanyTicker(event.target.value)}
-                  placeholder="例如：300274"
+                  placeholder={t("privateFund.stockCodePlaceholder")}
                   value={companyTicker}
                 />
               </label>
@@ -137,7 +147,7 @@ export function PrivateFundEditProjectDialog({
               >
                 {mutation.error instanceof Error
                   ? mutation.error.message
-                  : "更新研究项目失败"}
+                  : t("privateFund.updateProjectFailed", "Could not update the project")}
               </p>
             ) : null}
           </div>
@@ -149,11 +159,11 @@ export function PrivateFundEditProjectDialog({
               type="button"
               variant="secondary"
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button disabled={!project || !name.trim() || mutation.isPending} type="submit">
               {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-              保存
+              {t("common.save")}
             </Button>
           </DialogFooter>
         </form>

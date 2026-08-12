@@ -117,6 +117,7 @@ from omnigent.runner.identity import (
     RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
     RUNNER_TUNNEL_TOKEN_HEADER,
     RUNNER_USER_LLM_GATEWAY_ENV_VAR,
+    RUNNER_USER_MEMORY_DIR_ENV_VAR,
     token_bound_runner_id,
 )
 from omnigent.runner.routing import RunnerRouter
@@ -170,6 +171,7 @@ from omnigent.server.managed_hosts import (
 )
 from omnigent.server.mcp_pool import ServerMcpPool
 from omnigent.server.permissions import check_session_access
+from omnigent.server.private_fund_memory import ensure_user_memory
 from omnigent.server.private_fund_tenant import build_tenant_context
 from omnigent.server.routes._auth_helpers import (
     attribution_user as _attribution_user,
@@ -13474,8 +13476,13 @@ def create_sessions_router(
         ).rstrip("/")
         token = issue_user_llm_token(user_id, session_id)
         alias = "private-fund-default"
+        if account_store is None:
+            raise RuntimeError("Private-fund sessions require an account store")
+        data_namespace = account_store.get_or_create_data_namespace(user_id)
+        memory_dir = ensure_user_memory(data_namespace)
         runtime_env = {
             RUNNER_USER_LLM_GATEWAY_ENV_VAR: "1",
+            RUNNER_USER_MEMORY_DIR_ENV_VAR: str(memory_dir),
             "ANTHROPIC_AUTH_TOKEN": token,
             "ANTHROPIC_BASE_URL": gateway,
             "ANTHROPIC_MODEL": alias,

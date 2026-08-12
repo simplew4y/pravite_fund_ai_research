@@ -1,3 +1,5 @@
+import { APP_LOCALE_STORAGE_KEY, type AppLocale } from "@/i18n";
+
 /**
  * Client for the ``accounts`` auth provider's HTTP API.
  *
@@ -51,6 +53,7 @@ export interface CurrentAccount {
   is_platform_admin?: boolean;
   email?: string;
   nick_name?: string | null;
+  preferred_locale?: AppLocale;
   status?: string;
   data_namespace?: string;
   balance_cny?: string;
@@ -221,6 +224,7 @@ export function clearUserScopedBrowserState(): void {
         (key): key is string => Boolean(key),
       );
       for (const key of keys) {
+        if (key === APP_LOCALE_STORAGE_KEY) continue;
         if (
           key.startsWith("omnigent.privateFund") ||
           key.startsWith("omnigent:") ||
@@ -259,6 +263,28 @@ export async function getMe(): Promise<CurrentAccount | null> {
   return null;
 }
 
+export async function updateAccountPreferences(
+  preferredLocale: AppLocale,
+): Promise<{ ok: true; account: CurrentAccount } | { ok: false; error: string }> {
+  try {
+    const res = await fetch("/auth/users/me/preferences", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ preferred_locale: preferredLocale }),
+    });
+    if (!res.ok) {
+      return { ok: false, error: await accountErrorMessage(res, "Unable to save language.") };
+    }
+    const account = (await res.json()) as CurrentAccount;
+    window.dispatchEvent(
+      new CustomEvent<CurrentAccount>(ACCOUNT_UPDATED_EVENT, { detail: account }),
+    );
+    return { ok: true, account };
+  } catch {
+    return { ok: false, error: "Unable to connect to the account service." };
+  }
+}
+
 /** Body of POST /auth/register. */
 export interface RegisterRequest {
   invite?: string;
@@ -266,6 +292,7 @@ export interface RegisterRequest {
   email?: string;
   code?: string;
   nick_name?: string | null;
+  preferred_locale?: AppLocale;
   password: string;
 }
 
@@ -454,7 +481,10 @@ async function sendAccountCode(
       headers: body ? { "content-type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
-    const data = (await res.clone().json().catch(() => null)) as {
+    const data = (await res
+      .clone()
+      .json()
+      .catch(() => null)) as {
       expires_in?: number;
       resend_after?: number;
     } | null;

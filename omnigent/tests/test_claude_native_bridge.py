@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import select
@@ -20,7 +21,7 @@ from typing import Any, TextIO
 
 import pytest
 
-from omnigent import claude_native_bridge, native_cost_popup
+from omnigent import claude_native_bridge, claude_native_hook, native_cost_popup
 from omnigent.claude_native_bridge import (
     _claude_prompt_rendered,
     _hook_record_from_jsonl_record,
@@ -2162,6 +2163,36 @@ def test_augment_claude_args_registers_user_prompt_submit_policy_hook(
     assert any("evaluate-policy" not in command for command in commands), (
         "The transcript forwarder's UserPromptSubmit hook must not be replaced."
     )
+
+
+def test_user_prompt_submit_hook_injects_current_user_memory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bridge_dir = prepare_bridge_dir("conv_memory", workspace=tmp_path)
+    memory_dir = tmp_path / "user-memory"
+    memory_dir.mkdir()
+    (memory_dir / "POLICY.md").write_text("Always answer in English.", encoding="utf-8")
+    (memory_dir / "MEMORY.md").write_text("Lead with the conclusion.", encoding="utf-8")
+    augment_claude_args(
+        (),
+        bridge_dir=bridge_dir,
+        user_memory_dir=str(memory_dir),
+    )
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(json.dumps({"hook_event_name": "UserPromptSubmit"})),
+    )
+
+    assert claude_native_hook.main(["--bridge-dir", str(bridge_dir)]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    hook_output = output["hookSpecificOutput"]
+    assert hook_output["hookEventName"] == "UserPromptSubmit"
+    assert "Always answer in English." in hook_output["additionalContext"]
+    assert "Lead with the conclusion." in hook_output["additionalContext"]
 
 
 def test_augment_claude_args_omits_user_prompt_submit_policy_hook_without_server(

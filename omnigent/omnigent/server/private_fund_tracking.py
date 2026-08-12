@@ -21,7 +21,7 @@ from typing import Any, Protocol
 from urllib.parse import urlencode
 
 TRACKING_SCHEMA_VERSION = 2
-EXTRACTOR_VERSION = "risk-catalyst-skill-v8"
+EXTRACTOR_VERSION = "risk-catalyst-skill-v9-locale"
 
 _TRACKING_SKILL_PATH = (
     Path(__file__).resolve().parents[1]
@@ -98,6 +98,19 @@ _ASSUMPTION_TERMS = (
 )
 _DATE_PATTERN = re.compile(r"(?<!\d)(20\d{2}(?:[-/.年]\d{1,2}(?:[-/.月]\d{1,2}日?)?)?)(?!\d)")
 _NUMBER_PATTERN = re.compile(r"(?<![A-Za-z0-9])(-?\d+(?:\.\d+)?)\s*(%|pct|bps|倍|亿元|万元|元)?")
+
+
+def _current_user_locale() -> str:
+    from omnigent.server.private_fund_locale import read_user_locale
+    from omnigent.server.private_fund_tenant import current_tenant
+
+    tenant = current_tenant()
+    if tenant is None:
+        return "zh-CN"
+    try:
+        return read_user_locale(tenant.data_namespace)
+    except ValueError:
+        return "zh-CN"
 _FENCE_PATTERN = re.compile(r"```(?:json)?\s*([\s\S]*?)```", flags=re.IGNORECASE)
 _RETRY_DELAYS_SECONDS = (30, 120, 600)
 
@@ -560,7 +573,10 @@ def enqueue_current_documents(
                 dataset_id,
                 job_type="document_ingested",
                 source_id=doc_id,
-                payload={"document_ids": [doc_id], "parent_ingest_job_id": parent_ingest_job_id},
+                payload={
+                    "document_ids": [doc_id],
+                    "parent_ingest_job_id": parent_ingest_job_id,
+                },
                 priority=50,
             )
         )
@@ -652,7 +668,10 @@ def enqueue_legacy_rebuild(collection_db: Path, dataset_id: str) -> dict[str, An
 
 
 def enqueue_scheduled_scan(
-    collection_db: Path, dataset_id: str, *, now: datetime | None = None
+    collection_db: Path,
+    dataset_id: str,
+    *,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     active_now = now or _now()
     source_id = active_now.strftime("%Y%m%dT%H")
@@ -1387,8 +1406,21 @@ def _clean_tracking_title(value: Any) -> str:
 
 
 def _tracking_title(
-    raw: dict[str, Any], item_type: str, content: str, metadata: dict[str, Any]
+    raw: dict[str, Any],
+    item_type: str,
+    content: str,
+    metadata: dict[str, Any],
+    locale: str = "zh-CN",
 ) -> str:
+    if locale == "en-US":
+        generated = re.sub(r"[*_#`]+", "", str(raw.get("title") or ""))
+        generated = re.sub(r"\s+", " ", generated).strip(" ,.;:!?-—")
+        if generated:
+            return generated[:80]
+        entity = re.sub(r"\s+", " ", str(metadata.get("entity") or "")).strip()
+        subject = re.sub(r"\s+", " ", str(metadata.get("subject") or "")).strip()
+        fallback = f"{entity}: {subject}" if entity and subject else entity or subject
+        return fallback[:80] or ("Risk pending review" if item_type == "risk" else "Catalyst pending review")
     entity = _clean_tracking_title(metadata.get("entity"))
     subject = _clean_tracking_title(metadata.get("subject"))
     event_type = str(metadata.get("event_type") or "").strip().lower()
@@ -1420,6 +1452,7 @@ def _candidate_from_raw(
     *,
     valid_evidence_ids: set[str],
     default_date: str,
+    locale: str = "zh-CN",
 ) -> ResearchCandidate | None:
     item_type = str(raw.get("item_type") or "").strip().lower()
     if item_type not in ITEM_TYPES:
@@ -1446,7 +1479,7 @@ def _candidate_from_raw(
     metadata = _tracking_metadata(raw, item_type, confidence)
     if not _has_minimum_event_structure(metadata, item_type, raw):
         return None
-    title = _tracking_title(raw, item_type, content, metadata)
+    title = _tracking_title(raw, item_type, content, metadata, locale)
     if item_type in {"risk", "catalyst"}:
         title_text = _canonical_text(title)
         content_text = _canonical_text(content)
@@ -1669,7 +1702,10 @@ def _llm_candidates(
     units: list[dict[str, Any]],
     valid_evidence_ids: set[str],
     default_date: str,
+    locale: str = "zh-CN",
 ) -> list[ResearchCandidate]:
+    from omnigent.server.private_fund_memory import read_current_user_memory
+
     skill = _tracking_skill_text()
     evidence_text = "\n\n".join(
         f"[{unit['evidence_id']}] {str(unit.get('content') or '')[:1400]}" for unit in units[:80]
@@ -1683,9 +1719,11 @@ quality_status. Also include evidence_quotes as a list of objects with evidence_
 verbatim quote of 8-160 characters copied from that evidence block. Never cite moderator prompts,
 speaker hand-offs, or an adjacent block that does not contain the quote. Add
 extraction_method=llm_skill. The title must be an analytical event label of at
-most 26 Chinese characters, without Markdown, speech fillers, or copied source sentences. Content
+at most 80 characters, without Markdown, speech fillers, or copied source sentences. Content
 must be a concise analytical judgement in your own words and must not equal the title or copy a
 source passage verbatim. Default source date: {default_date}.
+
+{read_current_user_memory(fallback_locale=locale)}
 
 Tracking skill:
 {skill}
@@ -1714,7 +1752,10 @@ Evidence:
         if raw is None:
             continue
         candidate = _candidate_from_raw(
-            raw, valid_evidence_ids=valid_evidence_ids, default_date=default_date
+            raw,
+            valid_evidence_ids=valid_evidence_ids,
+            default_date=default_date,
+            locale=locale,
         )
         if candidate:
             candidates.append(candidate)
@@ -2571,7 +2612,11 @@ def process_next_job(
                 if llm_client is not None and units:
                     try:
                         llm_extracted = _llm_candidates(
-                            llm_client, units, valid_evidence_ids, default_date
+                            llm_client,
+                            units,
+                            valid_evidence_ids,
+                            default_date,
+                            _current_user_locale(),
                         )
                         llm_evidence_ids = {
                             evidence_id

@@ -1,4 +1,5 @@
 import { type DragEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "@/lib/routing";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -1643,6 +1644,7 @@ function AgentHarnessPicker({
 }
 
 export function NewChatLandingScreen() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -1862,9 +1864,9 @@ export function NewChatLandingScreen() {
     setMessage((current) =>
       current.trim()
         ? current
-        : `请基于资料项目「${selectedPrivateFundProject.name}」生成一份中文投资 memo，包含公司概览、核心观点、财务/经营要点、风险因素和可追溯引用。`,
+        : t("newResearch.memoStarter", { project: selectedPrivateFundProject.name }),
     );
-  }, [privateFundModeParam, selectedPrivateFundProject]);
+  }, [privateFundModeParam, selectedPrivateFundProject, t]);
   // Permission mode for Claude Code (claude --permission-mode). Only
   // meaningful for the claude-native wrapper; ignored otherwise. Lives in
   // the footer tray's Advanced settings menu.
@@ -2546,7 +2548,7 @@ export function NewChatLandingScreen() {
           <div className="private-fund-project-hero flex w-full flex-col gap-5">
             <div>
               <span className="private-fund-project-kicker inline-flex rounded-full bg-[var(--pf-accent-soft)] px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-[var(--pf-accent-ink)]">
-                研究项目
+                {t("newResearch.project")}
               </span>
               <h1
                 className="mt-3 text-[32px] font-semibold leading-[1.1] tracking-[-0.04em] text-[var(--pf-ink)] md:text-[38px]"
@@ -2555,33 +2557,35 @@ export function NewChatLandingScreen() {
                 {selectedPrivateFundProject?.name || privateFundProjectParam}
               </h1>
               <p className="mt-2 max-w-[620px] text-sm leading-6 text-[var(--pf-ink-secondary)]">
-                从项目资料开始一条新的研究路径。提出研究问题后，会自动创建会话并进入研究工作台。
+                {t("newResearch.description")}
               </p>
             </div>
             <div className="private-fund-project-summary-grid grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="private-fund-summary-card rounded-2xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-3">
-                <p className="text-[11px] text-[var(--pf-ink-muted)]">资料来源</p>
+                <p className="text-[11px] text-[var(--pf-ink-muted)]">{t("newResearch.sources")}</p>
                 <p className="mt-1 text-base font-semibold text-[var(--pf-ink)]">
-                  {selectedPrivateFundFileCount} 份
+                  {t("newResearch.fileCount", { count: selectedPrivateFundFileCount })}
                 </p>
               </div>
               <div className="private-fund-summary-card rounded-2xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-3">
-                <p className="text-[11px] text-[var(--pf-ink-muted)]">已完成索引</p>
+                <p className="text-[11px] text-[var(--pf-ink-muted)]">{t("newResearch.indexed")}</p>
                 <p className="mt-1 text-base font-semibold text-[var(--pf-ink)]">
-                  {selectedPrivateFundIndexedCount} 份
+                  {t("newResearch.fileCount", { count: selectedPrivateFundIndexedCount })}
                 </p>
               </div>
               <div
                 className="private-fund-summary-card rounded-2xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-3"
                 data-testid="private-fund-project-token-summary"
               >
-                <p className="text-[11px] text-[var(--pf-ink-muted)]">Token 消耗</p>
+                <p className="text-[11px] text-[var(--pf-ink-muted)]">
+                  {t("newResearch.tokenUsage")}
+                </p>
                 <p className="mt-1 text-base font-semibold text-[var(--pf-ink)] tabular-nums">
                   {selectedPrivateFundTokenUsage?.totalTokens != null
                     ? formatTokenCount(selectedPrivateFundTokenUsage.totalTokens)
                     : selectedPrivateFundTokenUsage?.sessionCount
-                      ? "待记录"
-                      : "暂无"}
+                      ? t("newResearch.pendingRecord")
+                      : t("newResearch.none")}
                 </p>
                 {selectedPrivateFundTokenUsage?.totalTokens != null ? (
                   <TokenUsageBar usage={selectedPrivateFundTokenUsage} className="mt-2 w-full" />
@@ -2591,15 +2595,21 @@ export function NewChatLandingScreen() {
                 selectedPrivateFundTokenUsage.sessionsWithTotalTokens <
                   selectedPrivateFundTokenUsage.sessionCount ? (
                   <p className="mt-1 text-[10px] text-[var(--pf-ink-muted)] tabular-nums">
-                    覆盖 {selectedPrivateFundTokenUsage.sessionsWithTotalTokens}/
-                    {selectedPrivateFundTokenUsage.sessionCount} 个会话
+                    {t("newResearch.usageCoverage", {
+                      covered: selectedPrivateFundTokenUsage.sessionsWithTotalTokens,
+                      total: selectedPrivateFundTokenUsage.sessionCount,
+                    })}
                   </p>
                 ) : null}
               </div>
               <div className="private-fund-summary-card rounded-2xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-4 py-3">
-                <p className="text-[11px] text-[var(--pf-ink-muted)]">研究状态</p>
+                <p className="text-[11px] text-[var(--pf-ink-muted)]">
+                  {t("newResearch.researchStatus")}
+                </p>
                 <p className="mt-1 text-base font-semibold text-[var(--pf-ink)]">
-                  {selectedPrivateFundProject?.indexReady ? "可以开始" : "资料准备中"}
+                  {selectedPrivateFundProject?.indexReady
+                    ? t("newResearch.ready")
+                    : t("newResearch.preparing")}
                 </p>
               </div>
             </div>
@@ -2776,12 +2786,12 @@ export function NewChatLandingScreen() {
                 pillSkills.length > 0
                   ? ""
                   : isPrivateFundProjectLanding
-                    ? "输入研究问题，例如：复核海外收入增速与估值敏感性…"
+                    ? t("newResearch.placeholder")
                     : "Describe a task to start a new session…"
               }
               aria-label={
                 isPrivateFundProjectLanding
-                  ? "输入研究问题"
+                  ? t("newResearch.inputLabel")
                   : "Describe a task to start a new session"
               }
               rows={1}
@@ -2955,7 +2965,11 @@ export function NewChatLandingScreen() {
                           type="submit"
                           size="icon"
                           disabled={!canSubmit}
-                          aria-label="Start session"
+                          aria-label={
+                            isPrivateFundProjectLanding
+                              ? t("newResearch.startSession")
+                              : "Start session"
+                          }
                           data-testid="new-chat-landing-submit"
                           className="size-8 rounded-full bg-foreground text-card transition-opacity hover:opacity-80 disabled:opacity-50"
                         >

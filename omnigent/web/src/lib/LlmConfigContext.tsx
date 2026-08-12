@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import {
@@ -76,6 +77,7 @@ const LlmConfigContext = createContext<LlmConfigContextValue>({
 });
 
 export function LlmConfigProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const serverInfo = useServerInfo();
   const cloudAccounts = serverInfo !== "loading" && serverInfo.cloud_accounts_enabled === true;
   const serverScoped = serverInfo !== "loading" && serverInfo.accounts_enabled;
@@ -215,18 +217,26 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
   }, [modelService?.userId]);
 
   const promptTitle = !cloudAccounts
-    ? "尚未配置模型服务"
+    ? t("model.prompt.notConfiguredTitle")
     : modelService?.reason === "insufficient_balance"
-      ? "平台余额不足"
+      ? t("model.prompt.insufficientBalanceTitle")
       : modelService?.reason === "platform_unavailable"
-        ? "平台模型暂时不可用"
+        ? t("model.prompt.platformUnavailableTitle")
         : modelService?.source === "byok"
-          ? "尚未配置自定义模型"
-          : "模型服务尚未就绪";
-  const promptDescription = modelService?.detail ?? "请先完成模型服务配置，之后即可开始投研问答。";
+          ? t("model.prompt.customNotConfiguredTitle")
+          : t("model.prompt.notReadyTitle");
+  const promptDescription =
+    modelService?.reason === "insufficient_balance"
+      ? t("model.prompt.insufficientBalanceDescription")
+      : modelService?.reason === "platform_unavailable"
+        ? t("model.prompt.platformUnavailableDescription")
+        : t("model.prompt.defaultDescription");
   const promptTarget =
     modelService?.reason === "insufficient_balance" ? "/settings/platform-usage" : "/settings/llm";
-  const promptAction = modelService?.reason === "insufficient_balance" ? "查看账户" : "前往设置";
+  const promptAction =
+    modelService?.reason === "insufficient_balance"
+      ? t("model.prompt.viewAccount")
+      : t("model.prompt.openSettings");
 
   const contextValue = useMemo(
     () => ({
@@ -266,7 +276,7 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
           </DialogHeader>
           <DialogFooter>
             <Button variant="ghost" onClick={dismissPromptForSession}>
-              稍后
+              {t("model.prompt.later")}
             </Button>
             <Button
               onClick={() => {

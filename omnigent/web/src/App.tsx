@@ -6,6 +6,7 @@ import { PrivateFundWorkbenchRedirect } from "@/pages/PrivateFundWorkbenchRedire
 import { useServerInfo } from "@/lib/CapabilitiesContext";
 import { AppShell } from "@/shell/AppShell";
 import { LlmConfigProvider } from "@/lib/LlmConfigContext";
+import { LocaleSynchronizer } from "@/components/LocaleSynchronizer";
 
 // Lazy-load the three accounts pages so the bundle a header / OIDC
 // deploy ships (where accounts is off) doesn't include them in the
@@ -116,6 +117,7 @@ function App({ basename }: AppProps = {}) {
 
   return (
     <Suspense fallback={null}>
+      <LocaleSynchronizer enabled={info.cloud_accounts_enabled === true} />
       <Routes>
         {info.accounts_enabled && (
           <>

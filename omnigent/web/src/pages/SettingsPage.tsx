@@ -20,6 +20,8 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircleIcon,
   ArchiveRestoreIcon,
@@ -108,6 +110,8 @@ import {
 } from "@/lib/llmConfigApi";
 import { useLlmConfiguration } from "@/lib/LlmConfigContext";
 import { SkillsSettingsSection } from "@/pages/SkillsSettingsSection";
+import { LanguageSelector } from "@/components/LanguageSelector";
+import { formatCny, formatLocalizedDate, formatLocalizedNumber } from "@/lib/localeFormat";
 
 /**
  * Settings content panel. The section nav lives in the sidebar card
@@ -126,6 +130,7 @@ export function SettingsPage() {
     <PageScroll contentClassName="px-8" extraBottom="2.5rem">
       {section === "skills" && <SkillsSettingsSection />}
       {section === "appearance" && <AppearanceSection />}
+      {section === "language" && <LanguageSection />}
       {section === "shortcuts" && <ShortcutsSection />}
       {section === "account" && accountsEnabled && <AccountSection />}
       {section === "platform-usage" && info !== "loading" && info.cloud_accounts_enabled && (
@@ -160,22 +165,23 @@ const LLM_PRESETS: Record<
   custom: { label: "自定义 OpenAI-compatible", baseUrl: "", defaultModel: "" },
 };
 
-function llmResultMessage(result: LlmConnectionTestResult): string {
-  if (result.ok) return "连接成功，模型服务可以正常使用。";
+function llmResultMessage(result: LlmConnectionTestResult, t: TFunction): string {
+  if (result.ok) return t("model.connectionSuccess");
   const prefix: Record<string, string> = {
-    authentication: "API Key 验证失败",
-    connection: "无法连接模型服务",
-    model: "模型名称不可用",
-    timeout: "连接测试超时",
-    validation: "配置不完整",
-    busy: "当前不能修改模型配置",
-    apply: "模型配置应用失败",
-    provider: "模型接口不兼容",
+    authentication: t("model.errorAuthentication"),
+    connection: t("model.errorConnection"),
+    model: t("model.errorModel"),
+    timeout: t("model.errorTimeout"),
+    validation: t("model.errorValidation"),
+    busy: t("model.errorBusy"),
+    apply: t("model.errorApply"),
+    provider: t("model.errorProvider"),
   };
-  return `${prefix[result.error ?? ""] ?? "模型服务请求失败"}${result.detail ? `：${result.detail}` : ""}`;
+  return `${prefix[result.error ?? ""] ?? t("model.errorRequest")}${result.detail ? `: ${result.detail}` : ""}`;
 }
 
 function LlmProviderSection() {
+  const { t } = useTranslation();
   const {
     cloudAccounts,
     serverScoped,
@@ -262,7 +268,7 @@ function LlmProviderSection() {
       setResult({
         ok: false,
         error: "runtime",
-        detail: error instanceof Error ? error.message : "模型来源切换失败。",
+        detail: error instanceof Error ? error.message : t("model.sourceSwitchFailed"),
       });
     } finally {
       setBusy(null);
@@ -275,26 +281,26 @@ function LlmProviderSection() {
     (model) => model.id === modelService.platform.defaultModel,
   );
   const platformStatus = modelService?.ready
-    ? "可用"
+    ? t("model.available")
     : modelService?.reason === "insufficient_balance"
-      ? "余额不足"
+      ? t("model.insufficientBalance")
       : modelService?.reason === "platform_access_required"
-        ? "正在准备"
-        : "暂不可用";
+        ? t("model.preparing")
+        : t("model.unavailable");
 
   return (
-    <Section title="模型服务" description="选择平台模型，或配置你自己的模型 API。">
+    <Section title={t("settings.modelService")} description={t("model.description")}>
       <div className="flex max-w-2xl flex-col gap-5">
         {cloudAccounts && (
           <div
             role="radiogroup"
-            aria-label="模型来源"
+            aria-label={t("model.source")}
             className="grid w-full max-w-sm grid-cols-2 rounded-md bg-muted p-1"
           >
             {(
               [
-                ["platform", "平台模型"],
-                ["byok", "自定义"],
+                ["platform", t("model.platform")],
+                ["byok", t("model.custom")],
               ] as const
             ).map(([source, label]) => (
               <button
@@ -318,7 +324,7 @@ function LlmProviderSection() {
                     <span>{label}</span>
                     {modelService?.source === source && (
                       <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-orange-700 dark:text-orange-300">
-                        启用
+                        {t("common.enabled")}
                       </span>
                     )}
                   </span>
@@ -333,10 +339,12 @@ function LlmProviderSection() {
             <div className="flex items-center justify-between gap-4 py-4">
               <div>
                 <div className="font-medium">
-                  {selectedPlatformModel?.displayName || modelService.activeLabel || "平台模型"}
+                  {selectedPlatformModel?.displayName ||
+                    modelService.activeLabel ||
+                    t("model.platform")}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  由平台统一提供，密钥不会发送到浏览器。
+                  {t("model.platformDescription")}
                 </div>
               </div>
               <span
@@ -352,23 +360,23 @@ function LlmProviderSection() {
             </div>
             <div className="grid grid-cols-1 gap-4 py-4 text-sm sm:grid-cols-3">
               <div>
-                <div className="text-xs text-muted-foreground">账户余额</div>
+                <div className="text-xs text-muted-foreground">{t("model.balance")}</div>
                 <div className="mt-1 font-medium tabular-nums">
                   ¥{Number(modelService.platform.balanceCny || 0).toFixed(2)}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">输入单价</div>
+                <div className="text-xs text-muted-foreground">{t("model.inputPrice")}</div>
                 <div className="mt-1 font-medium tabular-nums">
-                  ¥{Number(selectedPlatformModel?.inputPriceCnyPerMillion || 0).toFixed(2)} / 百万
-                  Token
+                  ¥{Number(selectedPlatformModel?.inputPriceCnyPerMillion || 0).toFixed(2)} /{" "}
+                  {t("model.perMillionTokens")}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">输出单价</div>
+                <div className="text-xs text-muted-foreground">{t("model.outputPrice")}</div>
                 <div className="mt-1 font-medium tabular-nums">
-                  ¥{Number(selectedPlatformModel?.outputPriceCnyPerMillion || 0).toFixed(2)} / 百万
-                  Token
+                  ¥{Number(selectedPlatformModel?.outputPriceCnyPerMillion || 0).toFixed(2)} /{" "}
+                  {t("model.perMillionTokens")}
                 </div>
               </div>
             </div>
@@ -379,11 +387,11 @@ function LlmProviderSection() {
             )}
             <div className="flex flex-wrap gap-2 py-4">
               <Button asChild variant="outline">
-                <Link to="/settings/platform-usage">查看平台用量</Link>
+                <Link to="/settings/platform-usage">{t("model.viewUsage")}</Link>
               </Button>
               {modelService.reason === "insufficient_balance" && (
                 <Button variant="ghost" onClick={() => void switchSource("byok")}>
-                  切换到自定义
+                  {t("model.switchCustom")}
                 </Button>
               )}
             </div>
@@ -393,15 +401,17 @@ function LlmProviderSection() {
             {activity.busy && (
               <Alert>
                 <AlertCircleIcon />
-                <AlertTitle>{activity.applying ? "正在应用模型配置" : "暂时不能保存"}</AlertTitle>
+                <AlertTitle>
+                  {activity.applying ? t("model.applying") : t("model.cannotSave")}
+                </AlertTitle>
                 <AlertDescription>
-                  {activity.detail || "当前有回答正在生成，请等待完成后修改。"}
+                  {activity.detail || t("model.waitForGeneration")}
                 </AlertDescription>
               </Alert>
             )}
 
             <label className="flex flex-col gap-2 text-sm font-medium">
-              模型供应商
+              {t("model.provider")}
               <Select
                 value={form.preset}
                 onValueChange={(value) => {
@@ -418,7 +428,11 @@ function LlmProviderSection() {
                 <SelectContent>
                   {Object.entries(LLM_PRESETS).map(([value, definition]) => (
                     <SelectItem key={value} value={value}>
-                      {definition.label}
+                      {value === "custom"
+                        ? t("model.customCompatible")
+                        : value === "dashscope"
+                          ? t("model.qwenDashScope")
+                          : definition.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -437,10 +451,10 @@ function LlmProviderSection() {
             </label>
 
             <label className="flex flex-col gap-2 text-sm font-medium">
-              模型名称
+              {t("model.name")}
               <Input
                 value={form.model}
-                placeholder="例如 qwen3-max"
+                placeholder={t("model.namePlaceholder")}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, model: event.target.value }))
                 }
@@ -467,7 +481,7 @@ function LlmProviderSection() {
                     type="password"
                     autoComplete="new-password"
                     value={form.apiKey ?? ""}
-                    placeholder="请输入完整的新 API Key"
+                    placeholder={t("model.apiKeyPlaceholder")}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, apiKey: event.target.value }))
                     }
@@ -482,7 +496,7 @@ function LlmProviderSection() {
                       setForm((current) => ({ ...current, apiKey: "" }));
                     }}
                   >
-                    取消
+                    {t("common.cancel")}
                   </Button>
                 )}
               </div>
@@ -491,8 +505,8 @@ function LlmProviderSection() {
             {result && (
               <Alert variant={result.ok ? "default" : "destructive"}>
                 {result.ok ? <CheckCircle2Icon /> : <AlertCircleIcon />}
-                <AlertTitle>{result.ok ? "成功" : "未完成"}</AlertTitle>
-                <AlertDescription>{llmResultMessage(result)}</AlertDescription>
+                <AlertTitle>{result.ok ? t("model.success") : t("model.incomplete")}</AlertTitle>
+                <AlertDescription>{llmResultMessage(result, t)}</AlertDescription>
               </Alert>
             )}
 
@@ -503,14 +517,14 @@ function LlmProviderSection() {
                 onClick={() => void runTest()}
               >
                 {busy === "test" && <Loader2Icon className="size-4 animate-spin" />}
-                测试连接
+                {t("model.testConnection")}
               </Button>
               <Button
                 disabled={busy !== null || loading || activity.busy || apiKeyRequired}
                 onClick={() => void save()}
               >
                 {busy === "save" && <Loader2Icon className="size-4 animate-spin" />}
-                保存配置
+                {t("model.saveConfiguration")}
               </Button>
             </div>
           </>
@@ -539,13 +553,14 @@ function Section({
   );
 }
 
-const themeCards: { mode: ThemeMode; label: string; icon: typeof SunIcon }[] = [
-  { mode: "system", label: "System", icon: LaptopMinimalIcon },
-  { mode: "light", label: "Light", icon: SunIcon },
-  { mode: "dark", label: "Dark", icon: MoonIcon },
+const themeCards: { mode: ThemeMode; labelKey: string; icon: typeof SunIcon }[] = [
+  { mode: "system", labelKey: "settings.system", icon: LaptopMinimalIcon },
+  { mode: "light", labelKey: "settings.light", icon: SunIcon },
+  { mode: "dark", labelKey: "settings.dark", icon: MoonIcon },
 ];
 
 function AppearanceSection() {
+  const { t } = useTranslation();
   // Embedded: the host owns the theme (embed.tsx forces light), so the
   // selector would be a no-op — match ThemeModeMenu and hide it.
   const isEmbedded = useIsEmbedded();
@@ -553,14 +568,17 @@ function AppearanceSection() {
   const mode = normalizeThemeMode(theme);
 
   return (
-    <Section title="Appearance" description="Choose how Omnigent looks on this device.">
+    <Section title={t("settings.appearance")} description={t("settings.appearanceDescription")}>
       {isEmbedded ? (
         <p className="text-sm text-muted-foreground">
-          Appearance is controlled by the host application.
+          {t(
+            "settings.hostControlsAppearance",
+            "Appearance is controlled by the host application.",
+          )}
         </p>
       ) : (
         <div className="grid grid-cols-3 gap-3" role="radiogroup" aria-label="Theme">
-          {themeCards.map(({ mode: cardMode, label, icon: Icon }) => {
+          {themeCards.map(({ mode: cardMode, labelKey, icon: Icon }) => {
             const selected = mode === cardMode;
             return (
               <button
@@ -576,12 +594,25 @@ function AppearanceSection() {
                 )}
               >
                 <Icon className="size-6 text-muted-foreground" />
-                <span className="text-sm font-medium">{label}</span>
+                <span className="text-sm font-medium">{t(labelKey)}</span>
               </button>
             );
           })}
         </div>
       )}
+    </Section>
+  );
+}
+
+function LanguageSection() {
+  const { t } = useTranslation();
+  const info = useServerInfo();
+
+  return (
+    <Section title={t("language.label")} description={t("language.description")}>
+      <LanguageSelector
+        persistAccount={info !== "loading" && info.cloud_accounts_enabled === true}
+      />
     </Section>
   );
 }
@@ -691,6 +722,7 @@ function LocalCliSection() {
 }
 
 function AccountSection() {
+  const { t } = useTranslation();
   const info = useServerInfo();
   const cloudAccounts = info !== "loading" && info.cloud_accounts_enabled;
   const [me, setMe] = useState<CurrentAccount | null | "unknown">("unknown");
@@ -751,8 +783,8 @@ function AccountSection() {
     setNickName(saved);
     setSavedNickName(saved);
     setEditingProfile(false);
-    setProfileMessage({ kind: "ok", text: "昵称已保存" });
-  }, [nickName]);
+    setProfileMessage({ kind: "ok", text: t("account.nicknameSaved") });
+  }, [nickName, t]);
 
   const onSignOut = useCallback(async () => {
     await logout();
@@ -790,7 +822,7 @@ function AccountSection() {
 
   const onSubmitPassword = useCallback(async () => {
     if (newPw !== confirmPw) {
-      setPwError("New passwords don't match.");
+      setPwError(t("auth.passwordMismatch"));
       return;
     }
     setPwBusy(true);
@@ -814,14 +846,14 @@ function AccountSection() {
     } else {
       setPwError(result.error);
     }
-  }, [oldPw, pwCode, newPw, confirmPw, cloudAccounts]);
+  }, [oldPw, pwCode, newPw, confirmPw, cloudAccounts, t]);
 
   if (me === "unknown" || me === null) {
-    return <Section title="账户">{null}</Section>;
+    return <Section title={t("settings.account")}>{null}</Section>;
   }
 
   return (
-    <Section title="账户">
+    <Section title={t("settings.account")}>
       <div className="flex flex-col gap-6">
         <div className="flex items-center gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-border">
@@ -831,11 +863,11 @@ function AccountSection() {
             {cloudAccounts && editingProfile ? (
               <div className="flex max-w-xl items-center gap-1.5">
                 <Input
-                  aria-label="昵称"
+                  aria-label={t("auth.nickname")}
                   value={nickName}
                   maxLength={120}
                   disabled={profileBusy}
-                  placeholder={me.email || "请输入昵称"}
+                  placeholder={me.email || t("account.nicknamePlaceholder")}
                   autoFocus
                   onChange={(event) => {
                     setNickName(event.target.value);
@@ -856,8 +888,8 @@ function AccountSection() {
                 <Button
                   type="button"
                   size="icon-sm"
-                  aria-label="保存昵称"
-                  title="保存昵称"
+                  aria-label={t("account.saveNickname")}
+                  title={t("account.saveNickname")}
                   disabled={profileBusy || nickName.trim() === savedNickName}
                   onClick={() => void onSaveProfile()}
                 >
@@ -871,8 +903,8 @@ function AccountSection() {
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  aria-label="取消编辑昵称"
-                  title="取消"
+                  aria-label={t("account.cancelNickname")}
+                  title={t("common.cancel")}
                   disabled={profileBusy}
                   onClick={() => {
                     setNickName(savedNickName);
@@ -889,7 +921,7 @@ function AccountSection() {
                   {accountDisplayName(me)}
                   {me.is_platform_admin && (
                     <span className="ml-1 text-xs font-normal text-muted-foreground">
-                      (平台管理员)
+                      ({t("account.platformAdmin")})
                     </span>
                   )}
                   {!cloudAccounts && me.is_admin && (
@@ -901,8 +933,8 @@ function AccountSection() {
                     type="button"
                     size="icon-xs"
                     variant="ghost"
-                    aria-label="编辑昵称"
-                    title="编辑昵称"
+                    aria-label={t("account.editNickname")}
+                    title={t("account.editNickname")}
                     onClick={() => {
                       setNickName(savedNickName);
                       setEditingProfile(true);
@@ -953,14 +985,14 @@ function AccountSection() {
               setPwOpen(true);
             }}
           >
-            <KeyRoundIcon className="size-4" /> 修改密码
+            <KeyRoundIcon className="size-4" /> {t("account.changePassword")}
           </Button>
           <Button
             variant="ghost"
             className="w-full justify-start gap-2"
             onClick={() => void onSignOut()}
           >
-            <LogOutIcon className="size-4" /> 退出登录
+            <LogOutIcon className="size-4" /> {t("auth.signOut")}
           </Button>
         </div>
       </div>
@@ -974,13 +1006,13 @@ function AccountSection() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>修改密码</DialogTitle>
+            <DialogTitle>{t("account.changePassword")}</DialogTitle>
             <DialogDescription>
               {pwDone
-                ? "密码已修改。"
+                ? t("account.passwordChanged")
                 : cloudAccounts
-                  ? `验证码将发送到 ${me.email ?? "当前账户邮箱"}。`
-                  : "请输入当前密码，并设置一个新密码。"}
+                  ? t("account.codeWillBeSent", { email: me.email ?? t("account.currentEmail") })
+                  : t("account.enterCurrentPassword")}
             </DialogDescription>
           </DialogHeader>
 
@@ -995,7 +1027,7 @@ function AccountSection() {
               {cloudAccounts ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Input value={me.email ?? ""} readOnly aria-label="账户邮箱" />
+                    <Input value={me.email ?? ""} readOnly aria-label={t("account.email")} />
                     <Button
                       type="button"
                       variant="outline"
@@ -1004,19 +1036,19 @@ function AccountSection() {
                       onClick={() => void onSendPasswordCode()}
                     >
                       {pwSendingCode
-                        ? "发送中..."
+                        ? t("account.sending")
                         : pwResendSeconds > 0
                           ? `${pwResendSeconds}s`
                           : pwCodeSent
-                            ? "重新发送"
-                            : "发送验证码"}
+                            ? t("auth.resendCode")
+                            : t("auth.sendCode")}
                     </Button>
                   </div>
                   {pwCodeSent && (
                     <Input
                       inputMode="numeric"
                       autoComplete="one-time-code"
-                      placeholder="6 位邮箱验证码"
+                      placeholder={t("auth.sixDigitEmailCode")}
                       value={pwCode}
                       onChange={(event) =>
                         setPwCode(event.target.value.replace(/\D/g, "").slice(0, 6))
@@ -1032,7 +1064,7 @@ function AccountSection() {
                 <Input
                   type="password"
                   autoComplete="current-password"
-                  placeholder="当前密码"
+                  placeholder={t("account.currentPassword")}
                   value={oldPw}
                   onChange={(e) => setOldPw(e.target.value)}
                   disabled={pwBusy}
@@ -1042,7 +1074,7 @@ function AccountSection() {
               <Input
                 type="password"
                 autoComplete="new-password"
-                placeholder="新密码"
+                placeholder={t("auth.newPassword")}
                 value={newPw}
                 onChange={(e) => setNewPw(e.target.value)}
                 minLength={8}
@@ -1052,7 +1084,7 @@ function AccountSection() {
               <Input
                 type="password"
                 autoComplete="new-password"
-                placeholder="确认新密码"
+                placeholder={t("auth.confirmNewPassword")}
                 value={confirmPw}
                 onChange={(e) => setConfirmPw(e.target.value)}
                 minLength={8}
@@ -1077,7 +1109,7 @@ function AccountSection() {
                     (cloudAccounts ? !pwCodeSent || pwCode.length !== 6 : oldPw.length === 0)
                   }
                 >
-                  {pwBusy ? "Changing…" : "Change password"}
+                  {pwBusy ? t("account.changing") : t("account.changePassword")}
                 </Button>
               </DialogFooter>
             </form>
@@ -1085,7 +1117,7 @@ function AccountSection() {
 
           {pwDone && (
             <DialogFooter>
-              <Button onClick={() => setPwOpen(false)}>完成</Button>
+              <Button onClick={() => setPwOpen(false)}>{t("common.confirm")}</Button>
             </DialogFooter>
           )}
         </DialogContent>
@@ -1094,13 +1126,10 @@ function AccountSection() {
   );
 }
 
-const BALANCE_PERIODS: Array<{ value: BalanceRecordPeriod; label: string }> = [
-  { value: "all", label: "全部" },
-  { value: "week", label: "近一周" },
-  { value: "month", label: "近一月" },
-];
+const BALANCE_PERIODS: BalanceRecordPeriod[] = ["all", "week", "month"];
 
 function PlatformUsageSection() {
+  const { t } = useTranslation();
   const [me, setMe] = useState<CurrentAccount | null | "unknown">("unknown");
   const [usage, setUsage] = useState<PlatformUsageResponse | null>(null);
   const [records, setRecords] = useState<BalanceRecordPage | null>(null);
@@ -1121,17 +1150,17 @@ function PlatformUsageSection() {
     setUsage(nextUsage);
     setRecords(nextRecords);
     if (account === null || nextUsage === null || nextRecords === null) {
-      setError("平台用量加载失败，请稍后重试。");
+      setError(t("usage.loadFailed"));
     }
     setLoading(false);
-  }, [page, period]);
+  }, [page, period, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   if (me === "unknown") {
-    return <Section title="平台用量">{null}</Section>;
+    return <Section title={t("settings.platformUsage")}>{null}</Section>;
   }
 
   const currentPage = records?.page ?? page;
@@ -1139,54 +1168,61 @@ function PlatformUsageSection() {
   const items = records?.items ?? [];
 
   return (
-    <Section title="平台用量">
+    <Section title={t("settings.platformUsage")}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col justify-between gap-3 border-b border-border pb-5 sm:flex-row sm:items-end">
           <div>
-            <div className="text-sm text-muted-foreground">平台账户余额</div>
+            <div className="text-sm text-muted-foreground">{t("usage.balance")}</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">
-              ¥{Number(me?.balance_cny ?? 0).toFixed(2)}
+              {formatCny(Number(me?.balance_cny ?? 0))}
             </div>
           </div>
-          <div className="text-xs text-muted-foreground">本机 BYOK 模型调用不扣除此余额</div>
+          <div className="text-xs text-muted-foreground">{t("usage.byokNotCharged")}</div>
         </div>
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-b border-border pb-5 text-sm sm:grid-cols-5">
-          <PlatformMetric label="平台调用" value={formatInteger(usage?.summary.request_count)} />
-          <PlatformMetric label="输入 Token" value={formatInteger(usage?.summary.prompt_tokens)} />
           <PlatformMetric
-            label="输出 Token"
+            label={t("usage.calls")}
+            value={formatInteger(usage?.summary.request_count)}
+          />
+          <PlatformMetric
+            label={t("usage.inputTokens")}
+            value={formatInteger(usage?.summary.prompt_tokens)}
+          />
+          <PlatformMetric
+            label={t("usage.outputTokens")}
             value={formatInteger(usage?.summary.completion_tokens)}
           />
-          <PlatformMetric label="总 Token" value={formatInteger(usage?.summary.total_tokens)} />
           <PlatformMetric
-            label="累计费用"
-            value={`¥${Number(usage?.summary.charged_amount_cny ?? 0).toFixed(2)}`}
+            label={t("usage.totalTokens")}
+            value={formatInteger(usage?.summary.total_tokens)}
+          />
+          <PlatformMetric
+            label={t("usage.totalCost")}
+            value={formatCny(Number(usage?.summary.charged_amount_cny ?? 0))}
           />
         </div>
 
         <div>
           <div className="mb-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
-              <div className="text-sm font-medium">余额变动</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">
-                仅展示已经结算的真实余额变化
-              </div>
+              <div className="text-sm font-medium">{t("usage.balanceChanges")}</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">{t("usage.settledOnly")}</div>
             </div>
             <div className="inline-flex w-fit items-center rounded-md border border-border p-0.5">
               {BALANCE_PERIODS.map((item) => (
                 <Button
-                  key={item.value}
+                  key={item}
                   type="button"
                   size="sm"
-                  variant={period === item.value ? "secondary" : "ghost"}
+                  variant={period === item ? "secondary" : "ghost"}
                   className="h-7 px-3"
                   onClick={() => {
-                    setPeriod(item.value);
+                    setPeriod(item);
                     setPage(1);
                   }}
                 >
-                  {item.label}
+                  {t(`usage.period.${item}`)}
                 </Button>
               ))}
             </div>
@@ -1195,11 +1231,11 @@ function PlatformUsageSection() {
           {error && (
             <Alert className="mb-3">
               <AlertCircleIcon />
-              <AlertTitle>无法加载平台用量</AlertTitle>
+              <AlertTitle>{t("usage.unableToLoad")}</AlertTitle>
               <AlertDescription className="flex items-center justify-between gap-3">
                 <span>{error}</span>
                 <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-                  重试
+                  {t("common.retry")}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -1209,11 +1245,11 @@ function PlatformUsageSection() {
             {loading && items.length === 0 ? (
               <div className="flex h-36 items-center justify-center text-sm text-muted-foreground">
                 <Loader2Icon className="mr-2 size-4 animate-spin" />
-                正在加载
+                {t("common.loading")}
               </div>
             ) : items.length === 0 ? (
               <div className="flex h-36 items-center justify-center text-sm text-muted-foreground">
-                当前时间范围内暂无余额变动
+                {t("usage.empty")}
               </div>
             ) : (
               items.map((record) => (
@@ -1222,14 +1258,17 @@ function PlatformUsageSection() {
                   className="flex min-h-16 items-center justify-between gap-4 py-3 text-sm"
                 >
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{balanceRecordLabel(record)}</div>
-                    {balanceRecordDetail(record) && (
+                    <div className="truncate font-medium">{balanceRecordLabel(record, t)}</div>
+                    {balanceRecordDetail(record, t) && (
                       <div className="text-xs text-muted-foreground">
-                        {balanceRecordDetail(record)}
+                        {balanceRecordDetail(record, t)}
                       </div>
                     )}
                     <div className="text-xs text-muted-foreground">
-                      {new Date(record.created_at).toLocaleString()}
+                      {formatLocalizedDate(record.created_at, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
                     </div>
                   </div>
                   <div className="shrink-0 text-right tabular-nums">
@@ -1238,7 +1277,9 @@ function PlatformUsageSection() {
                       {Math.abs(Number(record.amount_cny)).toFixed(2)}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      余额 ¥{Number(record.balance_after_cny).toFixed(2)}
+                      {t("usage.balanceAfter", {
+                        value: formatCny(Number(record.balance_after_cny)),
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1247,28 +1288,31 @@ function PlatformUsageSection() {
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>共 {records?.total ?? 0} 条</span>
+            <span>{t("usage.totalRecords", { count: records?.total ?? 0 })}</span>
             <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 className="size-8"
-                aria-label="上一页"
+                aria-label={t("common.previous")}
                 disabled={loading || currentPage <= 1}
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
               >
                 <ChevronLeftIcon className="size-4" />
               </Button>
               <span className="min-w-20 text-center tabular-nums">
-                第 {totalPages === 0 ? 0 : currentPage} / {totalPages} 页
+                {t("usage.page", {
+                  current: totalPages === 0 ? 0 : currentPage,
+                  total: totalPages,
+                })}
               </span>
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 className="size-8"
-                aria-label="下一页"
+                aria-label={t("common.next")}
                 disabled={loading || totalPages === 0 || currentPage >= totalPages}
                 onClick={() => setPage((value) => value + 1)}
               >
@@ -1283,24 +1327,25 @@ function PlatformUsageSection() {
 }
 
 function formatInteger(value: number | undefined): string {
-  return new Intl.NumberFormat("zh-CN").format(value ?? 0);
+  return formatLocalizedNumber(value ?? 0);
 }
 
-function balanceRecordLabel(record: BalanceRecord): string {
+function balanceRecordLabel(record: BalanceRecord, t: TFunction): string {
   if (record.record_type === "usage") {
-    return `${record.model_display_name || "平台模型"} 模型调用`;
+    return t("usage.modelCall", { model: record.model_display_name || t("model.platform") });
   }
-  if (record.record_type === "initial_grant") return "初始额度";
-  if (record.record_type === "admin_adjustment") return record.note || "余额调整";
-  return record.note || "余额变动";
+  if (record.record_type === "initial_grant") return t("usage.initialGrant");
+  if (record.record_type === "admin_adjustment") return record.note || t("usage.adjustment");
+  return record.note || t("usage.balanceChanges");
 }
 
-function balanceRecordDetail(record: BalanceRecord): string | null {
+function balanceRecordDetail(record: BalanceRecord, t: TFunction): string | null {
   if (record.record_type !== "usage") return null;
   if (record.prompt_tokens == null || record.completion_tokens == null) return null;
-  return `${formatInteger(record.prompt_tokens)} 输入 Token · ${formatInteger(
-    record.completion_tokens,
-  )} 输出 Token`;
+  return t("usage.tokenDetail", {
+    input: formatInteger(record.prompt_tokens),
+    output: formatInteger(record.completion_tokens),
+  });
 }
 
 function PlatformMetric({ label, value }: { label: string; value: string }) {
@@ -1323,6 +1368,7 @@ function formatAttachmentSize(size: number): string {
 }
 
 function FeedbackSection() {
+  const { t } = useTranslation();
   const info = useServerInfo();
   const [feedbackType, setFeedbackType] = useState<
     "bug" | "experience" | "feature" | "answer_quality" | "other"
@@ -1373,35 +1419,35 @@ function FeedbackSection() {
           continue;
         }
         if (next.length >= FEEDBACK_ATTACHMENT_MAX_FILES) {
-          setMessage({ kind: "error", text: "附件最多上传 3 个" });
+          setMessage({ kind: "error", text: t("feedbackUi.tooManyFiles") });
           return;
         }
         const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
         if (!FEEDBACK_ATTACHMENT_EXTENSIONS.has(extension)) {
           setMessage({
             kind: "error",
-            text: "仅支持 .docx、.pdf、.png、.jpg 和 .jpeg 文件",
+            text: t("feedbackUi.invalidFileType"),
           });
           return;
         }
         if (file.size === 0) {
-          setMessage({ kind: "error", text: `${file.name} 是空文件，不能上传` });
+          setMessage({ kind: "error", text: t("feedbackUi.emptyFile", { name: file.name }) });
           return;
         }
         if (file.size > FEEDBACK_ATTACHMENT_MAX_BYTES) {
-          setMessage({ kind: "error", text: `${file.name} 超过 50MB` });
+          setMessage({ kind: "error", text: t("feedbackUi.fileTooLarge", { name: file.name }) });
           return;
         }
         next.push(file);
       }
       const totalBytes = next.reduce((sum, file) => sum + file.size, 0);
       if (totalBytes > FEEDBACK_ATTACHMENT_MAX_TOTAL_BYTES) {
-        setMessage({ kind: "error", text: "附件总大小不能超过 150MB" });
+        setMessage({ kind: "error", text: t("feedbackUi.totalTooLarge") });
         return;
       }
       setAttachments(next);
     },
-    [attachments],
+    [attachments, t],
   );
 
   const submit = useCallback(async () => {
@@ -1429,12 +1475,15 @@ function FeedbackSection() {
     setRating(null);
     setAttachments([]);
     if (attachmentInputRef.current) attachmentInputRef.current.value = "";
-    setMessage({ kind: "ok", text: `反馈 #${result.feedback.feedback_number} 已提交` });
+    setMessage({
+      kind: "ok",
+      text: t("feedbackUi.submitted", { number: result.feedback.feedback_number }),
+    });
     await loadHistory();
-  }, [attachments, contactAllowed, content, feedbackType, info, loadHistory, rating, title]);
+  }, [attachments, contactAllowed, content, feedbackType, info, loadHistory, rating, t, title]);
 
   return (
-    <Section title="用户反馈" description="告诉我们哪里不顺手，或你希望工作台下一步支持什么。">
+    <Section title={t("settings.feedback")} description={t("feedbackUi.description")}>
       <div className="flex max-w-3xl flex-col gap-7">
         <form
           className="space-y-4"
@@ -1446,7 +1495,7 @@ function FeedbackSection() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label className="text-sm font-medium" htmlFor="feedback-type">
-                反馈类型
+                {t("feedbackUi.type")}
               </label>
               <Select
                 value={feedbackType}
@@ -1456,17 +1505,19 @@ function FeedbackSection() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="experience">使用体验</SelectItem>
-                  <SelectItem value="bug">问题报告</SelectItem>
-                  <SelectItem value="feature">功能建议</SelectItem>
-                  <SelectItem value="answer_quality">回答质量</SelectItem>
-                  <SelectItem value="other">其他</SelectItem>
+                  <SelectItem value="experience">{t("feedbackUi.types.experience")}</SelectItem>
+                  <SelectItem value="bug">{t("feedbackUi.types.bug")}</SelectItem>
+                  <SelectItem value="feature">{t("feedbackUi.types.feature")}</SelectItem>
+                  <SelectItem value="answer_quality">
+                    {t("feedbackUi.types.answerQuality")}
+                  </SelectItem>
+                  <SelectItem value="other">{t("feedbackUi.types.other")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium" htmlFor="feedback-title">
-                标题
+                {t("feedbackUi.title")}
               </label>
               <Input
                 id="feedback-title"
@@ -1479,7 +1530,7 @@ function FeedbackSection() {
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor="feedback-content">
-              详细内容
+              {t("feedbackUi.content")}
             </label>
             <Textarea
               id="feedback-content"
@@ -1492,7 +1543,7 @@ function FeedbackSection() {
           </div>
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-medium">附件上传：</span>
+              <span className="text-sm font-medium">{t("feedbackUi.attachments")}</span>
               <input
                 ref={attachmentInputRef}
                 type="file"
@@ -1514,14 +1565,14 @@ function FeedbackSection() {
                 onClick={() => attachmentInputRef.current?.click()}
               >
                 <CloudUploadIcon className="size-4" />
-                附件上传
+                {t("feedbackUi.upload")}
               </Button>
             </div>
             <p id="feedback-attachment-help" className="text-sm text-muted-foreground">
-              文件格式（.docx、.pdf、.png、.jpg、.jpeg），单个文件不超过 50MB，最多 3 个
+              {t("feedbackUi.attachmentHelp")}
             </p>
             {attachments.length > 0 && (
-              <div className="grid gap-2" aria-label="已选择的附件">
+              <div className="grid gap-2" aria-label={t("feedbackUi.selectedAttachments")}>
                 {attachments.map((file) => (
                   <div
                     key={`${file.name}-${file.size}-${file.lastModified}`}
@@ -1541,7 +1592,7 @@ function FeedbackSection() {
                       variant="ghost"
                       size="icon-sm"
                       disabled={submitting}
-                      aria-label={`移除附件 ${file.name}`}
+                      aria-label={t("feedbackUi.removeAttachment", { name: file.name })}
                       onClick={() =>
                         setAttachments((current) => current.filter((item) => item !== file))
                       }
@@ -1555,7 +1606,7 @@ function FeedbackSection() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">评分（可选）</span>
+              <span className="text-sm text-muted-foreground">{t("feedbackUi.rating")}</span>
               {[1, 2, 3, 4, 5].map((value) => (
                 <Button
                   key={value}
@@ -1563,7 +1614,7 @@ function FeedbackSection() {
                   size="icon"
                   variant={rating === value ? "default" : "outline"}
                   className="size-8"
-                  aria-label={`${value} 分`}
+                  aria-label={t("feedbackUi.ratingValue", { value })}
                   onClick={() => setRating(rating === value ? null : value)}
                 >
                   {value}
@@ -1577,7 +1628,7 @@ function FeedbackSection() {
                 onChange={(event) => setContactAllowed(event.target.checked)}
                 className="size-4"
               />
-              允许通过账户邮箱联系我
+              {t("feedbackUi.contactAllowed")}
             </label>
           </div>
           {message && (
@@ -1603,23 +1654,23 @@ function FeedbackSection() {
             ) : (
               <MessageSquareTextIcon className="size-4" />
             )}
-            提交反馈
+            {t("feedbackUi.submit")}
           </Button>
         </form>
 
         <div>
-          <h3 className="mb-2 text-sm font-medium">我的反馈</h3>
+          <h3 className="mb-2 text-sm font-medium">{t("feedbackUi.history")}</h3>
           {loading ? (
-            <p className="text-sm text-muted-foreground">正在加载...</p>
+            <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
           ) : historyError ? (
             <div role="alert" className="flex items-center gap-3 text-sm text-destructive">
               <span>{historyError}</span>
               <Button type="button" variant="outline" size="sm" onClick={() => void loadHistory()}>
-                重试
+                {t("common.retry")}
               </Button>
             </div>
           ) : history.length === 0 ? (
-            <p className="text-sm text-muted-foreground">还没有提交过反馈</p>
+            <p className="text-sm text-muted-foreground">{t("feedbackUi.empty")}</p>
           ) : (
             <div className="divide-y divide-border border-y border-border">
               {history.map((entry) => (
@@ -1639,7 +1690,7 @@ function FeedbackSection() {
                             href={`/v1/account/feedback/${entry.id}/attachments/${attachment.id}`}
                             download={attachment.original_filename}
                             className="inline-flex max-w-full items-center gap-1.5 rounded border px-2 py-1 text-xs text-primary hover:bg-muted"
-                            title={`下载 ${attachment.original_filename}`}
+                            title={t("feedbackUi.download", { name: attachment.original_filename })}
                           >
                             <FileIcon className="size-3.5 shrink-0" />
                             <span className="max-w-48 truncate">
@@ -1654,8 +1705,8 @@ function FeedbackSection() {
                     )}
                   </div>
                   <div className="shrink-0 text-right text-xs text-muted-foreground">
-                    <div>{feedbackStatusLabel(entry.status)}</div>
-                    <div>{new Date(entry.created_at).toLocaleDateString()}</div>
+                    <div>{feedbackStatusLabel(entry.status, t)}</div>
+                    <div>{formatLocalizedDate(entry.created_at)}</div>
                   </div>
                 </div>
               ))}
@@ -1667,14 +1718,14 @@ function FeedbackSection() {
   );
 }
 
-function feedbackStatusLabel(status: string): string {
+function feedbackStatusLabel(status: string, t: TFunction): string {
   return (
     (
       {
-        open: "待处理",
-        processing: "处理中",
-        resolved: "已解决",
-        closed: "已关闭",
+        open: t("feedbackUi.status.open"),
+        processing: t("feedbackUi.status.processing"),
+        resolved: t("feedbackUi.status.resolved"),
+        closed: t("feedbackUi.status.closed"),
       } as Record<string, string>
     )[status] ?? status
   );
