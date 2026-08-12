@@ -1,12 +1,12 @@
 {
-  "productVersion": "0.2.1",
+  "productVersion": "0.2.2",
   "legacyDataBaseline": "0.1.1",
-  "databaseChanged": true,
+  "databaseChanged": false,
   "databaseTargetVersion": "0.2.1",
   "chatDatabase": {
     "migrationSystem": "alembic",
     "schemaChanged": false,
-    "productVersion": "0.2.1"
+    "productVersion": "0.2.2"
   },
   "migrations": [
     {

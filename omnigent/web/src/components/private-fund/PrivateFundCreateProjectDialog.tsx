@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,7 @@ export function PrivateFundCreateProjectDialog({
   onOpenChange,
   onCreated,
 }: PrivateFundCreateProjectDialogProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -72,7 +74,7 @@ export function PrivateFundCreateProjectDialog({
       }}
     >
       <DialogContent
-        aria-label="新建研究项目"
+        aria-label={t("privateFund.createProject")}
         className="sm:max-w-md"
         showCloseButton={!mutation.isPending}
         onEscapeKeyDown={(event) => {
@@ -84,46 +86,55 @@ export function PrivateFundCreateProjectDialog({
       >
         <form className="contents" onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>新建研究项目</DialogTitle>
+            <DialogTitle>{t("privateFund.createProject")}</DialogTitle>
             <DialogDescription>
-              创建后直接进入统一研究工作台，再从左侧资料来源上传并索引文档。
+              {t(
+                "privateFund.createProjectDescription",
+                "Create the project, then upload and index sources from the left sidebar.",
+              )}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <label className="block space-y-1.5">
-              <span className="text-xs font-medium">项目名称</span>
+              <span className="text-xs font-medium">{t("privateFund.projectName")}</span>
               <Input
                 autoFocus
-                aria-label="研究项目名称"
+                aria-label={t("privateFund.projectName")}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="例如：阳光电源"
+                placeholder={t("privateFund.projectNamePlaceholder", "For example: Sungrow Power")}
                 value={name}
               />
             </label>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium">公司名称（可选）</span>
+                <span className="text-xs font-medium">
+                  {t("privateFund.companyName")} ({t("auth.optional", "Optional")})
+                </span>
                 <Input
-                  aria-label="研究项目公司名称"
+                  aria-label={t("privateFund.companyName")}
                   onChange={(event) => setCompanyName(event.target.value)}
-                  placeholder="公司全称"
+                  placeholder={t("privateFund.companyNamePlaceholder", "Full company name")}
                   value={companyName}
                 />
               </label>
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium">股票代码（可选）</span>
+                <span className="text-xs font-medium">
+                  {t("privateFund.stockCode")} ({t("auth.optional", "Optional")})
+                </span>
                 <Input
-                  aria-label="研究项目股票代码"
+                  aria-label={t("privateFund.stockCode")}
                   onChange={(event) => setCompanyTicker(event.target.value)}
-                  placeholder="例如：300274"
+                  placeholder={t("privateFund.stockCodePlaceholder")}
                   value={companyTicker}
                 />
               </label>
             </div>
             {mutation.error ? (
               <p className="rounded-lg border border-[var(--pf-line)] bg-[var(--pf-danger-soft)] px-3 py-2 text-xs text-[var(--pf-danger-ink)]">
-                {mutation.error instanceof Error ? mutation.error.message : "创建研究项目失败"}
+                {mutation.error instanceof Error
+                  ? mutation.error.message
+                  : t("privateFund.createProjectFailed", "Could not create the project")}
               </p>
             ) : null}
           </div>
@@ -135,11 +146,11 @@ export function PrivateFundCreateProjectDialog({
               type="button"
               variant="secondary"
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button disabled={!name.trim() || mutation.isPending} type="submit">
               {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
-              创建并进入工作台
+              {t("privateFund.createAndOpen", "Create and open")}
             </Button>
           </DialogFooter>
         </form>

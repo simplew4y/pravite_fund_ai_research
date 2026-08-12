@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   getPrivateFundPipelineJob,
@@ -24,6 +25,7 @@ const SUPPORTED_UPLOAD_SUFFIXES = new Set([
 ]);
 
 export function usePrivateFundDocumentUpload(datasetId: string | null | undefined) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<PrivateFundUploadStage>("idle");
@@ -32,30 +34,34 @@ export function usePrivateFundDocumentUpload(datasetId: string | null | undefine
 
   const mutation = useMutation({
     mutationFn: async ({ files, skipped }: { files: File[]; skipped: number }) => {
-      if (!datasetId) throw new Error("请先选择研究项目");
+      if (!datasetId) throw new Error(t("sourceLibrary.selectProjectFirst"));
       const uploaded = await uploadPrivateFundFiles(datasetId, files);
       setStage("queued");
-      setMessage("文档已上传，正在等待索引任务启动。请保持窗口打开。");
+      setMessage(t("sourceLibrary.uploadQueued"));
       // New servers enqueue automatically with the upload.  The fallback keeps
       // compatibility with older deployments during rolling upgrades.
       let job = uploaded.job ?? (await runPrivateFundPipeline(datasetId));
       while (["queued", "running", "indexing"].includes(job.status)) {
         setStage(job.status === "queued" ? "queued" : "running");
-        setMessage(job.message || "pipeline 正在解析文档、提取内容并建立检索索引。");
+        setMessage(job.message || t("sourceLibrary.pipelineRunning"));
         job = await getPrivateFundPipelineJob(job.jobId);
         if (["queued", "running", "indexing"].includes(job.status)) {
           await new Promise((resolve) => window.setTimeout(resolve, 1500));
         }
       }
       if (job.status !== "completed") {
-        throw new Error(job.message || `pipeline 未完成：${job.status}`);
+        throw new Error(
+          job.message || t("sourceLibrary.pipelineIncomplete", { status: job.status }),
+        );
       }
       return { count: files.length, skipped };
     },
     onSuccess: ({ count, skipped }) => {
       setStage("completed");
       setMessage(
-        `${count} 份资料已完成解析和索引${skipped > 0 ? `；忽略了 ${skipped} 个不支持的文件` : ""}。`,
+        skipped > 0
+          ? t("sourceLibrary.uploadCompleteSkipped", { count, skipped })
+          : t("sourceLibrary.uploadComplete", { count }),
       );
       void queryClient.invalidateQueries({ queryKey: ["private-fund-project", datasetId] });
       void queryClient.invalidateQueries({ queryKey: ["private-fund-projects"] });
@@ -67,7 +73,7 @@ export function usePrivateFundDocumentUpload(datasetId: string | null | undefine
     },
     onError: (error) => {
       setStage("failed");
-      setMessage(error instanceof Error ? error.message : "资料上传或索引构建失败");
+      setMessage(error instanceof Error ? error.message : t("sourceLibrary.uploadFailed"));
     },
   });
 
@@ -81,15 +87,15 @@ export function usePrivateFundDocumentUpload(datasetId: string | null | undefine
       const skipped = files.length - supported.length;
       if (supported.length === 0) {
         setStage("idle");
-        setMessage("未发现支持的文档；可上传 PDF、Excel、Word、PPT、CSV、Markdown 或文本文件");
+        setMessage(t("sourceLibrary.unsupportedFiles"));
         return;
       }
       setFileNames(supported.map((file) => file.name));
-      setMessage("正在将文档上传到当前研究项目。请保持窗口打开。");
+      setMessage(t("sourceLibrary.uploadingProject"));
       setStage("uploading");
       mutation.mutate({ files: supported, skipped });
     },
-    [mutation],
+    [mutation, t],
   );
 
   const openDialog = useCallback(() => {

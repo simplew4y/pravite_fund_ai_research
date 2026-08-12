@@ -29,6 +29,16 @@ _MAX_DETAIL_PAYLOAD_CHARS = 45000
 _PDF_SOURCE_HASH = "#private-fund-pdf-source"
 _EXCEL_SOURCE_HASH = "#private-fund-excel-source"
 
+
+def _active_locale() -> str:
+    from omnigent.server.private_fund_locale import read_user_locale
+    from omnigent.server.private_fund_tenant import current_tenant
+
+    tenant = current_tenant()
+    if tenant is not None:
+        return read_user_locale(tenant.data_namespace)
+    return "zh-CN"
+
 _SEARCH_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -2171,6 +2181,7 @@ class _DatasetStore:
         title: str,
         report_payload: dict[str, Any],
         section_evidence: list[dict[str, Any]],
+        locale: str = "zh-CN",
     ) -> dict[str, Any]:
         """Render and persist one evidence-backed FinRobot-aligned report."""
 
@@ -2187,7 +2198,11 @@ class _DatasetStore:
             str(info["dataset_id"]),
             run_id=run_id,
             title=title.strip() or f"{info['name']} Equity Research Report",
-            request={"report_payload": report_payload, "section_evidence": section_evidence},
+            request={
+                "report_payload": report_payload,
+                "section_evidence": section_evidence,
+                "locale": locale,
+            },
         )
         try:
             section_payloads: list[dict[str, Any]] = []
@@ -2226,6 +2241,7 @@ class _DatasetStore:
                 output_dir=output_dir,
                 run_id=run_id,
                 version_no=int(reservation["version_no"]),
+                locale=locale,
             )
             manifest = {
                 "markdown_path": str(artifacts.markdown_path),
@@ -2287,12 +2303,14 @@ class _DatasetStore:
         memo_claims: list[dict[str, Any]] | None = None,
         key_questions: list[str] | None = None,
         top_k_per_section: int = 5,
+        locale: str = "zh-CN",
     ) -> dict[str, Any]:
         info = self.dataset_info(dataset_id)
         from omnigent.server import private_fund_tracking
 
         collection_db = Path(info["collection_db_path"])
-        clean_topic = topic.strip() or "综合投研"
+        english = locale == "en-US"
+        clean_topic = topic.strip() or ("Comprehensive research" if english else "综合投研")
         if operation == "revise":
             revision_target = private_fund_tracking.resolve_memo_revision_target(
                 collection_db,
@@ -2344,14 +2362,25 @@ class _DatasetStore:
                 }
         else:
             raise ValueError("operation must be either 'create' or 'revise'")
-        section_names = sections or [
-            "核心投资逻辑",
-            "业务与增长驱动",
-            "财务与估值线索",
-            "催化剂",
-            "主要风险",
-            "待跟踪问题",
-        ]
+        section_names = sections or (
+            [
+                "Core investment thesis",
+                "Business and growth drivers",
+                "Financial and valuation signals",
+                "Catalysts",
+                "Key risks",
+                "Questions to monitor",
+            ]
+            if english
+            else [
+                "核心投资逻辑",
+                "业务与增长驱动",
+                "财务与估值线索",
+                "催化剂",
+                "主要风险",
+                "待跟踪问题",
+            ]
+        )
         per_section = _coerce_top_k(top_k_per_section, default=5)
         clean_key_questions = [
             _normalize(item) for item in (key_questions or []) if _normalize(item)
@@ -2418,6 +2447,7 @@ class _DatasetStore:
                 conversation_context=conversation_context,
                 revision_of=revision_of,
                 key_questions=clean_key_questions,
+                locale=locale,
             )
             html = self._render_supplied_memo_html(
                 info,
@@ -2427,6 +2457,7 @@ class _DatasetStore:
                 conversation_context=conversation_context,
                 revision_of=revision_of,
                 key_questions=clean_key_questions,
+                locale=locale,
             )
             render_mode = (
                 "assistant_supplied_structured_claims"
@@ -2442,6 +2473,7 @@ class _DatasetStore:
                 conversation_context=conversation_context,
                 revision_of=revision_of,
                 key_questions=clean_key_questions,
+                locale=locale,
             )
             html = self._render_memo_html(
                 info,
@@ -2451,6 +2483,7 @@ class _DatasetStore:
                 conversation_context=conversation_context,
                 revision_of=revision_of,
                 key_questions=clean_key_questions,
+                locale=locale,
             )
             render_mode = "retrieved_evidence_draft"
         markdown_path.write_text(markdown_content, encoding="utf-8")
@@ -2460,7 +2493,7 @@ class _DatasetStore:
             memo_version = private_fund_tracking.register_memo_version(
                 collection_db,
                 str(info["dataset_id"]),
-                topic=topic or "综合投研",
+                topic=topic or ("Comprehensive research" if english else "综合投研"),
                 markdown_path=markdown_path,
                 html_path=html_path,
                 pdf_path=pdf_path,
@@ -2475,6 +2508,7 @@ class _DatasetStore:
                     "has_memo_claims": bool(structured_markdown),
                     "render_mode": render_mode,
                     "citation_gate": citation_gate,
+                    "locale": locale,
                 },
                 section_evidence=section_payloads,
             )
@@ -2510,6 +2544,7 @@ class _DatasetStore:
                 "key_questions": clean_key_questions,
                 "has_memo_markdown": bool(memo_markdown.strip()),
                 "has_memo_claims": bool(structured_markdown),
+                "locale": locale,
             },
             "render_mode": render_mode,
             "memo_contract": (
@@ -2635,9 +2670,42 @@ class _DatasetStore:
         conversation_context: str = "",
         revision_of: str = "",
         key_questions: list[str] | None = None,
+        locale: str = "zh-CN",
     ) -> str:
         company = info.get("company_name") or info["name"]
         ticker = info.get("company_ticker") or ""
+        if locale == "en-US":
+            lines = [
+                f"# {company}{f' ({ticker})' if ticker else ''} Research Memo Draft",
+                "",
+                f"- Dataset: {info['name']} ({info['dataset_id']})",
+                f"- Topic: {topic or 'Comprehensive research'}",
+                f"- Generated: {datetime.now().isoformat(timespec='seconds')}",
+                "",
+            ]
+            for section in sections:
+                lines.extend([f"## {section['section']}", ""])
+                evidence = section.get("evidence") or []
+                if not evidence:
+                    lines.extend(["- Insufficient evidence was retrieved; manual follow-up is required.", ""])
+                    continue
+                for item in evidence[:8]:
+                    excerpt = _best_excerpt(
+                        item.get("excerpt") or item.get("summary") or "", [], 360
+                    )
+                    citation = _plain_source_label(item)
+                    lines.append(f"- {excerpt} (Source: {citation})")
+                lines.append("")
+            lines.extend(
+                [
+                    "## Evidence limitations",
+                    "",
+                    "- This draft uses only the local structured dataset.",
+                    "- Treat any conclusion without direct evidence as requiring verification.",
+                    "",
+                ]
+            )
+            return "\n".join(lines)
         lines = [
             f"# {company}{f' ({ticker})' if ticker else ''} 投研 memo 草稿",
             "",
@@ -2678,25 +2746,38 @@ class _DatasetStore:
         conversation_context: str = "",
         revision_of: str = "",
         key_questions: list[str] | None = None,
+        locale: str = "zh-CN",
     ) -> str:
         company = info.get("company_name") or info["name"]
         ticker = info.get("company_ticker") or ""
+        english = locale == "en-US"
         lines = [
-            f"# {company}{f' ({ticker})' if ticker else ''} 投研 memo",
+            f"# {company}{f' ({ticker})' if ticker else ''} "
+            f"{'Research Memo' if english else '投研 memo'}",
             "",
-            f"- 数据集: {info['name']} ({info['dataset_id']})",
-            f"- 主题: {topic or '综合投研问题'}",
-            f"- 生成时间: {datetime.now().isoformat(timespec='seconds')}",
+            f"- {'Dataset' if english else '数据集'}: {info['name']} ({info['dataset_id']})",
+            f"- {'Topic' if english else '主题'}: "
+            f"{topic or ('Comprehensive research' if english else '综合投研问题')}",
+            f"- {'Generated' if english else '生成时间'}: "
+            f"{datetime.now().isoformat(timespec='seconds')}",
             "",
         ]
         artifact_body = _strip_memo_generation_directives(memo_markdown)
         lines.extend([_plain_markdown_links(artifact_body), ""])
         lines.extend(
             [
-                "## 资料边界",
+                "## Evidence limitations" if english else "## 资料边界",
                 "",
-                "- PDF 中的来源为纯文本标签；需要交互式跳转时，请回到 Omnigent 聊天中的引用链接。",
-                "- 缺少直接证据的判断应视为待复核假设。",
+                (
+                    "- PDF source references are plain-text labels. Return to citations in the workbench for interactive navigation."
+                    if english
+                    else "- PDF 中的来源为纯文本标签；需要交互式跳转时，请回到 Omnigent 聊天中的引用链接。"
+                ),
+                (
+                    "- Treat judgments without direct evidence as hypotheses requiring verification."
+                    if english
+                    else "- 缺少直接证据的判断应视为待复核假设。"
+                ),
                 "",
             ]
         )
@@ -2712,20 +2793,24 @@ class _DatasetStore:
         conversation_context: str = "",
         revision_of: str = "",
         key_questions: list[str] | None = None,
+        locale: str = "zh-CN",
     ) -> str:
         company = info.get("company_name") or info["name"]
         ticker = info.get("company_ticker") or ""
-        title = f"{company}{f' ({ticker})' if ticker else ''} 投研 Memo"
+        english = locale == "en-US"
+        title = f"{company}{f' ({ticker})' if ticker else ''} " + (
+            "Research Memo" if english else "投研 Memo"
+        )
         generated_at = datetime.now().isoformat(timespec="seconds")
 
         meta_rows = [
-            ("数据集", f"{info['name']} ({info['dataset_id']})"),
-            ("主题", topic or "综合投研问题"),
-            ("生成时间", generated_at),
+            ("Dataset" if english else "数据集", f"{info['name']} ({info['dataset_id']})"),
+            ("Topic" if english else "主题", topic or ("Comprehensive research" if english else "综合投研问题")),
+            ("Generated" if english else "生成时间", generated_at),
         ]
         html_parts = [
             "<!doctype html>",
-            "<html>",
+            f'<html lang="{locale}">',
             "<head>",
             '<meta charset="utf-8">',
             f"<title>{escape(title)}</title>",
@@ -2749,13 +2834,18 @@ class _DatasetStore:
                 _markdown_body_to_html(_strip_memo_generation_directives(memo_markdown)),
                 "</section>",
                 '<section class="boundary">',
-                "<h2>资料边界</h2>",
+                "<h2>Evidence limitations</h2>" if english else "<h2>资料边界</h2>",
                 "<ul>",
                 (
-                    "<li>PDF 中的来源为纯文本标签；需要交互式跳转时，"
-                    "请回到 Omnigent 聊天中的引用链接。</li>"
+                    "<li>PDF source references are plain-text labels. Return to workbench citations for interactive navigation.</li>"
+                    if english
+                    else "<li>PDF 中的来源为纯文本标签；需要交互式跳转时，请回到 Omnigent 聊天中的引用链接。</li>"
                 ),
-                "<li>缺少直接证据的判断应视为待复核假设。</li>",
+                (
+                    "<li>Treat judgments without direct evidence as hypotheses requiring verification.</li>"
+                    if english
+                    else "<li>缺少直接证据的判断应视为待复核假设。</li>"
+                ),
                 "</ul>",
                 "</section>",
                 "</main>",
@@ -2775,20 +2865,24 @@ class _DatasetStore:
         conversation_context: str = "",
         revision_of: str = "",
         key_questions: list[str] | None = None,
+        locale: str = "zh-CN",
     ) -> str:
         company = info.get("company_name") or info["name"]
         ticker = info.get("company_ticker") or ""
-        title = f"{company}{f' ({ticker})' if ticker else ''} 投研 Memo"
+        english = locale == "en-US"
+        title = f"{company}{f' ({ticker})' if ticker else ''} " + (
+            "Research Memo" if english else "投研 Memo"
+        )
         generated_at = datetime.now().isoformat(timespec="seconds")
 
         meta_rows = [
-            ("数据集", f"{info['name']} ({info['dataset_id']})"),
-            ("主题", topic or "综合投研问题"),
-            ("生成时间", generated_at),
+            ("Dataset" if english else "数据集", f"{info['name']} ({info['dataset_id']})"),
+            ("Topic" if english else "主题", topic or ("Comprehensive research" if english else "综合投研问题")),
+            ("Generated" if english else "生成时间", generated_at),
         ]
         html_parts = [
             "<!doctype html>",
-            "<html>",
+            f'<html lang="{locale}">',
             "<head>",
             '<meta charset="utf-8">',
             f"<title>{escape(title)}</title>",
@@ -2810,7 +2904,11 @@ class _DatasetStore:
             html_parts.extend(["<section>", f"<h2>{escape(section['section'])}</h2>"])
             evidence = section.get("evidence") or []
             if not evidence:
-                html_parts.append('<p class="needs-review">未检索到足够证据，需要人工补充。</p>')
+                html_parts.append(
+                    '<p class="needs-review">Insufficient evidence was retrieved; manual follow-up is required.</p>'
+                    if english
+                    else '<p class="needs-review">未检索到足够证据，需要人工补充。</p>'
+                )
                 html_parts.append("</section>")
                 continue
             html_parts.append("<ol>")
@@ -2821,7 +2919,7 @@ class _DatasetStore:
                     [
                         "<li>",
                         f'<div class="claim">{escape(excerpt)}</div>',
-                        f'<div class="source">来源：{escape(citation)}</div>',
+                        f'<div class="source">{"Source" if english else "来源"}: {escape(citation)}</div>',
                         "</li>",
                     ]
                 )
@@ -2829,14 +2927,23 @@ class _DatasetStore:
         html_parts.extend(
             [
                 '<section class="boundary">',
-                "<h2>资料边界</h2>",
+                "<h2>Evidence limitations</h2>" if english else "<h2>资料边界</h2>",
                 "<ul>",
-                "<li>当前 memo 只使用本地结构化数据集，不使用旧版直接 PDF QA / memo 链路。</li>",
                 (
-                    "<li>PDF 中的来源为纯文本标签；需要交互式跳转时，"
-                    "请回到 Omnigent 聊天中的引用链接。</li>"
+                    "<li>This memo uses only the local structured dataset.</li>"
+                    if english
+                    else "<li>当前 memo 只使用本地结构化数据集，不使用旧版直接 PDF QA / memo 链路。</li>"
                 ),
-                "<li>缺少直接证据的判断应视为待复核假设。</li>",
+                (
+                    "<li>PDF source references are plain-text labels. Return to workbench citations for interactive navigation.</li>"
+                    if english
+                    else "<li>PDF 中的来源为纯文本标签；需要交互式跳转时，请回到 Omnigent 聊天中的引用链接。</li>"
+                ),
+                (
+                    "<li>Treat judgments without direct evidence as hypotheses requiring verification.</li>"
+                    if english
+                    else "<li>缺少直接证据的判断应视为待复核假设。</li>"
+                ),
                 "</ul>",
                 "</section>",
                 "</main>",
@@ -3261,6 +3368,7 @@ class PrivateFundDatasetMemoTool(_PrivateFundDatasetBaseTool):
             memo_claims=memo_claims,
             key_questions=key_questions,
             top_k_per_section=_coerce_top_k(payload.get("top_k_per_section"), default=5),
+            locale=_active_locale(),
         )
 
 
@@ -3315,6 +3423,7 @@ class PrivateFundEquityReportGenerateTool(_PrivateFundDatasetBaseTool):
             title=title,
             report_payload=report_payload,
             section_evidence=[item for item in section_evidence if isinstance(item, dict)],
+            locale=_active_locale(),
         )
 
 

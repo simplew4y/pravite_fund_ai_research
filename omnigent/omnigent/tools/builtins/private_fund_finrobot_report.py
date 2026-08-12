@@ -108,7 +108,7 @@ def _metric_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in rows[:80] if isinstance(row, dict) and row.get("metric")]
 
 
-def _metric_table_html(rows: list[dict[str, Any]]) -> str:
+def _metric_table_html(rows: list[dict[str, Any]], *, english: bool) -> str:
     periods: list[str] = []
     for row in rows:
         values = row.get("values")
@@ -117,14 +117,19 @@ def _metric_table_html(rows: list[dict[str, Any]]) -> str:
                 if str(period) not in periods:
                     periods.append(str(period))
     if not rows or not periods:
-        return '<p class="body-text">Financial summary not available.</p>'
-    cells = ['<table class="data-table"><thead><tr><th>Metric</th>']
+        message = "Financial summary not available." if english else "暂无可用的财务摘要。"
+        return f'<p class="body-text">{message}</p>'
+    metric_heading = "Metric" if english else "指标"
+    cells = [f'<table class="data-table"><thead><tr><th>{metric_heading}</th>']
     cells.extend(f"<th>{escape(period)}</th>" for period in periods)
     cells.append("</tr></thead><tbody>")
     for row in rows:
         cells.append(f"<tr><td>{escape(str(row['metric']))}</td>")
         values = row.get("values") if isinstance(row.get("values"), dict) else {}
-        cells.extend(f"<td>{escape(str(values.get(period, 'N/A')))}</td>" for period in periods)
+        empty_value = "N/A" if english else "暂无"
+        cells.extend(
+            f"<td>{escape(str(values.get(period, empty_value)))}</td>" for period in periods
+        )
         cells.append("</tr>")
     cells.append("</tbody></table>")
     return "".join(cells)
@@ -181,7 +186,9 @@ def _generate_charts(
     return chart_values, tuple(written)
 
 
-def _evidence_appendix_html(evidence: list[dict[str, str]]) -> str:
+def _evidence_appendix_html(
+    evidence: list[dict[str, str]], *, english: bool
+) -> str:
     rows = []
     for index, item in enumerate(evidence, start=1):
         rows.append(
@@ -192,12 +199,18 @@ def _evidence_appendix_html(evidence: list[dict[str, str]]) -> str:
             f"<td>{escape(item['excerpt'])}</td>"
             "</tr>"
         )
-    body = "".join(rows) or '<tr><td colspan="4">No verified evidence supplied.</td></tr>'
+    empty_message = (
+        "No verified evidence supplied." if english else "尚未提供可核验的证据。"
+    )
+    body = "".join(rows) or f'<tr><td colspan="4">{empty_message}</td></tr>'
+    title = "Evidence Index" if english else "证据索引"
+    source = "Source" if english else "来源"
+    excerpt = "Excerpt" if english else "摘录"
     return (
         '<section id="evidence-index" class="mb-10 page-break">'
-        '<h2 class="section-title">Evidence Index</h2>'
+        f'<h2 class="section-title">{title}</h2>'
         '<table class="data-table"><thead><tr>'
-        "<th>#</th><th>Source</th><th>Evidence ID</th><th>Excerpt</th>"
+        f"<th>#</th><th>{source}</th><th>Evidence ID</th><th>{excerpt}</th>"
         f"</tr></thead><tbody>{body}</tbody></table></section>"
     )
 
@@ -248,37 +261,44 @@ def _markdown_report(
     *,
     run_id: str,
     version_no: int,
+    locale: str,
 ) -> str:
+    english = locale == "en-US"
     company = info.get("company_name") or info["name"]
     ticker = info.get("company_ticker") or ""
     sections = payload.get("sections") if isinstance(payload.get("sections"), dict) else {}
     lines = [
-        f"# 📝 {company}{f' ({ticker})' if ticker else ''} Equity Research Report",
+        f"# 📝 {company}{f' ({ticker})' if ticker else ''} "
+        f"{'Equity Research Report' if english else '权益研究报告'}",
         "",
-        f"- Report run: {run_id}",
-        f"- Version: {version_no}",
-        f"- Dataset: {info['name']} ({info['dataset_id']})",
-        f"- Generated: {datetime.now().isoformat(timespec='seconds')}",
-        "- Renderer: FinRobot professional report adapter",
+        f"- {'Report run' if english else '报告任务'}: {run_id}",
+        f"- {'Version' if english else '版本'}: {version_no}",
+        f"- {'Dataset' if english else '数据集'}: {info['name']} ({info['dataset_id']})",
+        f"- {'Generated' if english else '生成时间'}: {datetime.now().isoformat(timespec='seconds')}",
+        f"- {'Renderer' if english else '渲染器'}: FinRobot professional report adapter",
         "",
     ]
     for key in FINROBOT_SECTION_KEYS:
         text = _plain_text(sections.get(key))
         if text:
             lines.extend([f"## {key.replace('_', ' ').title()}", "", text, ""])
-    lines.extend(["## Evidence Index", ""])
+    lines.extend(["## " + ("Evidence Index" if english else "证据索引"), ""])
     for index, item in enumerate(evidence, start=1):
         lines.append(
             f"{index}. {item['citation']} "
-            f"[{item['evidence_id'] or 'unresolved'}] - {item['excerpt']}"
+            f"[{item['evidence_id'] or ('unresolved' if english else '待解析')}] - {item['excerpt']}"
         )
     lines.extend(
         [
             "",
-            "## Data Boundary",
+            "## " + ("Data Boundary" if english else "数据边界"),
             "",
-            "Claims without a resolvable evidence ID remain unverified and must not be "
-            "treated as investment facts.",
+            (
+                "Claims without a resolvable evidence ID remain unverified and must not be "
+                "treated as investment facts."
+                if english
+                else "无法解析到证据 ID 的判断均为待核查内容，不得视为已确认的投资事实。"
+            ),
             "",
         ]
     )
@@ -294,6 +314,7 @@ def render_finrobot_aligned_report(
     output_dir: Path,
     run_id: str,
     version_no: int,
+    locale: str = "zh-CN",
 ) -> tuple[FinRobotReportArtifacts, dict[str, Any]]:
     """Render one evidence-backed report using FinRobot's professional template."""
 
@@ -317,6 +338,7 @@ def render_finrobot_aligned_report(
         if isinstance(report_payload.get("market_snapshot"), dict)
         else {}
     )
+    english = locale == "en-US"
     report_data: dict[str, Any] = {
         "company_name_full": company,
         "company_ticker": ticker,
@@ -331,12 +353,18 @@ def render_finrobot_aligned_report(
         "roe": str(market.get("roe") or "N/A"),
         "dividend_yield": str(market.get("dividend_yield") or "N/A"),
         "52w_range": str(market.get("week_52_range") or "N/A"),
-        "financial_summary_table_html": _metric_table_html(rows),
-        "data_source_text": f"Omnigent dataset {info['dataset_id']} with file-level provenance",
+        "financial_summary_table_html": _metric_table_html(rows, english=english),
+        "data_source_text": (
+            f"Omnigent dataset {info['dataset_id']} with file-level provenance"
+            if english
+            else f"Omnigent 数据集 {info['dataset_id']}，包含文件级来源追溯"
+        ),
         "research_source": "Omnigent + AI4Finance FinRobot",
         "disclaimer_text": (
             "For research use only. Claims without resolvable evidence remain unverified and "
             "do not constitute investment advice."
+            if english
+            else "仅供研究使用。无法追溯到证据的判断均属待核查内容，不构成投资建议。"
         ),
         **{key: _plain_text(sections.get(key)) for key in FINROBOT_SECTION_KEYS},
         **chart_values,
@@ -345,7 +373,9 @@ def render_finrobot_aligned_report(
     html = html.replace("</head>", f"{_offline_css()}</head>", 1)
     html = re.sub(r"<script[^>]*src=\"https://cdn\.tailwindcss\.com\"[^>]*></script>", "", html)
     html = re.sub(r"<link[^>]*fonts\.googleapis\.com[^>]*>", "", html)
-    html = html.replace("</body>", f"{_evidence_appendix_html(evidence)}</body>", 1)
+    html = html.replace(
+        "</body>", f"{_evidence_appendix_html(evidence, english=english)}</body>", 1
+    )
 
     stem = f"finrobot_equity_report_{info['dataset_id']}_v{version_no}_{run_id[-8:]}"
     markdown_path = output_dir / f"{stem}.md"
@@ -353,7 +383,12 @@ def render_finrobot_aligned_report(
     pdf_path = output_dir / f"{stem}.pdf"
     package_path = output_dir / f"{stem}.json"
     markdown = _markdown_report(
-        info, report_payload, evidence, run_id=run_id, version_no=version_no
+        info,
+        report_payload,
+        evidence,
+        run_id=run_id,
+        version_no=version_no,
+        locale=locale,
     )
     package = {
         "schema_version": 1,
@@ -364,6 +399,7 @@ def render_finrobot_aligned_report(
         "report_data": report_data,
         "evidence_index": evidence,
         "render_engine": "finrobot_html_template_professional+fitz_story",
+        "locale": locale,
     }
     markdown_path.write_text(markdown, encoding="utf-8")
     html_path.write_text(html, encoding="utf-8")

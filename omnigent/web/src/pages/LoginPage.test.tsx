@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
 import * as accountsApi from "@/lib/accountsApi";
+import { CapabilitiesContext } from "@/lib/CapabilitiesContext";
 
 // The authenticated auto-bounce path is the simplest way to observe the
 // sanitized return_to reaching the navigation sink: getMe() resolving to an
@@ -12,6 +13,7 @@ vi.mock("@/lib/accountsApi", () => ({
   clearUserScopedBrowserState: vi.fn(),
   getMe: vi.fn(),
   login: vi.fn(),
+  updateAccountPreferences: vi.fn(),
 }));
 
 const ORIGIN = "https://app.example.com";
@@ -25,6 +27,31 @@ function renderLoginAt(returnTo: string) {
     <MemoryRouter initialEntries={[path]}>
       <LoginPage />
     </MemoryRouter>,
+  );
+}
+
+function renderCloudLoginAt(returnTo: string) {
+  const path = `/login?return_to=${returnTo}`;
+  return render(
+    <CapabilitiesContext.Provider
+      value={{
+        accounts_enabled: true,
+        cloud_accounts_enabled: true,
+        login_url: "/login",
+        needs_setup: false,
+        registration_mode: "open",
+        databricks_features: false,
+        managed_sandboxes_enabled: false,
+        sandbox_provider: null,
+        server_version: "test",
+        smart_routing_enabled: false,
+        llm_configuration_enabled: true,
+      }}
+    >
+      <MemoryRouter initialEntries={[path]}>
+        <LoginPage />
+      </MemoryRouter>
+    </CapabilitiesContext.Provider>,
   );
 }
 
@@ -50,6 +77,10 @@ beforeEach(() => {
     is_admin: false,
     created_at: null,
     last_login_at: null,
+  });
+  vi.mocked(accountsApi.updateAccountPreferences).mockResolvedValue({
+    ok: true,
+    account: { id: "alice", is_admin: false, preferred_locale: "en-US" },
   });
 });
 
@@ -113,5 +144,30 @@ describe("LoginPage sanitizeReturnTo open-redirect defense", () => {
     await waitFor(() => expect(hrefWrites.length).toBeGreaterThan(0));
     expect(hrefWrites[0]).toBe("/");
     expect(hrefWrites[0]).not.toContain("evil.com");
+  });
+
+  it("saves the language selected on the login page after cloud sign-in", async () => {
+    vi.mocked(accountsApi.getMe).mockResolvedValue(null);
+    vi.mocked(accountsApi.login).mockResolvedValue({
+      ok: true,
+      user: { id: "alice", is_admin: false, preferred_locale: "zh-CN" },
+      token: "t",
+      expires_in: 3600,
+    });
+
+    renderCloudLoginAt("/");
+    fireEvent.click(screen.getByRole("radio", { name: "English" }));
+    await screen.findByRole("heading", { name: "Sign in" });
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "alice@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() =>
+      expect(accountsApi.updateAccountPreferences).toHaveBeenCalledWith("en-US"),
+    );
+    expect(document.documentElement.lang).toBe("en-US");
+    await waitFor(() => expect(hrefWrites[0]).toBe("/"));
   });
 });

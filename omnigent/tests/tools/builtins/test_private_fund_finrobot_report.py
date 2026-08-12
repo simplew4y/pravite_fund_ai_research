@@ -49,6 +49,7 @@ def test_render_finrobot_aligned_report_writes_complete_package(tmp_path: Path) 
         output_dir=tmp_path,
         run_id="eqr_demo12345678",
         version_no=1,
+        locale="en-US",
     )
 
     assert all(
@@ -63,6 +64,8 @@ def test_render_finrobot_aligned_report_writes_complete_package(tmp_path: Path) 
     assert len(artifacts.chart_paths) == 2
     assert "Evidence Index" in artifacts.html_path.read_text(encoding="utf-8")
     assert "chunk:demo" in artifacts.markdown_path.read_text(encoding="utf-8")
+    assert "Data Boundary" in artifacts.markdown_path.read_text(encoding="utf-8")
     assert package["render_engine"] == artifacts.render_engine
+    assert package["locale"] == "en-US"
     with fitz.open(artifacts.pdf_path) as document:
         assert len(document) >= 1

@@ -1035,6 +1035,7 @@ def build_hook_settings(
     ap_server_url: str | None = None,
     ap_auth_headers: dict[str, str] | None = None,
     auto_approve: str | bool | None = None,
+    user_memory_dir: str | None = None,
     api_key_helper: str | None = None,
     include_message_display_hook: bool = True,
 ) -> dict[str, Any]:
@@ -1056,6 +1057,9 @@ def build_hook_settings(
     :param auto_approve: Optional local-demo permission bypass flag.
         When set, it is stored in ``permission_hook.json`` so hook
         subprocesses can read it even if their environment is sanitized.
+    :param user_memory_dir: Server-validated private-fund user Memory
+        directory. Stored in the owner-only bridge config and never exposed
+        through Claude command arguments or chat messages.
     :param api_key_helper: Optional Claude Code ``apiKeyHelper``
         command from ucode state, e.g. ``"databricks auth token
         --host https://example.databricks.com ..."``.
@@ -1148,18 +1152,22 @@ def build_hook_settings(
             "command": shlex.join(message_display_command_parts),
         }
         hooks["MessageDisplay"] = [{"hooks": [message_display_hook]}]
-    if ap_server_url:
+    if ap_server_url or user_memory_dir:
         permission_config: dict[str, Any] = {
-            "ap_server_url": ap_server_url,
-            "ap_auth_headers": ap_auth_headers or {},
             "updated_at": time.time(),
         }
+        if ap_server_url:
+            permission_config["ap_server_url"] = ap_server_url
+            permission_config["ap_auth_headers"] = ap_auth_headers or {}
+        if user_memory_dir:
+            permission_config["user_memory_dir"] = user_memory_dir
         if auto_approve is not None:
             permission_config["auto_approve"] = auto_approve
         _write_json_file(
             bridge_dir / _PERMISSION_HOOK_FILE,
             permission_config,
         )
+    if ap_server_url:
         # ``PermissionRequest`` fires only when Claude is about to
         # show its TUI permission prompt — that's exactly the
         # interception point we want for routing to the web UI.
@@ -1302,6 +1310,7 @@ def augment_claude_args(
     ap_server_url: str | None = None,
     ap_auth_headers: dict[str, str] | None = None,
     auto_approve: str | bool | None = None,
+    user_memory_dir: str | None = None,
     api_key_helper: str | None = None,
     bundle_dir: Path | None = None,
     agent_name: str | None = None,
@@ -1325,6 +1334,8 @@ def augment_claude_args(
         :func:`build_hook_settings`.
     :param auto_approve: Optional local-demo permission bypass flag.
         Passed through to :func:`build_hook_settings`.
+    :param user_memory_dir: Server-validated private-fund user Memory
+        directory passed to :func:`build_hook_settings`.
     :param api_key_helper: Optional Claude Code ``apiKeyHelper``
         command from ucode state, e.g. ``"databricks auth token
         --host https://example.databricks.com ..."``.
@@ -1352,6 +1363,7 @@ def augment_claude_args(
         ap_server_url=ap_server_url,
         ap_auth_headers=ap_auth_headers,
         auto_approve=auto_approve,
+        user_memory_dir=user_memory_dir,
         api_key_helper=api_key_helper,
         include_message_display_hook=include_message_display_hook,
     )

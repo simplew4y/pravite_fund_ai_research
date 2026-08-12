@@ -41,4 +41,4 @@ Use `direction=negative` for risks. Catalysts may be `positive`, `negative`, or 
 - The cited chunk must contain the exact supporting quote. If support spans chunks, cite each exact
   chunk separately. Reject the item when no supplied chunk directly supports the judgement.
 - Do not infer invalidation from omission in a later Memo.
-- Keep source language in `content`; use concise Chinese for `title` when the project is Chinese.
+- Keep direct source quotations, controlled keys, and evidence identifiers unchanged.

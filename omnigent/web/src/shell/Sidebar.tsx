@@ -143,6 +143,7 @@ import {
   readActivePrivateFundProjectId,
 } from "@/lib/privateFundApi";
 import { SettingsSidebarBody, useSettingsRoute } from "./settingsNav";
+import { useTranslation } from "react-i18next";
 import { PrivateFundCorpusSection } from "./PrivateFundCorpusSection";
 import {
   type ActiveChatOverride,
@@ -255,6 +256,7 @@ export function Sidebar({
   activePrivateFundDatasetId = null,
   dragProgress = null,
 }: SidebarProps) {
+  const { t } = useTranslation();
   const serverInfo = useServerInfo();
   const [account, setAccount] = useState<CurrentAccount | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -490,8 +492,8 @@ export function Sidebar({
           type="search"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label={privateFundWorkspace ? "搜索项目会话" : "Search sessions"}
-          placeholder={privateFundWorkspace ? "搜索项目会话" : "Search sessions"}
+          aria-label={privateFundWorkspace ? t("sidebar.searchChats") : "Search sessions"}
+          placeholder={privateFundWorkspace ? t("sidebar.searchChats") : "Search sessions"}
           className="min-h-8 w-full rounded-full border border-input pr-3 pl-8 text-sm transition placeholder:text-muted-foreground focus-visible:outline-1 md:select-text"
         />
       </div>
@@ -578,7 +580,9 @@ export function Sidebar({
           when closed also keeps it from being draggable while collapsed. */}
       <div
         {...resizeHandleProps}
-        aria-label={privateFundWorkspace ? "调整项目栏宽度" : "Resize sidebar"}
+        aria-label={
+          privateFundWorkspace ? t("sidebar.resize", "Resize project sidebar") : "Resize sidebar"
+        }
         data-testid="sidebar-resize-handle"
         className="absolute inset-y-0 right-0 z-10 hidden w-1 cursor-col-resize transition-colors hover:bg-primary/30 active:bg-primary/50 md:block"
       />
@@ -600,13 +604,13 @@ export function Sidebar({
                   : "/"
               }
               onClick={onNavClick}
-              aria-label="投研工作台"
+              aria-label={t("common.productName")}
               className={cn(
                 "inline-flex items-baseline gap-1.5 rounded-sm text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/70",
                 privateFundWorkspace && "private-fund-brand text-[16px] tracking-[-0.02em]",
               )}
             >
-              <span>投研工作台</span>
+              <span>{t("common.productName")}</span>
               <ProductVersionLabel className="text-[9px] opacity-75" />
             </Link>
             <div className="flex items-center gap-1">
@@ -691,7 +695,7 @@ export function Sidebar({
                 onClick={onNavClick}
               >
                 <SquarePenIcon className="size-4 text-foreground" />
-                {privateFundWorkspace ? "开始新研究" : "New session"}
+                {privateFundWorkspace ? t("sidebar.newResearch") : "New session"}
               </Link>
             </Button>
             {!privateFundWorkspace && sessionSearchControls}
@@ -747,7 +751,7 @@ export function Sidebar({
                   <Button
                     variant="ghost"
                     className="h-11 w-full justify-start gap-2 px-2 max-md:size-9 max-md:justify-center max-md:rounded-full max-md:border max-md:bg-card-solid max-md:p-0 max-md:shadow-sm"
-                    aria-label="用户菜单"
+                    aria-label={t("sidebar.userMenu", "User menu")}
                   >
                     <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
                       {accountDisplayName(account).slice(0, 1).toUpperCase()}
@@ -762,26 +766,27 @@ export function Sidebar({
                   <div className="px-2 py-1.5">
                     <p className="truncate text-sm font-medium">{accountDisplayName(account)}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {account.email || "个人投研空间"}
+                      {account.email ||
+                        t("sidebar.personalWorkspace", "Personal research workspace")}
                     </p>
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link to="/settings/account">
                       <UserRoundIcon className="size-4" />
-                      账户
+                      {t("settings.account")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link to="/settings/llm">
                       <BotIcon className="size-4" />
-                      模型服务
+                      {t("settings.modelService")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link to="/settings">
                       <SettingsIcon className="size-4" />
-                      通用设置
+                      {t("settings.title")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -791,7 +796,7 @@ export function Sidebar({
                     onSelect={() => void signOut()}
                   >
                     <LogOutIcon className="size-4" />
-                    {signingOut ? "正在退出…" : "退出登录"}
+                    {signingOut ? t("auth.signingOut", "Signing out…") : t("auth.signOut")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -820,7 +825,7 @@ export function Sidebar({
                   <SettingsIcon className="size-4 text-muted-foreground" />
                   {/* Label is desktop-only; the icon stands alone on mobile. */}
                   <span className="max-md:hidden">
-                    {privateFundWorkspace ? "设置" : "Settings"}
+                    {privateFundWorkspace ? t("settings.title") : "Settings"}
                   </span>
                 </Link>
               </Button>
@@ -1064,6 +1069,7 @@ function ConversationList({
   visibleIdsRef,
   privateFundDatasetId,
 }: ConversationListProps) {
+  const { t } = useTranslation();
   // Keep the unfiltered list for pin normalization, then scope only the rows
   // rendered in this project workspace. Pins belonging to another project
   // must remain persisted even while they are hidden here.
@@ -1466,8 +1472,8 @@ function ConversationList({
   }
   const emptyMessage = privateFundDatasetId
     ? searchQuery
-      ? "当前项目没有匹配的会话"
-      : "当前项目暂无会话"
+      ? t("sidebar.noMatchingProjectChats")
+      : t("sidebar.noProjectChats")
     : searchQuery
       ? "No matching conversations"
       : "No active sessions";

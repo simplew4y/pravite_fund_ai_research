@@ -60,6 +60,7 @@ from omnigent.runner.identity import (
     RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
     RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR,
     RUNNER_USER_LLM_GATEWAY_ENV_VAR,
+    RUNNER_USER_MEMORY_DIR_ENV_VAR,
     RUNNER_WORKSPACE_ENV_VAR,
     token_bound_runner_id,
 )
@@ -455,6 +456,7 @@ def _build_runner_env(
         allowed_runtime_names = {
             RUNNER_SERVER_AUTH_TOKEN_ENV_VAR,
             RUNNER_USER_LLM_GATEWAY_ENV_VAR,
+            RUNNER_USER_MEMORY_DIR_ENV_VAR,
             "ANTHROPIC_AUTH_TOKEN",
             "ANTHROPIC_BASE_URL",
             "ANTHROPIC_MODEL",

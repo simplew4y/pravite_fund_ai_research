@@ -177,6 +177,31 @@ def test_tracking_title_is_analytical_and_localizes_event_type() -> None:
     assert unknown_event.title == "阳光电源：逆变器在欧美市场融资与准入"
 
 
+def test_tracking_title_preserves_generated_english_title() -> None:
+    candidate = private_fund_tracking._candidate_from_raw(
+        {
+            "item_type": "risk",
+            "title": "Energy storage margin pressure",
+            "content": "Higher lithium carbonate costs may reduce energy storage gross margin.",
+            "evidence_ids": ["chunk:risk-1"],
+            "entity": "Sungrow",
+            "event_type": "margin_pressure",
+            "subject": "energy storage gross margin",
+            "trigger": "higher lithium carbonate costs",
+            "transmission_path": "input costs reduce unit profitability",
+            "classification_reason": "the evidence identifies a direct margin impact",
+            "quality_status": "verified",
+            "confidence": 0.9,
+        },
+        valid_evidence_ids={"chunk:risk-1"},
+        default_date="2026-08-05",
+        locale="en-US",
+    )
+
+    assert candidate is not None
+    assert candidate.title == "Energy storage margin pressure"
+
+
 def _collection_db(tmp_path: Path) -> Path:
     path = tmp_path / "demo" / "meta" / "collection.sqlite3"
     path.parent.mkdir(parents=True)

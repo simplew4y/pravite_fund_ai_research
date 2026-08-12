@@ -1,5 +1,6 @@
 import { Check, Database, FileUp, Loader2, UploadCloud } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +40,7 @@ export function PrivateFundUploadDialog({
   onOpenChange,
   onSelectFiles,
 }: PrivateFundUploadDialogProps) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const locked = !["idle", "completed"].includes(stage);
@@ -69,7 +71,7 @@ export function PrivateFundUploadDialog({
       }}
     >
       <DialogContent
-        aria-label="上传资料并建立索引"
+        aria-label={t("privateFund.uploadAndIndex", "Upload and index sources")}
         className="sm:max-w-lg"
         showCloseButton={!locked}
         onEscapeKeyDown={(event) => {
@@ -80,15 +82,18 @@ export function PrivateFundUploadDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>上传资料并建立索引</DialogTitle>
+          <DialogTitle>{t("privateFund.uploadAndIndex", "Upload and index sources")}</DialogTitle>
           <DialogDescription>
-            文档必须完成 pipeline 解析和索引后才能用于 Agent 检索。处理期间此窗口不可关闭。
+            {t(
+              "privateFund.uploadDescription",
+              "Sources must finish parsing and indexing before the Agent can use them. Keep this dialog open while processing.",
+            )}
           </DialogDescription>
         </DialogHeader>
 
         {(stage === "idle" || stage === "failed") && (
           <div
-            aria-label="弹窗文档拖入区"
+            aria-label={t("sourceLibrary.uploadDropzone")}
             className={cn(
               "flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed px-6 py-7 text-center transition-colors",
               dragActive
@@ -114,15 +119,18 @@ export function PrivateFundUploadDialog({
               <UploadCloud className="size-5" />
             </span>
             <p className="mt-3 text-sm font-semibold text-[var(--pf-ink)]">
-              拖入一个或多个资料文档
+              {t("privateFund.dropFiles", "Drop one or more source documents")}
             </p>
             <p className="mt-1 text-xs text-[var(--pf-ink-secondary)]">
-              支持 PDF、Excel、Word、PPT、CSV、Markdown 和文本
+              {t(
+                "privateFund.supportedFiles",
+                "Supports PDF, Excel, Word, PowerPoint, CSV, Markdown, and text",
+              )}
             </p>
             <input
               ref={inputRef}
               accept={ACCEPTED_FILES}
-              aria-label="在弹窗中选择资料文档"
+              aria-label={t("sourceLibrary.uploadFileInput")}
               className="hidden"
               multiple
               onChange={onFileChange}
@@ -130,7 +138,9 @@ export function PrivateFundUploadDialog({
             />
             <Button className="mt-4" onClick={() => inputRef.current?.click()} size="sm">
               <FileUp className="size-4" />
-              {stage === "failed" ? "重新选择并重试" : "选择文档"}
+              {stage === "failed"
+                ? t("privateFund.selectAndRetry", "Select files and retry")
+                : t("privateFund.selectFiles", "Select files")}
             </Button>
           </div>
         )}
@@ -165,20 +175,26 @@ export function PrivateFundUploadDialog({
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--pf-ink)]">
                   {stage === "uploading"
-                    ? "正在上传文档"
+                    ? t("privateFund.uploading", "Uploading documents")
                     : stage === "queued"
-                      ? "索引任务已排队"
+                      ? t("privateFund.indexQueued", "Indexing queued")
                       : stage === "running"
-                        ? "正在解析并建立索引"
+                        ? t("privateFund.indexing", "Parsing and indexing")
                         : stage === "completed"
-                          ? "索引构建完成"
-                          : "索引构建失败，请重试"}
+                          ? t("privateFund.indexComplete", "Indexing complete")
+                          : t("privateFund.indexFailed", "Indexing failed. Try again.")}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[var(--pf-ink-secondary)]">
                   {message ||
                     (stage === "completed"
-                      ? "这些资料现在可以用于 Agent 检索和溯源。"
-                      : "请保持此窗口打开，系统完成后会自动解锁。")}
+                      ? t(
+                          "privateFund.sourcesReady",
+                          "These sources are ready for Agent retrieval and citations.",
+                        )
+                      : t(
+                          "privateFund.keepDialogOpen",
+                          "Keep this dialog open. It will unlock when processing finishes.",
+                        ))}
                 </p>
                 {fileNames.length > 0 && (
                   <div className="mt-3 max-h-24 space-y-1 overflow-y-auto rounded-lg bg-[var(--pf-panel-subtle)] p-2">
@@ -200,7 +216,11 @@ export function PrivateFundUploadDialog({
             onClick={() => onOpenChange(false)}
             variant={stage === "completed" ? "default" : "secondary"}
           >
-            {locked ? "索引完成后可关闭" : stage === "completed" ? "完成并关闭" : "取消"}
+            {locked
+              ? t("privateFund.closeAfterIndex", "Available after indexing")
+              : stage === "completed"
+                ? t("privateFund.doneAndClose", "Done")
+                : t("common.cancel")}
           </Button>
         </DialogFooter>
       </DialogContent>

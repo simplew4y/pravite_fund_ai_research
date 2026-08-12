@@ -96,6 +96,18 @@ def bind_tenant_job_payload(payload: dict[str, Any]) -> Iterator[None]:
         _current_tenant.reset(token)
 
 
+@contextmanager
+def bind_tenant_namespace(data_namespace: str) -> Iterator[PrivateFundTenantContext]:
+    """Bind a background worker to one validated user namespace."""
+    namespace = str(data_namespace)
+    tenant = build_tenant_context_from_namespace(f"worker:{namespace}", namespace)
+    token = _current_tenant.set(tenant)
+    try:
+        yield tenant
+    finally:
+        _current_tenant.reset(token)
+
+
 def tenant_scope_dependency(
     auth_provider: AuthProvider | None,
     account_store: Any | None,
