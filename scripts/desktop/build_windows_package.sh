@@ -24,8 +24,13 @@ else
 fi
 
 # 2) Native Windows runtime (embeddable Python + wheels + slim project)
-echo "==> Assembling native Windows runtime (this takes a while)"
-bash "$ROOT_DIR/scripts/desktop/assemble_win_native.sh"
+if [[ "${DESKTOP_SKIP_RUNTIME_ASSEMBLY:-0}" != "1" ]]; then
+  echo "==> Assembling native Windows runtime (this takes a while)"
+  bash "$ROOT_DIR/scripts/desktop/assemble_win_native.sh"
+else
+  echo "==> Reusing existing native Windows runtime"
+  bash "$ROOT_DIR/scripts/desktop/refresh_win_runtime_sources.sh"
+fi
 
 if [[ ! -f "$ELECTRON_DIR/resources/runtime/python/python.exe" ]]; then
   echo "ERROR: native python.exe missing after assemble" >&2

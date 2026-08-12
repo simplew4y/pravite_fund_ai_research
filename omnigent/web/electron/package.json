@@ -1,7 +1,7 @@
 {
   "name": "omnigent-desktop-electron",
   "productName": "PrivateFundWorkbench",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Private Fund Research Workbench desktop (Electron, zero-config bundled stack).",
   "private": true,
   "main": "src/main.js",
