@@ -1640,7 +1640,7 @@ function ConversationList({
                 active={activeDrag != null && (activeDrag.project != null || activeDrag.isPinned)}
               >
                 <ConversationSection
-                  title={privateFundDatasetId ? "项目会话" : "Chats"}
+                  title={privateFundDatasetId ? t("sidebar.chats") : "Chats"}
                   conversations={sections.sessions}
                   pinnedConversationIds={pinnedConversationIds}
                   collapsed={effectiveCollapsedSections.includes("Chats")}
@@ -2371,6 +2371,7 @@ function ConversationRow({
   onToggleSelected: (conversationId: string, shiftKey?: boolean) => void;
   onProjectAssigned?: (projectName: string) => void;
 }) {
+  const { t } = useTranslation();
   // `useParams` reads from the active matched route. On `/`, the param is
   // undefined; on `/c/:conversationId`, it carries the active id.
   const { conversationId: activeId } = useParams<{ conversationId: string }>();
@@ -2454,7 +2455,13 @@ function ConversationRow({
   // The session's current project (reserved label), or null when unfiled 鈥?  // drives the kebab submenu label ("Add to project" vs "Change project").
   const currentProject = conversation.labels?.[PROJECT_LABEL_KEY] ?? null;
 
-  const label = conversationDisplayLabel(conversation);
+  // A private-fund session is created before its first prompt has been used
+  // to synthesize a title. Do not expose the underlying native harness name
+  // (for example "Claude Code") during that short gap.
+  const label =
+    !conversation.title && conversation.labels?.[PRIVATE_FUND_DATASET_ID_LABEL_KEY]
+      ? t("sidebar.newResearch")
+      : conversationDisplayLabel(conversation);
   const hasUnseenMessages =
     !isActive &&
     isConversationUnseen(conversation.id, conversation.updated_at, conversation.status);

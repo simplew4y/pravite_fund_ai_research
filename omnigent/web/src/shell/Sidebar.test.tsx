@@ -941,6 +941,23 @@ describe("Sidebar sections", () => {
     expect(screen.getByText("Chats")).toBeInTheDocument();
     expect(screen.queryByText("Shared with me")).toBeNull();
   });
+
+  it("does not expose the native harness name while a private-fund chat is untitled", () => {
+    mockConversations([
+      conv("conv_private_fund", "Claude Code", {
+        title: null,
+        labels: {
+          [PRIVATE_FUND_DATASET_ID_LABEL_KEY]: "acme",
+          "omnigent.wrapper": "claude-code-native-ui",
+        },
+      }),
+    ]);
+
+    renderSidebar();
+
+    expect(screen.getByText("开始新研究")).toBeInTheDocument();
+    expect(screen.queryByText("Claude Code")).not.toBeInTheDocument();
+  });
 });
 
 // Section headers double as collapse toggles, persisted to localStorage so
