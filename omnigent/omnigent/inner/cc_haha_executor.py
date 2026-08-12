@@ -41,6 +41,7 @@ from omnigent.inner.executor import (
     TurnComplete,
 )
 from omnigent.inner.native_attachments import materialize_attachment
+from omnigent.runner.identity import RUNNER_USER_MEMORY_DIR_ENV_VAR
 
 _logger = logging.getLogger(__name__)
 
@@ -221,6 +222,17 @@ class CCHahaExecutor(Executor):
                     parts.append(text)
         if system_prompt.strip():
             parts.append(system_prompt.strip())
+        memory_dir = os.environ.get(RUNNER_USER_MEMORY_DIR_ENV_VAR, "").strip()
+        if memory_dir:
+            try:
+                from omnigent.server.private_fund_memory import read_memory_from_dir
+
+                memory_context = read_memory_from_dir(Path(memory_dir)).strip()
+            except Exception as exc:  # noqa: BLE001 - memory must not block a turn.
+                _logger.warning("cc-haha user memory unavailable: %s", exc)
+            else:
+                if memory_context:
+                    parts.append(memory_context)
         if not parts:
             return None
         target = bridge_dir / "omnigent-system-prompt.md"

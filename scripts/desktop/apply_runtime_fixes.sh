@@ -80,6 +80,7 @@ fi
 # depending on how the embedded Python path is initialized.
 for relative_path in \
   runner/_entry.py \
+  runner/identity.py \
   inner/cc_haha_executor.py \
   host/connect.py
 do

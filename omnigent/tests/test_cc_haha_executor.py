@@ -119,6 +119,33 @@ def test_build_argv_uses_session_then_resume_and_mcp(tmp_path) -> None:
     assert "--session-id" not in resumed
 
 
+def test_build_argv_appends_current_user_memory(tmp_path, monkeypatch) -> None:
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    (memory_dir / "POLICY.md").write_text(
+        "All newly generated user-facing content must be written in English.\n",
+        encoding="utf-8",
+    )
+    (memory_dir / "MEMORY.md").write_text("Prefer concise answers.\n", encoding="utf-8")
+    monkeypatch.setenv("OMNIGENT_USER_MEMORY_DIR", str(memory_dir))
+    bridge_dir = tmp_path / "bridge"
+    bridge_dir.mkdir()
+
+    argv = CCHahaExecutor(cwd=str(tmp_path))._build_argv(
+        binary="claude-haha",
+        prompt="hello",
+        bridge_dir=bridge_dir,
+        system_prompt="private fund rules",
+        model_override=None,
+    )
+
+    prompt_file = Path(argv[argv.index("--append-system-prompt-file") + 1])
+    prompt = prompt_file.read_text(encoding="utf-8")
+    assert "private fund rules" in prompt
+    assert "must be written in English" in prompt
+    assert "Prefer concise answers" in prompt
+
+
 def test_build_env_bounds_only_mcp_startup_wait(monkeypatch) -> None:
     monkeypatch.delenv("CC_HAHA_DESKTOP_AWAIT_MCP", raising=False)
     monkeypatch.delenv("CC_HAHA_DESKTOP_AWAIT_MCP_TIMEOUT_MS", raising=False)

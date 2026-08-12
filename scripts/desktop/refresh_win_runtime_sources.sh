@@ -40,6 +40,19 @@ rsync -a --delete \
   --exclude '/examples' \
   "$ROOT_DIR/omnigent/" \
   "$PROJECT/omnigent/"
+
+# Embedded Python currently resolves the installed package before the slim
+# project tree. Keep that import root in lockstep with the repository when a
+# previously assembled dependency runtime is reused for a source-only release.
+# Package metadata and third-party wheels live outside this directory and are
+# intentionally preserved.
+SITE_OMNIGENT="$RUNTIME_DIR/python/Lib/site-packages/omnigent"
+test -d "$SITE_OMNIGENT"
+rsync -a --delete \
+  --exclude '__pycache__' \
+  --exclude '*.pyc' \
+  "$ROOT_DIR/omnigent/omnigent/" \
+  "$SITE_OMNIGENT/"
 cp -f "$ROOT_DIR/product-release.json" "$PROJECT/product-release.json"
 
 # Repository-relative example symlinks are not portable in an Electron
