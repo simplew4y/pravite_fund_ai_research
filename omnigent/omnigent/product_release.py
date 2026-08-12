@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -18,10 +20,24 @@ _DEFAULT_RELEASE = {
 
 def _release_manifest_candidates() -> list[Path]:
     module_path = Path(__file__).resolve()
-    return [
-        module_path.parents[2] / "product-release.json",
-        module_path.parents[3] / "product-release.json",
-    ]
+    candidates: list[Path] = []
+    configured_project_root = os.environ.get("PRIVATE_FUND_PROJECT_ROOT", "").strip()
+    if configured_project_root:
+        candidates.append(
+            Path(configured_project_root).expanduser().resolve() / "product-release.json"
+        )
+    # Bundled runtimes import this package from the embedded interpreter while
+    # the release manifest lives in the sibling project directory.
+    candidates.append(
+        Path(sys.prefix).resolve().parent / "project" / "product-release.json"
+    )
+    candidates.extend(
+        [
+            module_path.parents[2] / "product-release.json",
+            module_path.parents[3] / "product-release.json",
+        ]
+    )
+    return list(dict.fromkeys(candidates))
 
 
 @lru_cache(maxsize=1)
@@ -43,4 +59,3 @@ def legacy_data_baseline() -> str:
 
 def database_target_version() -> str:
     return str(product_release()["databaseTargetVersion"])
-

@@ -17,8 +17,8 @@ def _namespace(seed: int) -> str:
 def test_locale_write_creates_isolated_owner_only_memory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(private_fund_memory, "project_root", lambda: tmp_path)
-    monkeypatch.setattr("omnigent.server.private_fund_locale.project_root", lambda: tmp_path)
+    monkeypatch.setattr(private_fund_memory, "user_data_root", lambda: tmp_path)
+    monkeypatch.setattr("omnigent.server.private_fund_locale.user_data_root", lambda: tmp_path)
 
     english = _namespace(1)
     chinese = _namespace(2)
@@ -38,8 +38,8 @@ def test_locale_write_creates_isolated_owner_only_memory(
 def test_memory_reader_rebuilds_corrupt_policy_and_ignores_oversized_memory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(private_fund_memory, "project_root", lambda: tmp_path)
-    monkeypatch.setattr("omnigent.server.private_fund_locale.project_root", lambda: tmp_path)
+    monkeypatch.setattr(private_fund_memory, "user_data_root", lambda: tmp_path)
+    monkeypatch.setattr("omnigent.server.private_fund_locale.user_data_root", lambda: tmp_path)
     namespace = _namespace(3)
     write_user_locale(namespace, "en-US")
     root = private_fund_memory.user_memory_dir(namespace)
@@ -58,8 +58,8 @@ def test_memory_reader_rebuilds_corrupt_policy_and_ignores_oversized_memory(
 def test_memory_reader_includes_optional_long_term_memory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(private_fund_memory, "project_root", lambda: tmp_path)
-    monkeypatch.setattr("omnigent.server.private_fund_locale.project_root", lambda: tmp_path)
+    monkeypatch.setattr(private_fund_memory, "user_data_root", lambda: tmp_path)
+    monkeypatch.setattr("omnigent.server.private_fund_locale.user_data_root", lambda: tmp_path)
     namespace = _namespace(4)
     write_user_locale(namespace, "zh-CN")
     root = private_fund_memory.user_memory_dir(namespace)
