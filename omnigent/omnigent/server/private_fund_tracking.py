@@ -1196,6 +1196,17 @@ def delete_memo_version(collection_db: Path, dataset_id: str, memo_version_id: s
         return True
 
 
+def _normalized_memo_section_content(value: Any) -> str:
+    """Normalize non-semantic line endings without hiding textual changes."""
+
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    return "\n".join(line.rstrip() for line in text.strip().splitlines())
+
+
+def _normalized_memo_evidence_ids(value: Any) -> tuple[str, ...]:
+    return tuple(sorted({str(item).strip() for item in (value or []) if str(item).strip()}))
+
+
 def compare_memo_versions(
     collection_db: Path, dataset_id: str, from_version_id: str, to_version_id: str
 ) -> dict[str, Any]:
@@ -1217,7 +1228,9 @@ def compare_memo_versions(
         old_sections = {section["section_key"]: section for section in old["sections"]}
         new_sections = {section["section_key"]: section for section in new["sections"]}
         section_changes = []
-        for key in sorted(set(old_sections) | set(new_sections)):
+        ordered_keys = list(new_sections)
+        ordered_keys.extend(key for key in old_sections if key not in new_sections)
+        for key in ordered_keys:
             left = old_sections.get(key)
             right = new_sections.get(key)
             if left is None:
@@ -1228,7 +1241,13 @@ def compare_memo_versions(
                 similarity = 0.0
             else:
                 similarity = SequenceMatcher(None, left["content"], right["content"]).ratio()
-                change_type = "unchanged" if similarity >= 0.985 else "changed"
+                same_content = _normalized_memo_section_content(
+                    left["content"]
+                ) == _normalized_memo_section_content(right["content"])
+                same_evidence = _normalized_memo_evidence_ids(
+                    left["evidence_ids"]
+                ) == _normalized_memo_evidence_ids(right["evidence_ids"])
+                change_type = "unchanged" if same_content and same_evidence else "changed"
             section_changes.append(
                 {
                     "section_key": key,
