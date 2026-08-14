@@ -29,7 +29,7 @@ def test_builtin_skill_packages_are_discoverable() -> None:
     assert len(builtin) == 9
     assert len(dianjin) == 83
     assert len(finskillops) == 2
-    assert registry.summary()["status_counts"] == {"promoted": 8, "experimental": 86}
+    assert registry.summary()["status_counts"] == {"promoted": 8, "experimental": 93}
     assert {skill.manifest.skill_id for skill in builtin} == {
         "answer_coverage",
         "company_profile_boundary",
@@ -142,8 +142,8 @@ def test_public_catalog_hides_internal_hash_and_owner() -> None:
 def test_governance_registry_loads_from_skill_packages() -> None:
     registry = load_skill_registry(PROJECT_ROOT / "skills")
 
-    assert len(registry.all()) == 94
-    assert registry.status_counts() == {"promoted": 8, "experimental": 86}
+    assert len(registry.all()) == 101
+    assert registry.status_counts() == {"promoted": 8, "experimental": 93}
     assert registry.get("table_evidence_verifier").implementation_refs
     assert registry.get("dianjin_investment_researcher_company_deep_analysis").status == "experimental"
 
@@ -155,7 +155,7 @@ def test_package_and_legacy_governance_ids_stay_in_sync() -> None:
     package_identity = {
         (card.skill_id, card.version, card.status)
         for card in packages.all()
-        if not card.skill_id.startswith(("dianjin_", "finskillops_"))
+        if not card.skill_id.startswith(("dianjin_", "finskillops_", "anthropic_"))
     }
     legacy_identity = {(card.skill_id, card.version, card.status) for card in legacy.all()}
     assert package_identity == legacy_identity

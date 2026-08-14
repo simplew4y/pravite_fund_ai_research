@@ -1,0 +1,49 @@
+schema_version: 1
+skill_id: anthropic_model_update
+version: 0.1.0-pf1
+name: 模型更新（FinSagent 适配）
+description: 用新实际值和证据化假设生成可审计的模型变更集。
+category: financial_modeling
+type: prompt
+phase: pre_answer
+priority: 230
+status: experimental
+owner: finsagent-skillops
+agents: [quant, company_researcher]
+routing:
+  intents: [model_update]
+  keywords: [更新模型, 财报后更新, 预测调整, estimate revision, model update, 目标价调整]
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: true
+  comparable_period_required: true
+  unit_required: true
+  currency_required: true
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: anthropic-financial-services
+  upstream_repository: https://github.com/anthropics/financial-services
+  upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
+  upstream_path: plugins/vertical-plugins/equity-research/skills/model-update/SKILL.md
+  upstream_sha256: 62b2256bf3b52ac3759cb446a10aaa3066a51b4909e09bae0e3b98b741a37fb5
+  adapter_version: 0.1.0-pf1
+  adaptation: adds_versioned_change_set_and_evidence_ids
+  external_tools_blocked: true
+permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
+public: false
+governance:
+  failure_types: [model_update_error]
+  trigger: 财报后模型更新或预测调整请求
+  inputs: [question, model_version, active_dataset, evidence_fusion_context]
+  outputs: [change_set, estimate_revision, valuation_impact, rollback_metadata]
+  eval_sets: [anthropic_finance_shadow_v1]
+  last_reviewed: "2026-08-14"
+  implementation_refs: [SKILL.md, manifest.yaml]
+  scope: Shadow-only financial model update instruction.
+  risks: [formula_overwrite, actual_estimate_mix, stale_model_version, unsupported_artifact_claim]
+  notes: Not present in production allowlist.

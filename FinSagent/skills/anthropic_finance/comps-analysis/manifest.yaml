@@ -1,0 +1,49 @@
+schema_version: 1
+skill_id: anthropic_comps_analysis
+version: 0.1.0-pf1
+name: 可比公司估值（FinSagent 适配）
+description: 在显式可比公司范围内完成口径标准化与隐含估值。
+category: valuation
+type: prompt
+phase: pre_answer
+priority: 225
+status: experimental
+owner: finsagent-skillops
+agents: [market_researcher, quant]
+routing:
+  intents: [comparable_company_analysis]
+  keywords: [trading comps, 可比公司, 同业估值, EV/EBITDA, 估值足球场]
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: true
+  unit_required: true
+  currency_required: true
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: anthropic-financial-services
+  upstream_repository: https://github.com/anthropics/financial-services
+  upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
+  upstream_path: plugins/vertical-plugins/financial-analysis/skills/comps-analysis/SKILL.md
+  upstream_sha256: 2d49d9d694297da6ca3b084564ce10ed496f4ff21f275dae6b6c50d7b4dd889a
+  adapter_version: 0.1.0-pf1
+  adaptation: requires_explicit_comparable_dataset_scope
+  external_tools_blocked: true
+permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
+public: false
+governance:
+  failure_types: [comparable_scope_error]
+  trigger: 可比公司、同业估值或估值足球场请求
+  inputs: [question, active_dataset, comparable_dataset_scope]
+  outputs: [peer_rationale, normalized_comps, implied_value_range, source_map]
+  eval_sets: [anthropic_finance_shadow_v1]
+  last_reviewed: "2026-08-14"
+  implementation_refs: [SKILL.md, manifest.yaml]
+  scope: Shadow-only comparable-company analysis instruction.
+  risks: [bad_peer_selection, period_mismatch, currency_mismatch, unauthorized_cross_company_data]
+  notes: Cross-company permission in this manifest does not bypass dataset authorization.

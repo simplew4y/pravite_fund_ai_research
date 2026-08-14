@@ -1,0 +1,49 @@
+schema_version: 1
+skill_id: anthropic_audit_xls
+version: 0.1.0-pf1
+name: 财务模型审计（FinSagent 适配）
+description: 审计财务模型公式、口径、勾稽、场景和估值完整性。
+category: verification
+type: prompt
+phase: post_answer
+priority: 240
+status: experimental
+owner: finsagent-skillops
+agents: [quant]
+routing:
+  intents: [model_audit]
+  keywords: [审计模型, 检查Excel, 模型QA, 公式错误, 三表勾稽, audit xls]
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: true
+  unit_required: true
+  currency_required: true
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: anthropic-financial-services
+  upstream_repository: https://github.com/anthropics/financial-services
+  upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
+  upstream_path: plugins/agent-plugins/earnings-reviewer/skills/audit-xls/SKILL.md
+  upstream_sha256: df771f6b90fc3b3d4996d5e8682ab00d4fa6f55beef308ea764b0f7a2a1c38e2
+  adapter_version: 0.1.0-pf1
+  adaptation: adds_evidence_and_dataset_boundary_checks
+  external_tools_blocked: true
+permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
+public: false
+governance:
+  failure_types: [model_audit_error]
+  trigger: 模型审计、Excel QA 或三表勾稽请求
+  inputs: [question, workbook_snapshot, evidence_map]
+  outputs: [audit_findings, severity_summary, blocking_checks]
+  eval_sets: [anthropic_finance_shadow_v1]
+  last_reviewed: "2026-08-14"
+  implementation_refs: [SKILL.md, manifest.yaml]
+  scope: Shadow-only model audit instruction.
+  risks: [false_pass, incomplete_workbook_visibility, formula_recalculation_gap]
+  notes: A future promoted version must use a deterministic workbook executor.
