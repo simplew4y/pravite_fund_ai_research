@@ -49,6 +49,14 @@ class DebugAdapterTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             apply_retrieval_overrides({}, legacy_company_collection=True)
 
+    def test_candidate_rescue_flag_is_explicit_and_non_mutating(self):
+        source = {"exact_date_numeric_rescue_enabled": False}
+        baseline = apply_retrieval_overrides(source)
+        candidate = apply_retrieval_overrides(source, exact_date_numeric_rescue=True)
+        self.assertFalse(source["exact_date_numeric_rescue_enabled"])
+        self.assertFalse(baseline["exact_date_numeric_rescue_enabled"])
+        self.assertTrue(candidate["exact_date_numeric_rescue_enabled"])
+
 
 if __name__ == "__main__":
     unittest.main()

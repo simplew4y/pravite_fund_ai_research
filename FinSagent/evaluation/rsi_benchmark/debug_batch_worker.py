@@ -38,7 +38,7 @@ def append_jsonl(path: Path, row: dict[str, Any]) -> None:
 
 def apply_retrieval_overrides(
     config: dict[str, Any], *, persist_directory: str = "", collection_name: str = "",
-    legacy_company_collection: bool = False,
+    legacy_company_collection: bool = False, exact_date_numeric_rescue: bool = False,
 ) -> dict[str, Any]:
     resolved = dict(config)
     if persist_directory:
@@ -51,6 +51,8 @@ def apply_retrieval_overrides(
         resolved["retrieval_scope_required"] = False
         resolved["retrieval_mode"] = "rag_only"
         resolved["datasets"] = {}
+    if exact_date_numeric_rescue:
+        resolved["exact_date_numeric_rescue_enabled"] = True
     return resolved
 
 
@@ -66,6 +68,7 @@ async def run(args: argparse.Namespace) -> None:
         persist_directory=args.persist_directory,
         collection_name=args.collection_name,
         legacy_company_collection=args.legacy_company_collection,
+        exact_date_numeric_rescue=args.exact_date_numeric_rescue,
     )
     state_dir = Path(args.state_dir).resolve()
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -131,6 +134,7 @@ def main() -> None:
     parser.add_argument("--persist-directory", default="")
     parser.add_argument("--collection-name", default="")
     parser.add_argument("--legacy-company-collection", action="store_true")
+    parser.add_argument("--exact-date-numeric-rescue", action="store_true")
     asyncio.run(run(parser.parse_args()))
 
 
