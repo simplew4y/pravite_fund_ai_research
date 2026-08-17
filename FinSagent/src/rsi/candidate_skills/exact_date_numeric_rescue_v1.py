@@ -1,0 +1,147 @@
+"""Deterministic exact-date and numeric-metric evidence rescue candidate."""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from datetime import datetime
+from typing import Any
+
+
+CN_DATE_RE = re.compile(r"(?P<y>20\d{2})\s*年\s*(?P<m>\d{1,2})\s*月\s*(?P<d>\d{1,2})\s*日")
+ISO_DATE_RE = re.compile(r"(?P<y>20\d{2})[-/](?P<m>\d{1,2})[-/](?P<d>\d{1,2})")
+EN_DATE_RE = re.compile(
+    r"\b(?P<month>January|February|March|April|May|June|July|August|September|October|November|December)"
+    r"\s+(?P<d>\d{1,2}),\s+(?P<y>20\d{2})\b",
+    re.IGNORECASE,
+)
+NUMBER_RE = re.compile(r"(?<![A-Za-z])\d+(?:[,.]\d+)*(?![A-Za-z])")
+
+MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+}
+
+METRIC_GROUPS = (
+    (
+        ("普通股流通在外", "流通在外普通股", "流通股", "shares outstanding", "common stock outstanding"),
+        (
+            "shares of common stock outstanding",
+            "shares of common stock were outstanding",
+            "common stock outstanding",
+            "shares outstanding",
+        ),
+    ),
+    (
+        ("发行在外股份", "已发行股份", "outstanding shares"),
+        ("outstanding shares", "shares issued and outstanding"),
+    ),
+)
+
+
+def _dates(text: str) -> set[str]:
+    values: set[str] = set()
+    for pattern in (CN_DATE_RE, ISO_DATE_RE):
+        for match in pattern.finditer(text or ""):
+            try:
+                values.add(datetime(
+                    int(match.group("y")), int(match.group("m")), int(match.group("d")),
+                ).date().isoformat())
+            except ValueError:
+                continue
+    for match in EN_DATE_RE.finditer(text or ""):
+        try:
+            values.add(datetime(
+                int(match.group("y")), MONTHS[match.group("month").lower()], int(match.group("d")),
+            ).date().isoformat())
+        except ValueError:
+            continue
+    return values
+
+
+def _metric_aliases(question: str) -> tuple[str, ...]:
+    lowered = (question or "").lower()
+    aliases: list[str] = []
+    for triggers, values in METRIC_GROUPS:
+        if any(trigger.lower() in lowered for trigger in triggers):
+            aliases.extend(values)
+    return tuple(dict.fromkeys(alias.lower() for alias in aliases))
+
+
+def _chunk_text(chunk: dict[str, Any]) -> str:
+    metadata = chunk.get("metadata") or {}
+    values = (
+        chunk.get("page_content", ""), metadata.get("title_summary", ""),
+        metadata.get("caption", ""), metadata.get("source_file", ""),
+        metadata.get("doc_id", ""), metadata.get("date_published", ""),
+    )
+    return " ".join(str(value) for value in values if value)
+
+
+def _identity(chunk: dict[str, Any]) -> str:
+    metadata = chunk.get("metadata") or {}
+    stable = "\x1f".join((
+        str(metadata.get("doc_id") or metadata.get("source_file") or ""),
+        str(metadata.get("page_idx") or ""), str(chunk.get("page_content") or ""),
+    ))
+    return hashlib.sha256(stable.encode("utf-8")).hexdigest()
+
+
+def select_exact_date_numeric_evidence(
+    question: str,
+    candidate_chunks: list[dict[str, Any]],
+    selected_chunks: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Prepend at most one missing candidate that satisfies all exact anchors."""
+    query_dates = _dates(question)
+    aliases = _metric_aliases(question)
+    if not query_dates or not aliases:
+        return {
+            "selected_chunks": selected_chunks,
+            "rescue_applied": False,
+            "rescue_reason": "no_exact_date_or_supported_metric",
+            "rescued_candidate_indices": [],
+        }
+
+    selected_ids = {_identity(chunk) for chunk in selected_chunks}
+    matches: list[tuple[int, int, dict[str, Any]]] = []
+    for index, chunk in enumerate(candidate_chunks):
+        if _identity(chunk) in selected_ids:
+            continue
+        text = _chunk_text(chunk)
+        text_lower = text.lower()
+        date_overlap = query_dates & _dates(text)
+        matched_aliases = [alias for alias in aliases if alias in text_lower]
+        if not date_overlap or not matched_aliases:
+            continue
+        non_date_text = CN_DATE_RE.sub(" ", ISO_DATE_RE.sub(" ", EN_DATE_RE.sub(" ", text)))
+        if not NUMBER_RE.search(non_date_text):
+            continue
+        annotated = dict(chunk)
+        metadata = dict(chunk.get("metadata") or {})
+        metadata.update({
+            "exact_anchor_rescue": True,
+            "exact_anchor_dates": sorted(date_overlap),
+            "exact_anchor_metric_aliases": sorted(matched_aliases),
+            "exact_anchor_candidate_index": index,
+        })
+        annotated["metadata"] = metadata
+        matches.append((len(matched_aliases), -index, annotated))
+
+    if not matches:
+        return {
+            "selected_chunks": selected_chunks,
+            "rescue_applied": False,
+            "rescue_reason": "no_candidate_satisfied_all_anchors",
+            "rescued_candidate_indices": [],
+        }
+
+    matches.sort(reverse=True, key=lambda item: (item[0], item[1]))
+    rescued = matches[0][2]
+    return {
+        "selected_chunks": [rescued] + selected_chunks,
+        "rescue_applied": True,
+        "rescue_reason": "exact_date_metric_numeric_anchor_match",
+        "rescued_candidate_indices": [rescued["metadata"]["exact_anchor_candidate_index"]],
+    }
