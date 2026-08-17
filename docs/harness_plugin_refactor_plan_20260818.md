@@ -2,7 +2,7 @@
 
 - 日期：2026-08-18
 - 分支：`feat/private-fund-workbench-industry-ui`
-- 状态：proposed
+- 状态：**implemented**（Phase 0–4 已落地，见 §8 实施记录）
 - 本文档**取代** `docs/Private Fund AI Research DeepSeek Harness 插件化重构计划.md`（旧文档结论是"不采用 Cordis 作为生产控制面"；本轮按新决策重写：**以 DeepSeek Harness 为核心，全部后端能力以插件形式开发**）。
 
 ---
@@ -150,3 +150,17 @@ Agent   plugin-model-gateway   ctx.llm：Provider adapter 注册 + commit-before
 
 - 常规门：`npm run verify:all`（typecheck + 全 workspace 测试 + compute + pi 依赖 + omnigent/web 测试）
 - 新增门（随 Phase 落地）：`test:journal-replay`（回放等价）、`test:contract-parity`（逐域契约对照）、`test:shutdown-leaks`（泄漏探针）
+
+## 8. 实施记录（2026-08-18）
+
+| Phase | 提交 | 状态 |
+|---|---|---|
+| 0 内核 + Seam 试点 | `efa9c31` | ✅ `packages/kernel`（cordis 4.0.0-rc.8 封装，上游类型零泄漏）；blob-store/market-data 接线 |
+| 1 Session Journal Shadow | `91a069f` | ✅ 惰性对账影子写 + 回放等价/hash 链/幂等/fork Gate 全绿 |
+| 2 Agent 三件套 | `ec67104` | ✅ JournaledToolRuntime（单调守卫 + intent-before-effect fail closed）接入全部工具调用；ctx.modelGateway（commit-before-send，能力就绪待 agent loop 迁移后切换）；db/research-stores/agent-runtime 独立插件 |
+| 3 域拆分 | `dd3b242` | ✅ app.ts 3289→~220 行；7 个域路由模块 + RouteContext；服务构造拆入 projects-jobs/research/uploads/insights/identity/sessions/api-http 插件；legacy 插件删除 |
+| 4 Worker 内核化 | `32ecdf3` | ✅ job-worker/obsidian-worker 走 kernel profile；controlDbPlugin 移入 @private-fund/db 共享 |
+
+验证：`verify:all` 全绿（3531 tests）；api 99 tests（含 30+ 集成套件与回放等价 Gate）；全域 E2E 冒烟（项目/上传/资料/会话/事件流/tracking/valuation/workflow/收件箱）+ SIGTERM 干净退出；三个受管服务经 `manage-ts-services` 正常启停，健康信号不变；omnigent/web 与 apps/web 双前端契约无感。
+
+尚未切换（按计划为浸泡期后动作，非本轮范围）：journal 权威切换（仍 Shadow，legacy `session_events` 为权威）；ModelGateway 生产接管（Pi worker 仍持 Provider 连接，待 agent loop 迁移）。
