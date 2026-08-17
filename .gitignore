@@ -53,3 +53,4 @@ knowledge_base/
 eval/dist-types/
 apps/desktop/.build/
 *.egg-info/
+private_obsidian/
