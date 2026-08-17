@@ -48,6 +48,7 @@ async def run(args: argparse.Namespace) -> None:
     state_dir.mkdir(parents=True, exist_ok=True)
     config["session_history_db"] = str(state_dir / "sessions.sqlite3")
     config["enable_title_summaries"] = False
+    config["_rsi_capture_skill_replay_inputs"] = True
     os.environ["ENABLE_TITLE_SUMMARIES"] = "0"
     questions = load_target_questions(Path(args.questions))
     if args.max_cases:
@@ -84,6 +85,7 @@ async def run(args: argparse.Namespace) -> None:
                 "pre_rerank_candidates": result.get("pre_rerank_candidates", []),
                 "agent_outputs": result.get("agent_outputs", {}),
                 "skill_traces": result.get("skill_traces", []),
+                "skill_replay_inputs": result.get("skill_replay_inputs", []),
                 "total_time": result.get("total_time", elapsed),
                 "wall_time": elapsed,
                 "error": result.get("error"),

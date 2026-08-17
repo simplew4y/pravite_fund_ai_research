@@ -100,6 +100,7 @@ class MASState(TypedDict, total=False):
     preliminary_draft: str
     final_answer: str
     skill_traces: List[Dict[str, Any]]
+    skill_replay_inputs: List[Dict[str, Any]]
 
     # Loop control
     iteration: int
@@ -438,6 +439,7 @@ def _apply_skill_repairs(
     pre_rerank_candidates: List[Dict[str, Any]],
     config: Dict[str, Any],
     trace_sink: List[Dict[str, Any]] | None = None,
+    replay_capture_sink: List[Dict[str, Any]] | None = None,
 ) -> str:
     """
     Apply deterministic skill repairs to the final answer in sequence.
@@ -561,6 +563,14 @@ def _apply_skill_repairs(
                     result.get("repair_reason", ""),
                 )
                 repaired = result["answer"]
+            if replay_capture_sink is not None:
+                replay_capture_sink.append({
+                    "skill_id": "period_source_conflict_repair",
+                    "question": question,
+                    "input_answer": skill_input,
+                    "retrieved_chunks": list(retrieved_chunks),
+                    "baseline_result": result,
+                })
             record_trace("period_source_conflict_repair", skill_input, result, retrieved_chunks, started_at)
         except Exception as e:
             record_trace("period_source_conflict_repair", skill_input, None, retrieved_chunks, started_at, e)
@@ -616,6 +626,7 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
     # Each repair is independently gated; failures fall back to the original answer.
     cfg = state.get("config") or {}
     skill_traces: List[Dict[str, Any]] = []
+    skill_replay_inputs: List[Dict[str, Any]] = []
     if final_answer and any(
         cfg.get(k, True)
         for k in (
@@ -635,6 +646,9 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
             pre_rerank_candidates=list(merged_pre_rerank_candidates),
             config=cfg,
             trace_sink=skill_traces,
+            replay_capture_sink=(
+                skill_replay_inputs if cfg.get("_rsi_capture_skill_replay_inputs", False) else None
+            ),
         )
     # ────────────────────────────────────────────────────────────────────────
 
@@ -651,6 +665,7 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
         "merged_pre_rerank_candidates": merged_pre_rerank_candidates,
         "final_answer": final_answer,
         "skill_traces": skill_traces,
+        "skill_replay_inputs": skill_replay_inputs,
         "time_to_first_response": ttft,
     }
 
