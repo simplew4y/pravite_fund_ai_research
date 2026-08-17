@@ -1,7 +1,7 @@
 ---
 name: anthropic_dcf_model
 description: "基于已通过勾稽的预测模型执行 DCF 估值规划，包括 UFCF、WACC、终值、EV 到股权价值桥接及敏感性分析。用于内在价值、目标价或 DCF 模型请求；当前仅影子评估。"
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 ---
 
 # DCF 模型（FinSagent 下游适配）

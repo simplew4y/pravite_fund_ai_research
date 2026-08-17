@@ -1,6 +1,6 @@
 schema_version: 1
 skill_id: anthropic_comps_analysis
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 name: 可比公司估值（FinSagent 适配）
 description: 在显式可比公司范围内完成口径标准化与隐含估值。
 category: valuation
@@ -19,11 +19,11 @@ evidence_contract:
   same_company_required: false
   same_period_required: false
   comparable_period_required: true
-  unit_required: true
-  currency_required: true
+  unit_required: false
+  currency_required: false
   source_evidence_required: true
   allow_cross_company: true
-  allow_actual_estimate_mix: false
+  allow_actual_estimate_mix: true
 implementation:
   kind: prompt
   source: anthropic-financial-services
@@ -31,7 +31,7 @@ implementation:
   upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
   upstream_path: plugins/vertical-plugins/financial-analysis/skills/comps-analysis/SKILL.md
   upstream_sha256: 2d49d9d694297da6ca3b084564ce10ed496f4ff21f275dae6b6c50d7b4dd889a
-  adapter_version: 0.1.0-pf1
+  adapter_version: 0.1.1-pf1
   adaptation: requires_explicit_comparable_dataset_scope
   external_tools_blocked: true
 permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}

@@ -1,6 +1,6 @@
 schema_version: 1
 skill_id: anthropic_ic_memo
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 name: PE IC Memo（FinSagent 适配）
 description: 基于尽调、模型、交易条款和回报分析生成 PE 投委会 Memo 规范。
 category: research_workflow
@@ -19,11 +19,11 @@ evidence_contract:
   same_company_required: true
   same_period_required: false
   comparable_period_required: true
-  unit_required: true
-  currency_required: true
+  unit_required: false
+  currency_required: false
   source_evidence_required: true
   allow_cross_company: false
-  allow_actual_estimate_mix: false
+  allow_actual_estimate_mix: true
 implementation:
   kind: prompt
   source: anthropic-financial-services
@@ -31,7 +31,7 @@ implementation:
   upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
   upstream_path: plugins/vertical-plugins/private-equity/skills/ic-memo/SKILL.md
   upstream_sha256: 62ab741880a946ab3e738b1f1514cb44b4e8b4f8b1d2e7b42c1e1ba5fcbb417f
-  adapter_version: 0.1.0-pf1
+  adapter_version: 0.1.1-pf1
   adaptation: explicit_pe_boundary_and_evidence_contract
   external_tools_blocked: true
 permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
@@ -46,4 +46,4 @@ governance:
   implementation_refs: [SKILL.md, manifest.yaml]
   scope: Shadow-only PE investment committee memo instruction.
   risks: [missing_deal_terms, inconsistent_returns, unsupported_recommendation, memo_type_confusion]
-  notes: Not present in production allowlist; secondary-market memo remains downstream Omnigent skill.
+  notes: Production prompt guidance is intent-routed; secondary-market memo remains downstream Omnigent skill.

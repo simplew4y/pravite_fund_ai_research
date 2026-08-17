@@ -22,8 +22,8 @@ excluded_duplicates:
   - repository: https://github.com/ginlix-ai/LangAlpha
     reason: Relevant skills declare derivation from this canonical source.
 adaptation_policy:
-  status: shadow_evaluation_only
-  production_allowlist: false
+  status: intent_routed_prompt_active
+  production_allowlist: true
   external_tools_blocked: true
   active_dataset_only: true
   local_changes_required: true

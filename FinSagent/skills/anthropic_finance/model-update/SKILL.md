@@ -1,7 +1,7 @@
 ---
 name: anthropic_model_update
 description: "用新财报实际值、管理层指引和分析师假设更新已有财务模型，记录旧值、新值、差异、来源及估值影响。用于财报后模型更新、预测调整和目标价变更；当前仅影子评估。"
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 ---
 
 # 模型更新（FinSagent 下游适配）

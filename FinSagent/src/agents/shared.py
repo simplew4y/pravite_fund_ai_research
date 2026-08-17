@@ -884,7 +884,13 @@ async def draft_answer(
     lg = get_run_logger(run_id, log_dir, agent) if run_id and log_dir else logger
     # Group evidences by sub_query to generate per-subquery answers
     evidence_by_query: Dict[str, List[str]] = {}
+    skill_instruction_contexts: List[str] = []
     for ev in evidences:
+        if ev.get("content_type") == "skill_context":
+            instruction_context = str(ev.get("context") or "").strip()
+            if instruction_context:
+                skill_instruction_contexts.append(instruction_context)
+            continue
         q = ev.get("query", "unknown")
         evidence_by_query.setdefault(q, []).append(ev.get("context", ""))
 
@@ -920,12 +926,19 @@ async def draft_answer(
     draft_history_max_chars = max(1000, _cfg_int("draft_history_max_chars", 6000))
     draft_tools_max_chars = max(1000, _cfg_int("draft_tools_max_chars", 6000))
     draft_summary_max_chars = max(4000, _cfg_int("draft_summary_max_chars", 16000))
+    draft_skill_instruction_max_chars = max(
+        1000, _cfg_int("draft_skill_instruction_max_chars", 12000)
+    )
     data_latest_time = str(cfg.get("data_latest_time") or cfg.get("data_cutoff") or "unknown")
     draft_sem = asyncio.Semaphore(draft_llm_max_concurrency)
     raw_tools_text = json.dumps(tool_results, ensure_ascii=False) if tool_results else "None"
     tools_text = truncate_text(raw_tools_text, draft_tools_max_chars)
     raw_history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history[-6:]])
     history_text = truncate_text(raw_history_text, draft_history_max_chars)
+    skill_instruction_text = truncate_text(
+        "\n\n".join(skill_instruction_contexts),
+        draft_skill_instruction_max_chars,
+    )
 
     async def gen_for_sub(sub_q: str, ctx_list: List[str]):
         evidence_text = join_with_budget(ctx_list, draft_evidence_max_chars) or "None"
@@ -937,18 +950,27 @@ async def draft_answer(
             evidence=evidence_text,
             tools=tools_text,
         )
+        if skill_instruction_text:
+            prompt_filled = (
+                f"{prompt_filled.rstrip()}\n\n"
+                "ACTIVE SKILL INSTRUCTIONS (follow these as workflow and output rules; "
+                "they are not factual evidence):\n"
+                f"{skill_instruction_text}"
+            )
         prompt_filled = (
             f"{prompt_filled.rstrip()}\n"
             f"{ANSWER_EVIDENCE_GUARDRAILS.format(data_latest_time=data_latest_time)}"
         )
         messages = [{"role": "user", "content": prompt_filled}]
         lg.info(
-            "[draft_prompt] sub_q=%r prompt_length=%d evidence_chars=%d history_chars=%d tools_chars=%d",
+            "[draft_prompt] sub_q=%r prompt_length=%d evidence_chars=%d history_chars=%d "
+            "tools_chars=%d skill_instruction_chars=%d",
             sub_q,
             len(prompt_filled),
             len(evidence_text),
             len(history_text),
             len(tools_text),
+            len(skill_instruction_text),
         )
         # lg.info(f"[draft_prompt] sub_q='{sub_q}' prompt_length={len(prompt_filled)}\n{prompt_filled}")
         non_retryable = ("Authentication", "Permission", "BadRequest", "NotFound", "Unprocessable")

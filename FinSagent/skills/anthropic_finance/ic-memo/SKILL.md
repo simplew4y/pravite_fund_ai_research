@@ -1,7 +1,7 @@
 ---
 name: anthropic_ic_memo
 description: "根据尽调、财务模型、交易条款和回报分析起草 PE 投资委员会 Memo。用于 PE deal、收购、LBO 或正式投委会材料；不要用于二级市场多空股票 Memo。"
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 ---
 
 # PE IC Memo（FinSagent 下游适配）

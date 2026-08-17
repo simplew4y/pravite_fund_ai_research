@@ -1,7 +1,7 @@
 ---
 name: anthropic_three_statement_model
 description: "基于限定数据集的历史财务和假设，规划并审查利润表、资产负债表、现金流量表的联动模型。用于三表模型、财务预测、模型填充与勾稽检查；当前仅影子评估，不直接写入 Excel。"
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 ---
 
 # 三表模型（FinSagent 下游适配）

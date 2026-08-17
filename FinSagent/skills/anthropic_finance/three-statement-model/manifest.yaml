@@ -1,6 +1,6 @@
 schema_version: 1
 skill_id: anthropic_three_statement_model
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 name: 三表模型（FinSagent 适配）
 description: 基于 active_dataset 证据规划和审查三表联动模型。
 category: financial_modeling
@@ -17,13 +17,13 @@ routing:
 evidence_contract:
   company_scope_required: true
   same_company_required: true
-  same_period_required: true
+  same_period_required: false
   comparable_period_required: true
-  unit_required: true
-  currency_required: true
+  unit_required: false
+  currency_required: false
   source_evidence_required: true
   allow_cross_company: false
-  allow_actual_estimate_mix: false
+  allow_actual_estimate_mix: true
 implementation:
   kind: prompt
   source: anthropic-financial-services
@@ -31,7 +31,7 @@ implementation:
   upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
   upstream_path: plugins/vertical-plugins/financial-analysis/skills/3-statement-model/SKILL.md
   upstream_sha256: bc2aeb423a3cc9e6ab973dcc4e3c6682427c751e20d8b3a0eec057eab67b1e83
-  adapter_version: 0.1.0-pf1
+  adapter_version: 0.1.1-pf1
   adaptation: rewritten_for_active_dataset_and_evidence_contract
   external_tools_blocked: true
 permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
@@ -46,4 +46,4 @@ governance:
   implementation_refs: [SKILL.md, manifest.yaml]
   scope: Shadow-only three-statement modeling instruction.
   risks: [formula_breakage, period_mismatch, cross_company_contamination, unsupported_artifact_claim]
-  notes: Not present in production allowlist; artifact execution requires a separate audited executor.
+  notes: Production prompt guidance is intent-routed; artifact execution still requires a separate audited executor.

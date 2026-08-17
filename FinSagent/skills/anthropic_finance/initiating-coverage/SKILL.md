@@ -1,7 +1,7 @@
 ---
 name: anthropic_initiating_coverage
 description: "编排公司研究、财务预测、估值、图表和首次覆盖报告组装。用于深度研报、首次覆盖或完整公司研究交付；当前仅生成有检查点的任务计划，不自动写文件。"
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 ---
 
 # 首次覆盖研究（FinSagent 下游适配）

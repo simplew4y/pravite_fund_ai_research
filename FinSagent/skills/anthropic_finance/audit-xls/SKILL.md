@@ -1,7 +1,7 @@
 ---
 name: anthropic_audit_xls
 description: "审计财务模型的公式、硬编码、跨表链接、单位、期间、三表勾稽、场景响应和估值合理性。用于 Excel 模型 QA、交付前检查和模型错误定位；当前仅影子评估。"
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 ---
 
 # 财务模型审计（FinSagent 下游适配）

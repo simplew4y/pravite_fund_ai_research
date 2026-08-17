@@ -111,7 +111,9 @@ skills:
   roots:
     - ./skills
   strict_discovery: false
-  promoted_only: true
+  # Explicit allowlisting remains the production gate; experimental adapters
+  # below are enabled only because they are named here and still run sandboxed.
+  promoted_only: false
   allow:
     - table_evidence_verifier
     - company_profile_boundary
@@ -120,6 +122,21 @@ skills:
     - period_alignment
     - finskillops_financial_numeric_synthesis
     - finskillops_source_grounded_issuer_profile
+    - dianjin_corporate_banker_financial_report_analysis
+    - dianjin_investment_researcher_earnings_commentary_generator
+    - dianjin_investment_researcher_announcement_analysis
+    - dianjin_investment_researcher_company_deep_analysis
+    - dianjin_investment_researcher_company_one_page_analysis
+    - dianjin_investment_researcher_industry_deep_analysis
+    - dianjin_investment_researcher_industry_one_page_analysis
+    - dianjin_investment_researcher_institutional_research_outline
+    - anthropic_three_statement_model
+    - anthropic_dcf_model
+    - anthropic_comps_analysis
+    - anthropic_model_update
+    - anthropic_audit_xls
+    - anthropic_initiating_coverage
+    - anthropic_ic_memo
   deny: []
   execution:
     max_skills_per_request: 8
@@ -142,6 +159,7 @@ draft_evidence_max_chars: 24000
 draft_history_max_chars: 6000
 draft_tools_max_chars: 6000
 draft_summary_max_chars: 16000
+draft_skill_instruction_max_chars: 12000
 
 # Latest data cutoff for your databases (string, e.g., "2025-02-20" or "2025")
 data_latest_time: "2025-02-20"

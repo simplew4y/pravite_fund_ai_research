@@ -1,7 +1,7 @@
 ---
 name: anthropic_comps_analysis
 description: "执行可比公司筛选、口径标准化、经营指标和估值倍数比较，并形成隐含估值区间。用于 trading comps、同业估值和估值足球场；当前仅影子评估。"
-version: 0.1.0-pf1
+version: 0.1.1-pf1
 ---
 
 # 可比公司估值（FinSagent 下游适配）
