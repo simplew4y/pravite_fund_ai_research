@@ -1,0 +1,104 @@
+{
+  "schema_version": "rsi-real-stack-calibration/v1",
+  "candidate_id": "cand-exact-date-numeric-rescue-l4-v3",
+  "candidate_base_commit": "669a616fe94484bf37e3ea035efc4516301fd10d",
+  "evaluator_commit": "dd68272",
+  "patch_sha256": "5ba0175a9f6b7a58855f52103629fd48892738b09afff93d6bba841f1bd4ad37",
+  "mutation_level": "L4",
+  "human_approval": {
+    "required": true,
+    "granted": true,
+    "date": "2026-08-18"
+  },
+  "execution_boundary": {
+    "candidate_worktree": "detached",
+    "production_code_modified": false,
+    "production_config_modified": false,
+    "candidate_received_hidden_ground_truth": false,
+    "candidate_received_credentials": false,
+    "retrieval_config_credential_markers": 0,
+    "retained_model_endpoints": 3,
+    "retained_model_endpoints_loopback_only": true,
+    "answer_generation": "trusted_process_after_candidate_exit",
+    "strict_judge": "private_trusted_process"
+  },
+  "target": {
+    "company": "NVIDIA",
+    "case_id": "prod-fresh_internal-fsb300_nvidia_dev_017",
+    "seeds": [11, 29, 47],
+    "baseline": {
+      "pre_rerank_count_each": 62,
+      "final_count_each": 9,
+      "target_anchor_retained": [false, false, false],
+      "judge_valid_count": 3,
+      "judge_pass_count": 0,
+      "mean_key_point_coverage": 0.0,
+      "evaluator_error_count": 0
+    },
+    "candidate": {
+      "pre_rerank_count_each": 62,
+      "final_count_each": 10,
+      "exact_rescue_count_each": 1,
+      "target_anchor_retained": [true, true, true],
+      "judge_valid_count": 3,
+      "judge_pass_count": 3,
+      "mean_key_point_coverage": 1.0,
+      "evaluator_error_count": 0
+    },
+    "paired_pass_delta": 1.0,
+    "official_score_eligible": true
+  },
+  "protected_noop": [
+    {
+      "company": "Lotus",
+      "seed": 11,
+      "pre_rerank_count": 44,
+      "final_count": 8,
+      "pre_rerank_exact_equality": true,
+      "final_exact_equality": true,
+      "candidate_trigger_count": 0
+    },
+    {
+      "company": "Zeekr",
+      "seed": 11,
+      "pre_rerank_count": 95,
+      "final_count": 7,
+      "pre_rerank_exact_equality": true,
+      "final_exact_equality": true,
+      "candidate_trigger_count": 0
+    }
+  ],
+  "evaluator_incidents": [
+    {
+      "affected_trials": ["l4_v1_real_stack", "l4_v2_real_stack", "l4_v3_before_dd68272"],
+      "classification": "evaluator_problem",
+      "cause": "trusted synthesis read selected_chunks while the real retrieval worker emitted retrieved_chunks, producing a silent empty context",
+      "score_use": "invalid_do_not_use",
+      "regression_test": "test_accepts_retrieval_stack_output_field"
+    },
+    {
+      "affected_trial": "l4_v2_priority_before_ca3c6a4",
+      "classification": "evaluator_problem",
+      "cause": "canonicalization removed candidate annotations without trusted recomputation",
+      "score_use": "invalid_do_not_use",
+      "regression_test": "test_recomputes_exact_annotation_from_canonical_text"
+    }
+  ],
+  "tests": {
+    "rsi_evaluator_passed": 34,
+    "rsi_evaluator_failed": 0,
+    "real_rag_hook_probe": "passed",
+    "candidate_patch_apply_check": "passed",
+    "mutation_policy": "allowed_requires_human_approval"
+  },
+  "decision": {
+    "status": "eligible_for_human_review",
+    "automatic_production_promotion": false,
+    "remaining_gates": [
+      "larger cross-company protected set",
+      "production shadow traffic with service-level kill switch",
+      "latency and cost SLO calibration",
+      "reviewed merge and rollback ticket"
+    ]
+  }
+}
