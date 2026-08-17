@@ -1,0 +1,59 @@
+{
+  "name": "private-fund-ai-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "overrides": {
+    "brace-expansion": "5.0.9"
+  },
+  "scripts": {
+    "baseline:check": "node scripts/capture-legacy-baseline.mjs --check",
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "dev:api": "npm run dev --workspace @private-fund/api",
+    "dev:job-worker": "npm run dev --workspace @private-fund/job-worker",
+    "dev:obsidian-worker": "npm run dev --workspace @private-fund/obsidian-worker",
+    "dev:web": "npm run dev --workspace @private-fund/web",
+    "desktop:dev": "npm run dev --workspace @private-fund/desktop",
+    "desktop:setup-build": "npm run setup:build --workspace @private-fund/desktop",
+    "desktop:test": "npm run test --workspace @private-fund/desktop",
+    "desktop:package:mac": "npm run build:mac --workspace @private-fund/desktop",
+    "desktop:package:mac:dir": "npm run build:mac:dir --workspace @private-fund/desktop",
+    "desktop:smoke": "npm run smoke:packaged --workspace @private-fund/desktop",
+    "postinstall": "node scripts/verify-pi-dependencies.mjs",
+    "services:logs": "node scripts/manage-ts-services.mjs logs",
+    "services:manifest": "node scripts/manage-ts-services.mjs manifest",
+    "services:restart": "node scripts/manage-ts-services.mjs restart",
+    "services:start": "node scripts/manage-ts-services.mjs start",
+    "services:status": "node scripts/manage-ts-services.mjs status",
+    "services:stop": "node scripts/manage-ts-services.mjs stop",
+    "setup": "bash scripts/setup_full_system.sh",
+    "start": "node scripts/manage-ts-services.mjs start",
+    "start:api": "npm run start --workspace @private-fund/api",
+    "start:job-worker": "npm run start --workspace @private-fund/job-worker",
+    "start:obsidian-worker": "npm run start --workspace @private-fund/obsidian-worker",
+    "test": "npm run test:service-topology && npm run test:workspaces",
+    "test:compute": "python/compute-worker/.venv/bin/python -m unittest discover -s python/compute-worker/tests -v",
+    "test:legacy-retirement": "node --test scripts/legacy-deployment-retirement.test.mjs scripts/legacy-runtime-retirement.test.mjs scripts/verify-legacy-compatibility-matrix.test.mjs scripts/verify-legacy-live-schema.test.mjs",
+    "test:service-topology": "node --test scripts/manage-ts-services.test.mjs",
+    "test:workspaces": "npm run test --workspaces --if-present",
+    "typecheck": "tsc -b --pretty false",
+    "verify:pi-dependencies": "node scripts/verify-pi-dependencies.mjs",
+    "verify:retirement": "npm run baseline:check && npm run typecheck && npm test && npm run test:compute && npm run test:legacy-retirement && npm run verify:pi-dependencies && node scripts/verify-legacy-compatibility-matrix.mjs --require-retired && npm --prefix omnigent/web run test && npm --prefix omnigent/web run verify:canonical-bundle"
+  },
+  "dependencies": {
+    "brace-expansion": "5.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "6.0.2",
+    "vitest": "4.1.10"
+  }
+}

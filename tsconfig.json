@@ -1,0 +1,62 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/auth"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/agent-runtime"
+    },
+    {
+      "path": "./packages/job-queue"
+    },
+    {
+      "path": "./packages/research-store"
+    },
+    {
+      "path": "./packages/workflow-store"
+    },
+    {
+      "path": "./packages/legacy-migrator"
+    },
+    {
+      "path": "./packages/compute-client"
+    },
+    {
+      "path": "./packages/compute-projector"
+    },
+    {
+      "path": "./packages/obsidian-projector"
+    },
+    {
+      "path": "./packages/model-runtime"
+    },
+    {
+      "path": "./packages/session-projections"
+    },
+    {
+      "path": "./apps/agent-worker"
+    },
+    {
+      "path": "./apps/job-worker"
+    },
+    {
+      "path": "./apps/obsidian-worker"
+    },
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/web"
+    }
+  ]
+}
