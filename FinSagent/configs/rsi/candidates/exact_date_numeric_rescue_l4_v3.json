@@ -1,0 +1,22 @@
+{
+  "schema_version": "rsi-cycle-manifest/v1",
+  "cycle_id": "exact_date_numeric_rescue_l4_round_3",
+  "repo_root": "/root/autodl-tmp/dir_lzx/releases/pravite_fund_ai_research_20260803_main",
+  "baseline_ref": "RSI-bench",
+  "workspace_root": "/root/autodl-tmp/dir_lzx/rsi_candidate_worktrees_20260818",
+  "patch_file": "exact_date_numeric_rescue_l4_v3.patch",
+  "seeds": [11, 29, 47],
+  "target": {"kind": "full_agent_source_aligned", "feature_flag": "exact_date_numeric_rescue_enabled"},
+  "candidate": {
+    "candidate_id": "cand-exact-date-numeric-rescue-l4-v3",
+    "cluster_id": "fc-rerank-evidence-retention-exact-date",
+    "mutation_level": "L4",
+    "hypothesis": "Separating an exact content date from unverified source-date metadata removes a false temporal contradiction that causes downstream refusal.",
+    "expected_mechanism": "Retain the exact-anchor chunk, label the matched content date explicitly, and stop describing ambiguous source date metadata as publication date.",
+    "target_paths": ["src/core/RAG.py"],
+    "target_capabilities": ["retrieval", "temporal_reasoning", "evidence_use", "metadata_semantics"],
+    "target_failure_types": ["evidence_retention_failure", "false_refusal", "source_conflict"],
+    "patch_payload": {"strategy": "separate_content_date_from_unverified_source_date", "parent_candidate": "cand-exact-date-numeric-rescue-l4-v2", "approval": "user_approved_2026-08-18"},
+    "requires_human_approval": true
+  }
+}

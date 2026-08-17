@@ -43,9 +43,15 @@ class TrustedRetrievalSynthesisTest(unittest.TestCase):
     def test_exact_anchor_gets_priority_without_answer_injection(self):
         context = format_trusted_context([{
             "page_content": "captured filing text",
-            "metadata": {"doc_id": "d1", "exact_anchor_rescue": True},
+            "metadata": {
+                "doc_id": "d1", "date_published": "2025-01-26",
+                "exact_anchor_rescue": True, "exact_anchor_dates": ["2025-02-21"],
+            },
         }])
-        self.assertIn("exact query date and metric anchors matched", context)
+        self.assertIn("exact query date and metric anchors matched in chunk content", context)
+        self.assertIn("Exact Content Date Anchor(s): 2025-02-21", context)
+        self.assertIn("Source Date Metadata (semantic type unverified): 2025-01-26", context)
+        self.assertNotIn("Date Published: 2025-01-26", context)
         self.assertIn("captured filing text", context)
 
 

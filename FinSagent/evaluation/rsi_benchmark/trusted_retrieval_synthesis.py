@@ -55,12 +55,18 @@ def format_trusted_context(chunks: list[dict[str, Any]]) -> str:
     for chunk in chunks:
         metadata = chunk.get("metadata") or {}
         priority = ""
+        date_label = "Date Published"
         if metadata.get("exact_anchor_rescue"):
-            priority = "Evidence Priority: exact query date and metric anchors matched; "
+            exact_dates = ", ".join(metadata.get("exact_anchor_dates") or [])
+            priority = (
+                "Evidence Priority: exact query date and metric anchors matched in chunk content; "
+                f"Exact Content Date Anchor(s): {exact_dates or 'N/A'}; "
+            )
+            date_label = "Source Date Metadata (semantic type unverified)"
         elif metadata.get("evidence_rescue"):
             priority = "Evidence Priority: recent numeric candidate; "
         formatted.append(
-            f"{priority}Date Published: {metadata.get('date_published', 'N/A')}; "
+            f"{priority}{date_label}: {metadata.get('date_published', 'N/A')}; "
             f"Chunk Source: {metadata.get('doc_id', metadata.get('source_file', 'N/A'))}; "
             f"Chunk Content: {chunk.get('page_content', '')}"
         )

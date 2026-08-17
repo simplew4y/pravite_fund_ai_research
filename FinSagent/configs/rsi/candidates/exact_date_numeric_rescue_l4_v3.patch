@@ -1,0 +1,54 @@
+--- a/FinSagent/src/core/RAG.py
++++ b/FinSagent/src/core/RAG.py
+@@ -24,6 +24,7 @@
+ from utils.profiler import profiler
+ from utils.prompt_budget import truncate_text
+ from utils.retrieval_scope import filter_chunks_to_scope
++from rsi.candidate_skills.exact_date_numeric_rescue_v1 import select_exact_date_numeric_evidence
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -271,6 +272,22 @@
+             selected_chunks,
+             query,
+         )
++        if self._config_bool("exact_date_numeric_rescue_enabled", False):
++            try:
++                exact_rescue = select_exact_date_numeric_evidence(query, chunks, selected_chunks)
++                selected_chunks = exact_rescue["selected_chunks"]
++                if exact_rescue["rescue_applied"]:
++                    logger.info(
++                        "Exact-date numeric rescue added candidate indices %s for query=%r",
++                        exact_rescue["rescued_candidate_indices"],
++                        query,
++                    )
++            except Exception as exc:
++                logger.warning(
++                    "Exact-date numeric rescue failed; preserving baseline selection: %s",
++                    exc,
++                    exc_info=True,
++                )
+         selected_chunks = filter_chunks_to_scope(selected_chunks, allowed_ids)
+         table_chunks = filter_chunks_to_scope(table_chunks, allowed_ids)
+         # 表格不参与排序，直接追加供 LLM 参考
+@@ -1499,10 +1516,18 @@
+ 
+         for chunk in chunks:
+             priority_prefix = ""
+-            if chunk["metadata"].get("evidence_rescue"):
++            date_label = "Date Published"
++            if chunk["metadata"].get("exact_anchor_rescue"):
++                exact_dates = ", ".join(chunk["metadata"].get("exact_anchor_dates") or [])
++                priority_prefix = (
++                    "Evidence Priority: exact query date and metric anchors matched in chunk content; "
++                    f"Exact Content Date Anchor(s): {exact_dates or 'N/A'}; "
++                )
++                date_label = "Source Date Metadata (semantic type unverified)"
++            elif chunk["metadata"].get("evidence_rescue"):
+                 priority_prefix = "Evidence Priority: recent numeric candidate; "
+             formatted_chunk = (
+-                f"{priority_prefix}Date Published: {chunk['metadata'].get('date_published', 'N/A')}; "
++                f"{priority_prefix}{date_label}: {chunk['metadata'].get('date_published', 'N/A')}; "
+                 f"Chunk Source: {chunk['metadata'].get('doc_id', chunk['metadata'].get('source_file', 'N/A'))}; "
+                 f"Chunk Content: {chunk['page_content']}"
+             )
