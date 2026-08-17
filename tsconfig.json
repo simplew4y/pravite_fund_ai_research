@@ -2,6 +2,15 @@
   "files": [],
   "references": [
     {
+      "path": "./packages/market-data"
+    },
+    {
+      "path": "./packages/blob-store"
+    },
+    {
+      "path": "./packages/kernel"
+    },
+    {
       "path": "./packages/contracts"
     },
     {

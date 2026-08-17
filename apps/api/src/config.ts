@@ -63,6 +63,8 @@ const environmentSchema = z.object({
     .max(120_000)
     .default(30_000),
   PRIVATE_FUND_WEB_ROOT: z.string().min(1).optional(),
+  PRIVATE_FUND_BLOB_MASTER_KEY: z.string().min(32).optional(),
+  PRIVATE_FUND_BLOB_ROOT: z.string().min(1).optional(),
 });
 
 export interface ApiConfig {
@@ -97,6 +99,10 @@ export interface ApiConfig {
     timeoutMilliseconds: number;
   };
   webRoot?: string;
+  blobStore?: {
+    rootDirectory: string;
+    masterKey: string;
+  };
 }
 
 function truthy(value: string): boolean {
@@ -187,6 +193,17 @@ export function loadApiConfig(
             workingDirectory,
             parsed.PRIVATE_FUND_WEB_ROOT,
           ),
+        }),
+    ...(parsed.PRIVATE_FUND_BLOB_MASTER_KEY === undefined
+      ? {}
+      : {
+          blobStore: {
+            rootDirectory: path.resolve(
+              workingDirectory,
+              parsed.PRIVATE_FUND_BLOB_ROOT ?? path.join(dataRoot, "blobs"),
+            ),
+            masterKey: parsed.PRIVATE_FUND_BLOB_MASTER_KEY,
+          },
         }),
   };
 }

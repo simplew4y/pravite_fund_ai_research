@@ -32,6 +32,15 @@
     },
     {
       "path": "../../packages/workflow-store"
+    },
+    {
+      "path": "../../packages/kernel"
+    },
+    {
+      "path": "../../packages/blob-store"
+    },
+    {
+      "path": "../../packages/market-data"
     }
   ],
   "include": [
