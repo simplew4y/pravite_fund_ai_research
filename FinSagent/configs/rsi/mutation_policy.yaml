@@ -1,0 +1,37 @@
+schema_version: rsi-mutation-policy/v1
+default_action: deny
+levels:
+  L0:
+    name: parameter
+    allowed_roots: [configs/rsi/candidates/]
+    human_approval: false
+  L1:
+    name: prompt
+    allowed_roots: [src/agents/]
+    human_approval: false
+  L2:
+    name: skill
+    allowed_roots: [src/utils/, src/skillops/, src/rsi/candidate_skills/]
+    human_approval: false
+  L3:
+    name: memory_policy
+    allowed_roots: [src/memory/, configs/rsi/memory/]
+    human_approval: true
+  L4:
+    name: workflow
+    allowed_roots: [src/core/]
+    human_approval: true
+immutable_roots:
+  - evaluation/
+  - test/
+  - configs/eval_suites/
+  - configs/skill_cards/
+  - config/production.yaml
+  - data/
+  - ygdy_data/
+  - test_real_data/
+forbidden_mutations:
+  - evaluator_or_hidden_answers
+  - credentials_or_permissions
+  - production_or_benchmark_data
+  - model_weights

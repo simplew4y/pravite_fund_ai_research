@@ -1,0 +1,61 @@
+{
+  "schema_version": "rsi-benchmark-manifest/v1",
+  "split_policy": {
+    "public_ratio": 0.4,
+    "salt_id": "private-fund-rsi-v1"
+  },
+  "sources": [
+    {
+      "path": "evaluation/question_generation/qa_pairs.json",
+      "sha256": "3bad3ef92e3fecfcf229e06c29d527db7db400bdb5147245dff6a6d47a589888",
+      "imported": 30
+    },
+    {
+      "path": "test/colm/retrieval/lotus_mini10_generalization_20260604/lotus_mini10.json",
+      "sha256": "c6c5f983e717f7755350be333a504a5fa5ea2a45397aea5086184af9537f42f2",
+      "imported": 10
+    },
+    {
+      "path": "test/colm/retrieval/nvidia_mini10_period_source_conflict_20260605/judge/results.json",
+      "sha256": "4740933000fda759b202d45dd96008ced02391d83f5b678b9a77d60182123f4d",
+      "imported": 10
+    }
+  ],
+  "rejected": [],
+  "validation": {
+    "valid": true,
+    "item_count": 50,
+    "errors": {},
+    "duplicate_ids": [],
+    "coverage": {
+      "companies": {
+        "Lotus Technology": 10,
+        "NVIDIA": 10,
+        "Zeekr": 30
+      },
+      "capabilities": {
+        "balance_sheet_comparison": 1,
+        "balance_sheet_snapshot": 1,
+        "business_analysis": 9,
+        "corporate_structure": 6,
+        "cross_company_margin_table": 1,
+        "cross_company_numeric_growth": 1,
+        "cross_company_vie_structure": 1,
+        "evidence_retrieval": 3,
+        "filing_definition": 1,
+        "listing_share_count": 1,
+        "numeric_reasoning": 17,
+        "product_portfolio_risk": 1,
+        "risk_analysis": 7,
+        "risk_factor_product_portfolio": 1,
+        "temporal_reasoning": 33,
+        "transaction_timeline": 1
+      },
+      "splits": {
+        "internal": 30,
+        "public": 20
+      }
+    }
+  },
+  "leakage_policy": "public export excludes answer_key, key_points, evidence and private source locators"
+}

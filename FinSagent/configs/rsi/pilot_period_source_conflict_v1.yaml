@@ -1,0 +1,23 @@
+schema_version: rsi-pilot/v1
+pilot_id: period_source_conflict_v1
+status: designed
+target_failure_types: [period_mismatch, source_conflict, wrong_source]
+target_skills: [period_alignment, source_conflict]
+target_implementations:
+  - src/utils/period_source_conflict_repair.py
+positive_suites:
+  - period_alignment_short_v1
+  - nvidia_mini10_period_source_conflict_20260605
+negative_and_noop_requirements:
+  - compatible-period evidence must not be replaced
+  - non-temporal questions must not trigger
+  - a missing compatible source must cause uncertainty or refusal, not fabrication
+protected_suites:
+  - core_protected_v1
+  - cross_company_guard_v1
+candidate_families:
+  - level: L0
+    strategy: period/source arbitration thresholds
+  - level: L2
+    strategy: evidence-scoped, company-agnostic period guard
+promotion_policy: configs/rsi/promotion_policy.yaml

@@ -1,0 +1,9 @@
+schema_version: rsi-resource-budget/v1
+max_candidates_per_cluster: 3
+max_parallel_candidates: 2
+seeds: [11, 29, 47]
+bootstrap_samples: 2000
+candidate_timeout_seconds: 1800
+network_enabled_in_sandbox: false
+max_latency_relative_increase: 0.15
+max_cost_relative_increase: 0.20

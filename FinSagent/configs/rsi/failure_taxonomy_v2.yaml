@@ -1,0 +1,39 @@
+schema_version: rsi-failure-taxonomy/v2
+extends: configs/failure_taxonomy.yaml
+failure_types:
+  table_retrieval_failure:
+    stage: retrieval
+    deterministic_signal: required table evidence absent while source audit confirms it exists
+  evidence_fusion_failure:
+    stage: synthesis
+    deterministic_signal: individually supported atoms are combined into an unsupported conclusion
+  calculation_failure:
+    stage: reasoning
+    deterministic_signal: recomputation from stored inputs/formula exceeds tolerance
+  scope_failure:
+    stage: retrieval_or_synthesis
+    deterministic_signal: company, dataset, document, currency, or unit boundary violated
+  actual_estimate_confusion:
+    stage: reasoning
+    deterministic_signal: actual and estimate labels conflict with source period metadata
+  period_confusion:
+    stage: reasoning
+    deterministic_signal: fiscal/calendar, quarter/cumulative, or report-period boundary is wrong
+  citation_failure:
+    stage: output
+    deterministic_signal: citation is missing, unresolvable, or does not support the adjacent claim
+  unsupported_claim:
+    stage: output
+    deterministic_signal: answer atom has no supporting allowed-source evidence
+  correct_refusal:
+    stage: output
+    deterministic_signal: required evidence is absent and answer states the exact missing evidence
+  false_refusal:
+    stage: output
+    deterministic_signal: allowed evidence contains all required answer atoms but target refuses
+  evaluator_problem:
+    stage: evaluation
+    deterministic_signal: judge or rubric contradicts independently verified ground truth
+  broken_question:
+    stage: curation
+    deterministic_signal: ambiguity or missing evidence prevents a unique auditable outcome

@@ -1,0 +1,19 @@
+schema_version: promotion-policy/v1
+critical_error_max: 0
+fresh_success_delta_min: 0.03
+fresh_success_ci_lower_min: 0.0
+protected_success_delta_min: -0.01
+citation_support_delta_min: 0.0
+scope_control_delta_min: 0.0
+atomic_correctness_delta_min: 0.0
+refusal_quality_delta_min: 0.0
+latency_relative_max: 0.15
+cost_relative_max: 0.20
+mechanism_attribution_min: 0.80
+trigger_false_positive_max: 0
+required_suites:
+  - targeted
+  - fresh_internal
+  - protected
+final_action: eligible_for_human_review
+automatic_promotion: false
