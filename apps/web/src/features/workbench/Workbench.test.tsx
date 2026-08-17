@@ -24,7 +24,8 @@ afterEach(() => {
 });
 
 describe("Workbench", () => {
-  it("shows sessions and expands a chat on click", async () => {
+  it("shows the project header counts and opens the expanded session", async () => {
+    useUiStore.setState({ expandedSessionId: "s-1" });
     stubFetch({
       "GET /v1/projects": { projects: [] },
       "GET /v1/projects/p-1/documents": {
@@ -36,12 +37,24 @@ describe("Workbench", () => {
       },
       "GET /v1/sessions": { sessions: [session] },
       "GET /v1/sessions/s-1/events": { events: [] },
+      "GET /v1/sessions/s-1/resources": {
+        items: [],
+        total: 0,
+        limit: 50,
+        offset: 0,
+        hasMore: false,
+      },
     });
     renderWithQuery(<Workbench projectId="p-1" />);
-    const card = await screen.findByText("集采对 2026 毛利率的影响");
-    expect(screen.getByText(/128/)).toBeInTheDocument();
-    await userEvent.click(card);
-    expect(useUiStore.getState().expandedSessionId).toBe("s-1");
+    expect(await screen.findByText(/128/)).toBeInTheDocument();
+    // The expanded session renders in the centre; its history now lives in the rail.
+    expect(
+      await screen.findByText("集采对 2026 毛利率的影响"),
+    ).toBeInTheDocument();
+    // The centre no longer hosts a session-history section.
+    expect(
+      screen.queryByRole("region", { name: "研究会话" }),
+    ).not.toBeInTheDocument();
   });
 
   it("creates a session via the new chat button", async () => {

@@ -10,6 +10,7 @@ import { MonoLabel } from "../../components/MonoLabel";
 import { useT } from "../../i18n/useT";
 import { useUiStore } from "../../store/ui";
 import { InboxPanel, useInboxCount } from "./InboxPanel";
+import { RailSessionList } from "./SessionList";
 
 function CreateProjectDialog({ onClose }: { onClose: () => void }) {
   const { t } = useT();
@@ -149,7 +150,7 @@ export function ProjectRail() {
         </p>
       ) : null}
 
-      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div className="rail-project-list">
         {visible?.map((project) => (
           <button
             key={project.id}
@@ -174,6 +175,10 @@ export function ProjectRail() {
           </p>
         ) : null}
       </div>
+
+      {selectedProjectId !== null ? (
+        <RailSessionList projectId={selectedProjectId} />
+      ) : null}
 
       <div className="rail-footer">
         <button

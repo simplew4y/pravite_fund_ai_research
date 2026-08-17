@@ -28,6 +28,10 @@ declare const dict: {
         readonly zh: "搜索项目 / 代码";
         readonly en: "Search project / ticker";
     };
+    readonly "rail.noSessions": {
+        readonly zh: "还没有研究会话";
+        readonly en: "No research chats yet";
+    };
     readonly "rail.ready": {
         readonly zh: "索引就绪";
         readonly en: "Index ready";

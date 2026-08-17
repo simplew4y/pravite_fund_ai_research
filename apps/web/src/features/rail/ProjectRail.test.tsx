@@ -15,9 +15,25 @@ const project = {
   updatedAt: "2026-08-01T00:00:00.000Z",
 };
 
+const session = {
+  id: "s-1",
+  projectId: "p-1",
+  title: "集采对 2026 毛利率的影响",
+  status: "idle",
+  archivedAt: null,
+  forkedFromSessionId: null,
+  createdAt: "2026-08-14T00:00:00.000Z",
+  updatedAt: "2026-08-14T00:00:00.000Z",
+  lastSequence: 14,
+};
+
 afterEach(() => {
   vi.unstubAllGlobals();
-  useUiStore.setState({ selectedProjectId: null, lang: "zh" });
+  useUiStore.setState({
+    selectedProjectId: null,
+    expandedSessionId: null,
+    lang: "zh",
+  });
 });
 
 describe("ProjectRail", () => {
@@ -45,5 +61,30 @@ describe("ProjectRail", () => {
       ),
     );
     expect(useUiStore.getState().selectedProjectId).toBe("p-2");
+  });
+
+  it("lists the selected project's sessions in the rail and opens one", async () => {
+    useUiStore.setState({ selectedProjectId: "p-1" });
+    stubFetch({
+      "GET /v1/projects": { projects: [{ ...project, id: "p-1" }] },
+      "GET /v1/sessions": { sessions: [session] },
+      "GET /v1/uploads/items": { items: [] },
+    });
+    renderWithQuery(<ProjectRail />);
+    const row = await screen.findByText("集采对 2026 毛利率的影响");
+    await userEvent.click(row);
+    expect(useUiStore.getState().expandedSessionId).toBe("s-1");
+  });
+
+  it("hides the session section until a project is selected", async () => {
+    stubFetch({
+      "GET /v1/projects": { projects: [{ ...project, id: "p-1" }] },
+      "GET /v1/uploads/items": { items: [] },
+    });
+    renderWithQuery(<ProjectRail />);
+    await screen.findByText("恒瑞医药");
+    expect(
+      screen.queryByRole("region", { name: "研究会话" }),
+    ).not.toBeInTheDocument();
   });
 });

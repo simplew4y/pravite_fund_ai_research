@@ -92,24 +92,6 @@ function UploadZone({ projectId }: { projectId: string }) {
   );
 }
 
-function ChatChip({
-  session,
-  active,
-  onOpen,
-}: {
-  session: Session;
-  active: boolean;
-  onOpen: () => void;
-}) {
-  const { t } = useT();
-  return (
-    <button className="chat-chip" aria-current={active} onClick={onOpen}>
-      {session.status === "running" ? <span className="tag tag-accent">{t("chat.running")}</span> : null}
-      <span className="title">{session.title || session.id}</span>
-    </button>
-  );
-}
-
 export function Workbench({ projectId }: { projectId: string }) {
   const { t } = useT();
   const projects = useProjects();
@@ -198,29 +180,6 @@ export function Workbench({ projectId }: { projectId: string }) {
       </div>
 
       <div className="center-body">
-        <section aria-label={t("workbench.chats")}>
-          {sessions.isPending ? <p className="text-muted">{t("common.loading")}</p> : null}
-          <div className="chat-cards">
-            {sessions.data?.map((session) => (
-              <ChatChip
-                key={session.id}
-                session={session}
-                active={session.id === expandedSessionId}
-                onOpen={() => expandSession(session.id)}
-              />
-            ))}
-            <button
-              className="chat-chip chip-add"
-              title={t("workbench.newChat")}
-              aria-label={`${t("workbench.newChat")}+`}
-              onClick={newChat}
-              disabled={createSession.isPending}
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-        </section>
-
         {expanded ? (
           <ChatView session={expanded} />
         ) : (

@@ -145,6 +145,97 @@ body {
   color: var(--color-success);
 }
 
+.rail-project-list {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rail-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  max-height: 46%;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-divider);
+}
+
+.rail-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font: 600 12px/1.4 var(--font-body);
+  color: var(--color-text-secondary);
+}
+
+.rail-section-title .count {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--color-fill);
+  font: 500 10.5px/1 var(--font-body);
+  color: var(--color-text-muted);
+}
+
+.rail-session-list {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-session {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.rail-session:hover {
+  background: var(--color-fill);
+}
+
+.rail-session[aria-current="true"] {
+  background: var(--color-accent-tint);
+}
+
+.rail-session .title {
+  display: block;
+  font: 500 13px/1.35 var(--font-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail-session .meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font: 500 11px/1.4 var(--font-body);
+  color: var(--color-text-muted);
+}
+
+.rail-session .tag {
+  height: 16px;
+  padding: 0 7px;
+  font-size: 10px;
+}
+
 .rail-footer {
   margin-top: auto;
   display: flex;
@@ -247,62 +338,6 @@ body {
 .upload-zone.dragging {
   border-color: var(--color-accent);
   background: var(--color-accent-tint);
-}
-
-/* Session history: horizontal pill chips per the v4 mock. */
-.chat-cards {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 1px 1px 3px;
-}
-
-.chat-chip {
-  position: relative;
-  flex: 0 0 auto;
-  max-width: 220px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 13px;
-  border: 0;
-  border-radius: 9999px;
-  background: var(--color-fill);
-  color: var(--color-text-secondary);
-  font: 500 12.5px/1 var(--font-body);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.chat-chip:hover {
-  background: var(--color-fill-hover);
-}
-
-.chat-chip[aria-current="true"] {
-  background: rgba(0, 111, 238, 0.14);
-  color: var(--color-accent-hover);
-}
-
-.chat-chip .title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-chip.chip-add {
-  width: 30px;
-  padding: 0;
-  justify-content: center;
-  background: none;
-  border: 1px dashed #d4d4d8;
-  color: var(--color-text-muted);
-}
-
-.chat-chip.chip-add:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  background: none;
 }
 
 .chat-view {

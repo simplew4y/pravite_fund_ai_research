@@ -8,6 +8,7 @@ const dict = {
   "rail.settings": { zh: "设置", en: "Settings" },
   "rail.newProject": { zh: "新建项目", en: "New project" },
   "rail.search": { zh: "搜索项目 / 代码", en: "Search project / ticker" },
+  "rail.noSessions": { zh: "还没有研究会话", en: "No research chats yet" },
   "rail.ready": { zh: "索引就绪", en: "Index ready" },
   "rail.noProjects": { zh: "还没有项目，先创建一个", en: "No projects yet — create one" },
   "rail.docs": { zh: "份资料", en: "docs" },
