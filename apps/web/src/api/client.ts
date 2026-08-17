@@ -57,7 +57,8 @@ export async function logout(): Promise<void> {
 }
 
 export function fetchMe(): Promise<{ user: AuthUser }> {
-  return requestJson("/auth/me", authSessionSchema);
+  // /auth/me returns the bare user object (not the {user} login envelope).
+  return requestJson("/auth/me", authUserSchema).then((user) => ({ user }));
 }
 
 export async function sendRegisterCode(email: string): Promise<void> {
