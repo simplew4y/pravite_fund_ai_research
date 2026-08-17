@@ -54,6 +54,28 @@ class CapturedRetrievalReplayTest(unittest.TestCase):
                     function_name="select", out_path=root / "out.jsonl", candidate_id="cand-1",
                 )
 
+    def test_rejects_candidate_chunk_injection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = root / "candidate.py"
+            module.write_text(
+                "def select(q, pre, selected):\n"
+                "    return {'selected_chunks': [{'page_content': 'forged', 'metadata': {}}]}\n"
+            )
+            captures = root / "captures.jsonl"
+            captures.write_text(json.dumps({
+                "case_id": "c1", "pre_rerank_candidates": [
+                    {"page_content": "real", "metadata": {}}
+                ], "retrieved_chunks": [],
+            }) + "\n")
+            questions = root / "questions.jsonl"
+            questions.write_text(json.dumps({"case_id": "c1", "question": "q"}) + "\n")
+            with self.assertRaisesRegex(ValueError, "not in the captured baseline evidence"):
+                replay_captured_retrieval(
+                    captures_path=captures, questions_path=questions, module_path=module,
+                    function_name="select", out_path=root / "out.jsonl", candidate_id="cand-1",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

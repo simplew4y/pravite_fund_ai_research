@@ -18,6 +18,7 @@ from typing import Any
 
 
 QUESTION_KEYS = {"case_id", "question"}
+ALLOWED_ANNOTATION_PREFIXES = ("exact_anchor_",)
 
 
 def _load_function(module_path: Path, function_name: str):
@@ -32,6 +33,38 @@ def _load_function(module_path: Path, function_name: str):
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _strip_candidate_annotations(chunk: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(chunk)
+    metadata = dict(chunk.get("metadata") or {})
+    cleaned["metadata"] = {
+        key: value for key, value in metadata.items()
+        if not any(str(key).startswith(prefix) for prefix in ALLOWED_ANNOTATION_PREFIXES)
+    }
+    return cleaned
+
+
+def _canonicalize_candidate_selection(
+    candidate_chunks: list[dict[str, Any]],
+    baseline_chunks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    baseline_by_fingerprint: dict[str, dict[str, Any]] = {}
+    for chunk in baseline_chunks:
+        fingerprint = json.dumps(chunk, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        baseline_by_fingerprint[fingerprint] = chunk
+    canonical: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for chunk in candidate_chunks:
+        cleaned = _strip_candidate_annotations(chunk)
+        fingerprint = json.dumps(cleaned, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        if fingerprint not in baseline_by_fingerprint:
+            raise ValueError("candidate selected a chunk that is not in the captured baseline evidence")
+        if fingerprint in seen:
+            raise ValueError("candidate selected a duplicate evidence chunk")
+        seen.add(fingerprint)
+        canonical.append(baseline_by_fingerprint[fingerprint])
+    return canonical
 
 
 def replay_captured_retrieval(
@@ -58,12 +91,16 @@ def replay_captured_retrieval(
             started = time.perf_counter()
             result = function(questions[case_id], pre, selected)
             elapsed_ms = (time.perf_counter() - started) * 1000
+            candidate_selection = result.get("selected_chunks", selected)
+            canonical_selection = _canonicalize_candidate_selection(
+                candidate_selection, pre + selected,
+            )
             output = {
                 "schema_version": "rsi-captured-retrieval-replay/v1",
                 "candidate_id": candidate_id,
                 "case_id": case_id,
                 "seed": row.get("seed"),
-                "selected_chunks": result.get("selected_chunks", selected),
+                "selected_chunks": canonical_selection,
                 "rescue_applied": bool(result.get("rescue_applied")),
                 "rescue_reason": result.get("rescue_reason", ""),
                 "rescued_candidate_indices": result.get("rescued_candidate_indices", []),
