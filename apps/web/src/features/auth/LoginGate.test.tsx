@@ -16,6 +16,13 @@ const baseInfo = {
 
 afterEach(() => vi.unstubAllGlobals());
 
+function unauthorized(): Response {
+  return new Response(
+    JSON.stringify({ error: "not_authenticated", message: "Authentication required" }),
+    { status: 401, headers: { "content-type": "application/json" } },
+  );
+}
+
 describe("LoginGate", () => {
   it("renders children directly in development mode", async () => {
     stubFetch({ "GET /v1/info": baseInfo });
@@ -30,6 +37,7 @@ describe("LoginGate", () => {
   it("shows the login form when cloud accounts reject the session", async () => {
     stubFetch({
       "GET /v1/info": { ...baseInfo, auth_mode: "cloud", accounts_enabled: true },
+      "GET /auth/me": () => unauthorized(),
     });
     renderWithQuery(
       <LoginGate>
@@ -44,6 +52,7 @@ describe("LoginGate", () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const calls = stubFetch({
       "GET /v1/info": { ...baseInfo, auth_mode: "cloud", accounts_enabled: true },
+      "GET /auth/me": () => unauthorized(),
       "POST /auth/register/send-code": { detail: "sent" },
       "POST /auth/register": { user: { id: "u-1", email: "a@b.co" } },
     });
@@ -73,6 +82,7 @@ describe("LoginGate", () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const calls = stubFetch({
       "GET /v1/info": { ...baseInfo, auth_mode: "cloud", accounts_enabled: true },
+      "GET /auth/me": () => unauthorized(),
       "POST /auth/password/reset/send-code": { detail: "sent" },
       "POST /auth/password/reset": { detail: "ok" },
     });

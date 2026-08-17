@@ -37,6 +37,7 @@ export function stubFetch(routes: RouteTable) {
         });
       }
       const value = typeof handler === "function" ? handler(init) : handler;
+      if (value instanceof Response) return value;
       return new Response(JSON.stringify(value), {
         status: 200,
         headers: { "content-type": "application/json" },

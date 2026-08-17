@@ -247,6 +247,17 @@ export function LoginGate({ children }: { children: ReactNode }) {
   if (accountsEnabled) {
     if (me.isPending) return <div className="center-placeholder">{t("common.loading")}</div>;
     if (me.isError) {
+      // 401 = 未登录；其他错误（网关不可达等）要显示出来而不是静默弹回登录页
+      if (me.error instanceof ApiError && me.error.status !== 401) {
+        return (
+          <div className="center-placeholder">
+            <p className="error-text">{me.error.message}</p>
+            <button className="btn btn-ghost" onClick={() => void me.refetch()}>
+              {t("common.retry")}
+            </button>
+          </div>
+        );
+      }
       return <AuthScreen onDone={() => void client.invalidateQueries({ queryKey: ["me"] })} />;
     }
   }

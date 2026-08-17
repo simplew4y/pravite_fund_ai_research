@@ -126,10 +126,10 @@ export function createRouteContext(
       path: "/",
       httpOnly: true,
       sameSite: "lax",
-      // Cloud auth is a production boundary and must never emit a session
-      // cookie that a plaintext origin can send. Local HTTP development uses
-      // PRIVATE_FUND_AUTH_MODE=development and does not mint this cookie.
-      secure: config.auth.mode === "cloud",
+      // Cloud auth defaults to Secure cookies. Local plaintext development
+      // against the cloud backend must opt out explicitly with
+      // PRIVATE_FUND_COOKIE_SECURE=0 (browsers drop Secure cookies on http).
+      secure: config.cookieSecure ?? config.auth.mode === "cloud",
       maxAge: 7 * 24 * 60 * 60,
     });
   }
@@ -139,7 +139,7 @@ export function createRouteContext(
       path: "/",
       httpOnly: true,
       sameSite: "lax",
-      secure: config.auth.mode === "cloud",
+      secure: config.cookieSecure ?? config.auth.mode === "cloud",
     });
   }
 

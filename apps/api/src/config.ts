@@ -64,6 +64,7 @@ const environmentSchema = z.object({
     .default(30_000),
   PRIVATE_FUND_WEB_ROOT: z.string().min(1).optional(),
   PRIVATE_FUND_SESSION_JOURNAL_SHADOW: z.string().default("1"),
+  PRIVATE_FUND_COOKIE_SECURE: z.string().optional(),
   PRIVATE_FUND_AGENT_BASE_URL: z.string().url().optional(),
   PRIVATE_FUND_AGENT_API_KEY: z.string().min(8).optional(),
   PRIVATE_FUND_AGENT_MODEL: z.string().trim().min(1).max(200).optional(),
@@ -107,6 +108,8 @@ export interface ApiConfig {
   };
   webRoot?: string;
   sessionJournalShadow?: boolean;
+  /** Session-cookie Secure attribute. Defaults to true in cloud auth mode. */
+  cookieSecure?: boolean;
   /** Development-mode chat endpoint for the in-process agent loop. */
   agentModel?: {
     baseUrl: string;
@@ -209,6 +212,10 @@ export function loadApiConfig(
           ),
         }),
     sessionJournalShadow: truthy(parsed.PRIVATE_FUND_SESSION_JOURNAL_SHADOW),
+    cookieSecure:
+      parsed.PRIVATE_FUND_COOKIE_SECURE === undefined
+        ? parsed.PRIVATE_FUND_AUTH_MODE === "cloud"
+        : truthy(parsed.PRIVATE_FUND_COOKIE_SECURE),
     ...(() => {
       const apiKey =
         parsed.PRIVATE_FUND_AGENT_API_KEY ??
