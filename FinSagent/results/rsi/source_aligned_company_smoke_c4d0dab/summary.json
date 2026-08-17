@@ -1,0 +1,43 @@
+{
+  "schema_version": "rsi-source-aligned-company-smoke/v1",
+  "source_profile": "legacy_company_collections_20260818",
+  "strict_judge_schema": "rsi-strict-private-judge/v1",
+  "companies": {
+    "lotus": {
+      "case_id": "prod-targeted-fsb300_lotus_dev_040",
+      "pre_rerank_count": 54,
+      "retrieved_count": 30,
+      "verdict": "INCORRECT",
+      "key_point_coverage": 0.4,
+      "primary_error": "factual_error",
+      "critical_error_count": 3,
+      "diagnosis": "full-year facts substituted for the reference answer's first-nine/ten-month periods"
+    },
+    "nvidia": {
+      "case_id": "prod-fresh_internal-fsb300_nvidia_dev_017",
+      "pre_rerank_count": 52,
+      "retrieved_count": 9,
+      "verdict": "INCORRECT",
+      "key_point_coverage": 0.0,
+      "primary_error": "retrieval_miss",
+      "critical_error_count": 1,
+      "diagnosis": "company scope was correct but the required answer evidence was not retained"
+    },
+    "zeekr": {
+      "case_id": "prod-fresh_internal-fsb300_zeekr_dev_023",
+      "pre_rerank_count": 1579,
+      "retrieved_count": 20,
+      "verdict": "CORRECT",
+      "key_point_coverage": 1.0,
+      "primary_error": "NONE",
+      "critical_error_count": 0
+    }
+  },
+  "evaluator_error_count": 0,
+  "official_score_eligible": true,
+  "next_candidate_clusters": [
+    "nvidia_retrieval_evidence_retention",
+    "lotus_period_scope_alignment"
+  ],
+  "private_content_embedded": false
+}

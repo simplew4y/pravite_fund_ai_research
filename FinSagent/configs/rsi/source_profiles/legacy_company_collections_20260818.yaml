@@ -11,7 +11,7 @@ profiles:
     collection_name: nvidia
     legacy_company_collection: true
   zeekr:
-    persist_directory: /root/autodl-tmp/RAG_Agent_data/Zeekr/20250729/database_zeekr
+    persist_directory: /root/autodl-tmp/RAG_Agent_componentTest/data_bank/database_202508_zeekr
     collection_name: zeekr
     legacy_company_collection: true
 admission:
