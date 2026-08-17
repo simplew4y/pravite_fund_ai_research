@@ -37,6 +37,7 @@ import {
   ProjectResearchStoreManager,
   ResearchStoreEvidenceTools,
 } from "../research-stores.js";
+import { ShadowSessionJournal } from "../session-journal-shadow.js";
 import { RepositorySourceFolderService } from "../source-folder-service.js";
 import { RepositoryGlobalUploadService } from "../global-upload-service.js";
 import { RepositorySessionResourcesService } from "../session-resources-service.js";
@@ -86,7 +87,16 @@ export const legacyApiPlugin = defineKernelPlugin<{ config: ApiConfig }>({
 
     const projects = new RepositoryProjectService(repositories);
     const jobs = new RepositoryJobService(database);
-    const sessions = new RepositorySessionService({ repositories, worker });
+    const journalShadow = new ShadowSessionJournal({
+      sessionEvents: repositories.sessionEvents,
+      sessionJournal: repositories.sessionJournal,
+      enabled: config.sessionJournalShadow ?? true,
+    });
+    const sessions = new RepositorySessionService({
+      repositories,
+      worker,
+      journalShadow,
+    });
     ctx.effect(
       () => () => {
         sessions.dispose();

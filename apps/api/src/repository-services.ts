@@ -314,9 +314,15 @@ export class RepositoryJobService implements JobService {
   }
 }
 
+export interface SessionJournalShadowPort {
+  sync(tenantNamespace: string, sessionId: string): number;
+}
+
 export interface RepositorySessionServiceOptions {
   readonly repositories: ControlRepositories;
   readonly worker: AgentWorkerPort;
+  /** Phase 1 shadow writer: reconciles events into the Session Journal. */
+  readonly journalShadow?: SessionJournalShadowPort;
   readonly onEventError?: (error: unknown, event: AgentEvent) => void;
   readonly onWorkerFailureError?: (
     error: unknown,
@@ -335,6 +341,7 @@ export class RepositorySessionService implements SessionService {
   readonly #listeners = new Map<string, Set<SessionListener>>();
   readonly #activeTenants = new Map<string, TenantContext>();
   readonly #dispatchingSessions = new Set<string>();
+  readonly #journalShadow: SessionJournalShadowPort | null;
   readonly #activeCompactions = new Map<string, string>();
   readonly #reconciledCompactionSequences = new Map<string, number>();
   readonly #unsubscribeWorker: () => void;
@@ -343,6 +350,7 @@ export class RepositorySessionService implements SessionService {
   public constructor(options: RepositorySessionServiceOptions) {
     this.#repositories = options.repositories;
     this.#worker = options.worker;
+    this.#journalShadow = options.journalShadow ?? null;
     this.#onEventError =
       options.onEventError ??
       ((error) => {
@@ -816,6 +824,7 @@ export class RepositorySessionService implements SessionService {
     limit: number,
   ): Promise<SessionEvent[]> {
     this.#requireSession(tenant, sessionId);
+    this.#journalShadow?.sync(tenant.dataNamespace, sessionId);
     return this.#repositories.sessionEvents.replayForTenant(
       tenant.dataNamespace,
       sessionId,
@@ -1294,6 +1303,7 @@ export class RepositorySessionService implements SessionService {
       tenant.dataNamespace,
       input,
     );
+    this.#journalShadow?.sync(tenant.dataNamespace, input.sessionId);
     this.#publish(tenant, event);
     return event;
   }

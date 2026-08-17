@@ -63,6 +63,7 @@ const environmentSchema = z.object({
     .max(120_000)
     .default(30_000),
   PRIVATE_FUND_WEB_ROOT: z.string().min(1).optional(),
+  PRIVATE_FUND_SESSION_JOURNAL_SHADOW: z.string().default("1"),
   PRIVATE_FUND_BLOB_MASTER_KEY: z.string().min(32).optional(),
   PRIVATE_FUND_BLOB_ROOT: z.string().min(1).optional(),
 });
@@ -99,6 +100,7 @@ export interface ApiConfig {
     timeoutMilliseconds: number;
   };
   webRoot?: string;
+  sessionJournalShadow?: boolean;
   blobStore?: {
     rootDirectory: string;
     masterKey: string;
@@ -194,6 +196,7 @@ export function loadApiConfig(
             parsed.PRIVATE_FUND_WEB_ROOT,
           ),
         }),
+    sessionJournalShadow: truthy(parsed.PRIVATE_FUND_SESSION_JOURNAL_SHADOW),
     ...(parsed.PRIVATE_FUND_BLOB_MASTER_KEY === undefined
       ? {}
       : {
