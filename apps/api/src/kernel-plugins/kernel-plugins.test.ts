@@ -136,3 +136,37 @@ describe("marketDataPlugin", () => {
     await expect(executor.fetch(request)).rejects.toThrow();
   });
 });
+
+describe("modelGatewayPlugin", () => {
+  it("memoizes per-tenant gateways and disposes them on stop", async () => {
+    const { modelGatewayPlugin } = await import("./model-gateway.js");
+    const kernel = createKernel();
+    const journalTenants: string[] = [];
+    await kernel.use(modelGatewayPlugin, {
+      provider: {
+        id: "fake-provider",
+        // eslint-disable-next-line @typescript-eslint/require-await
+        stream: async function* () {
+          yield {};
+        } as never,
+      },
+      createJournal: (tenantNamespace) => {
+        journalTenants.push(tenantNamespace);
+        return {
+          commitRequest: async () => ({
+            eventId: "event-1",
+            sequence: 1,
+            created: true,
+          }),
+          commitProviderEvent: async () => undefined,
+        };
+      },
+    });
+    const capability = kernel.get("modelGateway");
+    const alpha = capability.forTenant("ns-a");
+    expect(capability.forTenant("ns-a")).toBe(alpha);
+    capability.forTenant("ns-b");
+    expect(journalTenants).toEqual(["ns-a", "ns-b"]);
+    await kernel.stop();
+  });
+});

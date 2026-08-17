@@ -5,18 +5,10 @@ import {
   type CloudUser,
   type ShadowAccountStore,
 } from "@private-fund/auth";
-import {
-  createControlRepositories,
-  openControlDatabase,
-  type ControlDatabase,
-} from "@private-fund/db";
+import type { ControlDatabase } from "@private-fund/db";
 import { createPythonComputeClient } from "@private-fund/compute-client";
 import { defineKernelPlugin, provide } from "@private-fund/kernel";
 
-import {
-  AgentWorkerSupervisor,
-  buildAgentWorkerEnvironment,
-} from "../agent-supervisor.js";
 import { RepositoryAgentToolHandler } from "../agent-tools.js";
 import { createApiApp } from "../app.js";
 import type { ApiConfig } from "../config.js";
@@ -33,11 +25,9 @@ import {
 } from "../repository-services.js";
 import { RepositoryProjectInsightsService } from "../insights-service.js";
 import { RepositoryResearchService } from "../research-service.js";
-import {
-  ProjectResearchStoreManager,
-  ResearchStoreEvidenceTools,
-} from "../research-stores.js";
+import { ResearchStoreEvidenceTools } from "../research-stores.js";
 import { ShadowSessionJournal } from "../session-journal-shadow.js";
+import { JournaledToolRuntime } from "../tool-runtime.js";
 import { RepositorySourceFolderService } from "../source-folder-service.js";
 import { RepositoryGlobalUploadService } from "../global-upload-service.js";
 import { RepositorySessionResourcesService } from "../session-resources-service.js";
@@ -65,25 +55,12 @@ declare module "@private-fund/kernel" {
  */
 export const legacyApiPlugin = defineKernelPlugin<{ config: ApiConfig }>({
   name: "legacy-api",
+  inject: ["controlDb", "researchStores", "agentRuntime"],
   provides: ["legacyApi"],
   async apply(ctx, { config }) {
-    const database = openControlDatabase(config.controlDatabase);
-    ctx.effect(() => () => database.close(), "legacy:db");
-
-    const repositories = createControlRepositories(database);
-    const researchStores = new ProjectResearchStoreManager();
-    ctx.effect(() => () => researchStores.close(), "legacy:research-stores");
-
-    const worker = new AgentWorkerSupervisor({
-      workerEntry: config.agentWorkerEntry,
-      environment: {
-        ...buildAgentWorkerEnvironment(process.env, {
-          includeAmbientModelCredentials: config.auth.mode === "development",
-        }),
-        PRIVATE_FUND_ENABLE_PARENT_RPC_TOOLS: "1",
-      },
-    });
-    ctx.effect(() => () => worker.stop(), "legacy:agent-worker");
+    const { database, repositories } = ctx.controlDb;
+    const researchStores = ctx.researchStores;
+    const worker = ctx.agentRuntime;
 
     const projects = new RepositoryProjectService(repositories);
     const jobs = new RepositoryJobService(database);
@@ -138,11 +115,18 @@ export const legacyApiPlugin = defineKernelPlugin<{ config: ApiConfig }>({
       researchStores,
       jobs,
     );
+    // Unified tool pipeline: monotonic guards + intent-before-effect journal
+    // appends wrap the repository handler (harness tools/* semantics).
     worker.setToolHandler(
-      new RepositoryAgentToolHandler({
-        sessions,
-        jobs,
-        evidence: new ResearchStoreEvidenceTools(researchStores),
+      new JournaledToolRuntime({
+        inner: new RepositoryAgentToolHandler({
+          sessions,
+          jobs,
+          evidence: new ResearchStoreEvidenceTools(researchStores),
+        }),
+        sessionJournal: repositories.sessionJournal,
+        resolveTenantNamespace: (sessionId) =>
+          sessions.agentToolContext(sessionId)?.tenant.dataNamespace ?? null,
       }),
     );
 

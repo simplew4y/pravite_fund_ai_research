@@ -5,8 +5,11 @@ import type { ControlDatabase } from "@private-fund/db";
 
 import type { createApiApp } from "./app.js";
 import { loadApiConfig, type ApiConfig } from "./config.js";
+import { agentRuntimePlugin } from "./kernel-plugins/agent-runtime.js";
 import { blobStorePlugin } from "./kernel-plugins/blob-store.js";
+import { controlDbPlugin } from "./kernel-plugins/db.js";
 import { legacyApiPlugin } from "./kernel-plugins/legacy-api.js";
+import { researchStoresPlugin } from "./kernel-plugins/research-stores.js";
 
 export interface ApiRuntime {
   readonly config: ApiConfig;
@@ -17,16 +20,20 @@ export interface ApiRuntime {
 }
 
 /**
- * Boot the API through the plugin kernel. Phase 0 profile:
- *   blob-store (optional, seam pilot) → legacy-api (the entire pre-kernel
- *   assembly wrapped as one plugin).
- * Teardown = kernel.stop(): reverse load order, every disposer awaited.
+ * Boot the API through the plugin kernel. Profile (load order = reverse
+ * dispose order, so teardown mirrors the historical close chain
+ * fastify → sessions → agent worker → research stores → db):
+ *
+ *   control-db → research-stores → agent-runtime → [blob-store] → legacy-api
  */
 export async function createApiRuntime(
   config: ApiConfig = loadApiConfig(),
 ): Promise<ApiRuntime> {
   const kernel = createKernel();
   try {
+    await kernel.use(controlDbPlugin, { path: config.controlDatabase });
+    await kernel.use(researchStoresPlugin);
+    await kernel.use(agentRuntimePlugin, { config });
     if (config.blobStore !== undefined) {
       await kernel.use(blobStorePlugin, {
         rootDirectory: config.blobStore.rootDirectory,
