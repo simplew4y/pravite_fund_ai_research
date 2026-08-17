@@ -8,7 +8,15 @@ import { loadApiConfig, type ApiConfig } from "./config.js";
 import { agentRuntimePlugin } from "./kernel-plugins/agent-runtime.js";
 import { blobStorePlugin } from "./kernel-plugins/blob-store.js";
 import { controlDbPlugin } from "./kernel-plugins/db.js";
-import { legacyApiPlugin } from "./kernel-plugins/legacy-api.js";
+import {
+  insightsPlugin,
+  projectsJobsPlugin,
+  researchPlugin,
+  sessionsPlugin,
+  uploadsPlugin,
+} from "./kernel-plugins/domain-services.js";
+import { apiHttpPlugin } from "./kernel-plugins/http.js";
+import { identityPlugin } from "./kernel-plugins/identity.js";
 import { researchStoresPlugin } from "./kernel-plugins/research-stores.js";
 
 export interface ApiRuntime {
@@ -20,11 +28,13 @@ export interface ApiRuntime {
 }
 
 /**
- * Boot the API through the plugin kernel. Profile (load order = reverse
- * dispose order, so teardown mirrors the historical close chain
- * fastify → sessions → agent worker → research stores → db):
+ * The api profile. Load order = reverse dispose order, so teardown mirrors
+ * the historical close chain (fastify → sessions → agent worker →
+ * research stores → db):
  *
- *   control-db → research-stores → agent-runtime → [blob-store] → legacy-api
+ *   control-db → research-stores → agent-runtime → [blob-store] →
+ *   projects-jobs → research → uploads → insights → identity →
+ *   sessions → api-http
  */
 export async function createApiRuntime(
   config: ApiConfig = loadApiConfig(),
@@ -40,12 +50,18 @@ export async function createApiRuntime(
         masterKey: config.blobStore.masterKey,
       });
     }
-    await kernel.use(legacyApiPlugin, { config });
+    await kernel.use(projectsJobsPlugin);
+    await kernel.use(researchPlugin, { config });
+    await kernel.use(uploadsPlugin);
+    await kernel.use(insightsPlugin);
+    await kernel.use(identityPlugin, { config });
+    await kernel.use(sessionsPlugin, { config });
+    await kernel.use(apiHttpPlugin, { config });
   } catch (error) {
     await kernel.stop().catch(() => undefined);
     throw error;
   }
-  const { app, database } = kernel.get("legacyApi");
+  const { app, database } = kernel.get("apiHttp");
   let closed = false;
   return {
     config,
