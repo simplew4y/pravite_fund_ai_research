@@ -185,7 +185,11 @@ export function registerProjectAndUploadRoutes(ctx: RouteContext): void {
     },
   );
 
-  app.post("/v1/uploads", async (request, reply) => {
+  app.post(
+    "/v1/uploads",
+    // Streamed multipart inbox: allow the full batch (20 files x 256 MiB).
+    { bodyLimit: MAX_UPLOAD_BYTES * MAX_GLOBAL_UPLOAD_FILES + 1024 * 1024 },
+    async (request, reply) => {
     const tenant = await tenantFor(request, reply);
     if (!request.isMultipart()) {
       throw new DomainError(
@@ -230,7 +234,8 @@ export function registerProjectAndUploadRoutes(ctx: RouteContext): void {
       files: files(),
     });
     return reply.status(202).send({ batch });
-  });
+    },
+  );
 
   app.get<{
     Querystring: {

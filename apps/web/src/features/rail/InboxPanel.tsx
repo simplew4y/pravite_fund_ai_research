@@ -22,7 +22,11 @@ function listUploadItems(status?: string): Promise<GlobalUploadItem[]> {
 async function uploadGlobal(files: File[]): Promise<void> {
   const form = new FormData();
   for (const file of files) form.append("files", file);
-  await request("/v1/uploads", { method: "POST", form });
+  await request("/v1/uploads", {
+    method: "POST",
+    form,
+    headers: { "idempotency-key": `inbox-${crypto.randomUUID()}` },
+  });
 }
 
 async function routeItem(itemId: string, projectId: string): Promise<void> {

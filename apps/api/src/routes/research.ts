@@ -225,6 +225,9 @@ export function registerResearchRoutes(ctx: RouteContext): void {
 
   app.post<{ Params: { projectId: string } }>(
     "/v1/projects/:projectId/documents/upload",
+    // Streamed multipart: the per-file limit is MAX_UPLOAD_BYTES; the route
+    // body limit must cover the whole batch plus multipart framing.
+    { bodyLimit: MAX_UPLOAD_BYTES * MAX_PROJECT_UPLOAD_FILES + 1024 * 1024 },
     async (request, reply) => {
       const tenant = await tenantFor(request, reply);
       const projectId = parseIdentifier(

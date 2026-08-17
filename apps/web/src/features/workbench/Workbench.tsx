@@ -2,6 +2,7 @@ import { useRef, useState, type DragEvent } from "react";
 import { Plus, Send, Sparkles, Upload, UploadCloud } from "lucide-react";
 
 import { sendMessage, uploadProjectDocuments, type Session } from "../../api/client";
+import { ApiError } from "../../api/http";
 import {
   useCreateSession,
   useProjectDocuments,
@@ -23,16 +24,21 @@ function UploadZone({ projectId }: { projectId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [state, setState] = useState<"idle" | "uploading" | "done" | "failed">("idle");
+  const [error, setError] = useState<string | null>(null);
 
   async function upload(files: File[]) {
     if (files.length === 0) return;
     setState("uploading");
+    setError(null);
     try {
       await uploadProjectDocuments(projectId, files);
       setState("done");
       await client.invalidateQueries({ queryKey: ["documents", projectId] });
-    } catch {
+    } catch (uploadError) {
       setState("failed");
+      setError(
+        uploadError instanceof ApiError ? uploadError.message : null,
+      );
     }
   }
 
@@ -64,7 +70,12 @@ function UploadZone({ projectId }: { projectId: string }) {
           {state === "uploading" ? t("workbench.upload.uploading") : t("workbench.upload.choose")}
         </button>
         {state === "done" ? <MonoLabel>{t("workbench.upload.done")}</MonoLabel> : null}
-        {state === "failed" ? <span className="error-text">{t("workbench.upload.failed")}</span> : null}
+        {state === "failed" ? (
+          <span className="error-text">
+            {t("workbench.upload.failed")}
+            {error ? ` · ${error}` : ""}
+          </span>
+        ) : null}
         <input
           ref={inputRef}
           type="file"
