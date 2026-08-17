@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evaluation.rsi_benchmark.debug_batch_worker import load_target_questions
+from evaluation.rsi_benchmark.debug_batch_worker import apply_retrieval_overrides, load_target_questions
 
 
 class DebugAdapterTest(unittest.TestCase):
@@ -21,6 +21,15 @@ class DebugAdapterTest(unittest.TestCase):
             path = Path(tmp) / "questions.jsonl"
             path.write_text(json.dumps({"case_id": "c1", "question": "A valid financial question?"}) + "\n")
             self.assertEqual(load_target_questions(path)[0]["case_id"], "c1")
+
+    def test_retrieval_overrides_do_not_mutate_source_config(self):
+        source = {"persist_directory": "/old", "collection_name": "old"}
+        resolved = apply_retrieval_overrides(
+            source, persist_directory="/tmp/new", collection_name="lotus",
+        )
+        self.assertEqual(source["collection_name"], "old")
+        self.assertEqual(resolved["collection_name"], "lotus")
+        self.assertEqual(resolved["persist_directory"], "/tmp/new")
 
 
 if __name__ == "__main__":

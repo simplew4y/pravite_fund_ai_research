@@ -36,6 +36,17 @@ def append_jsonl(path: Path, row: dict[str, Any]) -> None:
         os.fsync(handle.fileno())
 
 
+def apply_retrieval_overrides(
+    config: dict[str, Any], *, persist_directory: str = "", collection_name: str = "",
+) -> dict[str, Any]:
+    resolved = dict(config)
+    if persist_directory:
+        resolved["persist_directory"] = str(Path(persist_directory).resolve())
+    if collection_name:
+        resolved["collection_name"] = collection_name
+    return resolved
+
+
 async def run(args: argparse.Namespace) -> None:
     repo = Path(args.repo).resolve()
     sys.path.insert(0, str(repo / "src"))
@@ -43,7 +54,11 @@ async def run(args: argparse.Namespace) -> None:
     from core.RAGManager import RAGManager
 
     config_path = Path(args.config).resolve()
-    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    config = apply_retrieval_overrides(
+        yaml.safe_load(config_path.read_text(encoding="utf-8")),
+        persist_directory=args.persist_directory,
+        collection_name=args.collection_name,
+    )
     state_dir = Path(args.state_dir).resolve()
     state_dir.mkdir(parents=True, exist_ok=True)
     config["session_history_db"] = str(state_dir / "sessions.sqlite3")
@@ -105,6 +120,8 @@ def main() -> None:
     parser.add_argument("--seeds", default="11,29,47")
     parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--rerank-topk", type=int, default=5)
+    parser.add_argument("--persist-directory", default="")
+    parser.add_argument("--collection-name", default="")
     asyncio.run(run(parser.parse_args()))
 
 
