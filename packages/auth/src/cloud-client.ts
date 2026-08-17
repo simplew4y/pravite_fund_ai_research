@@ -86,26 +86,9 @@ export class CloudAccountClient {
     status: number;
     payload: Record<string, unknown>;
   }> {
-    const response = await this.#performRequest("auth/register/send-code", {
-      method: "POST",
-      body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    return this.#rawJson("auth/register/send-code", {
+      email: email.trim().toLowerCase(),
     });
-    const payload = await response.json().catch(() => null);
-    if (
-      payload === null ||
-      typeof payload !== "object" ||
-      Array.isArray(payload)
-    ) {
-      throw new CloudAccountError(
-        "Cloud account service returned an invalid response",
-        502,
-        "invalid_cloud_response",
-      );
-    }
-    return {
-      status: response.status,
-      payload: payload as Record<string, unknown>,
-    };
   }
 
   public async sendPasswordResetCode(email: string): Promise<{
@@ -137,22 +120,35 @@ export class CloudAccountClient {
       method: "POST",
       body: JSON.stringify(body),
     });
-    const payload = await response.json().catch(() => null);
-    if (
-      payload === null ||
-      typeof payload !== "object" ||
-      Array.isArray(payload)
-    ) {
+    // The cloud backend answers some successes (e.g. password reset) with
+    // 204 No Content — an empty body on a 2xx is success, not corruption.
+    const text = await response.text().catch(() => "");
+    let payload: Record<string, unknown> | null = null;
+    if (text.trim() !== "") {
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (
+          parsed !== null &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed)
+        ) {
+          payload = parsed as Record<string, unknown>;
+        }
+      } catch {
+        payload = null;
+      }
+    }
+    if (payload === null) {
+      if (response.ok) {
+        return { status: response.status, payload: { ok: true } };
+      }
       throw new CloudAccountError(
-        "Cloud account service returned an invalid response",
-        502,
+        `Cloud account service returned an invalid response (HTTP ${String(response.status)})`,
+        response.status >= 400 ? response.status : 502,
         "invalid_cloud_response",
       );
     }
-    return {
-      status: response.status,
-      payload: payload as Record<string, unknown>,
-    };
+    return { status: response.status, payload };
   }
 
   public refresh(refreshToken: string): Promise<CloudTokenResponse> {
