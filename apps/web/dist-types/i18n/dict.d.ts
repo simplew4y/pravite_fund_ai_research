@@ -64,6 +64,46 @@ declare const dict: {
         readonly zh: "登录失败，请检查邮箱和密码";
         readonly en: "Login failed — check email and password";
     };
+    readonly "auth.register": {
+        readonly zh: "注册";
+        readonly en: "Sign up";
+    };
+    readonly "auth.reset": {
+        readonly zh: "忘记密码";
+        readonly en: "Forgot password";
+    };
+    readonly "auth.resetSubmit": {
+        readonly zh: "重置密码";
+        readonly en: "Reset password";
+    };
+    readonly "auth.resetDone": {
+        readonly zh: "密码已重置，请用新密码登录";
+        readonly en: "Password reset — log in with the new password";
+    };
+    readonly "auth.code": {
+        readonly zh: "邮箱验证码";
+        readonly en: "Email code";
+    };
+    readonly "auth.sendCode": {
+        readonly zh: "发送验证码";
+        readonly en: "Send code";
+    };
+    readonly "auth.codeSendFailed": {
+        readonly zh: "验证码发送失败";
+        readonly en: "Failed to send code";
+    };
+    readonly "auth.newPassword": {
+        readonly zh: "新密码（至少 8 位）";
+        readonly en: "New password (min 8 chars)";
+    };
+    readonly "auth.nickname": {
+        readonly zh: "昵称（可选）";
+        readonly en: "Nickname (optional)";
+    };
+    readonly "auth.submitFailed": {
+        readonly zh: "提交失败，请检查填写内容";
+        readonly en: "Submit failed — check your input";
+    };
     readonly "project.create.title": {
         readonly zh: "新建投研项目";
         readonly en: "New research project";

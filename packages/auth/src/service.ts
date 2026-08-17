@@ -66,6 +66,21 @@ export class CloudAuthService {
     return this.#client.sendRegistrationCode(email);
   }
 
+  public sendPasswordResetCode(email: string): Promise<{
+    status: number;
+    payload: Record<string, unknown>;
+  }> {
+    return this.#client.sendPasswordResetCode(email);
+  }
+
+  public resetPassword(input: {
+    email: string;
+    code: string;
+    password: string;
+  }): Promise<{ status: number; payload: Record<string, unknown> }> {
+    return this.#client.resetPassword(input);
+  }
+
   public async ensureFresh(
     session: SealedCloudSession,
   ): Promise<{ session: SealedCloudSession; refreshed: boolean }> {

@@ -98,6 +98,7 @@ import {
   MAX_GLOBAL_UPLOAD_FILES,
   loginSchema,
   registrationCodeSchema,
+  passwordResetSchema,
   registrationSchema,
   passwordChangeSchema,
   feedbackSchema,
@@ -171,6 +172,36 @@ export function registerAuthRoutes(ctx: RouteContext): void {
     const cloud = requireCloudAccounts();
     const body = registrationCodeSchema.parse(request.body);
     const upstream = await cloud.service.sendRegistrationCode(body.email);
+    return reply.status(upstream.status).send(upstream.payload);
+  });
+
+  app.post("/auth/password/reset/send-code", async (request, reply) => {
+    disablePrivateCaching(reply);
+    if (config.auth.mode !== "cloud") {
+      throw new DomainError(
+        "Password reset is unavailable",
+        "password_reset_unavailable",
+        404,
+      );
+    }
+    const cloud = requireCloudAccounts();
+    const body = registrationCodeSchema.parse(request.body);
+    const upstream = await cloud.service.sendPasswordResetCode(body.email);
+    return reply.status(upstream.status).send(upstream.payload);
+  });
+
+  app.post("/auth/password/reset", async (request, reply) => {
+    disablePrivateCaching(reply);
+    if (config.auth.mode !== "cloud") {
+      throw new DomainError(
+        "Password reset is unavailable",
+        "password_reset_unavailable",
+        404,
+      );
+    }
+    const cloud = requireCloudAccounts();
+    const body = passwordResetSchema.parse(request.body);
+    const upstream = await cloud.service.resetPassword(body);
     return reply.status(upstream.status).send(upstream.payload);
   });
 

@@ -24,6 +24,21 @@ export declare function logout(): Promise<void>;
 export declare function fetchMe(): Promise<{
     user: AuthUser;
 }>;
+export declare function sendRegisterCode(email: string): Promise<void>;
+export declare function register(input: {
+    email: string;
+    code: string;
+    password: string;
+    nick_name?: string;
+}): Promise<{
+    user: AuthUser;
+}>;
+export declare function sendPasswordResetCode(email: string): Promise<void>;
+export declare function resetPassword(input: {
+    email: string;
+    code: string;
+    password: string;
+}): Promise<void>;
 declare function page<Schema extends z.ZodType>(item: Schema): z.ZodObject<{
     items: z.ZodArray<Schema>;
     total: z.ZodNumber;

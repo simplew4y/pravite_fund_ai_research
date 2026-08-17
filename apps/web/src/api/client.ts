@@ -60,6 +60,37 @@ export function fetchMe(): Promise<{ user: AuthUser }> {
   return requestJson("/auth/me", authSessionSchema);
 }
 
+export async function sendRegisterCode(email: string): Promise<void> {
+  await request("/auth/register/send-code", { method: "POST", body: { email } });
+}
+
+export function register(input: {
+  email: string;
+  code: string;
+  password: string;
+  nick_name?: string;
+}): Promise<{ user: AuthUser }> {
+  return requestJson("/auth/register", authSessionSchema, {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function sendPasswordResetCode(email: string): Promise<void> {
+  await request("/auth/password/reset/send-code", {
+    method: "POST",
+    body: { email },
+  });
+}
+
+export async function resetPassword(input: {
+  email: string;
+  code: string;
+  password: string;
+}): Promise<void> {
+  await request("/auth/password/reset", { method: "POST", body: input });
+}
+
 function page<Schema extends z.ZodType>(item: Schema) {
   return z
     .object({

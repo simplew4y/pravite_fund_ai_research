@@ -108,6 +108,53 @@ export class CloudAccountClient {
     };
   }
 
+  public async sendPasswordResetCode(email: string): Promise<{
+    status: number;
+    payload: Record<string, unknown>;
+  }> {
+    return this.#rawJson("auth/password/reset/send-code", {
+      email: email.trim().toLowerCase(),
+    });
+  }
+
+  public async resetPassword(input: {
+    email: string;
+    code: string;
+    password: string;
+  }): Promise<{ status: number; payload: Record<string, unknown> }> {
+    return this.#rawJson("auth/password/reset", {
+      email: input.email.trim().toLowerCase(),
+      code: input.code,
+      new_password: input.password,
+    });
+  }
+
+  async #rawJson(
+    pathName: string,
+    body: Record<string, unknown>,
+  ): Promise<{ status: number; payload: Record<string, unknown> }> {
+    const response = await this.#performRequest(pathName, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => null);
+    if (
+      payload === null ||
+      typeof payload !== "object" ||
+      Array.isArray(payload)
+    ) {
+      throw new CloudAccountError(
+        "Cloud account service returned an invalid response",
+        502,
+        "invalid_cloud_response",
+      );
+    }
+    return {
+      status: response.status,
+      payload: payload as Record<string, unknown>,
+    };
+  }
+
   public refresh(refreshToken: string): Promise<CloudTokenResponse> {
     return this.#request("auth/refresh", cloudTokenResponseSchema, {
       method: "POST",

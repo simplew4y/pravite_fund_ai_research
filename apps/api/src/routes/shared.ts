@@ -114,6 +114,12 @@ export const registrationSchema = z.object({
   nick_name: z.string().trim().max(120).nullable().optional(),
 });
 
+export const passwordResetSchema = z.object({
+  email: z.string().trim().pipe(z.email()),
+  code: z.string().regex(/^\d{6}$/),
+  password: z.string().min(8).max(10_000),
+});
+
 export const passwordChangeSchema = z.object({
   old_password: z.string().min(1).max(10_000),
   new_password: z.string().min(8).max(10_000),

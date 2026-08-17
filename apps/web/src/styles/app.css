@@ -649,6 +649,31 @@ details.reasoning > pre {
   place-items: center;
 }
 
+.auth-tabs {
+  display: flex;
+  gap: 2px;
+  border-radius: var(--radius-control);
+  background: var(--color-fill);
+  padding: 3px;
+}
+
+.auth-tabs button {
+  flex: 1;
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 4px;
+  font: 500 13px/1 var(--font-body);
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.auth-tabs button[aria-selected="true"] {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card);
+}
+
 .login-box {
   width: 340px;
   display: flex;
