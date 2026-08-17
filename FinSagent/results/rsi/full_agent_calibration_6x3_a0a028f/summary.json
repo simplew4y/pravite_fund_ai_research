@@ -1,0 +1,40 @@
+{
+  "schema_version": "rsi-full-agent-calibration-summary/v1",
+  "run_id": "full_agent_calibration_6x3_a0a028f",
+  "evaluator_suite": "period_source_full_agent_v2_2",
+  "baseline_commit": "a0a028f",
+  "candidate_id": "cand-period-noop-guard-v1",
+  "case_count": 6,
+  "seed_count": 3,
+  "paired_observation_count": 18,
+  "baseline": {
+    "pass_count": 3,
+    "pass_rate": 0.1666666667,
+    "key_point_coverage": 0.1805555556,
+    "verdict_counts": {"CORRECT": 3, "PARTIAL": 0, "INCORRECT": 1, "FAILURE": 14}
+  },
+  "candidate": {
+    "pass_count": 3,
+    "pass_rate": 0.1666666667,
+    "key_point_coverage": 0.1916666667,
+    "verdict_counts": {"CORRECT": 3, "PARTIAL": 1, "INCORRECT": 2, "FAILURE": 12}
+  },
+  "paired_checks": {
+    "answer_equal_pairs": 18,
+    "answer_changed_pairs": 0,
+    "skill_trigger_transitions": {"false_to_false": 18},
+    "fail_to_pass": 0,
+    "pass_to_fail": 0,
+    "independent_judge_verdict_disagreements_on_identical_answers": 2
+  },
+  "baseline_failure_subtypes": {"D2": 9, "B2": 1, "NONE": 6, "B1": 1, "D1": 1},
+  "decision": "needs_more_evidence",
+  "production_eligible": false,
+  "decision_reasons": [
+    "The candidate mechanism was not activated in any of the 18 full-agent observations.",
+    "No fail-to-pass improvement was observed.",
+    "Two verdict changes were judge noise because the paired answer text was identical.",
+    "The calibration sample is below the frozen-suite production threshold."
+  ],
+  "private_content_embedded": false
+}
