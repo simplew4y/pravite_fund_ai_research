@@ -69,6 +69,23 @@ class TrustedRetrievalSynthesisTest(unittest.TestCase):
         self.assertTrue(restored[0]["metadata"]["exact_anchor_rescue"])
         self.assertEqual(restored[0]["metadata"]["exact_anchor_dates"], ["2025-02-21"])
 
+    def test_accepts_retrieval_stack_output_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            chunk = {"page_content": "real", "metadata": {"doc_id": "d1"}}
+            captures = root / "captures.jsonl"
+            captures.write_text(json.dumps({
+                "case_id": "c1", "pre_rerank_candidates": [chunk], "retrieved_chunks": [],
+            }) + "\n")
+            questions = root / "questions.jsonl"
+            questions.write_text(json.dumps({"case_id": "c1", "question": "q"}) + "\n")
+            outputs = root / "outputs.jsonl"
+            outputs.write_text(json.dumps({
+                "case_id": "c1", "seed": 11, "retrieved_chunks": [chunk],
+            }) + "\n")
+            rows = prepare_synthesis_rows(captures, questions, outputs)
+            self.assertEqual(rows[0]["selected_chunks"], [chunk])
+
 
 if __name__ == "__main__":
     unittest.main()

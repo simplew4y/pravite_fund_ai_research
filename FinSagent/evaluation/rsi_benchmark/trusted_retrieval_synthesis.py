@@ -52,7 +52,15 @@ def prepare_synthesis_rows(
             raise ValueError(f"unmatched case_id: {case_id}")
         capture = captures[case_id]
         allowed = (capture.get("pre_rerank_candidates") or []) + (capture.get("retrieved_chunks") or [])
-        selected = _canonicalize_candidate_selection(output.get("selected_chunks") or [], allowed)
+        if "selected_chunks" in output:
+            raw_selection = output["selected_chunks"]
+        elif "retrieved_chunks" in output:
+            raw_selection = output["retrieved_chunks"]
+        else:
+            raise ValueError("candidate output has no selected_chunks or retrieved_chunks field")
+        selected = _canonicalize_candidate_selection(raw_selection or [], allowed)
+        if raw_selection and not selected:
+            raise ValueError("non-empty candidate selection canonicalized to empty")
         selected = restore_verified_exact_annotations(questions[case_id], selected)
         rows.append({
             "case_id": case_id,
