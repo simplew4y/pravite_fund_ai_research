@@ -218,6 +218,30 @@ def _extract_pdf(
     return records_path.name, [artifact], metrics
 
 
+def _cell_position(cell: Any, row_index: int, column_index: int) -> Tuple[str, int, int]:
+    """Resolve a cell's coordinate/row/column.
+
+    openpyxl's read-only worksheets yield shared ``EmptyCell`` singletons for
+    blank cells; those carry no ``coordinate``/``row``/``column`` attributes, so
+    fall back to the iteration indices (1-based).
+    """
+    row = getattr(cell, "row", None) or row_index
+    column = getattr(cell, "column", None) or column_index
+    coordinate = getattr(cell, "coordinate", None)
+    if not isinstance(coordinate, str) or not coordinate:
+        coordinate = "{}{}".format(_column_letter(int(column)), int(row))
+    return coordinate, int(row), int(column)
+
+
+def _column_letter(index: int) -> str:
+    letters = ""
+    remaining = max(1, index)
+    while remaining > 0:
+        remaining, offset = divmod(remaining - 1, 26)
+        letters = chr(ord("A") + offset) + letters
+    return letters
+
+
 def _json_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
@@ -341,17 +365,20 @@ def _extract_workbook(
                     if cached_sheet is not None
                     else None
                 )
-                for row in formula_sheet.iter_rows():
+                for row_index, row in enumerate(formula_sheet.iter_rows(), 1):
                     cached_row = (
                         next(cached_rows, ())
                         if cached_rows is not None
                         else ()
                     )
                     cached_by_coordinate = {
-                        candidate.coordinate: candidate
-                        for candidate in cached_row
+                        _cell_position(candidate, row_index, candidate_index)[0]: candidate
+                        for candidate_index, candidate in enumerate(cached_row, 1)
                     }
-                    for cell in row:
+                    for column_index, cell in enumerate(row, 1):
+                        coordinate, cell_row, cell_column = _cell_position(
+                            cell, row_index, column_index
+                        )
                         visited_cell_count += 1
                         if visited_cell_count > max_cells:
                             raise ComputeOperationError(
@@ -370,18 +397,16 @@ def _extract_workbook(
                         )
                         cached_value = None
                         if is_formula and cached_sheet is not None:
-                            cached_cell = cached_by_coordinate.get(
-                                cell.coordinate
-                            )
+                            cached_cell = cached_by_coordinate.get(coordinate)
                             if cached_cell is not None:
                                 cached_value = cached_cell.value
                         cell_count += 1
                         yield {
                             "recordType": "cell",
                             "sheet": sheet_name,
-                            "coordinate": str(cell.coordinate),
-                            "row": int(cell.row),
-                            "column": int(cell.column),
+                            "coordinate": coordinate,
+                            "row": cell_row,
+                            "column": cell_column,
                             "value": _json_value(value),
                             "formula": str(value) if is_formula else None,
                             "cachedValue": _json_value(cached_value),

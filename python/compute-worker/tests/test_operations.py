@@ -154,6 +154,60 @@ class FakeOpenpyxl:
         return workbook
 
 
+class FakeEmptyCell:
+    """Mirrors openpyxl's read-only EmptyCell: no coordinate/row/column."""
+
+    __slots__ = ()
+    value = None
+    data_type = "n"
+    number_format = None
+
+
+class FakeReadOnlySheet:
+    max_row = 1
+    max_column = 3
+
+    def __init__(self, cells: list) -> None:
+        self.cells = cells
+
+    def iter_rows(self):
+        return [tuple(self.cells)]
+
+
+class FakeReadOnlyWorkbook:
+    sheetnames = ["Model"]
+
+    def __init__(self, data_only: bool) -> None:
+        formula_value = 7 if data_only else "=SUM(A1)"
+        formula_type = "n" if data_only else "f"
+        self.sheet = FakeReadOnlySheet(
+            [
+                FakeCell("A1", 1, 1, 21, "n", "0"),
+                FakeEmptyCell(),
+                FakeCell("C1", 1, 3, formula_value, formula_type, "0.00"),
+            ]
+        )
+        self.closed = False
+
+    def __getitem__(self, name: str) -> FakeReadOnlySheet:
+        if name != "Model":
+            raise KeyError(name)
+        return self.sheet
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class FakeReadOnlyOpenpyxl:
+    def __init__(self) -> None:
+        self.workbooks = []
+
+    def load_workbook(self, *, filename: str, data_only: bool, **_options):
+        workbook = FakeReadOnlyWorkbook(data_only)
+        self.workbooks.append(workbook)
+        return workbook
+
+
 class OperationTests(unittest.TestCase):
     def test_pdf_extraction_writes_atomic_records_and_checksum(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -224,6 +278,45 @@ class OperationTests(unittest.TestCase):
             self.assertEqual(formula["formula"], "=SUM(A1)")
             self.assertEqual(formula["cachedValue"], 42)
             self.assertEqual(formula["numberFormat"], "0.00")
+
+    def test_workbook_extraction_tolerates_read_only_empty_cells(self) -> None:
+        # openpyxl read-only sheets yield shared EmptyCell singletons that have
+        # no coordinate; extraction must not crash on real-world workbooks.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "model.xlsx"
+            source.write_bytes(b"fake-xlsx")
+            output = root / "output"
+            fake_openpyxl = FakeReadOnlyOpenpyxl()
+
+            with patch(
+                "compute_worker.operations._load_openpyxl",
+                return_value=fake_openpyxl,
+            ):
+                response = execute_request(
+                    request_for("extract_workbook", source, output)
+                )
+
+            self.assertEqual(response["status"], "completed", response)
+            records = [
+                json.loads(line)
+                for line in (output / "workbook-records.ndjson")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            coordinates = [
+                record["coordinate"]
+                for record in records
+                if record.get("recordType") == "cell"
+            ]
+            self.assertEqual(coordinates, ["A1", "C1"])
+            formula = next(
+                record
+                for record in records
+                if record.get("coordinate") == "C1"
+            )
+            self.assertEqual(formula["formula"], "=SUM(A1)")
+            self.assertEqual(formula["cachedValue"], 7)
 
     def test_relative_paths_are_rejected_without_creating_artifacts(self) -> None:
         response = execute_request(
