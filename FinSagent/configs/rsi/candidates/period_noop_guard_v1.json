@@ -1,0 +1,26 @@
+{
+  "schema_version": "rsi-cycle-manifest/v1",
+  "cycle_id": "period_noop_guard_round_1",
+  "repo_root": "/root/autodl-tmp/dir_lzx/releases/pravite_fund_ai_research_20260803_main",
+  "baseline_ref": "RSI-bench",
+  "workspace_root": "/root/autodl-tmp/dir_lzx/rsi_candidate_worktrees_20260817",
+  "patch_file": "period_noop_guard_v1.patch",
+  "seeds": [11, 29, 47],
+  "target": {
+    "kind": "skill_replay",
+    "module_path": "src/utils/period_source_conflict_repair.py",
+    "function_name": "repair_period_source_conflict"
+  },
+  "candidate": {
+    "candidate_id": "cand-period-noop-guard-v1",
+    "cluster_id": "fc-period-source-noop",
+    "mutation_level": "L2",
+    "hypothesis": "Distinguishing explicit exclusion statements from leaked later-period facts reduces false-positive repairs without losing true period-conflict triggers.",
+    "expected_mechanism": "Ignore a future-period marker only when the same sentence explicitly says that evidence must not be used for the requested period.",
+    "target_paths": ["src/utils/period_source_conflict_repair.py"],
+    "target_capabilities": ["temporal_reasoning", "source_conflict"],
+    "target_failure_types": ["period_mismatch", "source_conflict"],
+    "patch_payload": {"strategy": "explicit_exclusion_noop_guard"},
+    "requires_human_approval": false
+  }
+}

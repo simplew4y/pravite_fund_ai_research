@@ -1,0 +1,27 @@
+diff --git a/FinSagent/src/utils/period_source_conflict_repair.py b/FinSagent/src/utils/period_source_conflict_repair.py
+index dc432a0..b834ad1 100644
+--- a/FinSagent/src/utils/period_source_conflict_repair.py
++++ b/FinSagent/src/utils/period_source_conflict_repair.py
+@@ -48,7 +48,21 @@ def _is_nvidia_fy2025_export_question(question: str) -> bool:
+ 
+ def _has_future_leakage(answer: str) -> bool:
+     text = (answer or "").lower()
+-    return any(marker in text for marker in _FUTURE_LEAKAGE_MARKERS)
++    exclusion_markers = (
++        "should not be used",
++        "should not override",
++        "must not be used",
++        "不应使用",
++        "不应覆盖",
++        "不能用于回答",
++        "明确排除",
++    )
++    segments = text.replace("。", ".\n").splitlines()
++    return any(
++        any(marker in segment for marker in _FUTURE_LEAKAGE_MARKERS)
++        and not any(exclusion in segment for exclusion in exclusion_markers)
++        for segment in segments
++    )
+ 
+ 
+ def _find_nvidia_fy2025_support(retrieved_chunks: list[dict[str, Any]]) -> dict[str, Any] | None:

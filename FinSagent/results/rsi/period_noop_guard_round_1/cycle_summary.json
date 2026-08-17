@@ -1,0 +1,182 @@
+{
+  "cycle_id": "period_noop_guard_round_1",
+  "candidate_id": "cand-period-noop-guard-v1",
+  "baseline_commit": "155df0389b2ded02f383548f3e06e4ccb4490b22",
+  "patch_sha256": "bb3cf7395218a8af49b76672aa8931a5b4495b7084d1117d14c85379447daf6d",
+  "case_count": 4,
+  "seed_count": 3,
+  "decision": "needs_more_evidence",
+  "reasons": [
+    "fresh internal case count below minimum"
+  ],
+  "metrics": {
+    "observation_count": 12,
+    "metrics": {
+      "success": {
+        "baseline_mean": 0.75,
+        "candidate_mean": 1.0,
+        "paired_delta": 0.25,
+        "ci95": [
+          0.0,
+          0.5
+        ],
+        "baseline_p95": 1.0,
+        "candidate_p95": 1.0
+      },
+      "atomic_correctness": {
+        "baseline_mean": 0.875,
+        "candidate_mean": 1.0,
+        "paired_delta": 0.125,
+        "ci95": [
+          0.0,
+          0.25
+        ],
+        "baseline_p95": 1.0,
+        "candidate_p95": 1.0
+      },
+      "citation_support": {
+        "baseline_mean": 1.0,
+        "candidate_mean": 1.0,
+        "paired_delta": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "baseline_p95": 1.0,
+        "candidate_p95": 1.0
+      },
+      "scope_control": {
+        "baseline_mean": 0.75,
+        "candidate_mean": 1.0,
+        "paired_delta": 0.25,
+        "ci95": [
+          0.0,
+          0.5
+        ],
+        "baseline_p95": 1.0,
+        "candidate_p95": 1.0
+      },
+      "refusal_quality": {
+        "baseline_mean": 1.0,
+        "candidate_mean": 1.0,
+        "paired_delta": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "baseline_p95": 1.0,
+        "candidate_p95": 1.0
+      },
+      "latency_ms": {
+        "baseline_mean": 0.013254893322785696,
+        "candidate_mean": 0.015215327342351278,
+        "paired_delta": 0.0019604340195655823,
+        "ci95": [
+          0.0007180341829856237,
+          0.0035477879767616587
+        ],
+        "baseline_p95": 0.030186027288436876,
+        "candidate_p95": 0.035868957638740526
+      },
+      "cost_units": {
+        "baseline_mean": 0.0,
+        "candidate_mean": 0.0,
+        "paired_delta": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "baseline_p95": 0.0,
+        "candidate_p95": 0.0
+      }
+    },
+    "critical_error_count": 0,
+    "trigger_false_positive_count": 0,
+    "trigger_true_positive_count": 3,
+    "mechanism_attribution_rate": 1.0,
+    "slices": {
+      "suite": {
+        "fresh_internal": {
+          "count": 3,
+          "case_count": 1,
+          "success_delta": 1.0,
+          "success_ci95": [
+            1.0,
+            1.0
+          ],
+          "atomic_correctness_delta": 0.5,
+          "citation_support_delta": 0.0,
+          "scope_control_delta": 1.0,
+          "refusal_quality_delta": 0.0,
+          "critical_error_count": 0
+        },
+        "protected": {
+          "count": 6,
+          "case_count": 2,
+          "success_delta": 0.0,
+          "success_ci95": [
+            0.0,
+            0.0
+          ],
+          "atomic_correctness_delta": 0.0,
+          "citation_support_delta": 0.0,
+          "scope_control_delta": 0.0,
+          "refusal_quality_delta": 0.0,
+          "critical_error_count": 0
+        },
+        "targeted": {
+          "count": 3,
+          "case_count": 1,
+          "success_delta": 0.0,
+          "success_ci95": [
+            0.0,
+            0.0
+          ],
+          "atomic_correctness_delta": 0.0,
+          "citation_support_delta": 0.0,
+          "scope_control_delta": 0.0,
+          "refusal_quality_delta": 0.0,
+          "critical_error_count": 0
+        }
+      },
+      "capability": {
+        "scope_control": {
+          "count": 3,
+          "case_count": 1,
+          "success_delta": 0.0,
+          "success_ci95": [
+            0.0,
+            0.0
+          ],
+          "atomic_correctness_delta": 0.0,
+          "citation_support_delta": 0.0,
+          "scope_control_delta": 0.0,
+          "refusal_quality_delta": 0.0,
+          "critical_error_count": 0
+        },
+        "temporal_reasoning": {
+          "count": 9,
+          "case_count": 3,
+          "success_delta": 0.3333333333333333,
+          "success_ci95": [
+            0.1111111111111111,
+            0.6666666666666666
+          ],
+          "atomic_correctness_delta": 0.16666666666666666,
+          "citation_support_delta": 0.0,
+          "scope_control_delta": 0.3333333333333333,
+          "refusal_quality_delta": 0.0,
+          "critical_error_count": 0
+        }
+      }
+    }
+  },
+  "worktree": "/root/autodl-tmp/dir_lzx/rsi_candidate_worktrees_20260817/cand-period-noop-guard-v1",
+  "evaluator_snapshot": {
+    "schema_version": "rsi-evaluator-snapshot/v1",
+    "cycle_id": "period_noop_guard_round_1",
+    "sha256": "1b02cdb0b7889e83564a330e65f4c71579bbab928efb6d0d0961d005ac55401e",
+    "case_count": 4,
+    "content_embedded": false
+  }
+}

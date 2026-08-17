@@ -1,0 +1,25 @@
+{
+  "candidate_id": "cand-period-noop-guard-v1",
+  "cluster_id": "fc-period-source-noop",
+  "expected_mechanism": "Ignore a future-period marker only when the same sentence explicitly says that evidence must not be used for the requested period.",
+  "hypothesis": "Distinguishing explicit exclusion statements from leaked later-period facts reduces false-positive repairs without losing true period-conflict triggers.",
+  "mutation_level": "L2",
+  "parent_candidate_ids": [],
+  "patch_payload": {
+    "strategy": "explicit_exclusion_noop_guard"
+  },
+  "requires_human_approval": false,
+  "schema_version": "finsagent-rsi/v1",
+  "status": "proposed",
+  "target_capabilities": [
+    "temporal_reasoning",
+    "source_conflict"
+  ],
+  "target_failure_types": [
+    "period_mismatch",
+    "source_conflict"
+  ],
+  "target_paths": [
+    "src/utils/period_source_conflict_repair.py"
+  ]
+}

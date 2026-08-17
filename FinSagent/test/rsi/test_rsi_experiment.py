@@ -51,20 +51,26 @@ class RsiExperimentTest(unittest.TestCase):
         target = CallableTargetAdapter(target_callable)
         judge = CallableJudgeAdapter(fake_score)
         cases = [
-            {"case_id": "t1", "question": "q", "answer_key": "secret", "suite": "fresh_internal", "capability": "temporal_reasoning"},
+            *[
+                {"case_id": f"t{i}", "question": "q", "answer_key": "secret", "suite": "fresh_internal", "capability": "temporal_reasoning"}
+                for i in range(5)
+            ],
             {"case_id": "p1", "question": "q", "answer_key": "secret", "suite": "protected", "capability": "temporal_reasoning"},
         ]
         payload = compare_candidate(self.candidate, cases, target=target, judge=judge, seeds=(1, 2, 3))
         self.assertTrue(all("answer_key" not in case for case in target_callable.seen_cases))
         self.assertEqual(payload["promotion_decision"]["decision"], "eligible_for_human_review")
-        self.assertEqual(payload["summary"]["observation_count"], 6)
+        self.assertEqual(payload["summary"]["observation_count"], 18)
 
     def test_registry_requires_human_identity_and_ticket(self):
         target = CallableTargetAdapter(FakeTarget())
         judge = CallableJudgeAdapter(fake_score)
         payload = compare_candidate(
             self.candidate,
-            [{"case_id": "t1", "question": "q", "suite": "fresh_internal", "capability": "temporal_reasoning"}],
+            [
+                {"case_id": f"t{i}", "question": "q", "suite": "fresh_internal", "capability": "temporal_reasoning"}
+                for i in range(5)
+            ],
             target=target, judge=judge, seeds=(1, 2, 3),
         )
         decision = decide_promotion(self.candidate, payload["summary"])

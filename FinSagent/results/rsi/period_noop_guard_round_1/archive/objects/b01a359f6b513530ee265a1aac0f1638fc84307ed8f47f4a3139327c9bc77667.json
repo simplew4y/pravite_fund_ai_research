@@ -1,0 +1,747 @@
+{
+  "candidate": {
+    "candidate_id": "cand-period-noop-guard-v1",
+    "cluster_id": "fc-period-source-noop",
+    "expected_mechanism": "Ignore a future-period marker only when the same sentence explicitly says that evidence must not be used for the requested period.",
+    "hypothesis": "Distinguishing explicit exclusion statements from leaked later-period facts reduces false-positive repairs without losing true period-conflict triggers.",
+    "mutation_level": "L2",
+    "parent_candidate_ids": [],
+    "patch_payload": {
+      "strategy": "explicit_exclusion_noop_guard"
+    },
+    "requires_human_approval": false,
+    "schema_version": "finsagent-rsi/v1",
+    "status": "proposed",
+    "target_capabilities": [
+      "temporal_reasoning",
+      "source_conflict"
+    ],
+    "target_failure_types": [
+      "period_mismatch",
+      "source_conflict"
+    ],
+    "target_paths": [
+      "src/utils/period_source_conflict_repair.py"
+    ]
+  },
+  "observations": [
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.03997981548309326,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 1
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.04207715392112732,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 1
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-positive-001",
+      "seed": 11,
+      "suite": "targeted"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.019278377294540405,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 1
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.01936778426170349,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 1
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-positive-001",
+      "seed": 29,
+      "suite": "targeted"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.012487173080444336,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 1
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.015523284673690796,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 1
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-positive-001",
+      "seed": 47,
+      "suite": "targeted"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 0.5,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 1,
+        "latency_ms": 0.022172927856445312,
+        "mechanism_attributed": false,
+        "refusal_quality": 1.0,
+        "scope_control": 0.0,
+        "success": 0.0,
+        "trigger_false_positive": 1,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.03078952431678772,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-fresh-noop-001",
+      "seed": 11,
+      "suite": "fresh_internal"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 0.5,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 1,
+        "latency_ms": 0.01582130789756775,
+        "mechanism_attributed": false,
+        "refusal_quality": 1.0,
+        "scope_control": 0.0,
+        "success": 0.0,
+        "trigger_false_positive": 1,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.020232051610946655,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-fresh-noop-001",
+      "seed": 29,
+      "suite": "fresh_internal"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 0.5,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 1,
+        "latency_ms": 0.014532357454299927,
+        "mechanism_attributed": false,
+        "refusal_quality": 1.0,
+        "scope_control": 0.0,
+        "success": 0.0,
+        "trigger_false_positive": 1,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.017113983631134033,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-fresh-noop-001",
+      "seed": 47,
+      "suite": "fresh_internal"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.0116787850856781,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.012937933206558228,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-protected-nosupport-001",
+      "seed": 11,
+      "suite": "protected"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.00895187258720398,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.010251998901367188,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-protected-nosupport-001",
+      "seed": 29,
+      "suite": "protected"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.007126480340957642,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.009354203939437866,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "temporal_reasoning",
+      "case_id": "psc-protected-nosupport-001",
+      "seed": 47,
+      "suite": "protected"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.0030212104320526123,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.0016391277313232422,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "scope_control",
+      "case_id": "psc-protected-scope-001",
+      "seed": 11,
+      "suite": "protected"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.002089887857437134,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.0016316771507263184,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "scope_control",
+      "case_id": "psc-protected-scope-001",
+      "seed": 29,
+      "suite": "protected"
+    },
+    {
+      "baseline": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.0019185245037078857,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "candidate": {
+        "atomic_correctness": 1.0,
+        "citation_support": 1.0,
+        "cost_units": 0.0,
+        "critical_error_count": 0,
+        "latency_ms": 0.0016652047634124756,
+        "mechanism_attributed": true,
+        "refusal_quality": 1.0,
+        "scope_control": 1.0,
+        "success": 1.0,
+        "trigger_false_positive": 0,
+        "trigger_true_positive": 0
+      },
+      "capability": "scope_control",
+      "case_id": "psc-protected-scope-001",
+      "seed": 47,
+      "suite": "protected"
+    }
+  ],
+  "promotion_decision": {
+    "candidate_id": "cand-period-noop-guard-v1",
+    "decision": "needs_more_evidence",
+    "metrics": {
+      "critical_error_count": 0,
+      "mechanism_attribution_rate": 1.0,
+      "metrics": {
+        "atomic_correctness": {
+          "baseline_mean": 0.875,
+          "baseline_p95": 1.0,
+          "candidate_mean": 1.0,
+          "candidate_p95": 1.0,
+          "ci95": [
+            0.0,
+            0.25
+          ],
+          "paired_delta": 0.125
+        },
+        "citation_support": {
+          "baseline_mean": 1.0,
+          "baseline_p95": 1.0,
+          "candidate_mean": 1.0,
+          "candidate_p95": 1.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "paired_delta": 0.0
+        },
+        "cost_units": {
+          "baseline_mean": 0.0,
+          "baseline_p95": 0.0,
+          "candidate_mean": 0.0,
+          "candidate_p95": 0.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "paired_delta": 0.0
+        },
+        "latency_ms": {
+          "baseline_mean": 0.013254893322785696,
+          "baseline_p95": 0.030186027288436876,
+          "candidate_mean": 0.015215327342351278,
+          "candidate_p95": 0.035868957638740526,
+          "ci95": [
+            0.0007180341829856237,
+            0.0035477879767616587
+          ],
+          "paired_delta": 0.0019604340195655823
+        },
+        "refusal_quality": {
+          "baseline_mean": 1.0,
+          "baseline_p95": 1.0,
+          "candidate_mean": 1.0,
+          "candidate_p95": 1.0,
+          "ci95": [
+            0.0,
+            0.0
+          ],
+          "paired_delta": 0.0
+        },
+        "scope_control": {
+          "baseline_mean": 0.75,
+          "baseline_p95": 1.0,
+          "candidate_mean": 1.0,
+          "candidate_p95": 1.0,
+          "ci95": [
+            0.0,
+            0.5
+          ],
+          "paired_delta": 0.25
+        },
+        "success": {
+          "baseline_mean": 0.75,
+          "baseline_p95": 1.0,
+          "candidate_mean": 1.0,
+          "candidate_p95": 1.0,
+          "ci95": [
+            0.0,
+            0.5
+          ],
+          "paired_delta": 0.25
+        }
+      },
+      "observation_count": 12,
+      "slices": {
+        "capability": {
+          "scope_control": {
+            "atomic_correctness_delta": 0.0,
+            "case_count": 1,
+            "citation_support_delta": 0.0,
+            "count": 3,
+            "critical_error_count": 0,
+            "refusal_quality_delta": 0.0,
+            "scope_control_delta": 0.0,
+            "success_ci95": [
+              0.0,
+              0.0
+            ],
+            "success_delta": 0.0
+          },
+          "temporal_reasoning": {
+            "atomic_correctness_delta": 0.16666666666666666,
+            "case_count": 3,
+            "citation_support_delta": 0.0,
+            "count": 9,
+            "critical_error_count": 0,
+            "refusal_quality_delta": 0.0,
+            "scope_control_delta": 0.3333333333333333,
+            "success_ci95": [
+              0.1111111111111111,
+              0.6666666666666666
+            ],
+            "success_delta": 0.3333333333333333
+          }
+        },
+        "suite": {
+          "fresh_internal": {
+            "atomic_correctness_delta": 0.5,
+            "case_count": 1,
+            "citation_support_delta": 0.0,
+            "count": 3,
+            "critical_error_count": 0,
+            "refusal_quality_delta": 0.0,
+            "scope_control_delta": 1.0,
+            "success_ci95": [
+              1.0,
+              1.0
+            ],
+            "success_delta": 1.0
+          },
+          "protected": {
+            "atomic_correctness_delta": 0.0,
+            "case_count": 2,
+            "citation_support_delta": 0.0,
+            "count": 6,
+            "critical_error_count": 0,
+            "refusal_quality_delta": 0.0,
+            "scope_control_delta": 0.0,
+            "success_ci95": [
+              0.0,
+              0.0
+            ],
+            "success_delta": 0.0
+          },
+          "targeted": {
+            "atomic_correctness_delta": 0.0,
+            "case_count": 1,
+            "citation_support_delta": 0.0,
+            "count": 3,
+            "critical_error_count": 0,
+            "refusal_quality_delta": 0.0,
+            "scope_control_delta": 0.0,
+            "success_ci95": [
+              0.0,
+              0.0
+            ],
+            "success_delta": 0.0
+          }
+        }
+      },
+      "trigger_false_positive_count": 0,
+      "trigger_true_positive_count": 3
+    },
+    "policy_version": "promotion-policy/v1",
+    "reasons": [
+      "fresh internal case count below minimum"
+    ],
+    "requires_human_approval": true
+  },
+  "schema_version": "rsi-paired-experiment/v1",
+  "summary": {
+    "critical_error_count": 0,
+    "mechanism_attribution_rate": 1.0,
+    "metrics": {
+      "atomic_correctness": {
+        "baseline_mean": 0.875,
+        "baseline_p95": 1.0,
+        "candidate_mean": 1.0,
+        "candidate_p95": 1.0,
+        "ci95": [
+          0.0,
+          0.25
+        ],
+        "paired_delta": 0.125
+      },
+      "citation_support": {
+        "baseline_mean": 1.0,
+        "baseline_p95": 1.0,
+        "candidate_mean": 1.0,
+        "candidate_p95": 1.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "paired_delta": 0.0
+      },
+      "cost_units": {
+        "baseline_mean": 0.0,
+        "baseline_p95": 0.0,
+        "candidate_mean": 0.0,
+        "candidate_p95": 0.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "paired_delta": 0.0
+      },
+      "latency_ms": {
+        "baseline_mean": 0.013254893322785696,
+        "baseline_p95": 0.030186027288436876,
+        "candidate_mean": 0.015215327342351278,
+        "candidate_p95": 0.035868957638740526,
+        "ci95": [
+          0.0007180341829856237,
+          0.0035477879767616587
+        ],
+        "paired_delta": 0.0019604340195655823
+      },
+      "refusal_quality": {
+        "baseline_mean": 1.0,
+        "baseline_p95": 1.0,
+        "candidate_mean": 1.0,
+        "candidate_p95": 1.0,
+        "ci95": [
+          0.0,
+          0.0
+        ],
+        "paired_delta": 0.0
+      },
+      "scope_control": {
+        "baseline_mean": 0.75,
+        "baseline_p95": 1.0,
+        "candidate_mean": 1.0,
+        "candidate_p95": 1.0,
+        "ci95": [
+          0.0,
+          0.5
+        ],
+        "paired_delta": 0.25
+      },
+      "success": {
+        "baseline_mean": 0.75,
+        "baseline_p95": 1.0,
+        "candidate_mean": 1.0,
+        "candidate_p95": 1.0,
+        "ci95": [
+          0.0,
+          0.5
+        ],
+        "paired_delta": 0.25
+      }
+    },
+    "observation_count": 12,
+    "slices": {
+      "capability": {
+        "scope_control": {
+          "atomic_correctness_delta": 0.0,
+          "case_count": 1,
+          "citation_support_delta": 0.0,
+          "count": 3,
+          "critical_error_count": 0,
+          "refusal_quality_delta": 0.0,
+          "scope_control_delta": 0.0,
+          "success_ci95": [
+            0.0,
+            0.0
+          ],
+          "success_delta": 0.0
+        },
+        "temporal_reasoning": {
+          "atomic_correctness_delta": 0.16666666666666666,
+          "case_count": 3,
+          "citation_support_delta": 0.0,
+          "count": 9,
+          "critical_error_count": 0,
+          "refusal_quality_delta": 0.0,
+          "scope_control_delta": 0.3333333333333333,
+          "success_ci95": [
+            0.1111111111111111,
+            0.6666666666666666
+          ],
+          "success_delta": 0.3333333333333333
+        }
+      },
+      "suite": {
+        "fresh_internal": {
+          "atomic_correctness_delta": 0.5,
+          "case_count": 1,
+          "citation_support_delta": 0.0,
+          "count": 3,
+          "critical_error_count": 0,
+          "refusal_quality_delta": 0.0,
+          "scope_control_delta": 1.0,
+          "success_ci95": [
+            1.0,
+            1.0
+          ],
+          "success_delta": 1.0
+        },
+        "protected": {
+          "atomic_correctness_delta": 0.0,
+          "case_count": 2,
+          "citation_support_delta": 0.0,
+          "count": 6,
+          "critical_error_count": 0,
+          "refusal_quality_delta": 0.0,
+          "scope_control_delta": 0.0,
+          "success_ci95": [
+            0.0,
+            0.0
+          ],
+          "success_delta": 0.0
+        },
+        "targeted": {
+          "atomic_correctness_delta": 0.0,
+          "case_count": 1,
+          "citation_support_delta": 0.0,
+          "count": 3,
+          "critical_error_count": 0,
+          "refusal_quality_delta": 0.0,
+          "scope_control_delta": 0.0,
+          "success_ci95": [
+            0.0,
+            0.0
+          ],
+          "success_delta": 0.0
+        }
+      }
+    },
+    "trigger_false_positive_count": 0,
+    "trigger_true_positive_count": 3
+  }
+}

@@ -26,3 +26,18 @@ The first pilot is defined in
 `configs/rsi/pilot_period_source_conflict_v1.yaml`. Frozen benchmarks, hidden
 answers, evaluator code, production configuration, credentials, data, and model
 weights are immutable boundaries.
+
+## Run a real-code Skill replay cycle
+
+Keep evaluator cases outside the target repository, then run:
+
+```bash
+PYTHONPATH=src:. python3 -m rsi.cycle_runner \
+  --manifest configs/rsi/candidates/period_noop_guard_v1.json \
+  --evaluator-cases "$RSI_EVALUATOR_CASES" \
+  --out results/rsi/period_noop_guard_round_1
+```
+
+The runner creates a detached worktree, validates the patch whitelist, compares
+identical cases and seeds, and writes a hash-chained trace plus a
+content-addressed archive. It retains the worktree for audit.

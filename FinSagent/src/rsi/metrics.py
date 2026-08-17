@@ -93,6 +93,7 @@ def _slice(rows: list[PairedObservation], bootstrap_samples: int) -> dict:
     success_ci = bootstrap_paired_ci(rows, "success", samples=bootstrap_samples)
     return {
         "count": len(rows),
+        "case_count": len({row.case_id for row in rows}),
         "success_delta": paired_delta(rows, "success"),
         "success_ci95": list(success_ci),
         "atomic_correctness_delta": paired_delta(rows, "atomic_correctness"),

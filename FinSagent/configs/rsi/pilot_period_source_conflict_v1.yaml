@@ -1,6 +1,6 @@
 schema_version: rsi-pilot/v1
 pilot_id: period_source_conflict_v1
-status: designed
+status: skill_replay_completed_needs_more_evidence
 target_failure_types: [period_mismatch, source_conflict, wrong_source]
 target_skills: [period_alignment, source_conflict]
 target_implementations:
@@ -21,3 +21,12 @@ candidate_families:
   - level: L2
     strategy: evidence-scoped, company-agnostic period guard
 promotion_policy: configs/rsi/promotion_policy.yaml
+latest_cycle:
+  cycle_id: period_noop_guard_round_1
+  candidate_id: cand-period-noop-guard-v1
+  baseline_commit: 155df0389b2ded02f383548f3e06e4ccb4490b22
+  case_count: 4
+  seeds: [11, 29, 47]
+  decision: needs_more_evidence
+  blocking_gate: fresh internal case count below minimum of 5
+  note: Skill replay validates the RSI machinery; it is not full-agent capability evidence.
