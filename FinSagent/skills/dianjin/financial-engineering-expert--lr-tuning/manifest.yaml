@@ -1,0 +1,81 @@
+schema_version: 1
+skill_id: dianjin_financial_engineering_expert_lr_tuning
+version: 0.1.0
+name: LR 评分卡参数调优 (portable)
+description: 【LR评分卡调参】当用户说"LR调参"、"评分卡调优"、"调整分箱数"、"调整C值"、"LR过拟合"时使用。基于 Optuna TPE 贝叶斯优化，联合搜索 WoE 分箱参数（max_n_bins、iv_threshold）和
+  LR 模型参数（C、regularization），诊断驱动约束搜索空间。前置条件：需先用 lr-modeling 训练出基线模型。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+routing:
+  keywords:
+  - LR调参
+  - 评分卡调优
+  - 调整分箱数
+  - 调整C值
+  - LR过拟合
+  - LR 评分卡参数调优
+  - LR 评分卡参数调优 (portable)
+  - lr tuning
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/financial-engineering-expert/lr-tuning/SKILL.md
+  upstream_sha256: c759dfbe9820b559d82b8ec47b245b706127939789ad1c669102baa4539992a9
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/financial-engineering-expert/lr-tuning.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: LR调参, 评分卡调优, 调整分箱数, 调整C值, LR过拟合, LR 评分卡参数调优, LR 评分卡参数调优 (portable),
+    lr tuning'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/financial-engineering-expert/lr-tuning/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/financial-engineering-expert/lr-tuning/SKILL.md;
+    installed for shadow evaluation, not production activation.

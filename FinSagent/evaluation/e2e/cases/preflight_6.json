@@ -1,0 +1,65 @@
+{
+  "suite_id": "rag_index_preflight_6_v1",
+  "cases": [
+    {
+      "case_id": "PREFLIGHT_01_YGDY_TEXT",
+      "dataset_id": "ygdy_data",
+      "question": "剔除阶段性影响因素后，阳光电源2025年第四季度至2026年第一季度的实际储能毛利率是多少？",
+      "metric_ids": ["D4"],
+      "answer_atoms": [{"value": 30, "operator": ">=", "unit": "%", "period": "2025Q4-2026Q1"}],
+      "allowed_doc_ids": ["5247883d65d96322f65e3bee12e9384e6d3e5d67"],
+      "forbidden_doc_ids": [],
+      "must_refuse": false
+    },
+    {
+      "case_id": "PREFLIGHT_02_YGDY_ANNUAL_TABLE",
+      "dataset_id": "ygdy_data",
+      "question": "只根据Excel表格回答：阳光电源2024年营业收入是多少？请给出单位和单元格来源。",
+      "metric_ids": ["IS1"],
+      "answer_atoms": [{"value": 77856.96696, "unit": "CNYm", "period": "2024", "source_ref": "Upload Sheet!R42"}],
+      "allowed_doc_ids": ["7c512f613540ee7590f9d63d2648344633f07e12"],
+      "forbidden_doc_ids": [],
+      "must_refuse": false
+    },
+    {
+      "case_id": "PREFLIGHT_03_YGDY_QUARTER_TABLE",
+      "dataset_id": "ygdy_data",
+      "question": "只根据QoQ&Results表回答：阳光电源1Q24和1Q23单季营业收入分别是多少？",
+      "metric_ids": ["D1"],
+      "answer_atoms": [{"period": "1Q24"}, {"period": "1Q23"}],
+      "allowed_doc_ids": ["7c512f613540ee7590f9d63d2648344633f07e12"],
+      "forbidden_doc_ids": [],
+      "must_refuse": false
+    },
+    {
+      "case_id": "PREFLIGHT_04_LAB_VERSION_TEXT",
+      "dataset_id": "ygdy_report_skill_lab",
+      "question": "初稿与修订版对SST批量销售时间的表述有什么冲突？最终应采用哪个版本和时间？",
+      "metric_ids": [],
+      "answer_atoms": [{"value": "2027年", "source": "FINAL v1.2"}],
+      "allowed_doc_ids": ["789a9fb304a85fa97a4187b99e4bd8470c69f6ec", "78f63499febfa36aac7ac727626bc084e1b4b9ac"],
+      "forbidden_doc_ids": ["7fdc00f97f7bc37fa9ff71a1dee3529529b257cc"],
+      "must_refuse": false
+    },
+    {
+      "case_id": "PREFLIGHT_05_LAB_FORECAST_TABLE",
+      "dataset_id": "ygdy_report_skill_lab",
+      "question": "只根据盈利预测汇总Excel表，列出阳光电源2025E、2026E、2027E营业收入，单位为百万元，并给出单元格。",
+      "metric_ids": ["IS1"],
+      "answer_atoms": [{"values": [89000, 108000, 132000], "unit": "CNYm", "periods": ["2025E", "2026E", "2027E"], "source_refs": ["D5", "E5", "F5"]}],
+      "allowed_doc_ids": ["373f6b501a196ca2334f04b4b583ac323c4dffc7"],
+      "forbidden_doc_ids": ["7fdc00f97f7bc37fa9ff71a1dee3529529b257cc"],
+      "must_refuse": false
+    },
+    {
+      "case_id": "PREFLIGHT_06_LAB_SENSITIVITY_TABLE",
+      "dataset_id": "ygdy_report_skill_lab",
+      "question": "只根据碳酸锂敏感性Excel表回答：碳酸锂每上涨1万元/吨，储能单位成本增加多少元/Wh？给出单元格和公式关系。",
+      "metric_ids": [],
+      "answer_atoms": [{"value": 0.006, "unit": "CNY/Wh", "source_ref": "碳酸锂敏感性!C5"}],
+      "allowed_doc_ids": ["91bc3fa9999d6dd6cb76f21968b26a3a5a47b152"],
+      "forbidden_doc_ids": ["7fdc00f97f7bc37fa9ff71a1dee3529529b257cc"],
+      "must_refuse": false
+    }
+  ]
+}

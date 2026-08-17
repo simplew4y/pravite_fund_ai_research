@@ -12,9 +12,13 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from utils.chunk_utils import dedupe_chunks, get_chunk_source_id
+from utils.retrieval_scope import RetrievalScope
+from utils.prompt_budget import join_with_budget, truncate_text
+from skills_runtime.integration import apply_retrieval_skills
+from retrieval_control import decide_retrieval_policy, fuse_evidence
 from tools.finnhub import (
     basic_financials,
     company_news,
@@ -89,7 +93,7 @@ Rules:
 - Do not call tools for facts that should come from the internal document evidence when the tool is not clearly necessary.
 - If no tool is needed, return "tool_calls": [].
 - For company/tool inputs that accept a symbol, ticker, or cik, always look up the value from the known ticker symbol catalog when the user mention clearly refers to a catalog company, even if the query uses another language, abbreviation, or common name. Do not guess or invent symbol or CIK values.
-- When a catalog company matches, output the exact catalog symbol or cik in the tool arguments, e.g. use "ZK" and cik "0001954042" for Zeekr, "LOT" and cik "0001962746" for Lotus.
+- When a catalog company matches, output the exact catalog symbol or cik in the tool arguments, e.g. use "NVDA" and cik "0001045810" for NVIDIA.
 - If no catalog company clearly matches and the user did not provide a clear ticker symbol, do not plan tools that require a symbol/ticker.
 - If tool-relevant sub-questions are provided, infer the company subject separately for each sub-question.
 - If multiple companies are mentioned, issue separate tool calls for each company instead of passing a combined phrase like "Apple and Zeekr".
@@ -100,39 +104,44 @@ Rules:
 - Be conservative. If unsure, return no tool calls.
 
 Few-shot examples:
-User: 极氪最近的新闻？
+User: 英伟达最近的新闻？
 Agent: market_researcher
-Output: {{"reason": "Recent company news is directly available from company_news.", "tool_calls": [{{"name": "company_news", "arguments": {{"symbol": "ZK"}}}}]}}
+Output: {{"reason": "Recent company news is directly available from company_news.", "tool_calls": [{{"name": "company_news", "arguments": {{"symbol": "NVDA"}}}}]}}
 
 User: 公司最近有没有高管调整？
 Agent: company_researcher
 Output: {{"reason": "The company is underspecified, so no reliable company_news call can be planned.", "tool_calls": []}}
 
-User: ZK 当前股价、市值和近一个月走势
+User: NVDA 当前股价、市值和近一个月走势
 Agent: quant
-Output: {{"reason": "Current market snapshot and recent price history are directly available from tools.", "tool_calls": [{{"name": "stock_snapshot", "arguments": {{"symbol": "ZK"}}}}, {{"name": "price_history", "arguments": {{"symbol": "ZK", "period": "1mo"}}}}]}}
+Output: {{"reason": "Current market snapshot and recent price history are directly available from tools.", "tool_calls": [{{"name": "stock_snapshot", "arguments": {{"symbol": "NVDA"}}}}, {{"name": "price_history", "arguments": {{"symbol": "NVDA", "period": "1mo"}}}}]}}
 
-User: 极氪在 business combination/proxy 里披露了哪些控制权安排？
+User: 英伟达在 10-K 里披露了哪些治理风险？
 Agent: company_researcher
 Output: {{"reason": "This requires disclosure-level document evidence, not additional tools.", "tool_calls": []}}
 
-User: 极氪最近新闻，以及 business combination 之后的股权结构变化
+User: 英伟达最近新闻，以及 10-K 中披露的股权结构
 Agent: company_researcher
-Output: {{"reason": "Recent news benefits from company_news, while the ownership-structure part should be handled by retrieval.", "tool_calls": [{{"name": "company_news", "arguments": {{"symbol": "ZK"}}}}]}}
+Output: {{"reason": "Recent news benefits from company_news, while the ownership-structure part should be handled by retrieval.", "tool_calls": [{{"name": "company_news", "arguments": {{"symbol": "NVDA"}}}}]}}
 
-User: 极氪 2023 年净利润是多少？
+User: 英伟达 2024 年净利润是多少？
 Agent: quant
-Output: {{"reason": "Net income is directly available from SEC XBRL company concept.", "tool_calls": [{{"name": "sec_company_concept", "arguments": {{"cik": "0001954042", "concept": "NetIncomeLoss"}}}}]}}
+Output: {{"reason": "Net income is directly available from SEC XBRL company concept.", "tool_calls": [{{"name": "sec_company_concept", "arguments": {{"cik": "0001045810", "concept": "NetIncomeLoss"}}}}]}}
 
-User: 极氪的资产负债情况？
+User: 英伟达的资产负债情况？
 Agent: quant
-Output: {{"reason": "Assets and liabilities are directly available from SEC XBRL.", "tool_calls": [{{"name": "sec_company_concept", "arguments": {{"cik": "0001954042", "concept": "Assets"}}}}, {{"name": "sec_company_concept", "arguments": {{"cik": "0001954042", "concept": "Liabilities"}}}}]}}
+Output: {{"reason": "Assets and liabilities are directly available from SEC XBRL.", "tool_calls": [{{"name": "sec_company_concept", "arguments": {{"cik": "0001045810", "concept": "Assets"}}}}, {{"name": "sec_company_concept", "arguments": {{"cik": "0001045810", "concept": "Liabilities"}}}}]}}
 """
 
 ANSWER_EVIDENCE_GUARDRAILS = """
 
 Industrial evidence guardrails:
 - Treat Evidence and Tools as the only factual sources. Do not use prior knowledge to fill gaps.
+- Evidence may contain STRUCTURED DCI FACTS, KEYWORD EVIDENCE, and RAG EVIDENCE. Use them together; do not ignore a channel merely because another retriever also returned results.
+- A DCI fact marked tier=candidate is retained for completeness but is not authoritative. It must not override stronger dated table or narrative evidence.
+- A DCI fact marked tier=answer_grade may support a direct fact answer, but its company, period, unit, and actual/estimate status must still match the question.
+- If the retrieval policy says rag_required=true, the response must use the RAG evidence for analysis and use DCI only as quantitative support.
+- Preserve evidence IDs for important numeric reasoning. Never attribute a claim to an evidence ID that does not support the same company, metric, period, and actual/estimate status.
 - Every date, number, percentage, entity relationship, product list item, and governance claim must be directly supported by Evidence or Tools.
 - If sources conflict, report the conflict instead of choosing silently. Prefer explicitly dated, more recent evidence only when it directly answers the same metric/entity.
 - For numeric or table questions, preserve units and periods exactly. Show a formula only when all inputs are present; otherwise say the calculation is not supported by provided data.
@@ -282,6 +291,7 @@ async def rewrite_for_agent(
     rag: Any = None,
     title_summary_top_k: int = 30,
     enable_query_decompose: bool | None = None,
+    skill_context: Any = None,
 ) -> List[str]:
     """
     Agent-specific rewrite/decompose.
@@ -313,7 +323,20 @@ async def rewrite_for_agent(
         if summaries:
             title_summaries_text = "\n".join(f"- {s}" for s in summaries)
     prompt = prompt_template.format(question=question, history=history_snippet, title_summaries=title_summaries_text)
-    # prompt = f"{prompt.rstrip()}\n{preserve_entities_instruction}"
+    if skill_context is not None and getattr(skill_context, "prompt_instructions", None):
+        skill_text = "\n\n".join(
+            f"[{item.get('skill_id', '')}]\n{item.get('instruction', '')}"
+            for item in skill_context.prompt_instructions
+        )
+        prompt = f"{prompt.rstrip()}\n\nACTIVE SKILL INSTRUCTIONS:\n{skill_text}"
+    prompt = f"""{prompt.rstrip()}
+
+MANDATORY LOSSLESS REWRITE RULES:
+- Every rewritten sub-query must retain the original company/entity/ticker, time period, metric scope, business segment, exclusions, adjustments and qualifiers that apply to it.
+- Never simplify a qualified metric into its generic parent. For example, keep the full phrase “剔除阶段性影响因素后的实际毛利率”; do not rewrite it as only “毛利率”.
+- Do not introduce a company, document or metric absent from the original question.
+- Include the original question verbatim as the first sub-query.
+"""
     try:
         resp = await session_manager.call_llm_async(
             [{"role": "user", "content": prompt}],
@@ -338,12 +361,64 @@ async def rewrite_for_agent(
     return [question]
 
 
+def _cascade_to_evidence(
+    query: str, cascade_result: dict, agent: str,
+) -> tuple:
+    """Convert a legacy CascadeRetriever result into the internal result tuple."""
+    chunks = cascade_result.get("chunks", [])
+    route = cascade_result.get("type", "dci_unknown")
+    ctx_types = [c.get("metadata", {}).get("content_type", "") for c in chunks[:3]]
+    logger.info(
+        "[retrieve_route] route=%s query=%s agent=%s chunks=%d types=%s",
+        route, query, agent, len(chunks), ctx_types,
+    )
+    context_lines = []
+    for c in chunks:
+        src = c.get("metadata", {}).get("source_ref", "")
+        ct = c.get("metadata", {}).get("content_type", "")
+        label = f"[{ct}] {src}" if src else f"[{ct}]"
+        context_lines.append(f"{label}: {c.get('page_content', '')}")
+    context = "\n".join(context_lines)
+    return (
+        query, context, chunks, [], chunks, True,
+        {
+            "policy": {
+                "mode": "legacy_cascade",
+                "query_type": "unknown",
+                "run_rag": False,
+                "rag_required": False,
+                "reason_codes": ["LEGACY_DCI_SHORT_CIRCUIT"],
+            },
+            "conflicts": [],
+            "retrieval_trace": [],
+            "rag_executed": False,
+            "rag_succeeded": False,
+        },
+    )
+
+
 async def retrieve_evidence(
     rag: Any, sub_queries: List[str], query_time: datetime, agent: str,
     run_id: str = "", log_dir: str = "",
+    collection_db: str = "",
+    dataset_id: str = "",
+    scope_query: str = "",
+    scope_history: Optional[List[Dict[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Run retrieval concurrently and produce Evidence-like dicts.
+
+    ``scope_query`` must be the original, entity-bearing user question.  Its
+    resolved document boundary is inherited by every rewritten sub-query so a
+    lossy rewrite cannot silently widen retrieval to another company.
+
+    When *collection_db* points at a valid collection.sqlite3 the function
+    applies a **cascade** — DCI metric / keyword grep → RAG — so simple
+    numeric queries skip the expensive embedding round‑trip.
+
+    If *collection_db* is not passed, it is auto-derived from the rag
+    config's ``datasets.root_dir`` + ``datasets.active_dataset``:
+      ``{root_dir}/{active_dataset}/meta/collection.sqlite3``
     """
     loop = asyncio.get_event_loop()
     lg = get_run_logger(run_id, log_dir, agent) if run_id and log_dir else logger
@@ -351,11 +426,205 @@ async def retrieve_evidence(
     if not getattr(rag, "retrieve", None):
         raise ValueError("RAG instance missing in state; retrieval cannot proceed.")
 
-    lg.info("[retrieve_evidence] agent=%s", agent)
+    # ── Auto-derive collection_db from rag config ──────────────────
+    if not collection_db:
+        lg.info("[cascade] auto-derive: rag type=%s has_config=%s",
+                type(rag).__name__, hasattr(rag, "config"))
+        datasets_cfg = getattr(getattr(rag, "rag_manager", None), "_config", {}).get("datasets", {})
+        root_dir = datasets_cfg.get("root_dir", "")
+        active = datasets_cfg.get("active_dataset", "")
+        lg.info("[cascade] auto-derive: root_dir=%s active=%s", root_dir, active)
+        if root_dir and active:
+            candidate = os.path.join(root_dir, active, "meta", "collection.sqlite3")
+            lg.info("[cascade] auto-derive: candidate=%s exists=%s",
+                    candidate, os.path.exists(candidate))
+            if os.path.exists(candidate):
+                collection_db = candidate
+
+    lg.info("[retrieve_evidence] agent=%s db=%s", agent, collection_db or "(none)")
+
+    # Cascade helper — only created when a valid db is available
+    from utils.cascade_retriever import CascadeRetriever, should_skip_rag
+    _c: Optional["CascadeRetriever"] = None
+    rag_config = getattr(getattr(rag, "rag_manager", None), "_config", {}) or {}
+    if collection_db and os.path.exists(collection_db):
+        _c = CascadeRetriever(
+            collection_db,
+            company_aliases=rag_config.get("retrieval_company_aliases", {}),
+        )
+
+    datasets_cfg = rag_config.get("datasets", {}) or {}
+    active_dataset = str(dataset_id or datasets_cfg.get("active_dataset") or "")
+    scope_required = bool(rag_config.get("retrieval_scope_required", False))
+    scope = None
+    if _c is not None:
+        effective_scope_query = scope_query or (sub_queries[0] if sub_queries else "")
+        prior_user_queries = [
+            str(message.get("content") or "")
+            for message in (scope_history or [])
+            if str(message.get("role") or "").lower() == "user"
+        ]
+        scope = _c.resolve_scope_with_history(
+            effective_scope_query,
+            prior_user_queries,
+            dataset_id=active_dataset,
+        )
+        explicit_allowed = {
+            str(doc_id)
+            for doc_id in (rag_config.get("retrieval_scope_allowed_doc_ids") or [])
+            if doc_id
+        }
+        if explicit_allowed:
+            scope = RetrievalScope.from_doc_ids(
+                scope.source_query,
+                [doc_id for doc_id in scope.source_doc_ids if doc_id in explicit_allowed],
+                explicit_company=scope.explicit_company,
+                dataset_id=scope.dataset_id,
+            )
+        lg.info(
+            "[retrieval_scope] dataset=%s explicit_company=%s source_query=%r source_doc_ids=%s",
+            scope.dataset_id,
+            scope.explicit_company,
+            scope.source_query,
+            list(scope.source_doc_ids),
+        )
+
+    if scope_required and scope is None:
+        lg.error(
+            "[retrieval_scope] required scope unavailable; refusing unscoped retrieval "
+            "dataset=%s db=%s",
+            active_dataset,
+            collection_db or "(none)",
+        )
+        return []
+
+    if scope_required and scope is not None and not scope.source_doc_ids:
+        lg.error(
+            "[retrieval_scope] dataset=%s resolved no documents; refusing retrieval",
+            active_dataset,
+        )
+        return []
 
     def _run(query: str):
+        nonlocal _c, scope
+
+        # Read retrieval mode from config
+        _mode = getattr(getattr(rag, "rag_manager", None), "_config", {}).get(
+            "retrieval_mode", "dci_rag_cascade"
+        )
+
+        # ── DCI retrieval ────────────────────────────────────────────
+        r1 = None
+        r2 = None
+        if _c is not None and _mode != "rag_only":
+            allowed_doc_ids = list(scope.source_doc_ids) if scope is not None else []
+            scope_explicit = bool(scope and scope.explicit_company)
+            r1 = _c.search_metric(
+                query,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_explicit=scope_explicit,
+                confidence_query=scope_query or query,
+            )
+            r2 = _c.search_keyword(
+                query,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_explicit=scope_explicit,
+            )
+
+        # ── Evidence fusion: DCI is always retained ─────────────────
+        if _mode in {"evidence_fusion", "dci_only"}:
+            policy = decide_retrieval_policy(
+                original_question=scope_query or query,
+                agent=agent,
+                metric_result=r1,
+                keyword_result=r2,
+                mode=_mode,
+            )
+            rag_result = None
+            rag_succeeded = False
+            if policy.run_rag:
+                allowed_doc_ids = list(scope.source_doc_ids) if scope is not None else None
+                try:
+                    rag_result = rag.retrieve(
+                        query,
+                        query_time,
+                        agent=agent,
+                        allowed_source_doc_ids=allowed_doc_ids,
+                    )
+                    if isinstance(rag_result, dict):
+                        rag_succeeded = bool(rag_result.get("final_chunks") or [])
+                    elif isinstance(rag_result, tuple):
+                        rag_succeeded = len(rag_result) > 1 and bool(rag_result[1])
+                except Exception as e:
+                    # A failed semantic fallback must not erase structured DCI evidence.
+                    lg.error(
+                        "[%s] evidence-fusion RAG failed for %r; retaining DCI: %s",
+                        agent, query, e, exc_info=True,
+                    )
+            fused = fuse_evidence(
+                query=query,
+                policy=policy,
+                metric_result=r1,
+                keyword_result=r2,
+                rag_result=rag_result,
+                rag_executed=policy.run_rag,
+                rag_succeeded=rag_succeeded,
+                config=(rag_config.get("retrieval_control") or {}),
+            )
+            lg.info(
+                "[evidence_fusion] query=%r type=%s reasons=%s dci_metric=%d "
+                "dci_keyword=%d rag_executed=%s rag_succeeded=%s final=%d conflicts=%d",
+                query,
+                policy.query_type,
+                list(policy.reason_codes),
+                len((r1 or {}).get("chunks", [])),
+                len((r2 or {}).get("chunks", [])),
+                fused.rag_executed,
+                fused.rag_succeeded,
+                len(fused.final_chunks),
+                len(fused.conflicts),
+            )
+            return (
+                query,
+                fused.context,
+                fused.final_chunks,
+                fused.time_info,
+                fused.pre_rerank_chunks,
+                True,
+                fused.metadata(),
+            )
+
+        # ── Legacy DCI cascade (rollback compatibility) ─────────────
+        if _c is not None:
+            if r1 is not None:
+                if _mode == "dci_only":
+                    if should_skip_rag(r1, agent):
+                        lg.info("[cascade] dci_only mode — returning scoped metric hit for '%s'", query)
+                        return _cascade_to_evidence(query, r1, agent)
+                    lg.info("[cascade] dci_only mode — rejecting low-confidence metric hit for '%s'", query)
+                if should_skip_rag(r1, agent):
+                    lg.info("[cascade] DCI metric hit for '%s' — skipping RAG", query)
+                    return _cascade_to_evidence(query, r1, agent)
+
+            if r2 is not None:
+                if _mode == "dci_only":
+                    if should_skip_rag(r2, agent):
+                        lg.info("[cascade] dci_only mode — returning scoped keyword hit for '%s'", query)
+                        return _cascade_to_evidence(query, r2, agent)
+                    lg.info("[cascade] dci_only mode — rejecting low-confidence keyword hit for '%s'", query)
+                if should_skip_rag(r2, agent):
+                    lg.info("[cascade] DCI keyword hit for '%s' — skipping RAG", query)
+                    return _cascade_to_evidence(query, r2, agent)
+
+        # ── dci_only: no more fallback ───────────────────────────────
+        if _mode == "dci_only":
+            lg.info("[cascade] dci_only mode — no DCI hits for '%s', returning empty", query)
+            return query, "", [], [], [], True, {}
+
+        # ── Step 3 — full RAG (existing logic) ───────────────────────
         try:
             retrieve_kwargs = {}
+            allowed_doc_ids = list(scope.source_doc_ids) if scope is not None else None
             # if agent == "general":
             #     retrieve_kwargs = {
             #         "rerank_topk": rag.top_k * 5,
@@ -364,6 +633,8 @@ async def retrieve_evidence(
             retrieval_result = rag.retrieve(
                 query,
                 query_time,
+                agent=agent,
+                allowed_source_doc_ids=allowed_doc_ids,
                 **retrieve_kwargs,
             )
 
@@ -375,6 +646,7 @@ async def retrieve_evidence(
             else:
                 context, chunks, time_info = retrieval_result
                 pre_rerank_chunks = chunks
+            rag_nonempty = bool(chunks)
             return (
                 query,
                 context,
@@ -382,10 +654,23 @@ async def retrieve_evidence(
                 time_info,
                 dedupe_chunks(pre_rerank_chunks),
                 True,
+                {
+                    "policy": {
+                        "mode": _mode,
+                        "query_type": "unknown",
+                        "run_rag": True,
+                        "rag_required": False,
+                        "reason_codes": ["LEGACY_RAG_FALLBACK"],
+                    },
+                    "conflicts": [],
+                    "retrieval_trace": [],
+                    "rag_executed": True,
+                    "rag_succeeded": rag_nonempty,
+                },
             )
         except Exception as e:
             lg.error(f"[{agent}] retrieval failed for '{query}': {e}", exc_info=True)
-            return query, "", [], [], [], False
+            return query, "", [], [], [], False, {}
 
     import time as _time
     _t0 = _time.perf_counter()
@@ -394,7 +679,7 @@ async def retrieve_evidence(
     global _retrieval_time_acc
     _retrieval_time_acc += _time.perf_counter() - _t0
     evidences: List[Dict[str, Any]] = []
-    for query, context, chunks, time_info, pre_rerank_chunks, ok in results:
+    for query, context, chunks, time_info, pre_rerank_chunks, ok, retrieval_metadata in results:
         if not ok:
             continue
         evidences.append(
@@ -407,6 +692,16 @@ async def retrieve_evidence(
                 "time_info": time_info,
                 "pre_rerank_chunks": pre_rerank_chunks,
                 "pre_rerank_source_ids": [get_chunk_source_id(c) for c in pre_rerank_chunks],
+                "retrieval_scope": {
+                    "dataset_id": scope.dataset_id if scope is not None else "",
+                    "source_doc_ids": list(scope.source_doc_ids) if scope is not None else [],
+                    "explicit_company": bool(scope and scope.explicit_company),
+                },
+                "retrieval_policy": retrieval_metadata.get("policy", {}),
+                "evidence_conflicts": retrieval_metadata.get("conflicts", []),
+                "retrieval_trace": retrieval_metadata.get("retrieval_trace", []),
+                "rag_executed": bool(retrieval_metadata.get("rag_executed", False)),
+                "rag_succeeded": bool(retrieval_metadata.get("rag_succeeded", False)),
             }
         )
         lg.info(
@@ -589,12 +884,15 @@ async def draft_answer(
     lg = get_run_logger(run_id, log_dir, agent) if run_id and log_dir else logger
     # Group evidences by sub_query to generate per-subquery answers
     evidence_by_query: Dict[str, List[str]] = {}
+    skill_instruction_contexts: List[str] = []
     for ev in evidences:
+        if ev.get("content_type") == "skill_context":
+            instruction_context = str(ev.get("context") or "").strip()
+            if instruction_context:
+                skill_instruction_contexts.append(instruction_context)
+            continue
         q = ev.get("query", "unknown")
         evidence_by_query.setdefault(q, []).append(ev.get("context", ""))
-
-    tools_text = json.dumps(tool_results, ensure_ascii=False) if tool_results else "None"
-    history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history[-6:]])
 
     sub_answers = []
 
@@ -624,11 +922,26 @@ async def draft_answer(
     draft_llm_backoff = max(0.1, _cfg_float("draft_llm_retry_backoff_seconds", 2.0))
     draft_llm_max_backoff = max(draft_llm_backoff, _cfg_float("draft_llm_retry_max_backoff_seconds", 30.0))
     draft_llm_max_concurrency = max(1, _cfg_int("draft_llm_max_concurrency", 1))
+    draft_evidence_max_chars = max(4000, _cfg_int("draft_evidence_max_chars", 24000))
+    draft_history_max_chars = max(1000, _cfg_int("draft_history_max_chars", 6000))
+    draft_tools_max_chars = max(1000, _cfg_int("draft_tools_max_chars", 6000))
+    draft_summary_max_chars = max(4000, _cfg_int("draft_summary_max_chars", 16000))
+    draft_skill_instruction_max_chars = max(
+        1000, _cfg_int("draft_skill_instruction_max_chars", 12000)
+    )
     data_latest_time = str(cfg.get("data_latest_time") or cfg.get("data_cutoff") or "unknown")
     draft_sem = asyncio.Semaphore(draft_llm_max_concurrency)
+    raw_tools_text = json.dumps(tool_results, ensure_ascii=False) if tool_results else "None"
+    tools_text = truncate_text(raw_tools_text, draft_tools_max_chars)
+    raw_history_text = "\n".join([f"{m['role']}: {m['content']}" for m in history[-6:]])
+    history_text = truncate_text(raw_history_text, draft_history_max_chars)
+    skill_instruction_text = truncate_text(
+        "\n\n".join(skill_instruction_contexts),
+        draft_skill_instruction_max_chars,
+    )
 
     async def gen_for_sub(sub_q: str, ctx_list: List[str]):
-        evidence_text = "\n\n".join(ctx_list) if ctx_list else "None"
+        evidence_text = join_with_budget(ctx_list, draft_evidence_max_chars) or "None"
         # Inject original/root question to encourage cross-use of facts relevant to the main ask
         question_for_prompt = f"{sub_q}\n(Original question for broader context: {question})"
         prompt_filled = answer_prompt.format(
@@ -637,12 +950,28 @@ async def draft_answer(
             evidence=evidence_text,
             tools=tools_text,
         )
+        if skill_instruction_text:
+            prompt_filled = (
+                f"{prompt_filled.rstrip()}\n\n"
+                "ACTIVE SKILL INSTRUCTIONS (follow these as workflow and output rules; "
+                "they are not factual evidence):\n"
+                f"{skill_instruction_text}"
+            )
         prompt_filled = (
             f"{prompt_filled.rstrip()}\n"
             f"{ANSWER_EVIDENCE_GUARDRAILS.format(data_latest_time=data_latest_time)}"
         )
         messages = [{"role": "user", "content": prompt_filled}]
-        lg.info(f"[draft_prompt] sub_q='{sub_q}' prompt_length={len(prompt_filled)}")
+        lg.info(
+            "[draft_prompt] sub_q=%r prompt_length=%d evidence_chars=%d history_chars=%d "
+            "tools_chars=%d skill_instruction_chars=%d",
+            sub_q,
+            len(prompt_filled),
+            len(evidence_text),
+            len(history_text),
+            len(tools_text),
+            len(skill_instruction_text),
+        )
         # lg.info(f"[draft_prompt] sub_q='{sub_q}' prompt_length={len(prompt_filled)}\n{prompt_filled}")
         non_retryable = ("Authentication", "Permission", "BadRequest", "NotFound", "Unprocessable")
         for attempt in range(1, draft_llm_max_retries + 1):
@@ -686,6 +1015,8 @@ async def draft_answer(
 
     # Summarize sub-answers into a concise natural-language draft without heavy omission
     user_language = detect_language(question)
+    sub_answers_text = "\n\n".join([f"Sub-question: {sa['sub_q']}\nAnswer: {sa['answer']}" for sa in sub_answers])
+    sub_answers_text = truncate_text(sub_answers_text, draft_summary_max_chars)
     summary_prompt = (
         "You will be given multiple sub-answers derived from the same user question.\n"
         "Write a fluent, natural-language response that combines them without losing important details.\n"
@@ -697,10 +1028,9 @@ async def draft_answer(
         "Do not use bullet lists or markdown unless the sub-answers require a compact list; keep it concise but include key specifics.\n"
         f"IMPORTANT: Respond in {user_language}.\n\n"
         f"User question: {question}\n\n"
-        f"Sub-answers:\n{sub_answers}\n\n"
+        f"Sub-answers:\n{sub_answers_text}\n\n"
         "Combined answer:"
     )
-    sub_answers_text = "\n\n".join([f"Sub-question: {sa['sub_q']}\nAnswer: {sa['answer']}" for sa in sub_answers])
     try:
         resp = await session_manager.call_llm_async([{"role": "user", "content": summary_prompt}], temperature=0)
         combined = resp.choices[0].message.content

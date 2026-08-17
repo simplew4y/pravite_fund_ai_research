@@ -1,0 +1,81 @@
+schema_version: 1
+skill_id: dianjin_financial_engineering_expert_dnn_tuning
+version: 0.1.0
+name: DNN 深度学习参数调优 (portable)
+description: 【DNN调参】当用户说"DNN调参"、"深度学习调参"、"调整网络结构"、"调整dropout"、"DNN过拟合"时使用。基于 Optuna TPE 贝叶斯优化，搜索网络架构（层数、宽度、dropout）和训练参数（learning_rate、weight_decay、batch_size），诊断驱动约束搜索空间。前置条件：需先用
+  dnn-modeling 训练出基线模型。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+routing:
+  keywords:
+  - DNN调参
+  - 深度学习调参
+  - 调整网络结构
+  - 调整dropout
+  - DNN过拟合
+  - DNN 深度学习参数调优
+  - DNN 深度学习参数调优 (portable)
+  - dnn tuning
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/financial-engineering-expert/dnn-tuning/SKILL.md
+  upstream_sha256: a97c2361a0fb78d7ce0e28c58cf90a48dd691251bc88f5e4b37135e278d4c50f
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/financial-engineering-expert/dnn-tuning.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: DNN调参, 深度学习调参, 调整网络结构, 调整dropout, DNN过拟合, DNN 深度学习参数调优, DNN 深度学习参数调优
+    (portable), dnn tuning'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/financial-engineering-expert/dnn-tuning/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/financial-engineering-expert/dnn-tuning/SKILL.md;
+    installed for shadow evaluation, not production activation.

@@ -83,17 +83,34 @@ class VLLMReranker:
         if not docs:
             return []
 
-        payload = self._post_rerank(
-            {
+        is_dashscope = "dashscope" in self.endpoint_url or "aliyuncs.com" in self.endpoint_url
+
+        if is_dashscope:
+            payload = {
+                "model": self.model_name,
+                "input": {
+                    "query": query,
+                    "documents": docs,
+                },
+                "parameters": {
+                    "top_n": len(docs),
+                },
+            }
+        else:
+            payload = {
                 "model": self.model_name,
                 "query": query,
                 "documents": docs,
                 "top_n": len(docs),
             }
-        )
+
+        result = self._post_rerank(payload)
 
         logits = [self._to_logit(0.5)] * len(docs)
-        for item in payload.get("results", []):
+        results_list = result.get("results", result.get("output", {}).get("results", []))
+        if not results_list and "output" in result:
+            results_list = result["output"].get("results", [])
+        for item in results_list:
             doc_index = item["index"]
             if 0 <= doc_index < len(logits):
                 logits[doc_index] = self._transform_score(item["relevance_score"])
@@ -116,3 +133,69 @@ class VLLMReranker:
             for (original_index, _), logit in zip(indexed_docs, logits):
                 scores[original_index] = logit
         return scores
+
+
+class LocalReranker:
+    """CPU-based CrossEncoder reranker using sentence-transformers.
+
+    Drop-in replacement for VLLMReranker — same ``compute_score`` interface,
+    no HTTP calls, no ports needed.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "BAAI/bge-reranker-v2-m3",
+        device: str = "cpu",
+        batch_size: int = 12,
+    ):
+        import os
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+        self.model_name = model_name
+        self.device = device
+        self.batch_size = batch_size
+        self._model = None
+
+    @property
+    def model(self):
+        if self._model is None:
+            self._load()
+        return self._model
+
+    def _load(self):
+        import huggingface_hub as hf
+        import os
+        try:
+            model_path = hf.snapshot_download(self.model_name, local_files_only=True)
+        except Exception:
+            # Try ModelScope cache
+            ms_path = os.path.expanduser(
+                f"/root/autodl-tmp/models/{self.model_name}"
+            )
+            if os.path.exists(ms_path):
+                model_path = ms_path
+                logger.info("Using ModelScope cache for %s", self.model_name)
+            else:
+                logger.warning(
+                    "Reranker model %s not cached locally. "
+                    "Falling back to flat scoring (0.5). "
+                    "Download the model and restart to enable reranking.",
+                    self.model_name,
+                )
+                self._load_failed = True
+                return
+        from sentence_transformers import CrossEncoder
+        logger.info("Loading reranker %s from %s on %s ...", self.model_name, model_path, self.device)
+        self._model = CrossEncoder(model_path, device=self.device)
+        logger.info("Reranker loaded.")
+
+    def compute_score(self, pairs: List[List[str]], batch_size: Optional[int] = None) -> List[float]:
+        if not pairs:
+            return []
+        if getattr(self, "_load_failed", False):
+            # Flat 0.5 fallback — same as the old mock reranker
+            return [0.5] * len(pairs)
+        bs = batch_size or self.batch_size
+        scores = self.model.predict(pairs, batch_size=bs, show_progress_bar=False)
+        return [float(s) if not isinstance(s, (int, float)) else s for s in scores]

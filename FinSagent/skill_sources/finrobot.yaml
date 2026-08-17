@@ -1,0 +1,21 @@
+schema_version: 1
+source_id: finrobot
+repository: https://github.com/AI4Finance-Foundation/FinRobot
+visibility: public
+license: Apache-2.0
+consumer_policy: architecture_reference_only
+current_observation:
+  ref: 01ed408326f1d4ec2460596dee10858faf0f69af
+  observed_at: "2026-08-14"
+selected_patterns:
+  - section-specific equity research agents
+  - structured intermediate financial data
+  - valuation football-field output
+  - HTML and PDF report pipeline
+rejected_runtime_assumptions:
+  - free_cash_flow_equals_sixty_percent_of_ebitda
+  - net_debt_equals_ten_percent_of_enterprise_value
+  - fixed_default_wacc_and_growth_rates
+notes:
+  - No FinRobot valuation calculation is activated in FinSagent.
+  - Reuse requires evidence-bound inputs and deterministic validation.

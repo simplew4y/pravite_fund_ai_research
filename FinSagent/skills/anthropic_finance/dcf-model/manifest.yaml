@@ -1,0 +1,49 @@
+schema_version: 1
+skill_id: anthropic_dcf_model
+version: 0.1.1-pf1
+name: DCF 模型（FinSagent 适配）
+description: 以证据绑定的预测、WACC、终值和股权价值桥规划 DCF。
+category: valuation
+type: prompt
+phase: pre_answer
+priority: 220
+status: experimental
+owner: finsagent-skillops
+agents: [quant, company_researcher]
+routing:
+  intents: [valuation_modeling]
+  keywords: [DCF, 现金流折现, 内在价值, WACC, 永续增长率, 目标价]
+  negative_keywords: [可转债]
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: true
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: anthropic-financial-services
+  upstream_repository: https://github.com/anthropics/financial-services
+  upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
+  upstream_path: plugins/vertical-plugins/financial-analysis/skills/dcf-model/SKILL.md
+  upstream_sha256: 2bb3ed672ab2fa76f8820ee919b158a67dc6df10e7052eeb661599140a9a2494
+  adapter_version: 0.1.1-pf1
+  adaptation: removed_external_data_calls_and_bound_all_inputs_to_evidence
+  external_tools_blocked: true
+permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
+public: false
+governance:
+  failure_types: [valuation_model_error]
+  trigger: DCF、内在价值或现金流折现请求
+  inputs: [question, validated_forecast, evidence_fusion_context]
+  outputs: [valuation_inputs, dcf_schedule_spec, equity_bridge, sensitivity_spec]
+  eval_sets: [anthropic_finance_shadow_v1]
+  last_reviewed: "2026-08-14"
+  implementation_refs: [SKILL.md, manifest.yaml]
+  scope: Shadow-only DCF planning and review instruction.
+  risks: [unsupported_assumption, formula_error, stale_market_input, terminal_value_dominance]
+  notes: Production prompt guidance is intent-routed; Excel artifact execution is not implied.

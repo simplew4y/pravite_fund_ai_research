@@ -1,0 +1,85 @@
+schema_version: 1
+skill_id: finskillops_financial_numeric_synthesis
+version: 0.1.0-pf1
+name: FinSkillOps Financial Numeric Synthesis
+description: Verify and synthesize financial values from scoped DCI and RAG evidence.
+category: finance
+type: prompt
+phase: pre_answer
+priority: 80
+status: promoted
+owner: finsagent
+agents: [quant, general, company_researcher, market_researcher]
+routing:
+  keywords:
+    - 收入
+    - 营收
+    - 利润
+    - 毛利率
+    - 净利率
+    - 现金流
+    - 资本开支
+    - 同比
+    - 环比
+    - 多少
+    - revenue
+    - profit
+    - margin
+    - cash flow
+    - capex
+    - yoy
+    - qoq
+    - PE
+    - PB
+    - EPS
+    - BVPS
+    - 股本
+    - 市值
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: finskillops-skill-seeds
+  upstream_repository: https://github.com/YanzhangMa/finskillops-skill-seeds
+  upstream_ref: 1e1a0f75d955f3f1dd2c6a83bd5b92ce37f296ee
+  upstream_path: candidates/proposed
+  adapter_version: 0.1.0-pf1
+  selection_policy: explicit_downstream_selection
+  max_instruction_chars: 6000
+  candidate_ids:
+    - seed_7647fdd481796ea2285c658221eb1b6515c584a9c17baf5859ba5953bdf18a32
+    - seed_c97464ef5ef4f516cf9da93a54923f69624be105b02d51e24f34629cf0e35a8b
+  export_event_ids:
+    - 8b768c9b08e0e606ed942a40129bd4ea9bfb7d277f52017042a2d7821b7706d6
+    - a68d1c06c780918e4a0f52d2c7362830884d680607598a76fef9f09c4e965e0c
+  upstream_recipe_sha256:
+    - a060f39289a0d72ee4d6156c2f79ed3a102fb5d2d32d7f20cdb6087ba9ebe525
+    - c06f348905d23b3d13292dd7c64b1790561012c3ab848564687b9d89ff67aa87
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Downstream-selected synthesis of two proposed portable numeric recipes.
+  failure_types: [metric_alias_error, period_mismatch, table_alignment_error, wrong_source]
+  trigger: A scoped issuer question requests a financial number, ratio, comparison, or derivation.
+  inputs: [question, active_dataset, allowed_doc_ids, metric_facts, retrieved_chunks]
+  outputs: [value, unit, period, source_reference, conflict_note]
+  risks:
+    - Broad numeric keywords require strict company and document evidence boundaries.
+    - Proposed upstream status does not certify downstream answer quality.
+  eval_sets: [private_fund_numeric_synthesis_v1]
+  local_changes:
+    - merged the portable instruction and typed numeric recipes
+    - bound DCI and RAG evidence to active_dataset doc_ids
+    - added period, currency, unit, and actual-estimate preservation
+  last_reviewed: "2026-08-10"

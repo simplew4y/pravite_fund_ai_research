@@ -1,0 +1,84 @@
+schema_version: 1
+skill_id: dianjin_financial_engineering_expert_feature_analysis
+version: 0.1.0
+name: 建模特征分析报告 (portable)
+description: 【特征深度分析】当用户需要"全面分析特征"、"生成特征报告"、"看相关性"、"推荐建模方案"、"跑一遍特征"、"特征全景"、"哪些特征有用"时使用。包含四大维度：基础统计、IV值、PSI稳定性、相关性分析，输出四套建模特征方案。前提条件：必须提供目标变量。不做单特征快速探索，不做模型训练。与
+  univariate-analysis 的区别：本 Skill 是全量特征深度分析+方案推荐，univariate-analysis 聚焦少量特征快速分析。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+routing:
+  keywords:
+  - 全面分析特征
+  - 生成特征报告
+  - 看相关性
+  - 推荐建模方案
+  - 跑一遍特征
+  - 特征全景
+  - 哪些特征有用
+  - 建模特征分析报告
+  - 建模特征分析报告 (portable)
+  - 特征分析
+  - feature analysis
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/financial-engineering-expert/feature-analysis/SKILL.md
+  upstream_sha256: e5f9e6e3991e5d30af2617e185dad54a5d2f2f1999354a40171991ce03d638c8
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/financial-engineering-expert/feature-analysis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 全面分析特征, 生成特征报告, 看相关性, 推荐建模方案, 跑一遍特征, 特征全景, 哪些特征有用, 建模特征分析报告, 建模特征分析报告
+    (portable), 特征分析, feature analysis'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/financial-engineering-expert/feature-analysis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/financial-engineering-expert/feature-analysis/SKILL.md;
+    installed for shadow evaluation, not production activation.

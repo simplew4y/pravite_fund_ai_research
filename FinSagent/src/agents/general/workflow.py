@@ -3,12 +3,13 @@ from typing import Any, Dict, List, TypedDict
 
 from langgraph.graph import StateGraph
 
-from agents.shared import draft_answer, retrieve_evidence, rewrite_for_agent, get_run_logger
+from agents.shared import apply_retrieval_skills, draft_answer, retrieve_evidence, rewrite_for_agent, get_run_logger
 from agents.general.prompts import REWRITE_PROMPT, ANSWER_PROMPT
 
 
 class GeneralState(TypedDict, total=False):
     original_query: str
+    user_query_raw: str
     chat_history: List[Dict[str, str]]
     session_manager: Any
     rag: Any
@@ -17,6 +18,8 @@ class GeneralState(TypedDict, total=False):
     debug_stop_after_retrieval: bool
     enable_query_decompose: bool
     agent_outputs: Dict[str, Any]
+    skill_runtime: Any
+    general_skill_traces: List[Dict[str, Any]]
     general_sub_queries: List[str]
     general_evidence: List[Any]
     general_draft_answer: str
@@ -39,6 +42,7 @@ def build_general_subgraph() -> Any:
             log_dir=state.get("log_dir", ""),
             rag=state.get("rag"),
             enable_query_decompose=state.get("enable_query_decompose"),
+            skill_context=state.get("skill_context"),
         )
         return {"general_sub_queries": sub_queries}
 
@@ -52,8 +56,17 @@ def build_general_subgraph() -> Any:
             "general",
             run_id=state.get("run_id", ""),
             log_dir=state.get("log_dir", ""),
+            scope_query=state.get("user_query_raw") or state["original_query"],
+            scope_history=state.get("chat_history", []),
         )
-        return {"general_evidence": evidences}
+        evidences, traces = await apply_retrieval_skills(
+            runtime=state.get("skill_runtime"),
+            question=state["original_query"],
+            agent="general",
+            evidences=evidences,
+            request_id=state.get("run_id", ""),
+        )
+        return {"general_evidence": evidences, "general_skill_traces": traces}
 
     async def draft_node(state: GeneralState) -> Dict:
         evidences = state.get("general_evidence", [])
@@ -82,6 +95,7 @@ def build_general_subgraph() -> Any:
             "draft_answer": state.get("general_draft_answer", ""),
             "assumptions": [],
             "risks": [],
+            "skill_traces": state.get("general_skill_traces", []),
         }
         return {"agent_outputs": outputs}
 

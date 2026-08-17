@@ -1,0 +1,99 @@
+schema_version: 1
+experiment_id: finsagent_skill_combo_e2e_v1
+control:
+  retrieval_mode: evidence_fusion
+  fixed_model: qwen3.6-35b-awq
+  fixed_dataset_policy: case_manifest
+  save_all_outputs: true
+  output_root: /root/autodl-tmp/dir_lzx/finsagent_e2e_eval_outputs
+
+combos:
+  - combo_id: C0_no_skills
+    label: 融合检索基线
+    allow: []
+    hypothesis: 衡量Evidence Fusion本身的答案、引用和研报能力。
+    primary_cases: [all]
+
+  - combo_id: C1_numeric_alignment
+    label: 财务数字口径对齐
+    allow:
+      - period_alignment
+      - finskillops_financial_numeric_synthesis
+    hypothesis: 期间识别先约束证据，数值综合再统一公司、币种、单位及实际/预测口径；预期提升IS/BS/CF和年度季度TTM预测混合题。
+    primary_metrics: [IS1, IS2, IS3, IS4, IS5, IS6, IS7, BS1, BS2, BS3, BS4, BS5, BS6, BS7, CF1, CF2, CF3, D1, D2, D3, D4, D5, D6, D7, R1, R2, R3, R4, R5]
+
+  - combo_id: C2_verified_evidence
+    label: 财务证据闭环
+    allow:
+      - period_alignment
+      - finskillops_financial_numeric_synthesis
+      - table_evidence_verifier
+      - source_conflict
+      - answer_coverage
+    hypothesis: 在C1基础上核对表格单元格、处理版本冲突并检查多值问题遗漏；预期提升引用正确率、整题完整率并降低期间错误。
+    primary_metrics: [IS1, IS2, IS3, IS4, IS5, IS6, IS7, BS1, BS2, BS3, BS4, BS5, BS6, BS7, CF1, CF2, CF3, D1, D2, D3, D4, D5, D6, D7, V1, V2, V3, V4, V5, V6, V7, R1, R2, R3, R4, R5]
+    safety_cases: [qualified_metric, multi_value, period_conflict, no_answer]
+
+  - combo_id: C3_earnings_report
+    label: 财报深读与业绩点评
+    allow:
+      - period_alignment
+      - finskillops_financial_numeric_synthesis
+      - table_evidence_verifier
+      - source_conflict
+      - answer_coverage
+      - dianjin_corporate_banker_financial_report_analysis
+      - dianjin_investment_researcher_earnings_commentary_generator
+    hypothesis: C2提供经过核验的财务事实，财报分析负责三表和比率解释，点评生成器负责组织投资语言；预期提高研报覆盖度、逻辑和可读性，但不能以文字质量抵消数值错误。
+    primary_cases: [financial_report, earnings_commentary, multi_document_report]
+
+  - combo_id: C4_governance_boundary
+    label: 公司治理与主体边界
+    allow:
+      - finskillops_source_grounded_issuer_profile
+      - company_profile_boundary
+      - source_conflict
+      - dianjin_investment_researcher_announcement_analysis
+      - dianjin_investment_advisor_stock_shareholder_analysis
+    hypothesis: 主体画像先限定公司和截止日，公告解读处理任免事件，股东分析处理股权，冲突Skill处理新旧版本；预期提升CEO、股权、管理层变更准确率并降低跨公司污染。
+    primary_cases: [ceo, management_change, ownership, shareholder, cross_company, no_answer]
+
+  - combo_id: C5_full_investment_research
+    label: 完整多文档投研
+    allow:
+      - period_alignment
+      - finskillops_financial_numeric_synthesis
+      - table_evidence_verifier
+      - source_conflict
+      - finskillops_source_grounded_issuer_profile
+      - dianjin_corporate_banker_financial_report_analysis
+      - dianjin_investment_researcher_earnings_commentary_generator
+      - dianjin_investment_researcher_company_deep_analysis
+    hypothesis: 在8-Skill上限内串联主体边界、期间、数字、表格、冲突、三表分析、业绩点评与公司深研，验证是否形成超越单项Skills相加的完整研报增益。
+    primary_cases: [multi_document_report, valuation_report, company_deep_dive]
+
+evaluation:
+  common_metrics:
+    - atomic_fact_accuracy
+    - whole_question_accuracy
+    - citation_correctness
+    - citation_completeness
+    - retrieved_doc_id_boundary_rate
+    - cited_doc_id_boundary_rate
+    - answer_company_contamination_rate
+    - no_answer_refusal_accuracy
+    - skill_trigger_precision
+    - skill_trigger_recall
+    - skill_trigger_f1
+    - latency_p50
+    - latency_p95
+    - timeout_rate
+  report_metrics:
+    - financial_fact_accuracy
+    - period_and_actual_estimate_consistency
+    - citation_support
+    - multi_document_coverage
+    - investment_logic
+    - catalysts_and_risks
+    - structure_and_readability
+  anti_masking_rule: 研报主观质量与事实准确率分别报告；严重事实错误存在时不得用综合分宣称质量提升。

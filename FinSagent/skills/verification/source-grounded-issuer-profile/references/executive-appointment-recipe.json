@@ -1,0 +1,28 @@
+{
+  "body": {
+    "answer_mode": "evidence_checklist",
+    "claims": [
+      {
+        "claim_type": "chief_executive_identity",
+        "requires": [
+          "executive_appointment"
+        ]
+      }
+    ],
+    "evidence_policy": {
+      "concepts_all": [],
+      "concepts_any": [
+        "executive_appointment"
+      ],
+      "mode": "required"
+    },
+    "preserve_original_when_no_evidence": true,
+    "request_concepts": [
+      "leadership_profile"
+    ]
+  },
+  "capability": "source_family_profile",
+  "kind": "source_family_recipe",
+  "schema_version": "finskillops_portable_skill_recipe_v2",
+  "subject": "issuer"
+}

@@ -1,0 +1,33 @@
+schema_version: 1
+source_id: anthropic_financial_services
+repository: https://github.com/anthropics/financial-services
+visibility: public
+license: Apache-2.0
+consumer_policy: pinned_commit_downstream_adaptation
+runtime_output: skills/anthropic_finance
+current_observation:
+  ref: 38652224c10610fa52eee2acee3ac712dcff01f2
+  observed_at: "2026-08-14"
+selected_capabilities:
+  - three-statement-model
+  - dcf-model
+  - comps-analysis
+  - model-update
+  - audit-xls
+  - initiating-coverage
+  - ic-memo
+excluded_duplicates:
+  - repository: https://github.com/NousResearch/hermes-agent
+    reason: Finance modeling skills substantially overlap this canonical source.
+  - repository: https://github.com/ginlix-ai/LangAlpha
+    reason: Relevant skills declare derivation from this canonical source.
+adaptation_policy:
+  status: intent_routed_prompt_active
+  production_allowlist: true
+  external_tools_blocked: true
+  active_dataset_only: true
+  local_changes_required: true
+notes:
+  - Upstream instructions are not copied verbatim into the production prompt path.
+  - FinSagent adaptations replace upstream data acquisition with active-dataset evidence fusion.
+  - Artifact writes require a separately audited workbook or document executor.

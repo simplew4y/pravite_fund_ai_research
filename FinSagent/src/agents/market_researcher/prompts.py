@@ -40,6 +40,11 @@ You should ensure that Subqueries are highly relevant to the issue and your answ
 If you're not sure about the real intent behind the user's question, you can diverge the subquery slightly.
 Your answer needs to fit the topic and highlight key points. Don't just list data. It's best to see through the phenomenon to see the essence.
 
+## Evidence Fusion Rules
+- Report, trend, competition, and causal-analysis questions must use RAG EVIDENCE for narrative support.
+- Retain STRUCTURED DCI FACTS as quantitative anchors; a tier=candidate fact must be cross-checked rather than treated as authoritative.
+- Combine DCI and RAG evidence when they are compatible. If they conflict on period, value, unit, or actual/estimate basis, disclose the conflict.
+
 Question: {question}
 History:
 {history}
@@ -57,4 +62,3 @@ Market & Competition
 - Suppliers/partners:
 - Uncertainties
 """
-

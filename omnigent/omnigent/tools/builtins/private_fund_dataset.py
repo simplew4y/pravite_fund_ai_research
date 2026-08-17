@@ -13,6 +13,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from omnigent.tools.base import Tool, ToolContext
@@ -624,13 +625,16 @@ def _project_search_for_agent(
         "query": result.get("query"),
         "evidence": evidence,
         "evidence_count": len(evidence),
+        "evidence_fusion": result.get("evidence_fusion")
+        or {"enabled": False, "available": False},
         "answer_contract": result.get("answer_contract")
         or (
             "Answer only from returned evidence. Cite each material claim with "
             "markdown_citation when present, otherwise citation."
         ),
         "hint": (
-            "Compact evidence cards. For more text/table context call "
+            "When evidence_fusion.available is true, use its fused DCI + scoped RAG context. "
+            "Compact evidence cards provide citations; for more text/table context call "
             "private_fund_source_detail(evidence_id, mode='text'|'excel_window'|'meta'). "
             "Set include_metric_facts=true when you need Excel metric facts."
         ),
@@ -1509,6 +1513,10 @@ class _DatasetStore:
                 evidence = self._fallback_summary_chunks(conn, info)
         evidence.sort(key=lambda item: item.get("score", 0.0), reverse=True)
         limited = evidence[: _coerce_top_k(top_k)]
+        evidence_fusion = self._fetch_evidence_fusion(
+            query=query,
+            dataset_id=str(info["dataset_id"]),
+        )
         return {
             "dataset": {
                 key: info[key]
@@ -1523,12 +1531,68 @@ class _DatasetStore:
             "query": query,
             "expanded_terms": terms[:30],
             "evidence": limited,
+            "evidence_fusion": evidence_fusion,
             "answer_contract": (
-                "Answer only from returned evidence. Cite each material claim with "
-                "the evidence markdown_citation field when present, otherwise citation. "
-                "If evidence is insufficient, say so."
+                "Use evidence_fusion.context when evidence_fusion.available=true; it retains "
+                "structured DCI candidates and adds scoped semantic RAG when policy requires it. "
+                "Use the evidence cards for clickable source citations and verify material facts "
+                "with private_fund_source_detail. If evidence is insufficient, say so."
             ),
         }
+
+    @staticmethod
+    def _fetch_evidence_fusion(*, query: str, dataset_id: str) -> dict[str, Any]:
+        endpoint = os.environ.get("FINSAGENT_EVIDENCE_FUSION_URL", "").strip()
+        if not endpoint:
+            return {"enabled": False, "available": False}
+        try:
+            timeout = max(
+                1.0,
+                min(180.0, float(os.environ.get("FINSAGENT_EVIDENCE_FUSION_TIMEOUT", "90"))),
+            )
+        except (TypeError, ValueError):
+            timeout = 90.0
+        payload = json.dumps(
+            {
+                "query": query,
+                "original_question": query,
+                "dataset_id": dataset_id,
+                "agent": "general",
+            }
+        ).encode("utf-8")
+        request = Request(
+            endpoint,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=timeout) as response:  # noqa: S310 - admin-configured URL
+                raw = response.read(_MAX_SEARCH_PAYLOAD_CHARS * 4 + 1)
+            if len(raw) > _MAX_SEARCH_PAYLOAD_CHARS * 4:
+                raise ValueError("Evidence Fusion response exceeded the bounded payload size")
+            result = json.loads(raw.decode("utf-8"))
+            if not isinstance(result, dict):
+                raise ValueError("Evidence Fusion response must be an object")
+            return {
+                "enabled": True,
+                "available": True,
+                "context": str(result.get("context") or "")[:_MAX_SEARCH_PAYLOAD_CHARS],
+                "retrieval_scope": result.get("retrieval_scope", {}),
+                "retrieval_policy": result.get("retrieval_policy", {}),
+                "evidence_conflicts": result.get("evidence_conflicts", []),
+                "retrieval_trace": result.get("retrieval_trace", []),
+                "rag_executed": bool(result.get("rag_executed", False)),
+                "rag_succeeded": bool(result.get("rag_succeeded", False)),
+            }
+        except Exception as exc:
+            # The Omnigent tool remains useful when the optional semantic service
+            # is unavailable; local source-backed evidence is still returned.
+            return {
+                "enabled": True,
+                "available": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
 
     def _search_chunks(
         self,

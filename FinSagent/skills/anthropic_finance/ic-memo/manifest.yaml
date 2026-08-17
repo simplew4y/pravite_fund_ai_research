@@ -1,0 +1,49 @@
+schema_version: 1
+skill_id: anthropic_ic_memo
+version: 0.1.1-pf1
+name: PE IC Memo（FinSagent 适配）
+description: 基于尽调、模型、交易条款和回报分析生成 PE 投委会 Memo 规范。
+category: research_workflow
+type: prompt
+phase: pre_answer
+priority: 265
+status: experimental
+owner: finsagent-skillops
+agents: [company_researcher, market_researcher, quant, legal_risk]
+routing:
+  intents: [private_equity_ic_memo]
+  keywords: [IC Memo, 投委会memo, PE项目, LBO, 收购项目, 交易条款, IRR, MOIC]
+  negative_keywords: [股票多头, 股票空头, 二级市场]
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: true
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: anthropic-financial-services
+  upstream_repository: https://github.com/anthropics/financial-services
+  upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
+  upstream_path: plugins/vertical-plugins/private-equity/skills/ic-memo/SKILL.md
+  upstream_sha256: 62ab741880a946ab3e738b1f1514cb44b4e8b4f8b1d2e7b42c1e1ba5fcbb417f
+  adapter_version: 0.1.1-pf1
+  adaptation: explicit_pe_boundary_and_evidence_contract
+  external_tools_blocked: true
+permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
+public: false
+governance:
+  failure_types: [memo_contract_error]
+  trigger: PE、LBO 或收购项目投委会 Memo 请求
+  inputs: [question, diligence_evidence, financial_model, deal_terms, returns_analysis]
+  outputs: [ic_memo_spec, missing_inputs, consistency_checks]
+  eval_sets: [anthropic_finance_shadow_v1]
+  last_reviewed: "2026-08-14"
+  implementation_refs: [SKILL.md, manifest.yaml]
+  scope: Shadow-only PE investment committee memo instruction.
+  risks: [missing_deal_terms, inconsistent_returns, unsupported_recommendation, memo_type_confusion]
+  notes: Production prompt guidance is intent-routed; secondary-market memo remains downstream Omnigent skill.

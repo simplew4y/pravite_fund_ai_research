@@ -3,6 +3,12 @@
 
 # chroma, ts_chroma, bm25_index and table_chroma are required under `persist_directory`
 persist_directory: "/root/autodl-tmp/database_20250220"
+# Production/test serving should fail closed instead of letting Chroma create
+# empty collections when a path is missing or misspelled. Index-build scripts
+# do not instantiate RAGManager and are unaffected by these flags.
+index_readiness_required: true
+index_manifest_required: true
+allow_missing_bm25_index: false
 
 embeddings_model_name: "BAAI/bge-m3"
 embedding_backend: "vllm"
@@ -27,6 +33,20 @@ chunk_risk_lambda: 0.2
 
 gt_path: "/root/autodl-tmp/cjj/FinSagent_0212/test/gt/lotus_109_gt.json"
 collection_name: "lotus"
+# When enabled, a missing/invalid active-dataset collection DB fails closed
+# instead of silently searching the global vector index.
+retrieval_scope_required: true
+# evidence_fusion retains all DCI evidence, supplements low-confidence DCI with
+# scoped RAG, and forces RAG for report/analysis requests. Legacy values
+# dci_rag_cascade and dci_only remain available for rollback/diagnostics.
+retrieval_mode: evidence_fusion
+retrieval_control:
+  evidence_fusion:
+    max_metric_facts: 12
+    max_keyword_chunks: 6
+    max_table_chunks: 6
+    max_text_chunks: 8
+    max_chunk_chars: 4000
 retrieve_top_k: 10
 rerank_top_k: 5
 workers: 1
@@ -79,6 +99,55 @@ skill_repair_profile_enabled: true
 skill_repair_profile_allow_legacy_fallback: false
 skill_repair_coverage_enabled: true
 skill_repair_period_conflict_enabled: true
+
+# Discoverable Skill Runtime. "shadow" records routing/execution traces while
+# preserving the legacy repair chain; switch to "active" only after regression.
+skills:
+  runtime_enabled: false
+  # prompt_active injects allowlisted prompt skills while deterministic answer
+  # mutation hooks remain in shadow until separately validated.
+  execution_mode: prompt_active
+  expose_debug_trace: false
+  roots:
+    - ./skills
+  strict_discovery: false
+  # Explicit allowlisting remains the production gate; experimental adapters
+  # below are enabled only because they are named here and still run sandboxed.
+  promoted_only: false
+  allow:
+    - table_evidence_verifier
+    - company_profile_boundary
+    - answer_coverage
+    - source_conflict
+    - period_alignment
+    - finskillops_financial_numeric_synthesis
+    - finskillops_source_grounded_issuer_profile
+    - dianjin_corporate_banker_financial_report_analysis
+    - dianjin_investment_researcher_earnings_commentary_generator
+    - dianjin_investment_researcher_announcement_analysis
+    - dianjin_investment_researcher_company_deep_analysis
+    - dianjin_investment_researcher_company_one_page_analysis
+    - dianjin_investment_researcher_industry_deep_analysis
+    - dianjin_investment_researcher_industry_one_page_analysis
+    - dianjin_investment_researcher_institutional_research_outline
+    - anthropic_three_statement_model
+    - anthropic_dcf_model
+    - anthropic_comps_analysis
+    - anthropic_model_update
+    - anthropic_audit_xls
+    - anthropic_initiating_coverage
+    - anthropic_ic_memo
+  deny: []
+  combo_routing:
+    enabled: true
+    path: ./skills/combos.yaml
+    max_skills_per_combo: 8
+  execution:
+    max_skills_per_request: 8
+    default_timeout_seconds: 5
+    max_prompt_instruction_chars: 12000
+  security:
+    allow_python_skills: false
 # Optional company-scoped reconstructed table directory, e.g.:
 # reconstructed_table_dir: "/root/autodl-tmp/RAG_Agent_data/Zeekr/20250729/tables"
 
@@ -86,6 +155,15 @@ skill_repair_period_conflict_enabled: true
 # high-precision eval runs where hallucination suppression matters more than latency/cost.
 answer_self_check_enabled: false
 answer_self_check_max_chars: 12000
+
+# Prompt budgets for the 32K-context generation model. Retrieval output is
+# relevance-ordered, so truncation preserves the highest-priority prefix.
+rag_context_max_chars: 24000
+draft_evidence_max_chars: 24000
+draft_history_max_chars: 6000
+draft_tools_max_chars: 6000
+draft_summary_max_chars: 16000
+draft_skill_instruction_max_chars: 12000
 
 # Latest data cutoff for your databases (string, e.g., "2025-02-20" or "2025")
 data_latest_time: "2025-02-20"

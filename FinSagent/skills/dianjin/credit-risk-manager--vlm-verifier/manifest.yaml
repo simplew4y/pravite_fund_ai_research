@@ -1,0 +1,83 @@
+schema_version: 1
+skill_id: dianjin_credit_risk_manager_vlm_verifier
+version: 0.1.0
+name: 企业信贷反欺诈多模态交叉验证
+description: 企业信贷跨模态材料核验与分析技能。基于贷款申请材料(图片、文档、流水)与基准数据源,以视觉语言模型(VLM)解析图像证据,结合LLM对文本/结构化数据的分析,实现跨模态数据交叉比对,构建结构化检测点,通过迭代推理验证材料真实性,输出可解释的跨模态核验报告。触发词包括:"材料核验"、"反欺诈审查"、"交叉验证"、"材料真实性核验"、"VLM识别"、"多模态分析"、"欺诈检测"、"跨模态证据核查"。不适用于:个人信贷材料核验、非反欺诈场景(如行业分析/估值建模)、要求输出审批意见或违约概率预测。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- legal_risk
+- company_researcher
+routing:
+  keywords:
+  - 材料核验
+  - 反欺诈审查
+  - 交叉验证
+  - 材料真实性核验
+  - VLM识别
+  - 多模态分析
+  - 欺诈检测
+  - 跨模态证据核查
+  - 企业信贷反欺诈多模态交叉验证
+  - vlm verifier
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/credit-risk-manager/vlm-verifier/SKILL.md
+  upstream_sha256: accbeb8483e313b7ec5c0aa4137e76315e49d275d9988693e690918e789d6383
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/credit-risk-manager/vlm-verifier.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 材料核验, 反欺诈审查, 交叉验证, 材料真实性核验, VLM识别, 多模态分析, 欺诈检测, 跨模态证据核查, 企业信贷反欺诈多模态交叉验证,
+    vlm verifier'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/credit-risk-manager/vlm-verifier/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/credit-risk-manager/vlm-verifier/SKILL.md;
+    installed for shadow evaluation, not production activation.

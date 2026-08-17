@@ -1,16 +1,6 @@
 {
   "companies": [
     {
-      "canonical_name": "Zeekr Intelligent Technology Holding Limited",
-      "symbol": "ZK",
-      "cik": "0001954042"
-    },
-    {
-      "canonical_name": "Lotus Technology Inc.",
-      "symbol": "LOT",
-      "cik": "0001962746"
-    },
-    {
       "canonical_name": "NVIDIA Corporation",
       "symbol": "NVDA",
       "cik": "0001045810"

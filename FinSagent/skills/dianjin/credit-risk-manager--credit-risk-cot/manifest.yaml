@@ -1,0 +1,84 @@
+schema_version: 1
+skill_id: dianjin_credit_risk_manager_credit_risk_cot
+version: 0.1.0
+name: 目标角色 (Target Role)
+description: 对公授信客户信贷风险逆向思维链(CoT)生成技能。给定原始信贷数据和目标风险点,深度模拟资深风险经理的研判逻辑,构建逻辑严密、证据确凿的推理链,解释为何从该数据能推导出该风险结论。触发词包括:"风险推理链生成"、"思维链分析"、"CoT生成"、"帮我分析一下这个风险点"、"生成思维链"、"这个结论的数据支撑是什么"、"风险点数据支撑分析"。不适用于:无原始数据的纯猜测分析、个人信贷风险评估、非风险类的正向财务分析、贷后风险监测(请使用loan-risk-monitor)。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- legal_risk
+- company_researcher
+routing:
+  keywords:
+  - 风险推理链生成
+  - 思维链分析
+  - CoT生成
+  - 帮我分析一下这个风险点
+  - 生成思维链
+  - 这个结论的数据支撑是什么
+  - 风险点数据支撑分析
+  - 目标角色
+  - 目标角色 (Target Role)
+  - 财务分析
+  - credit risk cot
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/credit-risk-manager/credit-risk-cot/SKILL.md
+  upstream_sha256: bad8343fbc992f641e95b9503c1ad7a7e757a45b342d47284ea6ea8d7bbb2bbf
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/credit-risk-manager/credit-risk-cot.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 风险推理链生成, 思维链分析, CoT生成, 帮我分析一下这个风险点, 生成思维链, 这个结论的数据支撑是什么, 风险点数据支撑分析,
+    目标角色, 目标角色 (Target Role), 财务分析, credit risk cot'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/credit-risk-manager/credit-risk-cot/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/credit-risk-manager/credit-risk-cot/SKILL.md;
+    installed for shadow evaluation, not production activation.

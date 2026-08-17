@@ -1,0 +1,49 @@
+schema_version: 1
+skill_id: anthropic_three_statement_model
+version: 0.1.1-pf1
+name: 三表模型（FinSagent 适配）
+description: 基于 active_dataset 证据规划和审查三表联动模型。
+category: financial_modeling
+type: prompt
+phase: pre_answer
+priority: 210
+status: experimental
+owner: finsagent-skillops
+agents: [quant, company_researcher]
+routing:
+  intents: [financial_modeling]
+  keywords: [三表模型, 财务模型, 利润表预测, 资产负债表预测, 现金流预测, three statement]
+  negative_keywords: [简单问答]
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: true
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: anthropic-financial-services
+  upstream_repository: https://github.com/anthropics/financial-services
+  upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
+  upstream_path: plugins/vertical-plugins/financial-analysis/skills/3-statement-model/SKILL.md
+  upstream_sha256: bc2aeb423a3cc9e6ab973dcc4e3c6682427c751e20d8b3a0eec057eab67b1e83
+  adapter_version: 0.1.1-pf1
+  adaptation: rewritten_for_active_dataset_and_evidence_contract
+  external_tools_blocked: true
+permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
+public: false
+governance:
+  failure_types: [financial_modeling_error]
+  trigger: 三表模型或财务预测请求
+  inputs: [question, active_dataset, evidence_fusion_context]
+  outputs: [model_spec, assumption_register, formula_plan, validation_checks]
+  eval_sets: [anthropic_finance_shadow_v1]
+  last_reviewed: "2026-08-14"
+  implementation_refs: [SKILL.md, manifest.yaml]
+  scope: Shadow-only three-statement modeling instruction.
+  risks: [formula_breakage, period_mismatch, cross_company_contamination, unsupported_artifact_claim]
+  notes: Production prompt guidance is intent-routed; artifact execution still requires a separate audited executor.

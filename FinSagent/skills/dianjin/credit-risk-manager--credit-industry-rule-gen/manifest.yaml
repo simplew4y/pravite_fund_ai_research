@@ -1,0 +1,83 @@
+schema_version: 1
+skill_id: dianjin_credit_risk_manager_credit_industry_rule_gen
+version: 0.1.0
+name: 行业信贷风险审查规则生成
+description: 行业信贷风险审查规则生成技能。针对指定行业或产业,结合行业专业知识、产业链结构、政策环境,深度分析并生成结构化的信贷风险审查规则,涵盖基础事实核查类规则和深度推理类规则。触发词包括:"行业信贷规则生成"、"信贷审查项生成"、"行业风控规则"、"风险审批规则"、"行业审查标准"、"补充行业规则"、"industry
+  rule generation"。不适用于:企业个体信用评估、具体授信审批决策、财务数据分析、贷后风险监测。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- legal_risk
+- company_researcher
+routing:
+  keywords:
+  - 行业信贷规则生成
+  - 信贷审查项生成
+  - 行业风控规则
+  - 风险审批规则
+  - 行业审查标准
+  - 补充行业规则
+  - industry rule generation
+  - 行业信贷风险审查规则生成
+  - credit industry rule gen
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/credit-risk-manager/credit-industry-rule-gen/SKILL.md
+  upstream_sha256: 933c558d0ff2eb33b5efec80d9e3d3d6091f40b26a764eda10f7481d0bf0dc6c
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/credit-risk-manager/credit-industry-rule-gen.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 行业信贷规则生成, 信贷审查项生成, 行业风控规则, 风险审批规则, 行业审查标准, 补充行业规则, industry rule
+    generation, 行业信贷风险审查规则生成, credit industry rule gen'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/credit-risk-manager/credit-industry-rule-gen/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/credit-risk-manager/credit-industry-rule-gen/SKILL.md;
+    installed for shadow evaluation, not production activation.

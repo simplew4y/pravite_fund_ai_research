@@ -1,0 +1,88 @@
+schema_version: 1
+skill_id: dianjin_investment_advisor_fund_diagnosis
+version: 0.1.0
+name: 公募基金单基金综合诊断
+description: 公募基金单基金综合诊断能力。适用于用户提出"这只基金怎么样""适不适合继续持有""风险和收益特征如何""帮我看看这只基金""XX基金好不好""XX基金值得买吗""XX基金最近表现如何""帮我分析一下XX基金"等泛化诊断问题时，返回结构化的Markdown诊断报告。
+  当用户询问某只具体基金的整体评价、持有建议、风险收益特征、基金经理能力、持仓结构、业绩表现等综合性问题时必须使用此技能。 即使用户没有明确说"诊断""分析"，只要涉及单基金的综合性评价就应触发。 覆盖场景：基金评价、持有建议、风险评估、业绩解读、经理分析、持仓解读、基金体检等。
+  每次仅分析一只基金，不处理多基金对比与量化建模。 不适用于：多基金对比、基金筛选、具体指标计算、回测建模等场景（这些场景请使用其他对应技能）。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- quant
+- general
+routing:
+  keywords:
+  - 这只基金怎么样
+  - 适不适合继续持有
+  - 风险和收益特征如何
+  - 帮我看看这只基金
+  - XX基金好不好
+  - XX基金值得买吗
+  - XX基金最近表现如何
+  - 帮我分析一下XX基金
+  - 诊断
+  - 分析
+  - 公募基金单基金综合诊断
+  - fund diagnosis
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-advisor/fund-diagnosis/SKILL.md
+  upstream_sha256: 816f83083c162a844ad7d2fd66aeaec7db9f228155ac2b1959b5815d5f52ef22
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-advisor/fund-diagnosis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 这只基金怎么样, 适不适合继续持有, 风险和收益特征如何, 帮我看看这只基金, XX基金好不好, XX基金值得买吗, XX基金最近表现如何,
+    帮我分析一下XX基金, 诊断, 分析, 公募基金单基金综合诊断, fund diagnosis'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-advisor/fund-diagnosis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-advisor/fund-diagnosis/SKILL.md;
+    installed for shadow evaluation, not production activation.

@@ -1,0 +1,33 @@
+schema_version: 1
+skill_id: financial_formula_verifier
+version: 0.1.0
+name: Deterministic Financial Formula Verifier
+description: Recompute common financial formulas from same-period scoped metric facts and repair arithmetic or unit conversion errors.
+category: finance
+type: builtin
+phase: post_answer
+priority: 90
+status: promoted
+owner: finsagent
+agents: [quant, general]
+routing:
+  keywords: [营业成本, 主营业务成本, cost of revenue, 自由现金流, trailing pe, PB市净率, 市净率, BVPS, 总市值, 市值]
+evidence_contract:
+  company_scope_required: true
+  source_evidence_required: true
+  allow_cross_company: false
+implementation:
+  entrypoint: financial_formula_verifier
+permissions:
+  network: false
+  filesystem_write: false
+public: false
+governance:
+  scope: Deterministically normalizes cost sign conventions and verifies FCF, PE, PB, and market-cap formulas only when same-period facts or operands are present.
+  failure_types: [formula_error, unit_conversion_error, period_mismatch]
+  trigger: A scoped issuer question asks for operating cost normalization or one of the supported derived financial formulas.
+  inputs: [question, generated_answer, metric_facts]
+  outputs: [repaired_answer, formula, variables, source_refs, skill_trace]
+  risks: [No repair is applied when operands or period alignment are incomplete.]
+  eval_sets: [formal_90_v2]
+  last_reviewed: "2026-08-11"

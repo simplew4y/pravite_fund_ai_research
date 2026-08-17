@@ -4,6 +4,7 @@ from typing import Any, Dict, List, TypedDict
 from langgraph.graph import StateGraph
 
 from agents.shared import (
+    apply_retrieval_skills,
     draft_answer,
     execute_planned_tool_calls,
     plan_tool_calls,
@@ -15,6 +16,7 @@ from agents.market_researcher.prompts import REWRITE_PROMPT, ANSWER_PROMPT
 
 class MarketResearcherState(TypedDict, total=False):
     original_query: str
+    user_query_raw: str
     chat_history: List[Dict[str, str]]
     session_manager: Any
     rag: Any
@@ -29,6 +31,8 @@ class MarketResearcherState(TypedDict, total=False):
     market_evidence: List[Any]
     market_tool_results: Dict[str, Any]
     market_draft_answer: str
+    skill_runtime: Any
+    market_skill_traces: List[Dict[str, Any]]
 
 
 def build_market_researcher_subgraph() -> Any:
@@ -75,6 +79,7 @@ def build_market_researcher_subgraph() -> Any:
             log_dir=state.get("log_dir", ""),
             rag=state.get("rag"),
             enable_query_decompose=state.get("enable_query_decompose"),
+            skill_context=state.get("skill_context"),
         )
         return {"market_sub_queries": sub_queries}
 
@@ -90,8 +95,14 @@ def build_market_researcher_subgraph() -> Any:
                 "market_researcher",
                 run_id=state.get("run_id", ""),
                 log_dir=state.get("log_dir", ""),
+                scope_query=state.get("user_query_raw") or state["original_query"],
+                scope_history=state.get("chat_history", []),
             )
-            return {"market_evidence": evidences}
+            evidences, traces = await apply_retrieval_skills(
+                runtime=state.get("skill_runtime"), question=state["original_query"],
+                agent="market_researcher", evidences=evidences, request_id=state.get("run_id", ""),
+            )
+            return {"market_evidence": evidences, "market_skill_traces": traces}
 
         evidences = await retrieve_evidence(
             rag,
@@ -100,8 +111,14 @@ def build_market_researcher_subgraph() -> Any:
             "market_researcher",
             run_id=state.get("run_id", ""),
             log_dir=state.get("log_dir", ""),
+            scope_query=state.get("user_query_raw") or state["original_query"],
+            scope_history=state.get("chat_history", []),
         )
-        return {"market_evidence": evidences}
+        evidences, traces = await apply_retrieval_skills(
+            runtime=state.get("skill_runtime"), question=state["original_query"],
+            agent="market_researcher", evidences=evidences, request_id=state.get("run_id", ""),
+        )
+        return {"market_evidence": evidences, "market_skill_traces": traces}
 
     async def draft_node(state: MarketResearcherState) -> Dict:
         evidences = state.get("market_evidence", [])
@@ -132,6 +149,7 @@ def build_market_researcher_subgraph() -> Any:
             "draft_answer": state.get("market_draft_answer", ""),
             "assumptions": [],
             "risks": [],
+            "skill_traces": state.get("market_skill_traces", []),
         }
         return {"agent_outputs": outputs}
 

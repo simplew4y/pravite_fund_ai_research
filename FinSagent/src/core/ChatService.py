@@ -10,6 +10,7 @@ ChatService - 对话服务
 
 import asyncio
 import logging
+import re
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -33,6 +34,7 @@ from agentic_search_loop import (
 )
 from utils.vllm_reranker import VLLMReranker
 from utils.session_history_store import session_history_store_from_config
+from skills_runtime import SkillRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +134,8 @@ class ChatService:
         )
 
         # Workflow (单例,所有 session 共享)
+        skills_root = Path(__file__).resolve().parents[2] / "skills"
+        self.skill_runtime = SkillRuntime.from_config(config, default_root=skills_root)
         self.workflow = build_agentic_rag_workflow()
         self.general_graph = build_general_subgraph()
 
@@ -139,6 +143,15 @@ class ChatService:
         self._agentic_search_corpus: Optional[CorpusStore] = None
 
         logger.info("ChatService initialized successfully")
+
+    @staticmethod
+    def _clean_model_output(value: Any) -> str:
+        """Never expose model reasoning tags/preambles at API boundaries."""
+        text = str(value or "").strip()
+        if "</think>" in text:
+            text = text.rsplit("</think>", 1)[-1]
+        text = re.sub(r"<think>.*?(?:</think>|$)", "", text, flags=re.DOTALL | re.IGNORECASE)
+        return text.strip()
 
     def get_or_create_session(self, session_id: str) -> SessionManager:
         """
@@ -276,6 +289,8 @@ class ChatService:
             "rag": self.rag,
             "session_manager": session_manager,
             "config": self.config,
+            "skill_runtime": self.skill_runtime,
+            "skill_traces": [],
             "debug_stop_after_retrieval": False,
             "final_answer": "",
             "is_complete": False,
@@ -545,7 +560,7 @@ class ChatService:
                     "rewritten_query": node_output.get("original_query", initial_state.get("original_query", "")),
                     "enable_query_decompose": node_output.get("enable_query_decompose", False),
                     "off_topic": node_output.get("off_topic", False),
-                    "final_answer": node_output.get("final_answer", ""),
+                    "final_answer": self._clean_model_output(node_output.get("final_answer", "")),
                 },
             }
         if node_name == "agents_parallel":
@@ -559,7 +574,7 @@ class ChatService:
             return {
                 "event": "synthesis",
                 "data": {
-                    "final_answer": node_output.get("final_answer", ""),
+                    "final_answer": self._clean_model_output(node_output.get("final_answer", "")),
                 },
             }
         return {
@@ -568,6 +583,7 @@ class ChatService:
         }
 
     def _build_complete_event(self, final_answer: str, session_id: str) -> Dict[str, Any]:
+        final_answer = self._clean_model_output(final_answer)
         return {
             "event": "complete",
             "data": {
@@ -606,7 +622,7 @@ class ChatService:
             # 执行 Workflow
             final_state = await self.workflow.ainvoke(initial_state)
 
-            final_answer = final_state["final_answer"]
+            final_answer = self._clean_model_output(final_state["final_answer"])
             activated_agents = final_state.get("selected_agents", [])
             retrieved_chunks = extract_retrieved_chunks(final_state)
             # 更新对话历史
@@ -694,6 +710,7 @@ class ChatService:
                     "chat_history": session_manager.get_chat_history_copy(),
                     "session_manager": session_manager,
                     "rag": self.rag,
+                    "skill_runtime": self.skill_runtime,
                     "run_id": "",
                     "log_dir": "",
                     "enable_query_decompose": bool(self.config.get("enable_ctx_decomp", False)),
@@ -794,6 +811,7 @@ class ChatService:
                             if final_data
                             else final_answer
                         )
+                    final_answer = self._clean_model_output(final_answer)
                     phase1_draft_box["draft"] = final_answer
                     logger.info(f"[Session {session_id}] Agentic Search Phase 1 done, draft_len={len(final_answer)}")
                     await _emit(
@@ -856,7 +874,7 @@ class ChatService:
                                     "final_answer": node_output.get("final_answer", ""),
                                 })
                                 if off_topic:
-                                    final_answer = node_output.get("final_answer", "")
+                                    final_answer = self._clean_model_output(node_output.get("final_answer", ""))
                                     phase2_off_topic = True
                                     if phase1_task and not phase1_task.done():
                                         phase1_task.cancel()
@@ -881,7 +899,7 @@ class ChatService:
                                 await _emit(ev["event"], ev["data"])
 
                             elif node_name == "synthesis":
-                                final_answer = node_output.get("final_answer", "")
+                                final_answer = self._clean_model_output(node_output.get("final_answer", ""))
                                 final_state.update(node_output)
                                 ev = self._build_workflow_stream_event(node_name, node_output, initial_state)
                                 await _emit(ev["event"], ev["data"])
@@ -984,6 +1002,7 @@ class ChatService:
                         "chat_history": session_manager.get_chat_history_copy(),
                         "session_manager": session_manager,
                         "rag": self.rag,
+                        "skill_runtime": self.skill_runtime,
                         "run_id": "",
                         "log_dir": "",
                         "enable_query_decompose": bool(self.config.get("enable_ctx_decomp", False)),
@@ -1005,9 +1024,13 @@ class ChatService:
             async def _run_phase2() -> Dict[str, Any]:
                 initial_state = {
                     "original_query": question,
+                    "user_query_raw": question,
                     "chat_history": session_manager.get_chat_history_copy(),
                     "rag": self.rag,
+                    "skill_runtime": self.skill_runtime,
                     "session_manager": session_manager,
+                    "config": self.config,
+                    "skill_traces": [],
                     "draft_holder": draft_holder,
                     "selected_agents": [],
                     "routing_reason": "",
@@ -1038,7 +1061,7 @@ class ChatService:
             final_state = await phase2_task
             comprehensive_time = time.time() - t0
 
-            final_answer = final_state["final_answer"]
+            final_answer = self._clean_model_output(final_state["final_answer"])
             selected_agents = final_state.get("selected_agents", [])
 
             if phase1_agent_outputs:
@@ -1125,6 +1148,8 @@ class ChatService:
                 "rag": self.rag,
                 "session_manager": session_manager,
                 "config": self.config,
+                "skill_runtime": self.skill_runtime,
+                "skill_traces": [],
                 "debug_stop_after_retrieval": stop_after_retrieval,
                 "selected_agents": [],
                 "routing_reason": "",
@@ -1148,10 +1173,27 @@ class ChatService:
             final_state = await self.workflow.ainvoke(initial_state)
             total_time = round(time.time() - t0, 3)
 
-            final_answer = final_state.get("final_answer", "")
+            final_answer = self._clean_model_output(final_state.get("final_answer", ""))
             activated_agents = final_state.get("selected_agents", [])
             retrieved_chunks = extract_retrieved_chunks(final_state)
             pre_rerank_candidates = final_state.get("merged_pre_rerank_candidates", [])
+            retrieval_decisions = []
+            for agent_name, output in (final_state.get("agent_outputs", {}) or {}).items():
+                if not isinstance(output, dict):
+                    continue
+                for evidence in output.get("evidence", []) or []:
+                    if not isinstance(evidence, dict):
+                        continue
+                    retrieval_decisions.append({
+                        "agent": agent_name,
+                        "query": evidence.get("query", ""),
+                        "policy": evidence.get("retrieval_policy", {}),
+                        "retrieval_scope": evidence.get("retrieval_scope", {}),
+                        "rag_executed": bool(evidence.get("rag_executed", False)),
+                        "rag_succeeded": bool(evidence.get("rag_succeeded", False)),
+                        "conflicts": evidence.get("evidence_conflicts", []),
+                        "trace": evidence.get("retrieval_trace", []),
+                    })
 
             if not stop_after_retrieval:
                 session_manager.add_exchange(question, final_answer)
@@ -1168,6 +1210,8 @@ class ChatService:
                 "pre_rerank_candidates": pre_rerank_candidates,
                 "pre_rerank_candidate_count": len(pre_rerank_candidates),
                 "agent_outputs": final_state.get("agent_outputs", {}),
+                "retrieval_decisions": retrieval_decisions,
+                "skill_traces": final_state.get("skill_traces", []),
                 "time_to_first_response": final_state.get("time_to_first_response", 0.0),
                 "total_time": total_time,
             }
@@ -1184,6 +1228,7 @@ class ChatService:
                 "pre_rerank_candidates": [],
                 "pre_rerank_candidate_count": 0,
                 "agent_outputs": {},
+                "retrieval_decisions": [],
                 "error": str(e),
             }
         finally:
@@ -1206,7 +1251,7 @@ class ChatService:
                 session_manager=session_manager,
                 rag=self.rag,
             )
-            final_answer = result.get("answer", "")
+            final_answer = self._clean_model_output(result.get("answer", ""))
             session_manager.add_exchange(question, final_answer)
             chat_history = session_manager.get_chat_history_string()
 
@@ -1268,7 +1313,7 @@ class ChatService:
                 session_manager=session_manager,
                 rag=self.rag,
             )
-            final_answer = result.get("answer", "")
+            final_answer = self._clean_model_output(result.get("answer", ""))
             session_manager.add_exchange(question, final_answer)
             chat_history = session_manager.get_chat_history_string()
 
@@ -1372,6 +1417,7 @@ class ChatService:
 
             await workflow_task
 
+            final_answer = self._clean_model_output(final_answer)
             if final_answer:
                 session_manager.add_exchange(question, final_answer)
                 await self._persist_session_history_turn(

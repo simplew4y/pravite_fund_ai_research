@@ -1,0 +1,37 @@
+schema_version: 1
+skill_id: company_profile_boundary
+version: 0.1.0
+name: Company Profile Boundary Repair
+description: Repair stable corporate profile and ownership boundary answers.
+category: verification
+type: builtin
+phase: post_answer
+priority: 200
+status: promoted
+owner: myz
+agents: [company_researcher, general]
+routing:
+  keywords: [总部, 控股, 股权, 所有权, 业务范围, headquarters, ownership, holding]
+evidence_contract:
+  company_scope_required: true
+  source_evidence_required: true
+  allow_cross_company: false
+implementation:
+  entrypoint: profile_fact_repair
+permissions:
+  network: false
+  filesystem_write: false
+public: true
+governance:
+  scope: Handles reviewed corporate-profile facts such as headquarters, ownership, and business boundaries.
+  failure_types: [profile_boundary_error, wrong_source, answer_coverage_failure]
+  trigger: Question asks for a stable company-profile or corporate-structure fact.
+  inputs: [question, generated_answer]
+  outputs: [repaired_answer, profile_fact_id, cutoff, skill_trace]
+  risks:
+    - Company-specific facts can overfit and must remain explicitly bounded.
+    - Cross-company use requires separate validation.
+  eval_sets: [zeekr_holdout20, blind_holdout20_validation]
+  last_reviewed: "2026-06-05"
+  implementation_refs: [src/utils/profile_fact_repair.py]
+  notes: Move reusable facts into governed company-profile metadata over time.

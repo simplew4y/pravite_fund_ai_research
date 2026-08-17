@@ -59,6 +59,27 @@ def test_financial_report_uses_controlled_type_and_project_company() -> None:
     assert result.company_method == "project_company_match"
 
 
+def test_structured_research_filename_is_authoritative_for_subject_company() -> None:
+    preview = classifier.DocumentPreview(
+        filename="1783838833584_Formula+One+Group_FWONA.OQ_2025_Jun_11.xlsx",
+        file_type="xlsx",
+        text="Deutsche Bank Securities Inc\nFinancial model and valuation",
+    )
+
+    result = classifier.classify_document(preview)
+
+    assert result.company_name == "Formula One Group"
+    assert result.company_ticker == "FWONA.OQ"
+    assert result.company_method == "structured_filename"
+    assert result.company_confidence == 0.99
+
+
+def test_structured_research_filename_supports_ticker_with_underscore() -> None:
+    assert classifier._company_from_structured_filename(
+        "1783838881072_Porsche+AG_P911_p.DE_2025_Jul_30.xlsx"
+    ) == ("Porsche AG", "P911_p.DE")
+
+
 def test_meeting_minutes_are_not_reduced_to_pdf_file_type() -> None:
     preview = classifier.DocumentPreview(
         filename="20260701交流纪要.pdf",

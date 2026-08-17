@@ -1,0 +1,49 @@
+schema_version: 1
+skill_id: anthropic_initiating_coverage
+version: 0.1.1-pf1
+name: 首次覆盖研究（FinSagent 适配）
+description: 编排研究、模型、估值、图表和报告交付的分阶段工作流。
+category: research_workflow
+type: prompt
+phase: pre_answer
+priority: 260
+status: experimental
+owner: finsagent-skillops
+agents: [company_researcher, market_researcher, quant, legal_risk]
+routing:
+  intents: [deep_research_report]
+  keywords: [首次覆盖, 深度研报, 完整研究报告, initiating coverage]
+  negative_keywords: [简单问答, 一页纸]
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: true
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: anthropic-financial-services
+  upstream_repository: https://github.com/anthropics/financial-services
+  upstream_ref: 38652224c10610fa52eee2acee3ac712dcff01f2
+  upstream_path: plugins/vertical-plugins/equity-research/skills/initiating-coverage/SKILL.md
+  upstream_sha256: 9d21c6e460bc3692e19eeda6dc6d425a704b21243bd28af7f13b6f1dd888ed63
+  adapter_version: 0.1.1-pf1
+  adaptation: converted_single_task_prompt_into_dependency_aware_plan
+  external_tools_blocked: true
+permissions: {network: false, filesystem_read: false, filesystem_write: false, external_tools: []}
+public: false
+governance:
+  failure_types: [workflow_prerequisite_error]
+  trigger: 首次覆盖或完整深度研报请求
+  inputs: [question, active_dataset, artifact_manifest]
+  outputs: [research_plan, dependency_graph, quality_gates]
+  eval_sets: [anthropic_finance_shadow_v1]
+  last_reviewed: "2026-08-14"
+  implementation_refs: [SKILL.md, manifest.yaml]
+  scope: Shadow-only initiating coverage orchestration instruction.
+  risks: [missing_prerequisite, unsupported_artifact_claim, citation_drift, cross_section_numeric_mismatch]
+  notes: Production prompt guidance is intent-routed; delivery claims require real artifact executors.

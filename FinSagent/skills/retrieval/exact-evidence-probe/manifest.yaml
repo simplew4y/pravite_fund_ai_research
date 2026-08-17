@@ -1,0 +1,36 @@
+schema_version: 1
+skill_id: exact_evidence_probe
+version: 0.1.0
+name: Exact Evidence Probe
+description: Provide prompt guidance for auditable lexical evidence probing.
+category: retrieval
+type: prompt
+phase: pre_retrieval
+priority: 100
+status: experimental
+owner: myz
+agents: []
+routing:
+  intents: [exact_evidence]
+evidence_contract:
+  company_scope_required: true
+  source_evidence_required: false
+implementation:
+  kind: prompt
+permissions:
+  network: false
+  filesystem_write: false
+public: false
+governance:
+  scope: Adds auditable lexical-probe instructions for concrete terms and dates.
+  failure_types: [retrieval_miss, metric_alias_error, source_conflict]
+  trigger: Question contains concrete metrics, dates, product names, or entity names.
+  inputs: [question, filing_roots]
+  outputs: [exact_terms, evidence_hits, matched_terms, snippets]
+  risks:
+    - Lexical hits are noisy and must not answer directly.
+    - Exact matching misses paraphrases without pattern expansion.
+  eval_sets: [exact_evidence_preview_smoke_20260604, lotus_mini10_generalization_20260604]
+  last_reviewed: "2026-06-05"
+  implementation_refs: [src/utils/exact_evidence_preview.py]
+  notes: Evidence preview and audit aid, not a standalone answerer.

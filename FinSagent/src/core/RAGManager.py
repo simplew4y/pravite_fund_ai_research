@@ -11,6 +11,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
 from utils.EnsembleRetriever import EnsembleRetriever
+from utils.index_readiness import IndexNotReadyError, validate_index_bundle
 from utils.vllm_embeddings import VLLMEmbeddings
 import GPUtil
 
@@ -41,11 +42,40 @@ class RAGManager:
         pass
 
     def _initialize(self, config: Dict, collections: Dict[str, int]):
+        # These used to remain as mutable class-level containers across hot
+        # reloads, causing retrievers from an old collection to leak into the
+        # next active dataset.
+        self._collections = {}
+        self._retrievers = []
         self._config = config
         self.embeddings_model_name = config['embeddings_model_name']
         self.embedding_backend = str(config.get("embedding_backend", "huggingface")).lower()
         self.batch_size = 5
         self.embeddings = None
+
+        # Validate before loading embeddings and, most importantly, before a
+        # LangChain Chroma constructor can get-or-create an empty collection.
+        if config.get("index_readiness_required", False) and collections:
+            persist = os.path.abspath(config["persist_directory"])
+            source_db = config.get("canonical_database")
+            if not source_db:
+                source_db = os.path.join(os.path.dirname(persist), "meta", "collection.sqlite3")
+            for collection, top_k in collections.items():
+                if top_k <= 0:
+                    continue
+                try:
+                    validate_index_bundle(
+                        persist,
+                        collection,
+                        source_db=source_db,
+                        require_manifest=config.get("index_manifest_required", True),
+                    ).require_ready()
+                except IndexNotReadyError as exc:
+                    raise RuntimeError(
+                        f"{exc}. Rebuild once with: python data_pipeline/"
+                        f"rebuild_private_fund_indexes.py --dataset-root "
+                        f"{os.path.dirname(persist)!r}"
+                    ) from exc
 
         self._embedding_lock = None if self.embedding_backend == "vllm" else threading.Lock()
         if self._embedding_lock is not None:
@@ -68,6 +98,9 @@ class RAGManager:
                     timeout_seconds=float(config.get("embedding_timeout_seconds", 60)),
                     batch_size=int(config.get("embedding_batch_size", 32)),
                 )
+            elif self.embedding_backend == "local":
+                from utils.local_embeddings import LocalEmbeddings
+                self.embeddings = LocalEmbeddings()
             else:
                 self.embeddings = HuggingFaceEmbeddings(model_name=self.embeddings_model_name)
             logger.info("Embedding model loaded successfully.")
@@ -89,7 +122,7 @@ class RAGManager:
                 self.create_collection(collection)
                 self._retrievers.append(self.create_retriever(top_k, collection, retriever_type="ensemble"))
 
-        
+
     def create_collection(self, collection_name: str, load_table_chroma: bool = True):
         """Create a new collection with all supported retrievers"""
         if self.embeddings is None:
@@ -105,14 +138,14 @@ class RAGManager:
                 persist_directory=os.path.join(self._config['persist_directory'], "chroma"),
                 relevance_score_fn="cosine" # l2, ip, cosine
             )
-            
+
             ts_chroma = Chroma(
                 collection_name=collection_name,
                 embedding_function=self.embeddings,
                 persist_directory=os.path.join(self._config['persist_directory'], "ts_chroma"),
                 relevance_score_fn="cosine" # l2, ip, cosine
             )
-            
+
             table_chroma = None
             if load_table_chroma:
                 try:
@@ -126,7 +159,7 @@ class RAGManager:
                 except Exception as e:
                     logger.warning(f"Failed to load table_chroma for {collection_name}: {e}. Table retrieval will be disabled.")
                     table_chroma = None
-            
+
             self._collections[collection_name] = (chroma, ts_chroma, table_chroma)
             import torch
             if torch.cuda.is_available() and torch.cuda.is_initialized():
@@ -148,11 +181,11 @@ class RAGManager:
             for page_content, metadata in zip(chroma_docs['documents'], chroma_docs['metadatas'])
         ]
         return documents
-    
-    def create_retriever(self, k: int, collection_name: str, retriever_type: str = "chroma", 
+
+    def create_retriever(self, k: int, collection_name: str, retriever_type: str = "chroma",
                         table_k: int = 3):
         """Create a specific retriever for a collection
-        
+
         Args:
             k: Number of chunks to retrieve
             collection_name: Name of the collection
@@ -161,7 +194,7 @@ class RAGManager:
         """
         if collection_name not in self._collections:
             raise ValueError(f"Collection {collection_name} does not exist")
-            
+
         bm25_dir = os.path.join(self._config['persist_directory'], "bm25_index", collection_name)
 
         chroma, ts_chroma, table_chroma = self._collections[collection_name]
@@ -187,7 +220,7 @@ class RAGManager:
                                     pageindex_page_window=self._config.get("pageindex_page_window", 0),
                                     pageindex_include_node_summary=self._config.get("pageindex_include_node_summary", False),
                                     pageindex_recency_boost=self._config.get("pageindex_recency_boost", 0.0))
-            
+
         return retriver
 
 
@@ -196,7 +229,7 @@ def main():
     config_path = "../../config/config_test.yaml"
     with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
-    
+
     questions = [
         "Are there any new releases in 2023?",
         "Can you tell me how Lotus's approach to vehicle design evolved between 2000 and 2020?",
@@ -204,7 +237,7 @@ def main():
         "Can you explain the lightweight design philosophy of Lotus?" ,
         "Which Lotus models are best known for their driving performance on the track?" ,
     ]
-    
+
     rag = RAGManager(config)
     log_gpu_usage('RAGManager init')
     #rag.create_collection("lotus")
@@ -221,7 +254,7 @@ def main():
         for i, doc in enumerate(documents):
             print(f"{i}: {doc}")
         print("")
-        
+
 
 def log_gpu_usage(event_name):
     gpus = GPUtil.getGPUs()

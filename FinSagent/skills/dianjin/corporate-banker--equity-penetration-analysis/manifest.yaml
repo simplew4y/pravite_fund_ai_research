@@ -1,0 +1,88 @@
+schema_version: 1
+skill_id: dianjin_corporate_banker_equity_penetration_analysis
+version: 0.1.0
+name: 股权穿透图及关联方分析(Equity Penetration Analysis)
+description: 尽调报告-股权穿透图及关联方分析技能。对目标企业进行股权架构逐层穿透至自然人或终极控制人,绘制Mermaid股权架构图,认定实际控制人及一致行动人,识别法定与隐性关联方,分析关联交易公允性与利益输送风险,输出综合评估报告。触发词包括:"股权穿透"、"equity
+  penetration"、"关联方分析"、"实控人认定"、"关联关系图谱"、"集团架构穿透"、"关联担保网络"、"股权穿透分析"。不适用于:非股权类数据分析、市场调研、行业宏观分析、简单工商信息查询、无具体企业背景的泛泛咨询、个人信贷股权穿透。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- company_researcher
+- legal_risk
+- general
+routing:
+  keywords:
+  - 股权穿透
+  - 关联方分析
+  - 实际控制人
+  - equity penetration
+  - 实控人认定
+  - 关联关系图谱
+  - 集团架构穿透
+  - 关联担保网络
+  - 股权穿透分析
+  - 股权穿透图及关联方分析
+  - 股权穿透图及关联方分析(Equity Penetration Analysis)
+  - 关联方
+  - equity penetration analysis
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/corporate-banker/equity-penetration-analysis/SKILL.md
+  upstream_sha256: 3c90b4f2e4f22f15a7324247d361076e23133bdc28fb0cc119dc43cc2c35d5e9
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/corporate-banker/equity-penetration-analysis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 股权穿透, 关联方分析, 实际控制人, equity penetration, 实控人认定, 关联关系图谱, 集团架构穿透, 关联担保网络,
+    股权穿透分析, 股权穿透图及关联方分析, 股权穿透图及关联方分析(Equity Penetration Analysis), 关联方, equity penetration analysis'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/corporate-banker/equity-penetration-analysis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/corporate-banker/equity-penetration-analysis/SKILL.md;
+    installed for shadow evaluation, not production activation.

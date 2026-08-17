@@ -1,0 +1,32 @@
+{
+  "applicability_conditions": [
+    "The request concerns <issuer> and a financial value for <period>.",
+    "Source evidence may contain <number> values."
+  ],
+  "capability_summary": "Extract and synthesize a source-grounded financial value.",
+  "consumer_note": "Translate this recipe for the downstream agent and validate it before use.",
+  "evidence_requirements": [
+    "Use only provided source evidence.",
+    "Do not infer a <number> value without supporting evidence."
+  ],
+  "input_roles": [
+    "metric",
+    "period",
+    "source_evidence"
+  ],
+  "kind": "portable_instruction_recipe",
+  "ordered_steps": [
+    "Identify the metric and <period> requested for <issuer>.",
+    "Acquire each role from source evidence without copying extraction syntax.",
+    "Validate the extracted <number> value and preserve its unit.",
+    "Return the value, unit, and source reference."
+  ],
+  "origin_family": "numeric_request",
+  "output_roles": [
+    "value",
+    "unit",
+    "source_reference"
+  ],
+  "schema_version": "finskillops_portable_skill_recipe_v2",
+  "subject": "issuer"
+}

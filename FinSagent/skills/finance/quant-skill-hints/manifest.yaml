@@ -1,0 +1,37 @@
+schema_version: 1
+skill_id: quant_skill_hints
+version: 0.1.0
+name: Financial Quant Skill Hints
+description: Select existing deterministic finance calculation hints.
+category: finance
+type: builtin
+phase: calculation
+priority: 100
+status: experimental
+owner: myz
+agents: [quant]
+routing:
+  keywords: [同比, 环比, 毛利率, 百万, 十亿, 亿元, yoy, qoq, gross margin, million, billion]
+evidence_contract:
+  company_scope_required: true
+  source_evidence_required: true
+  allow_cross_company: false
+implementation:
+  entrypoint: quant_skill_hints
+permissions:
+  network: false
+  filesystem_write: false
+public: false
+governance:
+  scope: Provides hints for metric interpretation, units, and table-derived calculations.
+  failure_types: [metric_alias_error, table_alignment_error]
+  trigger: Question asks for metrics, percentage points, margin changes, or period comparisons.
+  inputs: [question]
+  outputs: [metric_hints, unit_hints, calculation_hints]
+  risks:
+    - Hints must guide verification rather than replace evidence-backed calculation.
+    - Ambiguous metric names require filing-specific anchors.
+  eval_sets: [quant_skill_integration_v1, zeekr_small30]
+  last_reviewed: "2026-06-05"
+  implementation_refs: [src/utils/quant_skill_hints.py]
+  notes: Bridge to future metric-alias and formula skills.

@@ -22,6 +22,8 @@ from utils.chunk_utils import dedupe_chunks, sanitize_chunks_for_output
 from utils.chunk_risk_calibration import ChunkRiskCalibrator
 from utils.evidence_rescue_scorer import EvidenceRescueScorer
 from utils.profiler import profiler
+from utils.prompt_budget import truncate_text
+from utils.retrieval_scope import filter_chunks_to_scope
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +175,8 @@ class RAG:
         query_time: datetime,
         rerank_topk: int | None = None,
         table_topk: int | None = None,
+        agent: str = "general",
+        allowed_source_doc_ids: List[str] | None = None,
     ) -> Dict[str, Any]:
         """
         完整的 RAG 检索流程
@@ -195,7 +199,17 @@ class RAG:
         retriever = self.rag_manager._retrievers[0]
         date_cutoff = self._effective_date_cutoff(query)
         effective_rerank_topk = self.top_k if rerank_topk is None else rerank_topk
-        chunks = retriever.invoke(query)
+        # ``None`` is the only legacy/unscoped sentinel.  An explicitly empty
+        # list is deny-all and must not silently become a global search.
+        allowed_ids = (
+            None
+            if allowed_source_doc_ids is None
+            else {str(doc_id) for doc_id in allowed_source_doc_ids if doc_id}
+        )
+        chunks = retriever.invoke(
+            query, agent=agent, allowed_source_doc_ids=allowed_ids,
+        )
+        chunks = filter_chunks_to_scope(chunks, allowed_ids)
         chunks = self._filter_chunks_by_cutoff(chunks, date_cutoff)
         chunks = self._backfill_text_chunks_for_cutoff(
             retriever,
@@ -203,13 +217,20 @@ class RAG:
             chunks,
             date_cutoff,
             effective_rerank_topk,
+            agent,
+            allowed_ids,
         )
+        chunks = filter_chunks_to_scope(chunks, allowed_ids)
         effective_table_topk = retriever.table_k if table_topk is None else table_topk
         if table_topk is None and self._is_periodic_finance_query(query):
             finance_table_topk = self._config_int_or_none("finance_table_topk")
             if finance_table_topk is not None:
                 effective_table_topk = max(effective_table_topk, finance_table_topk)
-        table_chunks = retriever.retrieve_tables(query, k=effective_table_topk)
+        table_chunks = retriever.retrieve_tables(
+            query, k=effective_table_topk, agent=agent,
+            allowed_source_doc_ids=allowed_ids,
+        )
+        table_chunks = filter_chunks_to_scope(table_chunks, allowed_ids)
         table_chunks = self._filter_chunks_by_cutoff(table_chunks, date_cutoff)
         table_chunks = self._backfill_table_chunks_for_cutoff(
             retriever,
@@ -217,11 +238,17 @@ class RAG:
             table_chunks,
             date_cutoff,
             effective_table_topk,
+            agent,
+            allowed_ids,
         )
+        table_chunks = filter_chunks_to_scope(table_chunks, allowed_ids)
         table_chunks = self._prepare_table_chunks(query, table_chunks)
         if effective_table_topk is not None and effective_table_topk > 0:
             table_chunks = table_chunks[:effective_table_topk]
-        pre_rerank_chunks = dedupe_chunks(chunks + table_chunks)
+        pre_rerank_chunks = filter_chunks_to_scope(
+            dedupe_chunks(chunks + table_chunks),
+            allowed_ids,
+        )
         logger.debug(
             f"Retrieved {len(chunks)} text chunks and {len(table_chunks)} tables from retriever; "
             f"{len(pre_rerank_chunks)} unique candidates before rerank"
@@ -244,6 +271,8 @@ class RAG:
             selected_chunks,
             query,
         )
+        selected_chunks = filter_chunks_to_scope(selected_chunks, allowed_ids)
+        table_chunks = filter_chunks_to_scope(table_chunks, allowed_ids)
         # 表格不参与排序，直接追加供 LLM 参考
         final_chunks = selected_chunks + table_chunks
         sanitized_final_chunks = sanitize_chunks_for_output(final_chunks)
@@ -305,9 +334,20 @@ class RAG:
         chunk_content_list = [chunk['page_content'] for chunk in chunks]
 
         lock_ctx = self.reranker_lock if self.reranker_lock is not None else contextlib.nullcontext()
-        with lock_ctx, torch.no_grad():
-            reranker_scores = self.reranker.compute_score(pairs, batch_size=12)
-            reranker_scores = torch.sigmoid(torch.tensor(reranker_scores))
+        try:
+            with lock_ctx, torch.no_grad():
+                reranker_logits = self.reranker.compute_score(pairs, batch_size=12)
+                reranker_scores = torch.sigmoid(torch.tensor(reranker_logits))
+            if len(reranker_scores) > 1 and float(torch.max(reranker_scores) - torch.min(reranker_scores)) < 1e-8:
+                logger.warning("Reranker returned flat scores; falling back to retrieval scores")
+                reranker_scores = torch.tensor(
+                    [float(chunk.get("score", 0.0) or 0.0) for chunk in chunks],
+                    dtype=torch.float32,
+                )
+        except Exception as exc:
+            logger.error("Reranker failed; falling back to retrieval scores: %s", exc, exc_info=True)
+            raw_scores = [float(chunk.get("score", 0.0) or 0.0) for chunk in chunks]
+            reranker_scores = torch.tensor(raw_scores, dtype=torch.float32)
 
         # ! disable for colm
         # 时间加权
@@ -653,6 +693,8 @@ class RAG:
         chunks: List[Dict],
         date_cutoff: datetime | None,
         effective_rerank_topk: int | None,
+        agent: str = "general",
+        allowed_source_doc_ids: set[str] | None = None,
     ) -> List[Dict]:
         if date_cutoff is None or not self._config_bool("retrieval_date_cutoff_backfill_enabled", True):
             return chunks
@@ -663,7 +705,9 @@ class RAG:
         if factor <= 1:
             return chunks
         with self._scaled_retriever_limits(retriever, factor):
-            expanded = retriever.invoke(query)
+            expanded = retriever.invoke(
+                query, agent=agent, allowed_source_doc_ids=allowed_source_doc_ids,
+            )
         expanded = self._filter_chunks_by_cutoff(expanded, date_cutoff)
         merged = dedupe_chunks(chunks + expanded)
         if len(merged) > len(chunks):
@@ -684,6 +728,8 @@ class RAG:
         table_chunks: List[Dict],
         date_cutoff: datetime | None,
         target_table_topk: int | None,
+        agent: str = "general",
+        allowed_source_doc_ids: set[str] | None = None,
     ) -> List[Dict]:
         if (
             date_cutoff is None
@@ -700,7 +746,10 @@ class RAG:
         table_count = len(getattr(retriever, "table_metadata", []) or [])
         if table_count > 0:
             expanded_k = min(expanded_k, table_count)
-        expanded = retriever.retrieve_tables(query, k=expanded_k)
+        expanded = retriever.retrieve_tables(
+            query, k=expanded_k, agent=agent,
+            allowed_source_doc_ids=allowed_source_doc_ids,
+        )
         expanded = self._filter_chunks_by_cutoff(expanded, date_cutoff)
         merged = dedupe_chunks(table_chunks + expanded)
         if len(merged) > len(table_chunks):
@@ -1312,6 +1361,42 @@ class RAG:
             return 0.30
         return 0.0
 
+    @staticmethod
+    def _financial_row_label_bonus(query: str, chunk: Dict) -> float:
+        """Prefer the row whose explicit label matches the requested metric.
+
+        Numeric table rows often repeat neighboring values as column context.
+        Token overlap alone can therefore rank a margin row above the requested
+        revenue row.  Only the canonical ``row_label`` earns this bonus.
+        """
+        query_lower = str(query or "").lower()
+        row_label = str((chunk.get("metadata") or {}).get("row_label") or "").lower().strip()
+        aliases = (
+            (("营业收入", "营收", "revenue"), ("营业收入", "revenue", "total revenue", "sales_ind")),
+            (("营业成本", "销售成本", "cost of revenue", "cost of goods sold"), ("营业成本", "cost of goods sold", "cost of revenue", "cogs_ind")),
+            (("毛利润", "gross profit"), ("毛利润", "gross profit", "gp_ind")),
+            (("营业利润", "ebit"), ("营业利润", "ebit", "ebit (operating profits)", "ebit_ind")),
+            (("归母净利润", "归属于母公司", "net income"), ("归母净利润", "net profit attributable", "np_xord_ind")),
+            (("基本每股收益", "basic eps"), ("基本每股收益", "basic eps (cny/share)", "eps (reported)", "eps_rp_ind")),
+            (("毛利率", "gross margin"), ("毛利率", "gross margin", "gross_margin_ind")),
+            (("经营活动现金流", "经营性现金流", "operating cash flow"), ("经营活动现金流", "operating cash flow", "net cash from operating activities", "cf_op_ind")),
+            (("资本开支", "资本支出", "capex", "capital expenditure"), ("资本开支", "资本支出", "capital expenditure", "capex_ind", "purchase of ppe", "total capex (cny m)")),
+            (("自由现金流", "free cash flow"), ("自由现金流", "free cash flow", "fcf_ind")),
+            (("总资产", "total assets"), ("总资产", "total assets", "tot_assets_ind")),
+            (("总负债", "total liabilities"), ("总负债", "total liabilities", "tot_liabs_ind")),
+            (("股东权益", "shareholders' equity"), ("股东权益", "shareholders' equity", "shr_eqty")),
+            (("现金及等价物", "现金及现金等价物", "cash and cash equivalent"), ("现金及等价物", "cash and equivalent", "cash and equivalents", "cash and cash equivalents", "cash_ind")),
+            (("应收账款", "accounts receivable"), ("应收账款", "account receivables", "accounts receivable", "accts_rec_ind")),
+            (("存货", "inventory", "inventories"), ("存货", "inventories", "inventory", "inventories_ind")),
+            (("有息负债", "interest-bearing debt"), ("short term debt", "long term debt", "st_debt_ind", "lt_debt_ind")),
+            (("总股本", "shares outstanding"), ("shares outstanding", "shares outstanding (m, period-end)", "num_sh1", "ord_capital", "share capital", "总股本")),
+        )
+        for query_aliases, exact_labels in aliases:
+            if any(alias in query_lower for alias in query_aliases):
+                normalized = row_label.strip(" +()-")
+                return 1.25 if normalized in exact_labels else 0.0
+        return 0.0
+
     def _rescue_recent_evidence_chunks(
         self,
         chunks: List[Dict],
@@ -1363,12 +1448,16 @@ class RAG:
             number_bonus = 0.15
             source_bonus = 0.08 if chunk.get("retriever") in {"BM25", "PageIndex", "Title Summary"} else 0.0
             entity_bonus = self._numeric_entity_bonus(text_lower)
+            row_label_bonus = self._financial_row_label_bonus(query, chunk)
             period_bonus = self._period_match_bonus(query, text_lower, chunk_date)
             recency_bonus = 0.0
             if chunk_date and min_year is not None:
                 recency_bonus = min(0.25, max(0, chunk_date.year - min_year + 1) * 0.06)
 
-            rescue_score = overlap + number_bonus + source_bonus + entity_bonus + period_bonus + recency_bonus
+            rescue_score = (
+                overlap + number_bonus + source_bonus + entity_bonus
+                + row_label_bonus + period_bonus + recency_bonus
+            )
             if rescue_score < min_score:
                 continue
 
@@ -1378,6 +1467,7 @@ class RAG:
             rescued_metadata["evidence_rescue_score"] = round(float(rescue_score), 4)
             rescued_metadata["evidence_rescue_matched_terms"] = sorted(matched_terms)[:20]
             rescued_metadata["evidence_rescue_period_bonus"] = round(float(period_bonus), 4)
+            rescued_metadata["evidence_rescue_row_label_bonus"] = round(float(row_label_bonus), 4)
             rescued_chunk["metadata"] = rescued_metadata
             rescue_candidates.append(
                 (
@@ -1474,6 +1564,15 @@ class RAG:
         if table_formatted:
             body = body + "\n===== Tables =====\n" + separator.join(table_formatted)
         notes = "\n".join(note for note in (retrieval_notes, table_facts_note) if note)
-        if notes:
-            return notes + "\n" + separator + body
-        return body
+        context = notes + "\n" + separator + body if notes else body
+        configured_max_chars = self._config_int_or_none("rag_context_max_chars")
+        max_chars = max(4000, configured_max_chars if configured_max_chars is not None else 24000)
+        truncated = truncate_text(context, max_chars)
+        if len(truncated) < len(context):
+            logger.warning(
+                "RAG context truncated from %d to %d chars (rag_context_max_chars=%d)",
+                len(context),
+                len(truncated),
+                max_chars,
+            )
+        return truncated

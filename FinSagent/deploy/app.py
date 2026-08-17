@@ -49,8 +49,14 @@ except Exception as exc:
     RAGManager = None
     DocumentTriageAgent = None
     CORE_IMPORT_ERROR = exc
-from pdf_research_demo import PdfResearchDemo
-from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+
+try:
+    from pdf_research_demo import PdfResearchDemo
+    from pdf_research_demo.llm import OpenAICompatibleChatClient, load_llm_config
+except Exception:
+    PdfResearchDemo = None
+    OpenAICompatibleChatClient = None
+    load_llm_config = None
 from utils.session_history_store import SessionHistoryStore
 
 from data_pipeline.ingest_documents_db import (
@@ -178,6 +184,73 @@ def _reset_rag_manager_singleton() -> None:
     RAGManager._embedding_lock = None
 
 
+def _sync_collection_to_chroma(
+    collection_db_path: str,
+    dataset_id: str,
+    documents: list[Any],
+) -> None:
+    """入库完成后：SQLite chunks → Chroma 增量写入 + 重建检索器。"""
+    if RAGManager is None:
+        return
+    import logging
+    logger = logging.getLogger("chroma_bridge")
+    try:
+        from data_ingestion.chroma_bridge import sync_chunks_to_chroma
+        rag_manager = RAGManager()
+        if not hasattr(rag_manager, "_collections") or not rag_manager._collections:
+            logger.warning("RAGManager has no collections; skipping chroma sync")
+            return
+        result = sync_chunks_to_chroma(
+            rag_manager,
+            collection_db_path,
+            collection_name=dataset_id,
+            batch_size=64,
+            dataset_id=dataset_id,
+        )
+        if result["text_chunks"] > 0 or result["table_chunks"] > 0:
+            _reset_rag_manager_singleton()
+            logger.info(
+                "Chroma sync complete (%d text + %d table). RAGManager reset for retriever rebuild.",
+                result["text_chunks"],
+                result["table_chunks"],
+            )
+    except Exception:
+        logger.exception("Chroma sync failed (non-fatal) for dataset %s", dataset_id)
+
+
+def _publish_private_fund_indexes(collection_db_path: str, dataset_id: str) -> dict[str, Any]:
+    """Build all retrieval indexes through the validated atomic publisher."""
+    dataset_root = Path(collection_db_path).resolve().parent.parent
+    if dataset_root.name != dataset_id:
+        raise RuntimeError(
+            f"dataset identity mismatch: path={dataset_root.name!r}, result={dataset_id!r}"
+        )
+    command = [
+        sys.executable,
+        str(Path(PROJECT_ROOT) / "data_pipeline" / "prepare_private_fund_dataset.py"),
+        "--dataset-root", str(dataset_root),
+        "--config", CONFIG_PATH,
+    ]
+    completed = subprocess.run(
+        command,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=None,
+    )
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout or "").strip()[-4000:]
+        raise RuntimeError(
+            f"retrieval index publication failed (code={completed.returncode}): {details}"
+        )
+    output = (completed.stdout or "").strip()
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return {"status": "completed", "output": output[-2000:]}
+
+
 def _path_counts_toward_rag_busy(path: str) -> bool:
     """与 chat_service / RAG 相关的路由，用于热重载前等待空闲。"""
     if path.startswith("/chat"):
@@ -214,8 +287,18 @@ def _build_chat_stack() -> Any:
     if ChatService is None or RAGManager is None:
         raise RuntimeError(f"ChatService dependencies unavailable: {CORE_IMPORT_ERROR}")
     config = load_config()
+    active_dataset = str(config.get("datasets", {}).get("active_dataset") or "").strip()
+    configured_collection = str(config.get("collection_name") or "").strip()
+    if not active_dataset:
+        raise ValueError("datasets.active_dataset must be configured")
+    if configured_collection and configured_collection != active_dataset:
+        raise ValueError(
+            "collection_name must equal datasets.active_dataset; "
+            f"got collection_name={configured_collection!r}, active_dataset={active_dataset!r}"
+        )
+    config["collection_name"] = active_dataset
     logger.info("正在初始化 RAG Manager...")
-    collection_name = config.get("collection_name")
+    collection_name = active_dataset
     retrieve_top_k = int(config.get("retrieve_top_k"))
     rag_manager = RAGManager(config, collections={collection_name: retrieve_top_k})
     logger.info("正在初始化 Chat Service...")
@@ -289,6 +372,17 @@ async def lifespan(app: FastAPI):
             chat_service = _build_chat_stack()
             logger.info("✅ Chat Service 初始化完成")
 
+            # Warm the exact embedding/retriever instances used by requests.
+            try:
+                retriever = chat_service.rag.rag_manager._retrievers[0]
+                retriever.embeddings.embed_query("金融检索预热 warmup")
+                retriever.invoke("金融检索预热 warmup")
+                if retriever.table_faiss_retriever is not None:
+                    retriever.retrieve_tables("金融检索预热 warmup", k=1)
+                logger.info("✅ Embedding 与文本/表格索引预热完成")
+            except Exception as warm_e:
+                logger.warning("Embedding 预热失败（不影响启动）: %s", warm_e)
+
         yield
 
     except Exception as e:
@@ -353,6 +447,15 @@ class ChatRequest(BaseModel):
                 "session_id": "user_123",
             }
         }
+
+
+class EvidenceFusionRequest(BaseModel):
+    """Project-scoped retrieval request used by the Omnigent test runtime."""
+
+    query: str
+    dataset_id: str
+    original_question: str = ""
+    agent: str = "general"
 
 
 class ChatResponse(BaseModel):
@@ -791,6 +894,153 @@ async def doc_agent_analyze_batch(
     return {"count": len(results), "results": results}
 
 
+@app.get("/skills")
+async def list_runtime_skills():
+    """Return discoverable user-facing skills and runtime activation status."""
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    runtime = getattr(chat_service, "skill_runtime", None)
+    if runtime is None:
+        return {"runtime": {"runtime_enabled": False}, "skills": []}
+    status = runtime.status()
+    return {
+        "runtime": {
+            "runtime_enabled": status["runtime_enabled"],
+            "execution_mode": status["execution_mode"],
+            "registry": status["registry"],
+            "combo_routing": status.get("combo_routing", {"enabled": False, "combos": 0}),
+        },
+        "skills": runtime.catalog(public_only=True),
+    }
+
+
+@app.get("/skill-combos")
+async def list_runtime_skill_combos():
+    """Return production combo metadata without exposing private skill instructions."""
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    runtime = getattr(chat_service, "skill_runtime", None)
+    combo_router = getattr(runtime, "combo_router", None) if runtime is not None else None
+    if combo_router is None:
+        return {"enabled": False, "combos": []}
+    return {"enabled": True, "combos": combo_router.catalog()}
+
+
+@app.get("/skills/{skill_id}")
+async def get_runtime_skill(skill_id: str):
+    """Return one public skill card without loading its full internal implementation."""
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    runtime = getattr(chat_service, "skill_runtime", None)
+    if runtime is None:
+        raise HTTPException(status_code=404, detail="Skill runtime unavailable")
+    matches = [row for row in runtime.catalog(public_only=True) if row["skill_id"] == skill_id]
+    if not matches:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return matches[0]
+
+
+@app.post("/chat/skills-debug")
+async def chat_skills_debug(request: ChatRequest):
+    """Run one chat request and expose bounded Skill Runtime traces for evaluation."""
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    skill_config = chat_service.config.get("skills", {})
+    if not isinstance(skill_config, dict) or not skill_config.get("expose_debug_trace", False):
+        raise HTTPException(status_code=404, detail="Skill trace endpoint is disabled")
+    result = await chat_service.generate_response_debug_async(
+        question=request.question,
+        session_id=request.session_id,
+    )
+    retrieved_doc_ids: set[str] = set()
+    for chunk in result.get("retrieved_chunks", []):
+        if not isinstance(chunk, dict):
+            continue
+        metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), dict) else chunk
+        for key in ("source_doc_id", "doc_id", "document_id"):
+            value = metadata.get(key)
+            if value:
+                retrieved_doc_ids.add(str(value))
+    retrieval_decisions = result.get("retrieval_decisions", [])
+    allowed_doc_ids: set[str] = set()
+    for decision in retrieval_decisions:
+        if not isinstance(decision, dict):
+            continue
+        scope = decision.get("retrieval_scope", {})
+        if not isinstance(scope, dict):
+            continue
+        for value in scope.get("source_doc_ids", []) or []:
+            if value:
+                allowed_doc_ids.add(str(value))
+    return {
+        "answer": result.get("answer", ""),
+        "session_id": request.session_id,
+        "activated_agents": result.get("activated_agents", []),
+        "routing_reason": result.get("routing_reason", ""),
+        "retrieved_chunk_count": result.get("retrieved_chunk_count", 0),
+        # Authoritative request boundary. ``retrieved_doc_ids`` is retained for
+        # compatibility and may contain legacy source/chunk identifiers.
+        "allowed_doc_ids": sorted(allowed_doc_ids),
+        "retrieved_doc_ids": sorted(retrieved_doc_ids),
+        "pre_rerank_candidate_count": result.get("pre_rerank_candidate_count", 0),
+        "retrieval_decisions": retrieval_decisions,
+        "skill_traces": result.get("skill_traces", []),
+        "total_time": result.get("total_time", 0.0),
+        "error": result.get("error"),
+    }
+
+
+@app.post("/retrieval/evidence-fusion")
+async def retrieval_evidence_fusion(request: EvidenceFusionRequest):
+    """Return one bounded Evidence Fusion result for an allowed project dataset.
+
+    The caller supplies only a dataset id. The server resolves the collection
+    database below the configured dataset root and never accepts a filesystem
+    path from the request.
+    """
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    dataset_id = request.dataset_id.strip()
+    if not dataset_id or not all(ch.isalnum() or ch in {"-", "_"} for ch in dataset_id):
+        raise HTTPException(status_code=400, detail="invalid dataset_id")
+    datasets_cfg = chat_service.config.get("datasets", {})
+    root_value = os.environ.get("FINSAGENT_DATASET_ROOT") or datasets_cfg.get("root_dir") or ""
+    root = Path(str(root_value)).expanduser().resolve()
+    dataset_root = (root / dataset_id).resolve()
+    if not dataset_root.is_relative_to(root):
+        raise HTTPException(status_code=400, detail="dataset path escapes configured root")
+    collection_db = dataset_root / "meta" / "collection.sqlite3"
+    if not collection_db.is_file():
+        raise HTTPException(status_code=404, detail="dataset collection not found")
+
+    from agents.shared import retrieve_evidence
+
+    evidences = await retrieve_evidence(
+        rag=chat_service.rag,
+        sub_queries=[request.query],
+        query_time=datetime.now(timezone.utc),
+        agent=request.agent,
+        collection_db=str(collection_db),
+        dataset_id=dataset_id,
+        scope_query=request.original_question or request.query,
+    )
+    if not evidences:
+        raise HTTPException(status_code=422, detail="retrieval scope resolved no evidence")
+    evidence = evidences[0]
+    return {
+        "dataset_id": dataset_id,
+        "query": request.query,
+        "context": evidence.get("context", ""),
+        "chunks": evidence.get("chunks", []),
+        "retrieval_scope": evidence.get("retrieval_scope", {}),
+        "retrieval_policy": evidence.get("retrieval_policy", {}),
+        "evidence_conflicts": evidence.get("evidence_conflicts", []),
+        "retrieval_trace": evidence.get("retrieval_trace", []),
+        "rag_executed": bool(evidence.get("rag_executed", False)),
+        "rag_succeeded": bool(evidence.get("rag_succeeded", False)),
+    }
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
@@ -1180,6 +1430,17 @@ def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
             job_id=job_id,
             classification_llm=classification_llm,
         )
+        # SQLite is canonical. Publish every derived index as one validated
+        # bundle; never incrementally mutate the collections used by requests.
+        index_result = _publish_private_fund_indexes(
+            result.collection_db_path, result.dataset_id
+        )
+        config = load_config()
+        active_dataset = str(config.get("datasets", {}).get("active_dataset") or "").strip()
+        if result.dataset_id == active_dataset:
+            _reload_chat_stack_after_ingest(
+                f"private-fund bundle published dataset={result.dataset_id}"
+            )
         with _private_fund_ingest_jobs_lock:
             _private_fund_ingest_jobs[job_id] = {
                 "job_id": job_id,
@@ -1187,6 +1448,7 @@ def _private_fund_ingest_worker(job_id: str, payload: dict[str, Any]) -> None:
                 "started_at": result.started_at,
                 "finished_at": result.finished_at,
                 "result": private_fund_result_to_dict(result),
+                "index_result": index_result,
             }
     except Exception as exc:
         logger.exception("private fund directory ingest failed: job_id=%s", job_id)
@@ -1210,7 +1472,8 @@ async def private_fund_ingest_directory(
 
     - PDF：直接抽文本，按 document/page/speaker turn 存 evidence。
     - Excel：存 workbook/sheet/region summary，同时写 excel_cells 与 metric_facts。
-    - DB：写入 workspace_root/datasets.sqlite3 与 workspace_root/{dataset_id}/meta/collection.sqlite3。
+    - DB：写入 canonical SQLite，随后在临时目录完整生成四类检索索引；
+      校验通过后一次发布，失败时保留上一版可用索引。
     """
     directory_path = Path(request.directory_path).expanduser().resolve()
     if not directory_path.is_dir():
@@ -1326,8 +1589,14 @@ async def get_metadata(collection_name: str, doc_id: str):
 # 会话持久化相关路由（独立模块）
 # ============================================================
 from session_routes import router as session_router
+try:
+    from memory_routes import router as memory_router
+except Exception:
+    memory_router = None
 
 app.include_router(session_router)
+if memory_router is not None:
+    app.include_router(memory_router)
 
 
 # ============================================================

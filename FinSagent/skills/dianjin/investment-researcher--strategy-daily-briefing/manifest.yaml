@@ -1,0 +1,77 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_strategy_daily_briefing
+version: 0.1.0
+name: 证券策略研究员策略日报生成技能
+description: 证券策略研究员策略日报生成技能。当用户要求生成策略日报、股市复盘、市场情绪分析、资金流向汇总时使用。本技能自动抓取当日大盘、风格、行业、资金、情绪数据，进行量价与逻辑推演，生成标准化
+  Markdown 格式策略日报。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- general
+routing:
+  keywords:
+  - 证券策略研究员策略日报
+  - 证券策略研究员策略日报生成技能
+  - 策略日报
+  - strategy daily briefing
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/strategy-daily-briefing/SKILL.md
+  upstream_sha256: 1a4bad6e516d92892c5d307afc09a9f73baf38e3a52c0c7fcfb955d543e7c4fe
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/strategy-daily-briefing.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 证券策略研究员策略日报, 证券策略研究员策略日报生成技能, 策略日报, strategy daily briefing'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/strategy-daily-briefing/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/strategy-daily-briefing/SKILL.md;
+    installed for shadow evaluation, not production activation.

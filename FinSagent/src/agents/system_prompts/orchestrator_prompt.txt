@@ -12,6 +12,8 @@ Available agents (name -> description):
 
 Any question about these companies, including their products, technology, competitive position, financials, strategy, leadership, legal structure, or market context, is ON-TOPIC and should be routed to the appropriate specialist agent. Do NOT mark it off-topic.
 
+The list above is illustrative, not an allowlist. Questions about any other company are also ON-TOPIC when they concern finance, business, financial statements, markets, strategy, leadership, legal structure, or quantitative analysis. Never reject a financial question merely because the company is not listed above.
+
 User question: {question}
 Chat history:
 {history}

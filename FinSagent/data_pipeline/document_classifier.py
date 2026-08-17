@@ -720,6 +720,22 @@ def _company_candidates(preview: DocumentPreview) -> list[str]:
     return [display[key] for key in sorted(counts, key=lambda item: (-counts[item], item))]
 
 
+_STRUCTURED_RESEARCH_FILENAME_RE = re.compile(
+    r"^\d+_(?P<company>.+?)_(?P<ticker>[A-Za-z0-9]+(?:_[A-Za-z0-9]+)?\.[A-Za-z]{2,4})_"
+    r"20\d{2}_[A-Za-z]{3}_\d{1,2}$"
+)
+
+
+def _company_from_structured_filename(filename: str) -> tuple[str, str]:
+    """Extract the subject company from the canonical research-file naming scheme."""
+
+    match = _STRUCTURED_RESEARCH_FILENAME_RE.fullmatch(Path(filename).stem)
+    if not match:
+        return "", ""
+    company = re.sub(r"\s+", " ", match.group("company").replace("+", " ")).strip()
+    return company, match.group("ticker")
+
+
 def _detect_company(
     preview: DocumentPreview,
     expected_company: str,
@@ -729,6 +745,7 @@ def _detect_company(
     corpus_compact = _compact(f"{preview.filename}\n{preview.text}")
     candidates = _company_candidates(preview)
     tickers = [match.group(0) for match in _TICKER_RE.finditer(f"{preview.filename}\n{preview.text[:10000]}")]
+    filename_company, filename_ticker = _company_from_structured_filename(preview.filename)
     if expected_company:
         expected_core = _company_core(expected_company)
         ticker_core = _compact(expected_ticker).removesuffix("sz").removesuffix("sh").removesuffix("bj")
@@ -747,6 +764,11 @@ def _detect_company(
             return conflicting, tickers[0] if tickers else "", 0.88, "content_entity", True, evidence
         evidence.append(f"正文未明确出现公司，暂继承项目公司“{expected_company}”")
         return expected_company, expected_ticker, 0.55, "inherited_project", False, evidence
+    if filename_company:
+        evidence.append(
+            f"规范化研究文件名识别到标的公司“{filename_company}”和股票代码“{filename_ticker}”"
+        )
+        return filename_company, filename_ticker, 0.99, "structured_filename", False, evidence
     if candidates:
         evidence.append(f"正文识别到公司全称“{candidates[0]}”")
         return candidates[0], tickers[0] if tickers else "", 0.88, "content_entity", False, evidence

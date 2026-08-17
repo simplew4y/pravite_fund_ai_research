@@ -26,6 +26,7 @@ from utils.table_answer_repair import load_reconstructed_table_chunks, repair_ta
 from utils.profile_fact_repair import repair_profile_answer
 from utils.answer_coverage_repair import repair_answer_coverage
 from utils.period_source_conflict_repair import repair_period_source_conflict
+from skills_runtime.models import SkillContext
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class AgentOutput(TypedDict, total=False):
     draft_answer: str
     assumptions: List[str]
     risks: List[str]
+    skill_traces: List[Dict[str, Any]]
 
 
 class RoutingDecision(TypedDict, total=False):
@@ -78,6 +80,9 @@ class MASState(TypedDict, total=False):
     # Dependencies
     rag: Any
     session_manager: Any
+    skill_runtime: Any
+    skill_context: Any
+    skill_traces: List[Dict[str, Any]]
 
     # Routing
     selected_agents: List[AgentName]
@@ -133,7 +138,11 @@ ORCHESTRATOR_PROMPT = (Path(__file__).resolve().parent.parent / "agents" / "syst
 
 
 def _has_explicit_year(text: str) -> bool:
-    return bool(re.search(r"20\d{2}", text))
+    return bool(re.search(
+        r"(?:20\d{2}|[1-4]q\d{2}|q[1-4][-_ ]?\d{2,4}|\d{2}q[1-4])",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    ))
 
 
 def _is_time_sensitive(text: str) -> bool:
@@ -147,6 +156,28 @@ def _is_time_sensitive(text: str) -> bool:
         "retail stores", "delivery centers", "sales network", "销售网络"
     ]
     return any(k in text_lower for k in keywords)
+
+
+def _is_finance_domain_question(text: str) -> bool:
+    """Deterministic guard against LLM off-topic false positives."""
+    text_lower = str(text or "").lower()
+    finance_signals = (
+        "财报", "营收", "营业收入", "营业成本", "毛利", "净利", "利润",
+        "现金流", "总资产", "总负债", "应收", "存货", "同比", "环比",
+        "估值", "市盈率", "市净率", "roe", "ebit", "eps", "收入",
+        "revenue", "gross margin", "net income", "cash flow", "balance sheet",
+        "income statement", "valuation", "earnings",
+    )
+    return any(signal in text_lower for signal in finance_signals)
+
+
+def _is_nonlegal_version_comparison(text: str) -> bool:
+    text_lower = str(text or "").lower()
+    version_signals = ("初稿", "修订版", "最终版", "版本", "draft", "revised version", "final version")
+    legal_signals = ("合同", "协议", "条款", "诉讼", "监管", "合规", "法律", "contract", "agreement", "legal")
+    return any(signal in text_lower for signal in version_signals) and not any(
+        signal in text_lower for signal in legal_signals
+    )
 
 
 def _inject_latest_time(question: str, latest_time: str) -> str:
@@ -262,6 +293,15 @@ async def orchestrator_node(state: MASState) -> Dict[str, Any]:
     reason = decision.get("reason", "")
     off_topic = bool(decision.get("off_topic", False))
     direct_answer = decision.get("answer", "")
+    if off_topic and _is_finance_domain_question(question):
+        off_topic = False
+        if not selected:
+            selected = ["quant"]
+        reason = f"finance_domain_guard: {reason or 'LLM off-topic false positive'}"
+    if selected == ["legal_risk"] and _is_nonlegal_version_comparison(question):
+        selected = ["company_researcher"]
+        off_topic = False
+        reason = f"nonlegal_version_guard: {reason or 'business document comparison'}"
     resolved_enable_query_decompose = default_enable_query_decompose
     if off_topic:
         msg = direct_answer or (
@@ -359,9 +399,12 @@ async def agents_parallel_node(state: MASState) -> Dict[str, Any]:
         graph = SUBGRAPH_MAP[agent]
         sub_state = {
             "original_query": state.get("original_query"),
+            "user_query_raw": state.get("user_query_raw", state.get("original_query")),
             "chat_history": state.get("chat_history", []),
             "session_manager": state.get("session_manager"),
             "rag": state.get("rag"),
+            "skill_runtime": state.get("skill_runtime"),
+            "skill_context": state.get("skill_context"),
             "run_id": state.get("run_id", ""),
             "log_dir": state.get("log_dir", ""),
             "debug_stop_after_retrieval": state.get("debug_stop_after_retrieval", False),
@@ -405,6 +448,26 @@ async def agents_parallel_node(state: MASState) -> Dict[str, Any]:
                     emit_cb("agent_failed", {"agent": agent, "error": str(e)})
 
     return {"agent_outputs": merged_outputs, "pending_agents": []}
+
+
+async def skills_prepare_node(state: MASState) -> Dict[str, Any]:
+    """Run early skill phases without changing legacy answers or retrieval scope."""
+    runtime = state.get("skill_runtime")
+    if runtime is None or not getattr(runtime, "enabled", False):
+        return {"skill_traces": state.get("skill_traces", [])}
+    cfg = state.get("config") or {}
+    datasets = cfg.get("datasets") if isinstance(cfg.get("datasets"), dict) else {}
+    context = SkillContext(
+        request_id=state.get("run_id", ""),
+        question=state.get("original_query", ""),
+        original_question=state.get("user_query_raw", state.get("original_query", "")),
+        dataset_id=str(datasets.get("active_dataset") or ""),
+    )
+    traces = list(state.get("skill_traces", []))
+    for phase in ("query_parse", "pre_retrieval"):
+        execution = await runtime.execute_phase(phase, context)
+        traces.extend(result.to_dict() for result in execution.results)
+    return {"skill_context": context, "skill_traces": traces}
 
 
 # ===== Skill Repair Layer =====
@@ -530,11 +593,42 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
     merged_evidence: List[Evidence] = []
     merged_pre_rerank_candidates = collect_pre_rerank_chunks_from_agent_outputs(outputs)
     synthesis_context_parts: List[str] = []
+    skill_traces = list(state.get("skill_traces", []))
     for agent, out in outputs.items():
         merged_evidence.extend(out.get("evidence", []))
+        skill_traces.extend(out.get("skill_traces", []))
         synthesis_context_parts.append(
             f"[{agent}] Draft:\n{out.get('draft_answer','')}\nEvidence count: {len(out.get('evidence', []))}"
         )
+
+    # Build the final-answer skill context from the union of agent evidence.
+    # Earlier phases already ran inside each agent before drafting.
+    runtime = state.get("skill_runtime")
+    skill_context = state.get("skill_context")
+    all_retrieved: List[Dict[str, Any]] = []
+    allowed_doc_ids: set[str] = set()
+    for evidence in merged_evidence:
+        all_retrieved.extend(evidence.get("chunks", []))
+        scope_metadata = evidence.get("retrieval_scope") or {}
+        allowed_doc_ids.update(str(doc_id) for doc_id in scope_metadata.get("source_doc_ids", []) if doc_id)
+    if runtime is not None and getattr(runtime, "enabled", False):
+        cfg = state.get("config") or {}
+        datasets = cfg.get("datasets") if isinstance(cfg.get("datasets"), dict) else {}
+        if not isinstance(skill_context, SkillContext):
+            skill_context = SkillContext()
+        skill_context.request_id = state.get("run_id", "")
+        skill_context.question = state.get("original_query", "")
+        skill_context.original_question = state.get("user_query_raw", state.get("original_query", ""))
+        skill_context.agent = state.get("selected_agents", [""])[0] if len(state.get("selected_agents", [])) == 1 else ""
+        skill_context.dataset_id = str(datasets.get("active_dataset") or "")
+        skill_context.allowed_doc_ids = sorted(allowed_doc_ids)
+        skill_context.retrieved_chunks = list(all_retrieved)
+        skill_context.pre_rerank_candidates = list(merged_pre_rerank_candidates)
+        skill_context.metric_facts = [
+            dict(chunk.get("metadata") or {})
+            for chunk in all_retrieved
+            if str((chunk.get("metadata") or {}).get("content_type") or "") == "metric_fact"
+        ]
     if state.get("debug_stop_after_retrieval", False):
         final_answer = ""
     else:
@@ -569,7 +663,19 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
     # Apply deterministic post-repairs if enabled in config (all default to True).
     # Each repair is independently gated; failures fall back to the original answer.
     cfg = state.get("config") or {}
-    if final_answer and any(
+    if final_answer and runtime is not None and getattr(runtime, "enabled", False):
+        if not isinstance(skill_context, SkillContext):
+            skill_context = SkillContext(
+                question=state.get("original_query", ""),
+                original_question=state.get("user_query_raw", state.get("original_query", "")),
+            )
+        skill_context.final_answer = final_answer
+        execution = await runtime.execute_phase("post_answer", skill_context)
+        skill_traces.extend(result.to_dict() for result in execution.results)
+        if getattr(runtime, "mode", "shadow") == "active":
+            final_answer = skill_context.final_answer
+    # Preserve the original production path until runtime is explicitly active.
+    if final_answer and (runtime is None or not getattr(runtime, "enabled", False) or getattr(runtime, "mode", "shadow") == "shadow") and any(
         cfg.get(k, True)
         for k in (
             "skill_repair_table_enabled",
@@ -602,6 +708,8 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
         "merged_evidence": merged_evidence,
         "merged_pre_rerank_candidates": merged_pre_rerank_candidates,
         "final_answer": final_answer,
+        "skill_context": skill_context,
+        "skill_traces": skill_traces,
         "time_to_first_response": ttft,
     }
 
@@ -617,12 +725,14 @@ def _route_next(state: MASState) -> str:
 def build_agentic_rag_workflow() -> StateGraph:
     workflow = StateGraph(MASState)
 
+    workflow.add_node("skills_prepare", skills_prepare_node)
     workflow.add_node("orchestrator", orchestrator_node)
     workflow.add_node("dispatch", dispatch_node)
     workflow.add_node("agents_parallel", agents_parallel_node)
     workflow.add_node("synthesis", synthesis_node)
 
-    workflow.set_entry_point("orchestrator")
+    workflow.set_entry_point("skills_prepare")
+    workflow.add_edge("skills_prepare", "orchestrator")
 
     mapping = {
         "agents_parallel": "agents_parallel",

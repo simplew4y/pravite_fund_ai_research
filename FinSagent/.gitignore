@@ -13,7 +13,9 @@ qa_scripts/
 
 *.log
 
-docs/
+docs/*
+!docs/evaluation/
+!docs/evaluation/**
 
 tables/
 

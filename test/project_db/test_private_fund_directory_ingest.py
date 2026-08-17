@@ -99,6 +99,40 @@ def _only_document(connection: sqlite3.Connection) -> sqlite3.Row:
     return rows[0]
 
 
+def test_excel_vendor_cache_and_disclaimer_sheets_are_not_indexed(tmp_path: Path) -> None:
+    from openpyxl import Workbook
+
+    source = tmp_path / "source"
+    workspace = tmp_path / "workspace"
+    source.mkdir()
+    workbook = Workbook()
+    model = workbook.active
+    model.title = "Model"
+    model.append(["Metric", "2025A"])
+    model.append(["Revenue", 100])
+    cache = workbook.create_sheet("__FDSCACHE__")
+    cache["B1"] = "This sheet contains FactSet XML data for use with FDS codes."
+    disclaimer = workbook.create_sheet("DB Disclaimer")
+    disclaimer["A1"] = "The information and opinions in this report are legal boilerplate."
+    workbook.save(source / "model.xlsx")
+
+    result = _run(source, workspace)
+
+    assert result.status == "completed"
+    with _connect(result) as connection:
+        sheet_names = {
+            row[0] for row in connection.execute("SELECT sheet_name FROM excel_sheets")
+        }
+        assert sheet_names == {"Model"}
+        assert connection.execute(
+            "SELECT COUNT(*) FROM chunks WHERE source_ref LIKE '%__FDSCACHE__%' "
+            "OR source_ref LIKE '%DB Disclaimer%'"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM metric_facts WHERE sheet_name IN ('__FDSCACHE__', 'DB Disclaimer')"
+        ).fetchone()[0] == 0
+
+
 def test_text_pdf_is_indexed_with_page_and_location_provenance(tmp_path: Path) -> None:
     source = tmp_path / "source"
     workspace = tmp_path / "workspace"

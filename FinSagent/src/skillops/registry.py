@@ -47,12 +47,28 @@ class SkillRegistry:
         return dict(counter)
 
 
-def load_skill_registry(skill_card_dir: str | Path = "configs/skill_cards") -> SkillRegistry:
+def load_skill_registry(skill_card_dir: str | Path = "skills") -> SkillRegistry:
     root = Path(skill_card_dir)
     cards: list[SkillCard] = []
+    manifests = sorted(root.glob("*/*/manifest.yaml"))
+    if manifests:
+        for path in manifests:
+            cards.append(_card_from_manifest(path))
+        return SkillRegistry(cards)
     for path in sorted(root.glob("*.yaml")):
         cards.append(SkillCard.from_dict(_load_yaml(path), source_path=str(path)))
     return SkillRegistry(cards)
+
+
+def _card_from_manifest(path: Path) -> SkillCard:
+    payload = _load_yaml(path)
+    governance = payload.get("governance")
+    if not isinstance(governance, dict):
+        raise ValueError(f"{path}: missing governance mapping")
+    card_payload = dict(governance)
+    for key in ("skill_id", "version", "name", "status", "owner"):
+        card_payload[key] = payload.get(key)
+    return SkillCard.from_dict(card_payload, source_path=str(path))
 
 
 def _load_yaml(path: Path) -> dict:
@@ -62,4 +78,3 @@ def _load_yaml(path: Path) -> dict:
     if not isinstance(payload, dict):
         raise ValueError(f"{path}: expected top-level mapping")
     return payload
-

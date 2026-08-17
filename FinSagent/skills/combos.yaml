@@ -1,0 +1,111 @@
+schema_version: 1
+combos:
+  - combo_id: P20_pe_ic_memo
+    label: PE投委会Memo
+    priority: 10
+    routing:
+      intents: [private_equity_ic_memo]
+      keywords: [IC Memo, 投委会memo, 投委会 Memo, LBO, 收购项目, 交易条款, MOIC]
+      negative_keywords: [股票多头, 股票空头, 二级市场]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_corporate_banker_financial_report_analysis, anthropic_dcf_model, anthropic_comps_analysis, anthropic_ic_memo]
+
+  - combo_id: P21_initiating_coverage
+    label: 首次覆盖研究
+    priority: 20
+    routing:
+      intents: [deep_research_report]
+      keywords: [首次覆盖, initiating coverage, 完整研究报告]
+      negative_keywords: [一页纸]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_corporate_banker_financial_report_analysis, dianjin_investment_researcher_company_deep_analysis, anthropic_initiating_coverage]
+
+  - combo_id: P22_model_audit
+    label: 财务模型审计
+    priority: 30
+    routing:
+      intents: [model_audit]
+      keywords: [审计模型, 检查Excel, 模型QA, 公式错误, 三表勾稽, audit xls]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, anthropic_three_statement_model, anthropic_audit_xls]
+
+  - combo_id: P23_model_update
+    label: 财报后模型更新
+    priority: 40
+    routing:
+      intents: [model_update]
+      keywords: [更新模型, 财报后更新, 预测调整, estimate revision, model update, 目标价调整]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, anthropic_three_statement_model, anthropic_model_update, anthropic_audit_xls]
+
+  - combo_id: P24_dcf_valuation
+    label: DCF估值
+    priority: 50
+    routing:
+      intents: [valuation_modeling]
+      keywords: [DCF, 现金流折现, 内在价值, WACC, 永续增长率, 目标价]
+      negative_keywords: [可转债]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, anthropic_three_statement_model, anthropic_dcf_model, anthropic_audit_xls]
+
+  - combo_id: P26_three_statement_model
+    label: 三表联动模型
+    priority: 55
+    routing:
+      intents: [financial_modeling]
+      keywords: [三表模型, 财务模型, 利润表预测, 资产负债表预测, 现金流预测, three statement]
+      negative_keywords: [简单问答]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, anthropic_three_statement_model, anthropic_audit_xls]
+
+  - combo_id: P25_comparable_valuation
+    label: 可比公司估值
+    priority: 60
+    routing:
+      intents: [comparable_company_analysis]
+      keywords: [trading comps, 可比公司, 同业估值, EV/EBITDA, 估值足球场]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, anthropic_comps_analysis]
+
+  - combo_id: P06_earnings_commentary
+    label: 财报深读与业绩点评
+    priority: 70
+    routing:
+      keywords: [业绩点评, 财报点评, earnings commentary, 季报点评, 年报点评]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_corporate_banker_financial_report_analysis, dianjin_investment_researcher_earnings_commentary_generator]
+
+  - combo_id: P15_announcement_analysis
+    label: 重大公告解读
+    priority: 80
+    routing:
+      keywords: [重大公告, 公告解读, announcement analysis, 任免公告]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, source_conflict, dianjin_investment_researcher_announcement_analysis, dianjin_investment_researcher_earnings_commentary_generator]
+
+  - combo_id: P07_company_one_page
+    label: 公司一页纸
+    priority: 90
+    routing:
+      keywords: [公司一页纸, 一页纸分析, one page, one-page]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, source_conflict, dianjin_investment_researcher_company_one_page_analysis]
+
+  - combo_id: P08_company_deep_research
+    label: 公司深度研报
+    priority: 100
+    routing:
+      keywords: [公司深度, 深度分析, 深度研报, company deep]
+      negative_keywords: [行业深度, 首次覆盖]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict, dianjin_corporate_banker_financial_report_analysis, dianjin_investment_researcher_company_deep_analysis]
+
+  - combo_id: P12_industry_research
+    label: 行业深度研究
+    priority: 110
+    routing:
+      keywords: [行业深度, 行业分析, 行业一页纸, industry analysis]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, source_conflict, dianjin_investment_researcher_industry_deep_analysis, dianjin_investment_researcher_industry_one_page_analysis]
+
+  - combo_id: P16_institutional_research
+    label: 机构调研准备
+    priority: 120
+    routing:
+      keywords: [机构调研, 调研提纲, 访谈提纲, institutional research]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, source_conflict, dianjin_investment_researcher_company_deep_analysis, dianjin_investment_researcher_institutional_research_outline]
+
+  - combo_id: P02_financial_evidence
+    label: 财务证据闭环
+    priority: 200
+    routing:
+      keywords: [财报, 营收, 收入, 毛利, 净利, 利润, EBITDA, EBIT, EPS, 现金流, 资产负债, 同比, 环比, revenue, net income, gross margin, earnings]
+    skills: [period_alignment, finskillops_financial_numeric_synthesis, table_evidence_verifier, source_conflict]

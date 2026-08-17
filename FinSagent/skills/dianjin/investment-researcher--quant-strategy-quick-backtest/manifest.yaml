@@ -1,0 +1,89 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_quant_strategy_quick_backtest
+version: 0.1.0
+name: 量化策略速回测技能 (Quant Strategy Quick Backtest)
+description: 证券金融工程研究员轻量化策略速回测技能。当用户要求进行策略回测、量化策略测试、简易策略验证、快速计算年化收益/最大回撤/夏普比率、策略过拟合检测时使用。包括"回测一下这个策略"、"测试均线交叉策略"、"策略速评"、"快速回测"、"算一下策略收益"、"策略有效性验证"、"帮我回测下"、"看看这个策略怎么样"、"策略表现如何"、"量化回测"、"策略回测报告"等表述。即使用户只说"回测"、"测试策略"、"算下收益"等简短表述也要触发。本技能自动解析策略规则、获取行情数据或模拟数据、执行回测计算、输出核心绩效指标，并附带过拟合风险提示，生成标准化Markdown格式回测报告。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- quant
+- market_researcher
+routing:
+  keywords:
+  - 回测一下这个策略
+  - 测试均线交叉策略
+  - 策略速评
+  - 快速回测
+  - 算一下策略收益
+  - 策略有效性验证
+  - 帮我回测下
+  - 看看这个策略怎么样
+  - 策略表现如何
+  - 量化回测
+  - 策略回测报告
+  - 回测
+  - 测试策略
+  - 算下收益
+  - 量化策略速回测技能
+  - 策略回测
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: true
+  same_company_required: true
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: false
+  allow_actual_estimate_mix: true
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/quant-strategy-quick-backtest/SKILL.md
+  upstream_sha256: 410ada6c4b548c99e0709ca4512202dc39014254a06749fc52887e30cf557217
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/quant-strategy-quick-backtest.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 回测一下这个策略, 测试均线交叉策略, 策略速评, 快速回测, 算一下策略收益, 策略有效性验证, 帮我回测下, 看看这个策略怎么样,
+    策略表现如何, 量化回测, 策略回测报告, 回测, 测试策略, 算下收益, 量化策略速回测技能, 策略回测'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/quant-strategy-quick-backtest/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/quant-strategy-quick-backtest/SKILL.md;
+    installed for shadow evaluation, not production activation.

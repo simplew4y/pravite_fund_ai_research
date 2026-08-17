@@ -1,0 +1,84 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_global_macro_linkage
+version: 0.1.0
+name: 海外宏观联动分析技能
+description: 海外宏观联动分析技能。当用户要求分析海外宏观数据、美联储政策、美国经济对国内影响、中美联动、外资流向、汇率波动对 A 股债市影响时使用。包括“分析美联储最新决议影响”、“美国经济衰退对中国影响”、“中美宏观联动分析”、“海外宏观周报”、“外资流向分析”、“汇率波动对资产影响”等表述。本技能自动跟踪海外核心宏观指标与政策动态，分析其通过汇率、贸易、情绪、通胀等渠道对国内经济和资本市场的传导影响，输出结构化
+  Markdown 联动分析简报。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- general
+routing:
+  keywords:
+  - 分析美联储最新决议影响
+  - 美国经济衰退对中国影响
+  - 中美宏观联动分析
+  - 海外宏观周报
+  - 外资流向分析
+  - 汇率波动对资产影响
+  - 海外宏观联动分析
+  - 海外宏观联动分析技能
+  - 宏观周报
+  - global macro linkage
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/global-macro-linkage/SKILL.md
+  upstream_sha256: 77b4175f9e441f367be8f1043e36413eb371fc691b7fa6d88f877dba5753652e
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/global-macro-linkage.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 分析美联储最新决议影响, 美国经济衰退对中国影响, 中美宏观联动分析, 海外宏观周报, 外资流向分析, 汇率波动对资产影响, 海外宏观联动分析,
+    海外宏观联动分析技能, 宏观周报, global macro linkage'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/global-macro-linkage/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/global-macro-linkage/SKILL.md;
+    installed for shadow evaluation, not production activation.

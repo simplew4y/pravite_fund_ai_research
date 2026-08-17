@@ -1,0 +1,83 @@
+schema_version: 1
+skill_id: dianjin_investment_researcher_macro_policy_analysis
+version: 0.1.0
+name: 宏观政策跟踪与推演分析技能
+description: 宏观政策跟踪与推演分析技能。当用户要求分析最新政策、解读央行货币政策、财政政策影响、推演政策对股债市场影响、跟踪政策落地效果时使用。包括"今日政策解读"、"政策对市场的影响"、"后续政策推演"、"政策跟踪分析"、"宏观政策简报"、"美联储政策影响"、"监管新政解读"等表述。本技能自动抓取全球主要经济体政策动态（美联储、欧央行、海外通胀与大宗商品）、国内政策动态（央行货币政策、财政政策、监管新政）、核心宏观舆情（经济会议、官员讲话、行业政策导向），进行政策意图解读、实施路径分析、中长期影响评估，推演后续政策可能性及节奏，跟踪前期政策落地效果，最终生成结构化的Markdown格式政策推演分析报告。
+category: dianjin_finance
+type: prompt
+phase: pre_answer
+priority: 300
+status: experimental
+owner: finsagent-skillops
+agents:
+- market_researcher
+- general
+routing:
+  keywords:
+  - 今日政策解读
+  - 政策对市场的影响
+  - 后续政策推演
+  - 政策跟踪分析
+  - 宏观政策简报
+  - 美联储政策影响
+  - 监管新政解读
+  - 宏观政策跟踪与推演分析
+  - 宏观政策跟踪与推演分析技能
+  - macro policy analysis
+  negative_keywords: []
+evidence_contract:
+  company_scope_required: false
+  same_company_required: false
+  same_period_required: false
+  comparable_period_required: false
+  unit_required: false
+  currency_required: false
+  source_evidence_required: true
+  allow_cross_company: true
+  allow_actual_estimate_mix: false
+implementation:
+  kind: prompt
+  source: qwen-dianjin
+  upstream_repository: https://github.com/aliyun/qwen-dianjin
+  upstream_ref: fd9b51167d6574470404b30e426bcb3357615f89
+  upstream_path: DianJin-SKILLS/investment-researcher/macro-policy-analysis/SKILL.md
+  upstream_sha256: c9b2a025d3e3ece8d332f2e8ec2ea79fb0ddfc0e222e6f0cbb67500c9c4bc49d
+  adapter_version: 0.1.0
+  max_instruction_chars: 9000
+  external_tools_blocked: true
+  license_review_required: true
+permissions:
+  network: false
+  filesystem_read: false
+  filesystem_write: false
+  external_tools: []
+public: false
+governance:
+  scope: Adapted DianJin workflow for DianJin-SKILLS/investment-researcher/macro-policy-analysis.
+  failure_types:
+  - unsupported_external_tool
+  - missing_source_evidence
+  - cross_company_contamination
+  - prompt_overreach
+  trigger: 'Candidate routing terms: 今日政策解读, 政策对市场的影响, 后续政策推演, 政策跟踪分析, 宏观政策简报, 美联储政策影响, 监管新政解读, 宏观政策跟踪与推演分析,
+    宏观政策跟踪与推演分析技能, macro policy analysis'
+  inputs:
+  - question
+  - active_dataset
+  - evidence_fusion_context
+  outputs:
+  - bounded_research_workflow_instruction
+  risks:
+  - Upstream external tools are unavailable unless explicitly mapped.
+  - Financial thresholds and recommendations require downstream review.
+  - The candidate must not override dataset or company evidence boundaries.
+  - Upstream repository licensing must be confirmed before product promotion.
+  eval_sets:
+  - dianjin_candidate_routing_v1
+  - dianjin_evidence_grounding_v1
+  last_reviewed: '2026-08-09'
+  implementation_refs:
+  - DianJin-SKILLS/investment-researcher/macro-policy-analysis/SKILL.md
+  - scripts/import_dianjin_skills.py
+  notes: Imported from https://github.com/aliyun/qwen-dianjin/tree/fd9b51167d6574470404b30e426bcb3357615f89/DianJin-SKILLS/investment-researcher/macro-policy-analysis/SKILL.md;
+    installed for shadow evaluation, not production activation.
