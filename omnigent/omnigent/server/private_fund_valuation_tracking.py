@@ -11,6 +11,7 @@ macros or rewrites a workbook.
 from __future__ import annotations
 
 import hashlib
+from contextlib import suppress
 import json
 import math
 import re
@@ -191,7 +192,7 @@ def _canonical_security_ticker(value: Any) -> tuple[str, str, str, str]:
     if a_share:
         digits, exchange = a_share.groups()
         if not exchange:
-            if digits.startswith(("4", "8")):
+            if digits.startswith(("4", "8", "92")):
                 exchange = "BJ"
             elif digits.startswith(("5", "6", "9")):
                 exchange = "SH"
@@ -201,13 +202,100 @@ def _canonical_security_ticker(value: Any) -> tuple[str, str, str, str]:
     raise ValueError("unsupported security ticker format; first phase supports A-share and HK .HK tickers")
 
 
+def _security_directory_entry(name: Any, ticker: Any) -> dict[str, str] | None:
+    try:
+        canonical_ticker, market, exchange, _provider_symbol = _canonical_security_ticker(ticker)
+    except ValueError:
+        return None
+    company_name = str(name or "").strip()
+    if not company_name:
+        return None
+    now = _now_iso()
+    return {
+        "security_id": f"vsd_{_digest(market, canonical_ticker, length=20)}",
+        "market": market,
+        "exchange": exchange,
+        "company_name": company_name,
+        "ticker": canonical_ticker,
+        "normalized_name": _normalize(company_name),
+        "normalized_ticker": _normalize(canonical_ticker),
+        "source": "akshare:full_ahk_directory",
+        "source_updated_at": now,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _security_directory_records(frame: Any) -> list[dict[str, Any]]:
+    if hasattr(frame, "to_dict"):
+        rows = frame.to_dict("records")
+    else:
+        rows = frame
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def _full_security_directory(market: str) -> list[dict[str, str]]:
+    """Load currently listed equities for one supported market from AKShare."""
+    try:
+        import akshare  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError("AKShare 未安装，无法同步全量证券目录。") from exc
+
+    sources = {
+        "a_share": akshare.stock_info_a_code_name,
+        "hk": akshare.stock_hk_spot_em,
+    }
+    if market not in sources:
+        raise RuntimeError(f"不支持同步市场：{market}")
+    try:
+        rows = _security_directory_records(sources[market]())
+    except Exception as exc:  # noqa: BLE001 - provider errors must not become API 500s
+        raise RuntimeError(f"AKShare {market} 证券目录同步失败。") from exc
+
+    entries: dict[tuple[str, str], dict[str, str]] = {}
+    for row in rows:
+        code = row.get("code", row.get("代码"))
+        name = row.get("name", row.get("名称"))
+        ticker = f"{code}.HK" if market == "hk" else code
+        if entry := _security_directory_entry(name, ticker):
+            entries[(entry["market"], entry["ticker"])] = entry
+    if not entries:
+        raise RuntimeError(f"AKShare 未返回可用的 {market} 证券目录。")
+    return list(entries.values())
+
+
 def _security_cache_seed(now: str) -> list[dict[str, str]]:
     entries = [
+        ("平安银行", "000001.SZ", "a_share", "SZ"),
+        ("美的集团", "000333.SZ", "a_share", "SZ"),
+        ("格力电器", "000651.SZ", "a_share", "SZ"),
+        ("五粮液", "000858.SZ", "a_share", "SZ"),
+        ("比亚迪", "002594.SZ", "a_share", "SZ"),
         ("阳光电源", "300274.SZ", "a_share", "SZ"),
         ("宁德时代", "300750.SZ", "a_share", "SZ"),
+        ("中信证券", "600030.SH", "a_share", "SH"),
+        ("招商银行", "600036.SH", "a_share", "SH"),
+        ("恒瑞医药", "600276.SH", "a_share", "SH"),
         ("贵州茅台", "600519.SH", "a_share", "SH"),
+        ("长江电力", "600900.SH", "a_share", "SH"),
+        ("隆基绿能", "601012.SH", "a_share", "SH"),
+        ("中国平安", "601318.SH", "a_share", "SH"),
+        ("中国中免", "601888.SH", "a_share", "SH"),
+        ("汇丰控股", "5.HK", "hk", "HK"),
+        ("香港交易所", "388.HK", "hk", "HK"),
         ("腾讯控股", "700.HK", "hk", "HK"),
+        ("中国海洋石油", "883.HK", "hk", "HK"),
+        ("建设银行", "939.HK", "hk", "HK"),
+        ("比亚迪股份", "1211.HK", "hk", "HK"),
+        ("友邦保险", "1299.HK", "hk", "HK"),
+        ("工商银行", "1398.HK", "hk", "HK"),
+        ("小米集团-W", "1810.HK", "hk", "HK"),
+        ("安踏体育", "2020.HK", "hk", "HK"),
+        ("中国平安", "2318.HK", "hk", "HK"),
+        ("美团-W", "3690.HK", "hk", "HK"),
+        ("京东集团-SW", "9618.HK", "hk", "HK"),
         ("阿里巴巴-W", "9988.HK", "hk", "HK"),
+        ("网易-S", "9999.HK", "hk", "HK"),
     ]
     return [
         {
@@ -227,11 +315,62 @@ def _security_cache_seed(now: str) -> list[dict[str, str]]:
     ]
 
 
+def _directory_needs_refresh(conn: sqlite3.Connection, market: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT MAX(source_updated_at) AS source_updated_at
+        FROM valuation_security_directory
+        WHERE source='akshare:full_ahk_directory' AND market=? AND cache_status='active'
+        """,
+        (market,),
+    ).fetchone()
+    value = str(row["source_updated_at"] or "") if row else ""
+    try:
+        refreshed_at = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return refreshed_at < _now() - timedelta(hours=SECURITY_DIRECTORY_CACHE_TTL_HOURS)
+
+
+def _refresh_security_directory(conn: sqlite3.Connection, market: str) -> bool:
+    if not _directory_needs_refresh(conn, market):
+        return False
+    entries = _full_security_directory(market)
+    conn.execute(
+        """
+        UPDATE valuation_security_directory
+        SET cache_status='inactive', updated_at=?
+        WHERE source IN ('akshare:full_ahk_directory', 'builtin:first_phase_ahk_directory')
+          AND market=? AND cache_status='active'
+        """,
+        (_now_iso(), market),
+    )
+    conn.executemany(
+        """
+        INSERT INTO valuation_security_directory
+            (security_id, market, exchange, company_name, ticker,
+             normalized_name, normalized_ticker, source, source_updated_at,
+             cache_status, created_at, updated_at)
+        VALUES (:security_id, :market, :exchange, :company_name, :ticker,
+                :normalized_name, :normalized_ticker, :source, :source_updated_at,
+                'active', :created_at, :updated_at)
+        ON CONFLICT(market, normalized_ticker) DO UPDATE SET
+            exchange=excluded.exchange,
+            company_name=excluded.company_name,
+            ticker=excluded.ticker,
+            normalized_name=excluded.normalized_name,
+            source=excluded.source,
+            source_updated_at=excluded.source_updated_at,
+            cache_status='active',
+            updated_at=excluded.updated_at
+        """,
+        entries,
+    )
+    return True
+
+
 def _ensure_security_directory_cache(conn: sqlite3.Connection) -> None:
     if "valuation_security_directory" not in _tables(conn):
-        return
-    count = int(conn.execute("SELECT COUNT(*) FROM valuation_security_directory").fetchone()[0])
-    if count:
         return
     now = _now_iso()
     for entry in _security_cache_seed(now):
@@ -277,14 +416,17 @@ def _find_security_candidate(
         canonical_ticker, market, _exchange, _provider_symbol = _canonical_security_ticker(ticker)
     except ValueError as exc:
         return None, [str(exc)]
-    row = conn.execute(
-        """
+    query = """
         SELECT * FROM valuation_security_directory
         WHERE cache_status='active' AND market=? AND normalized_ticker=?
         LIMIT 1
-        """,
-        (market, _normalize(canonical_ticker)),
-    ).fetchone()
+    """
+    params = (market, _normalize(canonical_ticker))
+    row = conn.execute(query, params).fetchone()
+    if row is None:
+        with suppress(RuntimeError):
+            _refresh_security_directory(conn, market)
+        row = conn.execute(query, params).fetchone()
     if row is None:
         return None, ["security_not_found_in_supported_directory"]
     candidate = _security_candidate_payload(row)
@@ -309,6 +451,9 @@ def search_security_directory(
         return []
     with _connect(collection_db) as conn:
         ensure_valuation_schema(conn)
+        for market in ("a_share", "hk"):
+            with suppress(RuntimeError):
+                _refresh_security_directory(conn, market)
         rows = conn.execute(
             """
             SELECT * FROM valuation_security_directory
@@ -1862,6 +2007,10 @@ def refresh_current_context_cards(
                 model_version_id=str(version_row["model_version_id"]),
                 llm_client=llm_client,
                 document_ids=document_ids,
+                sentiment_adapter=private_fund_valuation_impact_agent.default_sentiment_adapter(
+                    str(series_row["company_name"] or series_row["name"] or ""),
+                    str(series_row["company_ticker"] or ""),
+                ),
             )
             refreshed.append(
                 {
@@ -1928,6 +2077,10 @@ def refresh_current_metric_analysis(
                 model_version_id=str(version_row["model_version_id"]),
                 llm_client=llm_client,
                 document_ids=document_ids,
+                sentiment_adapter=private_fund_valuation_impact_agent.default_sentiment_adapter(
+                    str(series_row["company_name"] or series_row["name"] or ""),
+                    str(series_row["company_ticker"] or ""),
+                ),
             )
             refreshed.append(
                 {

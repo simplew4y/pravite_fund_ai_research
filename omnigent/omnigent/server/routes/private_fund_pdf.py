@@ -46,6 +46,7 @@ from omnigent.server import (
     private_fund_source_folders,
     private_fund_tracking,
     private_fund_valuation_agent,
+    private_fund_valuation_metrics,
     private_fund_valuation_tracking,
     private_fund_workflow,
 )
@@ -4765,6 +4766,36 @@ def create_private_fund_pdf_router(
         return private_fund_valuation_tracking.tracking_overview(
             _collection_db_path(dataset_id), dataset_id
         )
+
+    @router.get("/private-fund/projects/{dataset_id}/valuation-tracking/period-market")
+    def get_project_valuation_period_market(
+        dataset_id: str,
+        series_id: str = Query(..., min_length=1, max_length=128),
+        model_version_id: str = Query(..., min_length=1, max_length=128),
+        period: str = Query(..., pattern=r"^20\d{2}Q[1-4]$"),
+    ) -> dict[str, Any]:
+        _require_project_row(dataset_id)
+        collection_db = _collection_db_path(dataset_id)
+        try:
+            version = private_fund_valuation_tracking.get_model_version(
+                collection_db, dataset_id, model_version_id
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="model version not found") from exc
+        if str(version.get("series_id") or "") != series_id:
+            raise HTTPException(status_code=400, detail="model version does not belong to series")
+        with sqlite3.connect(str(collection_db), timeout=30) as conn:
+            conn.row_factory = sqlite3.Row
+            try:
+                return private_fund_valuation_metrics.period_market_snapshot(
+                    conn,
+                    dataset_id=dataset_id,
+                    series_id=series_id,
+                    model_version_id=model_version_id,
+                    period=period,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post(
         "/private-fund/projects/{dataset_id}/valuation-tracking/run",

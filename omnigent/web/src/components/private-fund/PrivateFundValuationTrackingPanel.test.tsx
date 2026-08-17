@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { usePrivateFundValuationTracking } from "@/hooks/usePrivateFundProjects";
 import {
+  getPrivateFundValuationPeriodMarket,
   runPrivateFundValuationTracking,
   type PrivateFundValuationImpactCard,
   type PrivateFundValuationMetricComparison,
@@ -19,6 +20,7 @@ vi.mock("@/lib/privateFundApi", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/privateFundApi")>();
   return {
     ...actual,
+    getPrivateFundValuationPeriodMarket: vi.fn(),
     runPrivateFundValuationTracking: vi.fn(),
   };
 });
@@ -154,6 +156,7 @@ function impactCard(
     watchItems: ["订单交付", "客户验收"],
     sourceRefs: ["阳光电源近况交流会.pdf p.18"],
     evidenceIds: [`chunk:${cardId}`],
+    evidenceLocations: [],
     createdAt: "2026-07-21T06:00:00Z",
   };
 }
@@ -200,7 +203,6 @@ const overview: PrivateFundValuationTrackingOverview = {
       metricAnalysis: {
         marketData: {
           snapshotId: "snapshot-1",
-          provider: "akshare",
           status: "completed",
           asOf: "2026-07-20T05:30:00Z",
           errorMessage: "",
@@ -228,28 +230,6 @@ const overview: PrivateFundValuationTrackingOverview = {
           comparisons: comparisons.filter((metric) =>
             ["forward_pe", "avg_turnover_amount_20d"].includes(metric.metricKey),
           ),
-        },
-        priceComparison: {
-          priceComparisonId: "price-1",
-          snapshotId: "snapshot-1",
-          provider: "akshare",
-          providerSymbol: "300274",
-          currency: "CNY",
-          valuationDate: "2026-07-20",
-          benchmarkTradeDate: "2026-07-20",
-          benchmarkClose: 82,
-          latestTradeDate: "2026-07-21",
-          latestClose: 100,
-          targetPrice: 120,
-          targetUnit: "CNY/share",
-          targetSource: "DCF!D20",
-          targetEvidenceId: "fact:target-price",
-          impliedUpside: 120 / 82 - 1,
-          latestUpside: 0.2,
-          status: "completed",
-          errorMessage: "",
-          metadata: { adjustment: "raw" },
-          createdAt: "2026-07-21T05:30:00Z",
         },
         metricComparisons: comparisons,
         contextCards: [
@@ -322,14 +302,17 @@ describe("PrivateFundValuationTrackingPanel", () => {
       isLoading: false,
       isError: false,
     } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+    vi.mocked(getPrivateFundValuationPeriodMarket).mockResolvedValue(
+      overview.series[0].metricAnalysis!.marketSnapshot!,
+    );
     vi.mocked(runPrivateFundValuationTracking).mockResolvedValue([]);
   });
 
-  it("groups three quarterly metrics separately from two non-alerting market snapshots", () => {
+  it("groups three quarterly metrics separately from two non-alerting market snapshots", async () => {
     renderPanel();
     const region = screen.getByRole("region", { name: "估值模型五指标对比" });
     const quarterlyRegion = screen.getByRole("region", { name: "季度经营指标 · 3项" });
-    const marketRegion = screen.getByRole("region", { name: "当前市场快照" });
+    const marketRegion = await screen.findByRole("region", { name: "当前市场快照" });
 
     for (const metric of comparisons.filter((item) => QUARTERLY_METRIC_KEYS.has(item.metricKey))) {
       expect(
@@ -348,6 +331,9 @@ describe("PrivateFundValuationTrackingPanel", () => {
     expect(screen.getByText("20x")).toBeInTheDocument();
     expect(screen.getByText("10.00 亿元")).toBeInTheDocument();
     expect(screen.getAllByText("真实值 · API")).toHaveLength(5);
+    expect(screen.getAllByText((content) => content.startsWith("\u516C\u5F0F\uFF1A"))).toHaveLength(
+      5,
+    );
     expect(within(marketRegion).queryByText("关注")).toBeNull();
     expect(within(marketRegion).queryByText("预警")).toBeNull();
     expect(screen.queryByText("临时录入", { exact: false })).not.toBeInTheDocument();
@@ -400,6 +386,106 @@ describe("PrivateFundValuationTrackingPanel", () => {
       within(region).getByText("private-fund-valuation-impacts", { exact: false }),
     ).toBeInTheDocument();
     expect(within(region).getAllByText("来源：阳光电源近况交流会.pdf p.18")).toHaveLength(6);
+  });
+
+  it("renders valuation impact source URLs as source buttons", () => {
+    const withSourceButtons = structuredClone(overview);
+    const card = withSourceButtons.series[0].metricAnalysis.valuationImpacts.cards[0];
+    card.sourceRefs = [
+      "五粮液 - 2026-07-09 - http://ft.10jqka.com.cn/standardgwapi/api/news_service/pubnote/download/resource?seq=1&token=secret",
+    ];
+    card.evidenceLocations = [
+      {
+        provider: "ifind_report_query",
+        source_name: "五粮液",
+        source_url:
+          "http://ft.10jqka.com.cn/standardgwapi/api/news_service/pubnote/download/resource?seq=1&token=secret",
+        canonical_url:
+          "http://ft.10jqka.com.cn/standardgwapi/api/news_service/pubnote/download/resource?seq=1",
+        published_at: "2026-07-09T00:00:00+00:00",
+      },
+      {
+        provider: "google_news_rss",
+        source_name: "东方财富",
+        source_url: "https://news.google.com/rss/articles/eastmoney?oc=5",
+        published_at: "2026-07-09T00:00:00+00:00",
+      },
+      {
+        provider: "google_news_rss",
+        source_name: "雪球",
+        source_url: "https://news.google.com/rss/articles/xueqiu?oc=5",
+        published_at: "2026-07-02T00:00:00+00:00",
+      },
+      {
+        provider: "google_news_rss",
+        source_name: "证券时报",
+        source_url: "https://news.google.com/rss/articles/stcn?oc=5",
+        published_at: "2026-06-26T00:00:00+00:00",
+      },
+      {
+        provider: "ifind_report_query",
+        source_name: "五粮液",
+        source_url:
+          "http://ft.10jqka.com.cn/standardgwapi/api/news_service/pubnote/download/resource?seq=1&token=duplicate",
+        canonical_url:
+          "http://ft.10jqka.com.cn/standardgwapi/api/news_service/pubnote/download/resource?seq=1",
+        published_at: "2026-07-09T00:00:00+00:00",
+      },
+    ];
+    vi.mocked(usePrivateFundValuationTracking).mockReturnValue({
+      data: withSourceButtons,
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+
+    renderPanel();
+
+    const region = screen.getByRole("region", { name: "其他资料对估值的综合影响" });
+    const article = within(region)
+      .getByRole("heading", { name: "AIDC 配储打开高利润增量" })
+      .closest("article");
+    expect(article).not.toBeNull();
+    const scoped = within(article as HTMLElement);
+    const ifindLink = scoped.getByRole("link", { name: "同花顺" });
+    expect(ifindLink).toHaveAttribute("target", "_blank");
+    expect(ifindLink).toHaveAttribute(
+      "href",
+      "http://ft.10jqka.com.cn/standardgwapi/api/news_service/pubnote/download/resource?seq=1&token=secret",
+    );
+    expect(ifindLink).toHaveAttribute(
+      "title",
+      "打开原文：ft.10jqka.com.cn/standardgwapi/api/news_service/pubnote/download/resource",
+    );
+    expect(scoped.getByRole("link", { name: "东方财富" })).toBeInTheDocument();
+    expect(scoped.getByRole("link", { name: "雪球" })).toBeInTheDocument();
+    expect(scoped.queryByRole("link", { name: "证券时报" })).not.toBeInTheDocument();
+    expect(scoped.getAllByText("2026-07-09")).toHaveLength(2);
+    expect(scoped.queryByText(/token=secret/)).not.toBeInTheDocument();
+
+    fireEvent.click(scoped.getByRole("button", { name: "+1" }));
+
+    expect(scoped.getByRole("link", { name: "证券时报" })).toBeInTheDocument();
+    expect(scoped.getAllByRole("link", { name: "同花顺" })).toHaveLength(1);
+  });
+  it("marks sentiment impact cards as industry news", () => {
+    const withIndustryNews = structuredClone(overview);
+    const card = withIndustryNews.series[0].metricAnalysis.valuationImpacts.cards[0];
+    card.evidenceIds = ["sentiment:ifind:1"];
+    card.evidenceLocations = [{ provider: "ifind_report_query" }];
+    vi.mocked(usePrivateFundValuationTracking).mockReturnValue({
+      data: withIndustryNews,
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+
+    renderPanel();
+
+    const region = screen.getByRole("region", { name: "其他资料对估值的综合影响" });
+    const article = within(region)
+      .getByRole("heading", { name: "AIDC 配储打开高利润增量" })
+      .closest("article");
+    expect(article).not.toBeNull();
+    expect(within(article as HTMLElement).getByText("行业资讯")).toBeInTheDocument();
   });
 
   it("shows metric-gap alerts and auxiliary documents as non-numeric cards", () => {
@@ -535,7 +621,7 @@ describe("PrivateFundValuationTrackingPanel", () => {
     expect(within(stage).getByText("抽取已完成，未识别到可用模型指标（0/5）")).toBeInTheDocument();
   });
 
-  it("shows an unavailable Forward PE value without a market-warning badge", () => {
+  it("shows an unavailable Forward PE value without a market-warning badge", async () => {
     const unavailable = structuredClone(overview);
     unavailable.series[0].companyTicker = "NVDA";
     const forward = unavailable.series[0].metricAnalysis.metricComparisons.find(
@@ -550,9 +636,14 @@ describe("PrivateFundValuationTrackingPanel", () => {
       isLoading: false,
       isError: false,
     } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+    vi.mocked(getPrivateFundValuationPeriodMarket).mockResolvedValue(
+      unavailable.series[0].metricAnalysis!.marketSnapshot!,
+    );
 
     renderPanel("other-company");
-    const forwardRow = screen.getByRole("heading", { name: "Forward PE" }).closest("article")!;
+    const forwardRow = (await screen.findByRole("heading", { name: "Forward PE" })).closest(
+      "article",
+    )!;
     expect(within(forwardRow).getByText("暂无")).toBeInTheDocument();
     expect(within(forwardRow).queryByText("待补充")).toBeNull();
     expect(within(forwardRow).queryByText("关注")).toBeNull();
@@ -560,7 +651,7 @@ describe("PrivateFundValuationTrackingPanel", () => {
     expect(screen.getByRole("region", { name: "其他资料对估值的综合影响" })).toBeInTheDocument();
   });
 
-  it("labels source-verified manual model values", () => {
+  it("labels source-verified manual model values", async () => {
     const manuallyVerified = structuredClone(overview);
     const forward = manuallyVerified.series[0].metricAnalysis.metricComparisons.find(
       (metric) => metric.metricKey === "forward_pe",
@@ -571,9 +662,14 @@ describe("PrivateFundValuationTrackingPanel", () => {
       isLoading: false,
       isError: false,
     } as unknown as ReturnType<typeof usePrivateFundValuationTracking>);
+    vi.mocked(getPrivateFundValuationPeriodMarket).mockResolvedValue(
+      manuallyVerified.series[0].metricAnalysis!.marketSnapshot!,
+    );
 
     renderPanel();
-    const forwardRow = screen.getByRole("heading", { name: "Forward PE" }).closest("article")!;
+    const forwardRow = (await screen.findByRole("heading", { name: "Forward PE" })).closest(
+      "article",
+    )!;
     expect(within(forwardRow).getByText("2026E · 人工核验")).toBeInTheDocument();
     fireEvent.click(within(forwardRow).getByText("查看口径与来源"));
     expect(within(forwardRow).getByText("模型（人工核验）：")).toBeInTheDocument();

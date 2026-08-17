@@ -105,6 +105,9 @@ def tenant_scope_dependency(
         if user_id is None:
             yield None
             return
+        if user_id == "local" and account_store is None:
+            yield None
+            return
         if account_store is None:
             raise RuntimeError("Private-fund multi-user mode requires an account store")
         tenant = build_tenant_context(user_id, account_store)

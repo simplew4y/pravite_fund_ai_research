@@ -125,26 +125,26 @@ scripts/manage_omnigent_services.sh restart
 > [!IMPORTANT]
 > 📝 远端 vLLM 当前实际拒绝自动和强制工具调用，错误明确要求启用 `--enable-auto-tool-choice` 与 `--tool-call-parser`；Anthropic-compatible 路径也仍把思考过程写入正文。后台非工具型抽取/分析可使用新模型，但依赖工具调用的 Claude Native 研究链路在远端修复前不能视为完整可用。远端修复后必须重新验证普通对话、流式输出、自动工具调用和 Anthropic-compatible `/v1/messages`。
 
-## 📝 AKShare 免费行情 Provider（2026-07-21）
+## Market-data providers (2026-07-21)
 
-估值跟踪默认使用 AKShare 获取 A 股和港股不复权日线，不需要 API Token。刷新真实数据时，系统会缓存日线价格，并把模型中的目标价与估值基准日收盘价、最新收盘价分别比较；页面展示估值日隐含空间和当前剩余空间。
+Valuation tracking uses the explicit `free_combo` provider by default: iFinD when configured, then public A/H-share providers. It refreshes metric snapshots only; target-price/closing-price comparisons are not part of the refresh flow.
 
-- 📝 A 股支持六位代码及 `.SZ`、`.SH`、`.BJ` 后缀；港股支持 `.HK` 后缀并自动补齐 AKShare 五位代码。
-- 📝 优先使用 AKShare 的东方财富历史行情接口；单一上游断连时，A 股和港股自动回退到新浪历史行情接口。
-- 📝 价格比较固定使用 `adjust=""` 的原始收盘价，避免把前/后复权序列误当作估值当日真实成交价。
-- 📝 AKShare 负责日线价格与可用时的 20 日平均成交额；季度财务指标和 Forward PE 仍需财报解析、一致预期 API 或其他专业数据源。
-- 📝 每次行情异常都会作为 comparison 状态和错误信息持久化，不阻断模型版本入库，也不会用模拟值填补缺口。
+- A shares: AKShare, then `EastmoneyFinancialMarketDataProvider`; HK shares: Tencent Finance, then Yahoo Finance.
+- The Eastmoney adapter owns both financial fields and daily-bar-based 20-day average turnover.
+- AKShare accepts six-digit A-share codes and `.SZ`, `.SH`, `.BJ` suffixes; HK codes use `.HK` and are padded to five digits for the provider.
+- Provider failures are recorded per field and do not block valuation-model ingestion.
 
 可用环境变量：
 
 | 变量 | 值 | 说明 |
 |---|---|---|
-| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `akshare` | 📝 强制使用默认免费行情源 |
-| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `tushare` | 📝 使用 `TUSHARE_TOKEN` 对应接口 |
-| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `http` | 📝 使用标准化内部 API |
-| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `disabled` | 📝 禁用外部真实数据请求 |
+| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `free_combo` | iFinD-first waterfall with public A/H-share fallbacks |
+| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `ifind` | Use only the official iFinD adapter |
+| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `http` | Use a normalized internal API |
+| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `akshare` | Use only AKShare |
+| `PRIVATE_FUND_MARKET_DATA_PROVIDER` | `disabled` | Disable external market requests |
 
-如未设置 Provider，系统按“已配置标准化 HTTP API → 已配置 Tushare Token → AKShare”选择；因此全新本地环境会直接使用 AKShare。
+The provider is explicit: `free_combo`, `ifind`, `http`, `akshare`, or `disabled`.
 
 ## 📝 估值模型跟踪 Worker（2026-07-15）
 

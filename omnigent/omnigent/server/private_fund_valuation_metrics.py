@@ -104,6 +104,9 @@ QUARTERLY_COMPARISON_KEYS = frozenset(
 QUARTERLY_METRIC_DEFINITIONS = tuple(
     item for item in METRIC_DEFINITIONS if item.key in QUARTERLY_COMPARISON_KEYS
 )
+MARKET_METRIC_DEFINITIONS = tuple(
+    item for item in METRIC_DEFINITIONS if item.key not in QUARTERLY_COMPARISON_KEYS
+)
 VALUATION_MODEL_SUBTYPES = frozenset(
     {
         "dcf_model",
@@ -119,9 +122,6 @@ class MarketDataProvider(Protocol):
 
     def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]: ...
 
-    def fetch_daily_prices(
-        self, *, ticker: str, start_date: date, end_date: date
-    ) -> dict[str, Any]: ...
 
 
 def _now() -> datetime:
@@ -295,53 +295,6 @@ def ensure_metric_schema(conn: sqlite3.Connection) -> None:
             UNIQUE(model_version_id, source_doc_id)
         );
 
-        CREATE TABLE IF NOT EXISTS valuation_market_price_bars (
-            bar_id TEXT PRIMARY KEY,
-            dataset_id TEXT NOT NULL,
-            provider TEXT NOT NULL,
-            provider_symbol TEXT NOT NULL,
-            canonical_ticker TEXT NOT NULL,
-            exchange TEXT NOT NULL,
-            currency TEXT NOT NULL,
-            trade_date TEXT NOT NULL,
-            open REAL,
-            high REAL,
-            low REAL,
-            close REAL NOT NULL,
-            volume REAL,
-            amount REAL,
-            adjustment TEXT NOT NULL DEFAULT 'raw',
-            source TEXT,
-            fetched_at TEXT NOT NULL,
-            UNIQUE(dataset_id, provider, provider_symbol, trade_date, adjustment)
-        );
-
-        CREATE TABLE IF NOT EXISTS valuation_price_comparisons (
-            price_comparison_id TEXT PRIMARY KEY,
-            snapshot_id TEXT NOT NULL,
-            dataset_id TEXT NOT NULL,
-            series_id TEXT NOT NULL,
-            model_version_id TEXT NOT NULL,
-            provider TEXT NOT NULL,
-            provider_symbol TEXT,
-            currency TEXT,
-            valuation_date TEXT,
-            benchmark_trade_date TEXT,
-            benchmark_close REAL,
-            latest_trade_date TEXT,
-            latest_close REAL,
-            target_price REAL,
-            target_unit TEXT,
-            target_source TEXT,
-            target_evidence_id TEXT,
-            implied_upside REAL,
-            latest_upside REAL,
-            status TEXT NOT NULL,
-            error_message TEXT,
-            metadata_json TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL,
-            UNIQUE(model_version_id, snapshot_id)
-        );
 
         CREATE INDEX IF NOT EXISTS ix_valuation_metric_comparison_latest
             ON valuation_metric_comparisons(series_id, model_version_id, created_at DESC);
@@ -351,10 +304,6 @@ def ensure_metric_schema(conn: sqlite3.Connection) -> None:
             ON valuation_market_snapshots(series_id, model_version_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS ix_valuation_context_cards_version
             ON valuation_context_cards(model_version_id, created_at DESC);
-        CREATE INDEX IF NOT EXISTS ix_valuation_market_price_bars_lookup
-            ON valuation_market_price_bars(dataset_id, canonical_ticker, trade_date DESC);
-        CREATE INDEX IF NOT EXISTS ix_valuation_price_comparison_latest
-            ON valuation_price_comparisons(series_id, model_version_id, created_at DESC);
         """
     )
     snapshot_columns = {
@@ -627,6 +576,14 @@ def _security_identity(ticker: str) -> SecurityIdentity:
     )
 
 
+def _ifind_ticker(identity: SecurityIdentity) -> str:
+    return (
+        f"{identity.provider_symbol[-4:]}.{identity.exchange}"
+        if identity.market == "hk"
+        else identity.canonical_ticker
+    )
+
+
 def _date_text(value: Any) -> str:
     if value in (None, ""):
         return ""
@@ -666,6 +623,31 @@ def _normalized_price_bar(row: dict[str, Any]) -> dict[str, Any] | None:
         "amount": _safe_float(row.get("成交额", row.get("amount"))),
     }
 
+
+def _average_turnover_metric(
+    bars: list[dict[str, Any]], *, source: str, metadata: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    sample = [
+        bar
+        for bar in sorted(bars, key=lambda item: str(item.get("trade_date") or ""))
+        if _safe_float(bar.get("amount")) is not None
+    ][-20:]
+    if len(sample) != 20:
+        return None
+    observed_at = str(sample[-1]["trade_date"])
+    metric = {
+        "value": sum(float(bar["amount"]) for bar in sample) / 20.0,
+        "period": f"20D@{observed_at}",
+        "unit": "currency",
+        "source": source,
+        "observed_at": observed_at,
+    }
+    estimated_days = sum(
+        1 for bar in sample if bar.get("amount_quality") == "estimated_close_x_volume"
+    )
+    if metadata:
+        metric["metadata"] = {**metadata, "estimated_days": estimated_days}
+    return metric
 
 class EastmoneyFinancialMarketDataProvider:
     """A-share quarterly financial metrics from Eastmoney's public F10 feed."""
@@ -959,6 +941,17 @@ class EastmoneyFinancialMarketDataProvider:
             for key in sorted(periods[:20])
             if (period_metrics := financial_metrics(key))
         ]
+        try:
+            end = date.today()
+            prices = self.fetch_daily_prices(
+                ticker=ticker, start_date=end - timedelta(days=70), end_date=end
+            )
+            turnover = _average_turnover_metric(prices["bars"], source=str(prices["source"]))
+            if turnover is not None:
+                metrics["avg_turnover_amount_20d"] = turnover
+        except Exception:
+            pass
+
         return {
             "provider": self.name,
             "status": "completed" if metrics else "unavailable",
@@ -974,51 +967,212 @@ class EastmoneyFinancialMarketDataProvider:
         }
 
 
-class EastmoneyMarketDataProvider:
-    """A-share daily turnover from Eastmoney's public K-line feed."""
 
-    name = "eastmoney_market"
+class YahooHkMarketDataProvider:
+    """Free Yahoo Finance fallback for Hong Kong valuation metrics."""
 
-    def __init__(self, financial_provider: EastmoneyFinancialMarketDataProvider | None = None) -> None:
-        self._financial_provider = financial_provider or EastmoneyFinancialMarketDataProvider()
+    name = "yahoo"
 
-    def fetch_daily_prices(
-        self, *, ticker: str, start_date: date, end_date: date
-    ) -> dict[str, Any]:
-        return self._financial_provider.fetch_daily_prices(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-        )
+    def __init__(self, yfinance_module: Any | None = None) -> None:
+        self._yfinance_module = yfinance_module
+
+    def _module(self) -> Any:
+        if self._yfinance_module is not None:
+            return self._yfinance_module
+        try:
+            import yfinance  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise RuntimeError("Yahoo Finance provider is not installed.") from exc
+        self._yfinance_module = yfinance
+        return yfinance
+
+    @staticmethod
+    def _line_values(statement: Any, names: tuple[str, ...]) -> dict[tuple[int, int], float]:
+        for name in names:
+            if hasattr(statement, "index") and name in statement.index:
+                return {
+                    quarter: value
+                    for column, raw_value in statement.loc[name].items()
+                    if (quarter := _quarter_from_end_date(str(column))) is not None
+                    and (value := _safe_float(raw_value)) is not None
+                }
+        return {}
+
+    @staticmethod
+    def _latest_yoy(values: dict[tuple[int, int], float]) -> tuple[tuple[int, int], float] | None:
+        for quarter in sorted(values, reverse=True):
+            prior_year = (quarter[0] - 1, quarter[1])
+            if (value := _growth(values.get(quarter), values.get(prior_year))) is not None:
+                return quarter, value
+        return None
 
     def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]:
         del company_name
-        end = date.today()
-        prices = self.fetch_daily_prices(
-            ticker=ticker,
-            start_date=end - timedelta(days=70),
-            end_date=end,
-        )
-        bars = list(reversed(prices["bars"]))
-        amounts = [bar.get("amount") for bar in bars[:20] if bar.get("amount") is not None]
-        metrics: dict[str, Any] = {}
-        if len(amounts) == 20:
-            metrics["avg_turnover_amount_20d"] = {
-                "value": sum(float(amount) for amount in amounts) / 20.0,
-                "period": "20D@{}".format(bars[0]["trade_date"]),
-                "unit": "currency",
-                "source": prices["source"],
-                "observed_at": bars[0]["trade_date"],
+        identity = _security_identity(ticker)
+        if identity.market != "hk":
+            raise ValueError("Yahoo fallback is limited to .HK tickers.")
+        symbol = f"{identity.provider_symbol[-4:]}.HK"
+        instrument = self._module().Ticker(symbol)
+        metrics: dict[str, dict[str, Any]] = {}
+        try:
+            statement = instrument.quarterly_income_stmt
+            revenue = self._line_values(statement, ("Total Revenue",))
+            gross_profit = self._line_values(statement, ("Gross Profit",))
+            net_income = self._line_values(
+                statement, ("Net Income", "Net Income Common Stockholders")
+            )
+            if (net_yoy := self._latest_yoy(net_income)) is not None:
+                quarter, value = net_yoy
+                metrics["quarter_net_profit_yoy"] = {
+                    "value": value,
+                    "period": _quarter_label(quarter),
+                    "unit": "percent",
+                    "source": "Yahoo Finance quarterly income statement",
+                    "observed_at": _quarter_end_date(quarter).isoformat(),
+                }
+            for quarter in sorted(set(revenue) & set(gross_profit), reverse=True):
+                prior = _previous_quarter(quarter)
+                if prior not in revenue or prior not in gross_profit:
+                    continue
+                current_margin = gross_profit[quarter] / revenue[quarter] if revenue[quarter] else None
+                prior_margin = gross_profit[prior] / revenue[prior] if revenue[prior] else None
+                if current_margin is not None and prior_margin is not None:
+                    metrics["quarter_gross_margin_qoq_delta"] = {
+                        "value": current_margin - prior_margin,
+                        "period": _quarter_label(quarter),
+                        "unit": "percentage_point",
+                        "source": "Yahoo Finance quarterly income statement",
+                        "observed_at": _quarter_end_date(quarter).isoformat(),
+                    }
+                    break
+            yoy_by_quarter = {
+                quarter: value
+                for quarter in revenue
+                if (value := _growth(revenue.get(quarter), revenue.get((quarter[0] - 1, quarter[1]))))
+                is not None
             }
+            for quarter in sorted(yoy_by_quarter, reverse=True):
+                if (prior_yoy := yoy_by_quarter.get(_previous_quarter(quarter))) is not None:
+                    metrics["quarter_revenue_growth_qoq"] = {
+                        "value": yoy_by_quarter[quarter] - prior_yoy,
+                        "period": _quarter_label(quarter),
+                        "unit": "percentage_point",
+                        "source": "Yahoo Finance quarterly income statement",
+                        "observed_at": _quarter_end_date(quarter).isoformat(),
+                    }
+                    break
+        except Exception as exc:  # noqa: BLE001 - market fields can still be returned
+            financial_error = str(exc)[:500]
+        else:
+            financial_error = ""
+        try:
+            info = instrument.get_info()
+            forward_pe = _safe_float((info or {}).get("forwardPE"))
+            if forward_pe is not None:
+                metrics["forward_pe"] = {
+                    "value": forward_pe,
+                    "period": "forward",
+                    "unit": "multiple",
+                    "source": "Yahoo Finance forwardPE",
+                    "observed_at": _now().date().isoformat(),
+                }
+            history = instrument.history(period="3mo", auto_adjust=False)
+            bars = []
+            for row in _frame_records(history.reset_index() if hasattr(history, "reset_index") else history):
+                close = _safe_float(row.get("Close"))
+                volume = _safe_float(row.get("Volume"))
+                if close is not None and volume is not None:
+                    bars.append({"trade_date": _date_text(row.get("Date", row.get("date"))), "amount": close * volume})
+            turnover = _average_turnover_metric(
+                bars,
+                source="Yahoo Finance daily close x volume",
+                metadata={"amount_quality": "estimated_close_x_volume"},
+            )
+            if turnover is not None:
+                metrics["avg_turnover_amount_20d"] = turnover
+            market_error = ""
+        except Exception as exc:  # noqa: BLE001 - financial fields remain usable
+            market_error = str(exc)[:500]
+        missing = [key for key in METRIC_KEYS if key not in metrics]
         return {
             "provider": self.name,
-            "status": "completed" if metrics else "unavailable",
+            "status": "completed" if not missing else "partial" if metrics else "unavailable",
             "as_of": _now_iso(),
-            "ticker": prices["canonical_ticker"],
+            "ticker": identity.canonical_ticker,
             "metrics": metrics,
-            "error": "" if metrics else "Eastmoney daily K-line did not return 20 complete trading sessions.",
+            "missing_metric_keys": missing,
+            "error": "; ".join(item for item in (financial_error, market_error) if item),
         }
 
+    def fetch_market_metrics_as_of(self, *, ticker: str, as_of: date) -> dict[str, Any]:
+        """Return historical turnover plus clearly dated current Forward PE fallback."""
+
+        identity = _security_identity(ticker)
+        if identity.market != "hk":
+            raise ValueError("Yahoo fallback is limited to .HK tickers.")
+        symbol = f"{identity.provider_symbol[-4:]}.HK"
+        instrument = self._module().Ticker(symbol)
+        metrics: dict[str, dict[str, Any]] = {}
+        errors: list[str] = []
+        try:
+            history = instrument.history(
+                start=(as_of - timedelta(days=70)).isoformat(),
+                end=(as_of + timedelta(days=1)).isoformat(),
+                auto_adjust=False,
+            )
+            bars = [
+                (
+                    _date_text(row.get("Date", row.get("date"))),
+                    _safe_float(row.get("Close")),
+                    _safe_float(row.get("Volume")),
+                )
+                for row in _frame_records(
+                    history.reset_index() if hasattr(history, "reset_index") else history
+                )
+            ]
+            turnover_bars = [
+                {"trade_date": trade_date, "amount": close * volume}
+                for trade_date, close, volume in bars
+                if trade_date <= as_of.isoformat() and close is not None and volume is not None
+            ]
+            turnover = _average_turnover_metric(
+                turnover_bars,
+                source="Yahoo Finance historical daily close x volume",
+                metadata={"amount_quality": "estimated_close_x_volume"},
+            )
+            if turnover is not None:
+                metrics["avg_turnover_amount_20d"] = turnover
+        except Exception as exc:  # noqa: BLE001 - current Forward PE can still be returned
+            errors.append(str(exc)[:500])
+        try:
+            forward_pe = _safe_float((instrument.get_info() or {}).get("forwardPE"))
+            if forward_pe is not None:
+                observed_at = _now().date().isoformat()
+                metrics["forward_pe"] = {
+                    "value": forward_pe,
+                    "period": f"API@{observed_at}",
+                    "unit": "multiple",
+                    "source": "Yahoo Finance forwardPE (current fallback)",
+                    "observed_at": observed_at,
+                    "status": "stale",
+                    "metadata": {
+                        "stale_fallback": True,
+                        "requested_as_of": as_of.isoformat(),
+                        "as_of_supported": False,
+                    },
+                }
+        except Exception as exc:  # noqa: BLE001 - historical turnover remains usable
+            errors.append(str(exc)[:500])
+        missing = [item.key for item in MARKET_METRIC_DEFINITIONS if item.key not in metrics]
+        return {
+            "provider": self.name,
+            "status": "completed" if not missing else "partial" if metrics else "unavailable",
+            "as_of": as_of.isoformat(),
+            "ticker": identity.canonical_ticker,
+            "metrics": metrics,
+            "missing_metric_keys": missing,
+            "error": "; ".join(dict.fromkeys(error for error in errors if error)),
+        }
 
 class TencentHkMarketDataProvider:
     """HK daily bars from Tencent Finance, used before slower AKShare fallbacks."""
@@ -1036,9 +1190,13 @@ class TencentHkMarketDataProvider:
             )
         self.request_timeout_seconds = min(max(float(configured_timeout or 10), 1.0), 15.0)
 
-    def _payload(self, *, provider_symbol: str, limit: int) -> dict[str, Any]:
+    def _payload(
+        self, *, provider_symbol: str, limit: int, start_date: date | None = None, end_date: date | None = None
+    ) -> dict[str, Any]:
         url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
-        params = {"param": f"hk{provider_symbol},day,,,{limit},"}
+        start_text = start_date.strftime("%Y%m%d") if start_date else ""
+        end_text = end_date.strftime("%Y%m%d") if end_date else ""
+        params = {"param": f"hk{provider_symbol},day,{start_text},{end_text},{limit},"}
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": "https://gu.qq.com/",
@@ -1067,14 +1225,19 @@ class TencentHkMarketDataProvider:
         return payload
 
     def fetch_daily_prices(
-        self, *, ticker: str, start_date: date, end_date: date
+        self, *, ticker: str, start_date: date, end_date: date, request_dates: bool = False
     ) -> dict[str, Any]:
         identity = _security_identity(ticker)
         if identity.market != "hk":
             raise ValueError("Tencent HK K-line provider is limited to .HK tickers.")
         symbol_key = f"hk{identity.provider_symbol}"
         limit = min(500, max(30, (end_date - start_date).days * 2))
-        payload = self._payload(provider_symbol=identity.provider_symbol, limit=limit)
+        payload = self._payload(
+            provider_symbol=identity.provider_symbol,
+            limit=limit,
+            start_date=start_date if request_dates else None,
+            end_date=end_date if request_dates else None,
+        )
         security_data = ((payload.get("data") or {}).get(symbol_key) or {})
         rows = security_data.get("day") or security_data.get("qfqday") or []
         quote_values = ((security_data.get("qt") or {}).get(symbol_key) or [])
@@ -1122,6 +1285,31 @@ class TencentHkMarketDataProvider:
             "bars": bars,
         }
 
+    def fetch_market_metrics_as_of(self, *, ticker: str, as_of: date) -> dict[str, Any]:
+        prices = self.fetch_daily_prices(
+            ticker=ticker,
+            start_date=as_of - timedelta(days=70),
+            end_date=as_of,
+            request_dates=True,
+        )
+        turnover = _average_turnover_metric(
+            prices["bars"],
+            source=str(prices["source"]),
+            metadata={"amount_quality": "mixed_exact_and_close_x_volume_estimate", "requested_as_of": as_of.isoformat()},
+        )
+        metrics: dict[str, dict[str, Any]] = {"avg_turnover_amount_20d": turnover} if turnover else {}
+        return {
+            "provider": self.name,
+            "status": "completed" if metrics else "unavailable",
+            "as_of": as_of.isoformat(),
+            "ticker": prices["canonical_ticker"],
+            "metrics": metrics,
+            "missing_metric_keys": [
+                item.key for item in MARKET_METRIC_DEFINITIONS if item.key not in metrics
+            ],
+            "error": "" if metrics else "Tencent HK K-line did not return 20 complete trading sessions.",
+        }
+
     def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]:
         del company_name
         end = date.today()
@@ -1130,24 +1318,12 @@ class TencentHkMarketDataProvider:
             start_date=end - timedelta(days=70),
             end_date=end,
         )
-        bars = list(reversed(prices["bars"]))
-        selected = [bar for bar in bars[:20] if bar.get("amount") is not None]
-        metrics: dict[str, Any] = {}
-        if len(selected) == 20:
-            metrics["avg_turnover_amount_20d"] = {
-                "value": sum(float(bar["amount"]) for bar in selected) / 20.0,
-                "period": f"20D@{selected[0]['trade_date']}",
-                "unit": "currency",
-                "source": prices["source"],
-                "observed_at": selected[0]["trade_date"],
-                "metadata": {
-                    "amount_quality": "mixed_exact_and_close_x_volume_estimate",
-                    "estimated_days": sum(
-                        1 for bar in selected if bar.get("amount_quality") != "exact_quote"
-                    ),
-                    "method": "Tencent K-line close multiplied by volume; latest quote amount used when available.",
-                },
-            }
+        turnover = _average_turnover_metric(
+            prices["bars"],
+            source=str(prices["source"]),
+            metadata={"amount_quality": "mixed_exact_and_close_x_volume_estimate"},
+        )
+        metrics: dict[str, Any] = {"avg_turnover_amount_20d": turnover} if turnover else {}
         return {
             "provider": self.name,
             "status": "completed" if metrics else "unavailable",
@@ -1242,17 +1418,8 @@ class AkshareMarketDataProvider:
         prices = self.fetch_daily_prices(
             ticker=ticker, start_date=end - timedelta(days=70), end_date=end
         )
-        bars = list(reversed(prices["bars"]))
-        amounts = [bar.get("amount") for bar in bars[:20] if bar.get("amount") is not None]
-        metrics: dict[str, Any] = {}
-        if len(amounts) == 20:
-            metrics["avg_turnover_amount_20d"] = {
-                "value": sum(float(value) for value in amounts) / 20.0,
-                "period": f"20D@{bars[0]['trade_date']}",
-                "unit": "currency",
-                "source": prices["source"],
-                "observed_at": bars[0]["trade_date"],
-            }
+        turnover = _average_turnover_metric(prices["bars"], source=str(prices["source"]))
+        metrics: dict[str, Any] = {"avg_turnover_amount_20d": turnover} if turnover else {}
         return {
             "provider": self.name,
             "status": "completed" if prices["bars"] else "unavailable",
@@ -1278,6 +1445,11 @@ def _quarter_label(key: tuple[int, int]) -> str:
     return f"{key[0]}Q{key[1]}"
 
 
+def _quarter_end_date(key: tuple[int, int]) -> date:
+    month = key[1] * 3
+    return date(key[0], month, 31 if month in {3, 12} else 30)
+
+
 def _previous_quarter(key: tuple[int, int]) -> tuple[int, int]:
     return (key[0] - 1, 4) if key[1] == 1 else (key[0], key[1] - 1)
 
@@ -1286,6 +1458,34 @@ def _growth(current: float | None, previous: float | None) -> float | None:
     if current is None or previous is None or abs(previous) <= 1e-12:
         return None
     return current / previous - 1.0
+
+
+IFIND_DEFAULT_BASE_URL = "https://quantapi.51ifind.com/api/v1"
+IFIND_FINANCIAL_INDICATORS = {
+    "net_profit_yoy": "ths_sq_np_atsopc_yoy_stock",
+    "gross_margin": "ths_sales_gross_interest_sq_stock",
+    "revenue_yoy": "ths_revenue_yoy_sq_stock",
+}
+IFIND_MARKET_INDICATORS = {
+    "forward_pe": "ths_fore_pe_in_12m_stock",
+    "turnover_amount": "ths_amt_stock",
+}
+IFIND_HK_FINANCIAL_INDICATORS = {
+    "net_profit_yoy": "np_atsopc_yoy",
+    "gross_margin": "sales_gross_interest_sq",
+    "gross_margin_fallback": "gross_selling_rate",
+    "revenue_yoy": "or_yoy",
+}
+IFIND_HK_MARKET_INDICATORS = {
+    "forward_pe": "fore_pe_in_12m",
+    "turnover_amount": "amt",
+}
+
+
+def _ifind_indicators(identity: SecurityIdentity) -> tuple[dict[str, str], dict[str, str]]:
+    if identity.market == "hk":
+        return IFIND_HK_FINANCIAL_INDICATORS, IFIND_HK_MARKET_INDICATORS
+    return IFIND_FINANCIAL_INDICATORS, IFIND_MARKET_INDICATORS
 
 
 def _market_source_timeout_seconds() -> float:
@@ -1300,7 +1500,7 @@ def _market_source_timeout_seconds() -> float:
 
 
 def _market_source_timeout_for(source_name: str) -> float:
-    default = _market_source_timeout_seconds()
+    default = 15.0 if str(source_name or "").strip().lower() == "yahoo" else _market_source_timeout_seconds()
     normalized = str(source_name or "").strip().upper()
     configured = os.environ.get(
         f"PRIVATE_FUND_{normalized}_SOURCE_TIMEOUT_SECONDS",
@@ -1311,7 +1511,7 @@ def _market_source_timeout_for(source_name: str) -> float:
             return min(15.0, max(0.01, float(configured)))
         except ValueError:
             pass
-    if source_name in {"eastmoney_financial", "eastmoney_market"}:
+    if source_name == "eastmoney_financial":
         return max(default, 12.0)
     if source_name == "tencent_hk":
         return max(default, 10.0)
@@ -1344,26 +1544,35 @@ def _call_market_source_with_timeout(callback: Any, *, source_name: str) -> dict
 
 
 class FreeComboMarketDataProvider:
-    """Public-data waterfall for A/H-share valuation comparisons."""
+    """iFinD-first waterfall with public A/H-share fallbacks."""
 
     name = "free_combo"
 
     def __init__(
         self,
         *,
+        ifind_provider: MarketDataProvider | None = None,
         eastmoney_financial_provider: MarketDataProvider | None = None,
-        eastmoney_market_provider: MarketDataProvider | None = None,
         tencent_hk_provider: MarketDataProvider | None = None,
+        yahoo_provider: MarketDataProvider | None = None,
         akshare_provider: MarketDataProvider | None = None,
         consensus_provider: MarketDataProvider | None = None,
     ) -> None:
+        self.ifind_provider = ifind_provider
+        if self.ifind_provider is None:
+            access_token = os.environ.get("PRIVATE_FUND_IFIND_ACCESS_TOKEN", "").strip()
+            refresh_token = os.environ.get("PRIVATE_FUND_IFIND_REFRESH_TOKEN", "").strip()
+            if access_token or refresh_token:
+                self.ifind_provider = IFindHttpMarketDataProvider(
+                    os.environ.get("PRIVATE_FUND_IFIND_BASE_URL", IFIND_DEFAULT_BASE_URL),
+                    access_token,
+                    refresh_token=refresh_token,
+                )
         self.eastmoney_financial_provider = (
             eastmoney_financial_provider or EastmoneyFinancialMarketDataProvider()
         )
-        self.eastmoney_market_provider = (
-            eastmoney_market_provider or EastmoneyMarketDataProvider()
-        )
         self.tencent_hk_provider = tencent_hk_provider or TencentHkMarketDataProvider()
+        self.yahoo_provider = yahoo_provider or YahooHkMarketDataProvider()
         self.akshare_provider = akshare_provider or AkshareMarketDataProvider()
         self.consensus_provider = consensus_provider
         if self.consensus_provider is None:
@@ -1376,12 +1585,13 @@ class FreeComboMarketDataProvider:
 
     def _providers_for_metrics(self, ticker: str) -> list[MarketDataProvider]:
         identity = _security_identity(ticker)
+        preferred = [self.ifind_provider] if self.ifind_provider is not None else []
         if identity.market == "hk":
-            return [self.tencent_hk_provider, self.akshare_provider]
+            return [*preferred, self.tencent_hk_provider, self.yahoo_provider]
         return [
+            *preferred,
             self.akshare_provider,
             self.eastmoney_financial_provider,
-            self.eastmoney_market_provider,
         ]
 
     @staticmethod
@@ -1400,6 +1610,73 @@ class FreeComboMarketDataProvider:
             "timeout_seconds": _market_source_timeout_for(provider_name),
         }
 
+    def fetch_market_metrics_as_of(self, *, ticker: str, as_of: date) -> dict[str, Any]:
+        """Fill each historical HK market field in iFinD, Tencent, Yahoo order."""
+
+        identity = _security_identity(ticker)
+        providers: list[MarketDataProvider] = []
+        if self.ifind_provider is not None:
+            providers.append(self.ifind_provider)
+        if identity.market == "hk":
+            providers.extend([self.tencent_hk_provider, self.yahoo_provider])
+        attempts: list[dict[str, Any]] = []
+        metrics_payload: dict[str, dict[str, Any]] = {}
+        errors: list[str] = []
+        for source in providers:
+            if all(item.key in metrics_payload for item in MARKET_METRIC_DEFINITIONS):
+                break
+            source_name = getattr(source, "name", type(source).__name__)
+            fetch_period = getattr(source, "fetch_market_metrics_as_of", None)
+            if not callable(fetch_period):
+                attempts.append(
+                    self._attempt_payload(
+                        provider_name=source_name,
+                        payload=None,
+                        error="Historical market snapshots are not supported.",
+                        duration_ms=0,
+                    )
+                )
+                continue
+            started_at = time.monotonic()
+            payload: dict[str, Any] | None = None
+            error = ""
+            try:
+                payload = _call_market_source_with_timeout(
+                    lambda source=source: source.fetch_market_metrics_as_of(
+                        ticker=ticker, as_of=as_of
+                    ),
+                    source_name=source_name,
+                )
+            except Exception as exc:  # noqa: BLE001 - subsequent sources remain valid fallbacks
+                error = str(exc)
+            attempts.append(
+                self._attempt_payload(
+                    provider_name=source_name,
+                    payload=payload,
+                    error=error,
+                    duration_ms=int((time.monotonic() - started_at) * 1000),
+                )
+            )
+            if error:
+                errors.append(error)
+            source_metrics = payload.get("metrics") if isinstance(payload, dict) else {}
+            if not isinstance(source_metrics, dict):
+                continue
+            for definition in MARKET_METRIC_DEFINITIONS:
+                value = source_metrics.get(definition.key)
+                if definition.key not in metrics_payload and isinstance(value, dict):
+                    metrics_payload[definition.key] = value
+        missing = [item.key for item in MARKET_METRIC_DEFINITIONS if item.key not in metrics_payload]
+        return {
+            "provider": self.name,
+            "status": "completed" if not missing else "partial" if metrics_payload else "unavailable",
+            "as_of": as_of.isoformat(),
+            "ticker": identity.canonical_ticker,
+            "metrics": metrics_payload,
+            "missing_metric_keys": missing,
+            "provider_attempts": attempts,
+            "error": "; ".join(dict.fromkeys(error for error in errors if error))[:2000],
+        }
     def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]:
         if not str(ticker or "").strip():
             return {
@@ -1440,12 +1717,8 @@ class FreeComboMarketDataProvider:
         metrics_payload: dict[str, Any] = {}
         raw_payloads: dict[str, Any] = {}
         history: list[dict[str, Any]] = []
-        required_market_metrics = set(METRIC_KEYS) - {"forward_pe"}
         for provider_index, provider in enumerate(providers):
-            hk_market_metric_ready = (
-                identity.market == "hk" and "avg_turnover_amount_20d" in metrics_payload
-            )
-            if required_market_metrics.issubset(metrics_payload) or hk_market_metric_ready:
+            if set(METRIC_KEYS).issubset(metrics_payload):
                 for skipped in providers[provider_index:]:
                     skipped_name = getattr(skipped, "name", type(skipped).__name__)
                     attempts.append(
@@ -1453,12 +1726,7 @@ class FreeComboMarketDataProvider:
                             "provider": skipped_name,
                             "status": "skipped",
                             "fields_found": [],
-                            "error_message": (
-                                "Higher-priority HK source supplied the available free market metric; "
-                                "remaining quarterly and consensus metrics require a financial source."
-                                if hk_market_metric_ready
-                                else "Higher-priority sources already supplied all free metrics."
-                            ),
+                            "error_message": "Higher-priority sources already supplied all five metrics.",
                             "duration_ms": 0,
                         }
                     )
@@ -1491,7 +1759,11 @@ class FreeComboMarketDataProvider:
                     metrics_payload[key] = source_metrics[key]
             if not history and isinstance(payload.get("metric_history"), list):
                 history = list(payload.get("metric_history") or [])
-        if "forward_pe" not in metrics_payload and self.consensus_provider is not None:
+        if (
+            identity.market != "hk"
+            and "forward_pe" not in metrics_payload
+            and self.consensus_provider is not None
+        ):
             provider = self.consensus_provider
             provider_name = getattr(provider, "name", type(provider).__name__)
             started_at = time.monotonic()
@@ -1544,59 +1816,19 @@ class FreeComboMarketDataProvider:
             "error": "; ".join(dict.fromkeys(error for error in errors if error))[:2000],
         }
 
-    def fetch_daily_prices(
-        self, *, ticker: str, start_date: date, end_date: date
-    ) -> dict[str, Any]:
-        attempts: list[dict[str, Any]] = []
-        providers: list[MarketDataProvider] = []
-        try:
-            identity = _security_identity(ticker)
-        except ValueError:
-            identity = None
-        if identity is not None and identity.market == "a_share":
-            providers.append(self.akshare_provider)
-            providers.append(self.eastmoney_market_provider)
-        elif identity is not None:
-            providers.append(self.tencent_hk_provider)
-            providers.append(self.akshare_provider)
-        last_error = ""
-        for provider in providers:
-            started_at = time.monotonic()
-            try:
-                payload = _call_market_source_with_timeout(
-                    lambda: provider.fetch_daily_prices(
-                        ticker=ticker, start_date=start_date, end_date=end_date
-                    ),
-                    source_name=getattr(provider, "name", type(provider).__name__),
-                )
-            except Exception as exc:  # noqa: BLE001
-                last_error = str(exc)
-                attempts.append(
-                    {
-                        "provider": getattr(provider, "name", type(provider).__name__),
-                        "status": "failed",
-                        "fields_found": [],
-                        "error_message": last_error[:500],
-                        "duration_ms": int((time.monotonic() - started_at) * 1000),
-                    }
-                )
-                continue
-            attempts.append(
-                {
-                    "provider": str(payload.get("provider") or getattr(provider, "name", "unknown")),
-                    "status": "completed" if payload.get("bars") else "unavailable",
-                    "fields_found": ["daily_prices"] if payload.get("bars") else [],
-                    "error_message": "" if payload.get("bars") else "No price bars returned.",
-                    "duration_ms": int((time.monotonic() - started_at) * 1000),
-                }
-            )
-            if payload.get("bars"):
-                return {**payload, "provider": self.name, "provider_attempts": attempts}
-        raise ValueError(last_error or "No free data source returned daily price bars")
-
 
 def default_market_data_provider() -> MarketDataProvider:
     selected = os.environ.get("PRIVATE_FUND_MARKET_DATA_PROVIDER", "").strip().lower()
+    if selected == "ifind":
+        access_token = os.environ.get("PRIVATE_FUND_IFIND_ACCESS_TOKEN", "").strip()
+        refresh_token = os.environ.get("PRIVATE_FUND_IFIND_REFRESH_TOKEN", "").strip()
+        if not access_token and not refresh_token:
+            return UnavailableMarketDataProvider()
+        return IFindHttpMarketDataProvider(
+            os.environ.get("PRIVATE_FUND_IFIND_BASE_URL", IFIND_DEFAULT_BASE_URL),
+            access_token,
+            refresh_token=refresh_token,
+        )
     url = os.environ.get("PRIVATE_FUND_MARKET_DATA_API_URL", "").strip()
     if selected in {"http", "api"} or (url and not selected):
         if not url:
@@ -1608,7 +1840,9 @@ def default_market_data_provider() -> MarketDataProvider:
         return UnavailableMarketDataProvider()
     if selected == "akshare":
         return AkshareMarketDataProvider()
-    return FreeComboMarketDataProvider()
+    if selected in {"", "free_combo", "combo", "hybrid"}:
+        return FreeComboMarketDataProvider()
+    raise ValueError(f"Unsupported PRIVATE_FUND_MARKET_DATA_PROVIDER: {selected}")
 
 
 def _parse_quarter(value: Any) -> tuple[int, int] | None:
@@ -1632,25 +1866,132 @@ def _parse_quarter(value: Any) -> tuple[int, int] | None:
     return None
 
 
+def _standard_five_metric_facts(
+    conn: sqlite3.Connection, doc_id: str, existing_facts: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Adapt the documented horizontal five-metric template into metric facts."""
+
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(excel_cells)")}
+    required = {"cell_id", "sheet_name", "cell_ref", "display_value", "numeric_value"}
+    if not required.issubset(columns):
+        return []
+    optional = {
+        name: name if name in columns else f"NULL AS {name}"
+        for name in ("row_index", "col_index", "formula", "cached_value")
+    }
+    rows = [
+        dict(row)
+        for row in conn.execute(
+            f"""
+            SELECT cell_id, sheet_name, cell_ref, display_value, numeric_value,
+                   {optional['row_index']}, {optional['col_index']},
+                   {optional['formula']}, {optional['cached_value']}
+            FROM excel_cells WHERE doc_id=?
+            ORDER BY sheet_name, row_index, col_index, cell_ref
+            """,
+            (doc_id,),
+        )
+    ]
+
+    def coordinates(cell: dict[str, Any]) -> tuple[int, int]:
+        if cell.get("row_index") is not None and cell.get("col_index") is not None:
+            return int(cell["row_index"]), int(cell["col_index"])
+        match = re.fullmatch(r"([A-Z]+)(\d+)", str(cell.get("cell_ref") or "").upper())
+        if not match:
+            return 0, 0
+        column = 0
+        for char in match.group(1):
+            column = column * 26 + ord(char) - ord("A") + 1
+        return int(match.group(2)), column
+
+    cells = {(str(row["sheet_name"]), *coordinates(row)): row for row in rows}
+    existing_by_cell = {
+        (str(fact.get("sheet_name") or ""), str(fact.get("cell_ref") or "")): fact
+        for fact in existing_facts
+    }
+    adapted: list[dict[str, Any]] = []
+    for (sheet_name, header_row, _), cell in cells.items():
+        if _normalize(cell.get("display_value")) != _normalize("\u6307\u6807\u4ee3\u7801"):
+            continue
+        if _normalize((cells.get((sheet_name, header_row, 1)) or {}).get("display_value")) != _normalize("\u6307\u6807\u540d\u79f0"):
+            continue
+        if _normalize((cells.get((sheet_name, header_row, 3)) or {}).get("display_value")) != _normalize("\u5355\u4f4d"):
+            continue
+        for metric_row in range(header_row + 1, header_row + 20):
+            code_cell = cells.get((sheet_name, metric_row, 2))
+            code = str((code_cell or {}).get("display_value") or "").strip().lower()
+            if not code:
+                break
+            if code not in METRIC_KEYS:
+                continue
+            metric_name = str((cells.get((sheet_name, metric_row, 1)) or {}).get("display_value") or code).strip()
+            unit = str((cells.get((sheet_name, metric_row, 3)) or {}).get("display_value") or "").strip()
+            formula_description = str((cells.get((sheet_name, metric_row, 4)) or {}).get("display_value") or "").strip()
+            for period_col in range(5, 100):
+                period_cell = cells.get((sheet_name, header_row, period_col))
+                value_cell = cells.get((sheet_name, metric_row, period_col))
+                if not period_cell or not value_cell:
+                    break
+                period = str(period_cell.get("display_value") or "").strip()
+                if _parse_quarter(period) is None:
+                    continue
+                value = _safe_float(value_cell.get("numeric_value"))
+                if value is None:
+                    value = _safe_float(value_cell.get("cached_value"))
+                if value is None:
+                    value = _safe_float(value_cell.get("display_value"))
+                if value is None:
+                    continue
+                if code == "avg_turnover_amount_20d" and _normalize(unit) in {
+                    "\u767e\u4e07\u5143", "\u4eba\u6c11\u5e01\u767e\u4e07\u5143", "rmb million", "cny million"
+                }:
+                    value *= 1_000_000.0
+                prior = existing_by_cell.get((sheet_name, str(value_cell["cell_ref"])), {})
+                adapted.append({
+                    **prior,
+                    "fact_id": prior.get("fact_id") or f"template:{value_cell['cell_id']}",
+                    "metric_name": metric_name,
+                    "metric_alias": code,
+                    "period": period,
+                    "value_numeric": value,
+                    "value_text": str(value_cell.get("display_value") or value),
+                    "unit": unit,
+                    "sheet_name": sheet_name,
+                    "cell_ref": str(value_cell["cell_ref"]),
+                    "confidence": 1.0,
+                    "quality_status": "candidate_complete",
+                    "formula": formula_description or str(value_cell.get("formula") or ""),
+                })
+    return adapted
+
+
 def _facts_for_document(conn: sqlite3.Connection, doc_id: str) -> list[dict[str, Any]]:
     tables = {
         str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     }
-    if "metric_facts" not in tables:
-        return []
-    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(metric_facts)")}
-    alias_column = "metric_alias" if "metric_alias" in columns else "NULL AS metric_alias"
-    rows = conn.execute(
-        f"""
-        SELECT fact_id, metric_name, {alias_column}, period, value_numeric, value_text,
-               unit, sheet_name, cell_ref, confidence, quality_status, formula
-        FROM metric_facts
-        WHERE doc_id=? AND COALESCE(quality_status,'review_required')<>'rejected'
-        ORDER BY sheet_name, cell_ref
-        """,
-        (doc_id,),
-    ).fetchall()
-    return [dict(row) for row in rows]
+    facts: list[dict[str, Any]] = []
+    if "metric_facts" in tables:
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(metric_facts)")}
+        alias_column = "metric_alias" if "metric_alias" in columns else "NULL AS metric_alias"
+        rows = conn.execute(
+            f"""
+            SELECT fact_id, metric_name, {alias_column}, period, value_numeric, value_text,
+                   unit, sheet_name, cell_ref, confidence, quality_status, formula
+            FROM metric_facts
+            WHERE doc_id=? AND COALESCE(quality_status,'review_required')<>'rejected'
+            ORDER BY sheet_name, cell_ref
+            """,
+            (doc_id,),
+        ).fetchall()
+        facts = [dict(row) for row in rows]
+    adapted = _standard_five_metric_facts(conn, doc_id, facts)
+    if not adapted:
+        return facts
+    adapted_cells = {(fact["sheet_name"], fact["cell_ref"]) for fact in adapted}
+    return [
+        fact for fact in facts
+        if (fact.get("sheet_name"), fact.get("cell_ref")) not in adapted_cells
+    ] + adapted
 
 
 def _base_metric_kind(name: str) -> str:
@@ -1831,15 +2172,71 @@ def _explicit_five_metric_contract(
         )
         sheet = _normalize(fact.get("sheet_name"))
         for key, candidates in aliases.items():
-            if not any(_normalize(candidate) in name for candidate in candidates):
+            exact_alias = _normalize(fact.get("metric_alias")) == _normalize(key)
+            if not exact_alias and not any(
+                _normalize(candidate) in name for candidate in candidates
+            ):
                 continue
             score = _candidate_score(fact, "direct")
+            quarter = _parse_quarter(fact.get("period"))
+            if quarter:
+                score += quarter[0] + quarter[1] / 10.0
             if any(term in sheet for term in ("valuation output", "valuation metric", "\u4f30\u503c\u7ed3\u679c", "\u4f30\u503c\u6307\u6807")):
                 score += 4.0
             existing = selected.get(key)
             if existing is None or score > existing[0]:
                 selected[key] = (score, fact)
     return {key: fact for key, (_score, fact) in selected.items()}
+
+
+FORWARD_PE_FACT_TERMS = (
+    "forward pe",
+    "forward p/e",
+    "forward per",
+    "fwd pe",
+    "fwd p/e",
+    "ntm pe",
+    "ntm p/e",
+    "next twelve month pe",
+    "fy1 p/e",
+    "动态市盈率",
+    "预测市盈率",
+)
+TURNOVER_FACT_TERMS = (
+    "20 day average turnover",
+    "20d average turnover",
+    "20 day average trading value",
+    "20d average traded value",
+    "近20日日均成交额",
+    "20日平均成交额",
+)
+
+
+def _matching_direct_facts(
+    facts: list[dict[str, Any]], terms: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    normalized_terms = tuple(_normalize(term) for term in terms)
+    return [
+        fact
+        for fact in facts
+        if any(
+            term
+            in _normalize(f"{fact.get('metric_name', '')} {fact.get('metric_alias', '')}")
+            for term in normalized_terms
+        )
+    ]
+
+
+def _prepare_model_metric_facts(facts: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "quarterly": {
+            kind: _quarterly_values(facts, kind)
+            for kind in ("net_profit", "revenue", "gross_profit", "gross_margin", "cost")
+        },
+        "explicit": _explicit_five_metric_contract(facts),
+        "forward": _matching_direct_facts(facts, FORWARD_PE_FACT_TERMS),
+        "turnover": _matching_direct_facts(facts, TURNOVER_FACT_TERMS),
+    }
 
 
 def extract_model_metrics(
@@ -1850,14 +2247,18 @@ def extract_model_metrics(
     model_version_id: str,
     doc_id: str,
     target_period: str = "",
+    prepared_facts: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    facts = _facts_for_document(conn, doc_id)
+    prepared = prepared_facts or _prepare_model_metric_facts(
+        _facts_for_document(conn, doc_id)
+    )
     target_quarter = _parse_quarter(target_period)
-    net = _quarterly_values(facts, "net_profit")
-    revenue = _quarterly_values(facts, "revenue")
-    gross = _quarterly_values(facts, "gross_profit")
-    gross_margin = _quarterly_values(facts, "gross_margin")
-    cost = _quarterly_values(facts, "cost")
+    quarterly = prepared["quarterly"]
+    net = quarterly["net_profit"]
+    revenue = quarterly["revenue"]
+    gross = quarterly["gross_profit"]
+    gross_margin = quarterly["gross_margin"]
+    cost = quarterly["cost"]
     if target_quarter is None:
         available = sorted(set(net) | set(revenue) | set(gross_margin), reverse=True)
         target_quarter = available[0] if available else None
@@ -1884,7 +2285,7 @@ def extract_model_metrics(
     for key in METRIC_KEYS:
         results[key] = missing(key, "not_found")
 
-    for key, fact in _explicit_five_metric_contract(facts).items():
+    for key, fact in prepared["explicit"].items():
         value = _safe_float(fact.get("value_numeric"))
         if value is None:
             continue
@@ -1978,20 +2379,8 @@ def extract_model_metrics(
             }
 
     forward = _direct_fact(
-        facts,
-        (
-            "forward pe",
-            "forward p/e",
-            "forward per",
-            "fwd pe",
-            "fwd p/e",
-            "ntm pe",
-            "ntm p/e",
-            "next twelve month pe",
-            "fy1 p/e",
-            "动态市盈率",
-            "预测市盈率",
-        ),
+        prepared["forward"],
+        FORWARD_PE_FACT_TERMS,
         target_quarter,
     )
     if forward:
@@ -2008,15 +2397,8 @@ def extract_model_metrics(
             }
 
     turnover = _direct_fact(
-        facts,
-        (
-            "20 day average turnover",
-            "20d average turnover",
-            "20 day average trading value",
-            "20d average traded value",
-            "近20日日均成交额",
-            "20日平均成交额",
-        ),
+        prepared["turnover"],
+        TURNOVER_FACT_TERMS,
         target_quarter,
     )
     if turnover:
@@ -2277,315 +2659,6 @@ def _alert_priority(severity: str) -> str:
     return "high" if severity == "critical" else "medium"
 
 
-_MONTH_NUMBERS = {
-    "jan": 1,
-    "feb": 2,
-    "mar": 3,
-    "apr": 4,
-    "may": 5,
-    "jun": 6,
-    "jul": 7,
-    "aug": 8,
-    "sep": 9,
-    "oct": 10,
-    "nov": 11,
-    "dec": 12,
-}
-
-
-def _valuation_date(version: dict[str, Any]) -> date | None:
-    filename = str(version.get("original_filename") or "")
-    named = re.search(
-        r"(?P<year>20\d{2})[_ .-](?P<month>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
-        r"[_ .-](?P<day>\d{1,2})",
-        filename,
-        re.I,
-    )
-    if named:
-        try:
-            return date(
-                int(named.group("year")),
-                _MONTH_NUMBERS[named.group("month").lower()],
-                int(named.group("day")),
-            )
-        except ValueError:
-            pass
-    numeric = re.search(
-        r"(?P<year>20\d{2})[-_.]?(?P<month>0?[1-9]|1[0-2])[-_.]?(?P<day>0?[1-9]|[12]\d|3[01])",
-        filename,
-    )
-    if numeric:
-        try:
-            return date(
-                int(numeric.group("year")),
-                int(numeric.group("month")),
-                int(numeric.group("day")),
-            )
-        except ValueError:
-            pass
-    raw = str(version.get("document_date") or "")[:10]
-    try:
-        return date.fromisoformat(raw) if raw else None
-    except ValueError:
-        return None
-
-
-def _target_price_value(conn: sqlite3.Connection, model_version_id: str) -> dict[str, Any] | None:
-    tables = {
-        str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    }
-    if not {"valuation_model_nodes", "valuation_model_node_values"}.issubset(tables):
-        return None
-    row = conn.execute(
-        """
-        SELECT v.value_numeric, v.unit, v.sheet_name, v.cell_ref, v.evidence_id,
-               v.quality_status, v.confidence, n.period, n.scenario
-        FROM valuation_model_node_values v
-        JOIN valuation_model_nodes n ON n.node_id=v.node_id
-        WHERE v.model_version_id=? AND n.metric_key='target_price'
-          AND v.value_numeric IS NOT NULL
-        ORDER BY CASE WHEN lower(COALESCE(n.scenario,'')) IN ('base','base case','基准')
-                      THEN 0 ELSE 1 END,
-                 CASE v.quality_status WHEN 'candidate_complete' THEN 0
-                      WHEN 'review_required' THEN 1 ELSE 2 END,
-                 v.confidence DESC
-        LIMIT 1
-        """,
-        (model_version_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    return {
-        "value": _safe_float(row["value_numeric"]),
-        "unit": str(row["unit"] or ""),
-        "source": f"{row['sheet_name']}!{row['cell_ref']}",
-        "evidence_id": str(row["evidence_id"] or ""),
-        "quality_status": str(row["quality_status"] or ""),
-        "period": str(row["period"] or ""),
-        "scenario": str(row["scenario"] or ""),
-    }
-
-
-def _upside(target: float | None, close: float | None) -> float | None:
-    if target is None or close is None or abs(close) <= 1e-12:
-        return None
-    return target / close - 1.0
-
-
-def refresh_price_comparison(
-    conn: sqlite3.Connection,
-    *,
-    dataset_id: str,
-    series: dict[str, Any],
-    version: dict[str, Any],
-    snapshot_id: str,
-    provider: MarketDataProvider,
-    valuation_date_override: str = "",
-    valuation_date_metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Cache raw daily bars and compare the selected model target with real closes."""
-
-    ensure_metric_schema(conn)
-    now = _now_iso()
-    series_id = str(series["series_id"])
-    model_version_id = str(version["model_version_id"])
-    ticker = str(series.get("company_ticker") or "")
-    comparison_id = f"vpc_{_digest(model_version_id, snapshot_id)}"
-    effective_date = None
-    if valuation_date_override:
-        try:
-            effective_date = date.fromisoformat(valuation_date_override)
-        except ValueError:
-            effective_date = None
-    effective_date = effective_date or _valuation_date(version)
-    target = _target_price_value(conn, model_version_id)
-    provider_name = str(getattr(provider, "name", type(provider).__name__))
-    result: dict[str, Any] = {
-        "price_comparison_id": comparison_id,
-        "snapshot_id": snapshot_id,
-        "dataset_id": dataset_id,
-        "series_id": series_id,
-        "model_version_id": model_version_id,
-        "provider": provider_name,
-        "provider_symbol": "",
-        "currency": "",
-        "valuation_date": effective_date.isoformat() if effective_date else "",
-        "benchmark_trade_date": "",
-        "benchmark_close": None,
-        "latest_trade_date": "",
-        "latest_close": None,
-        "target_price": target.get("value") if target else None,
-        "target_unit": target.get("unit", "") if target else "",
-        "target_source": target.get("source", "") if target else "",
-        "target_evidence_id": target.get("evidence_id", "") if target else "",
-        "implied_upside": None,
-        "latest_upside": None,
-        "status": "unavailable",
-        "error_message": "",
-        "metadata": {
-            "target_quality_status": target.get("quality_status", "") if target else "",
-            "target_period": target.get("period", "") if target else "",
-            "target_scenario": target.get("scenario", "") if target else "",
-            "valuation_date_method": (
-                "agent_skill"
-                if valuation_date_override and effective_date
-                else "filename_or_document"
-            ),
-            "valuation_date_source": str((valuation_date_metadata or {}).get("source") or ""),
-            "valuation_date_evidence_ids": list(
-                (valuation_date_metadata or {}).get("evidence_ids") or []
-            ),
-        },
-        "created_at": now,
-    }
-    fetch_prices = getattr(provider, "fetch_daily_prices", None)
-    if not ticker:
-        result["error_message"] = "模型系列缺少证券代码，无法查询真实价格。"
-    elif not callable(fetch_prices):
-        result["error_message"] = f"{provider_name} 暂未提供日线价格接口。"
-    else:
-        end = date.today()
-        start = effective_date - timedelta(days=14) if effective_date else end - timedelta(days=90)
-        if start > end:
-            start = end - timedelta(days=90)
-        try:
-            price_payload = fetch_prices(ticker=ticker, start_date=start, end_date=end)
-            bars = price_payload.get("bars") if isinstance(price_payload, dict) else []
-            if not isinstance(bars, list):
-                raise ValueError("行情 Provider 返回的 bars 不是列表。")
-            result["provider"] = str(price_payload.get("provider") or provider_name)
-            result["provider_symbol"] = str(price_payload.get("provider_symbol") or "")
-            result["currency"] = str(price_payload.get("currency") or "")
-            adjustment = str(price_payload.get("adjustment") or "raw")
-            source = str(price_payload.get("source") or "")
-            normalized_bars = []
-            for raw_bar in bars:
-                if not isinstance(raw_bar, dict):
-                    continue
-                bar = _normalized_price_bar(raw_bar)
-                if bar is None:
-                    continue
-                normalized_bars.append(bar)
-                bar_id = "vpb_" + _digest(
-                    dataset_id,
-                    result["provider"],
-                    result["provider_symbol"],
-                    bar["trade_date"],
-                    adjustment,
-                )
-                conn.execute(
-                    """
-                    INSERT INTO valuation_market_price_bars
-                        (bar_id, dataset_id, provider, provider_symbol, canonical_ticker,
-                         exchange, currency, trade_date, open, high, low, close, volume,
-                         amount, adjustment, source, fetched_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(dataset_id, provider, provider_symbol, trade_date, adjustment)
-                    DO UPDATE SET open=excluded.open, high=excluded.high, low=excluded.low,
-                                  close=excluded.close, volume=excluded.volume,
-                                  amount=excluded.amount, source=excluded.source,
-                                  fetched_at=excluded.fetched_at
-                    """,
-                    (
-                        bar_id,
-                        dataset_id,
-                        result["provider"],
-                        result["provider_symbol"],
-                        str(price_payload.get("canonical_ticker") or ticker),
-                        str(price_payload.get("exchange") or ""),
-                        result["currency"],
-                        bar["trade_date"],
-                        bar["open"],
-                        bar["high"],
-                        bar["low"],
-                        bar["close"],
-                        bar["volume"],
-                        bar["amount"],
-                        adjustment,
-                        source,
-                        now,
-                    ),
-                )
-            normalized_bars.sort(key=lambda item: str(item["trade_date"]))
-            latest = normalized_bars[-1] if normalized_bars else None
-            benchmark = None
-            if effective_date:
-                benchmark = next(
-                    (
-                        item
-                        for item in reversed(normalized_bars)
-                        if str(item["trade_date"]) <= effective_date.isoformat()
-                    ),
-                    None,
-                )
-            if latest:
-                result["latest_trade_date"] = latest["trade_date"]
-                result["latest_close"] = latest["close"]
-            if benchmark:
-                result["benchmark_trade_date"] = benchmark["trade_date"]
-                result["benchmark_close"] = benchmark["close"]
-            result["implied_upside"] = _upside(result["target_price"], result["benchmark_close"])
-            result["latest_upside"] = _upside(result["target_price"], result["latest_close"])
-            missing = []
-            if not target:
-                missing.append("模型目标价")
-            if not effective_date:
-                missing.append("估值基准日")
-            if effective_date and not benchmark:
-                missing.append("基准日之前的收盘价")
-            if not latest:
-                missing.append("日线价格")
-            result["status"] = "completed" if not missing else "partial"
-            result["error_message"] = f"缺少{'、'.join(missing)}。" if missing else ""
-            result["metadata"].update(
-                {
-                    "adjustment": adjustment,
-                    "price_source": source,
-                    "bars_fetched": len(normalized_bars),
-                    "target_currency_inferred": bool(target and not target.get("unit")),
-                }
-            )
-        except Exception as exc:  # noqa: BLE001 - comparison failure remains auditable
-            result["status"] = "failed"
-            result["error_message"] = str(exc)[:2000]
-
-    conn.execute(
-        """
-        INSERT INTO valuation_price_comparisons
-            (price_comparison_id, snapshot_id, dataset_id, series_id, model_version_id,
-             provider, provider_symbol, currency, valuation_date, benchmark_trade_date,
-             benchmark_close, latest_trade_date, latest_close, target_price, target_unit,
-             target_source, target_evidence_id, implied_upside, latest_upside, status,
-             error_message, metadata_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            comparison_id,
-            snapshot_id,
-            dataset_id,
-            series_id,
-            model_version_id,
-            result["provider"],
-            result["provider_symbol"],
-            result["currency"],
-            result["valuation_date"],
-            result["benchmark_trade_date"],
-            result["benchmark_close"],
-            result["latest_trade_date"],
-            result["latest_close"],
-            result["target_price"],
-            result["target_unit"],
-            result["target_source"],
-            result["target_evidence_id"],
-            result["implied_upside"],
-            result["latest_upside"],
-            result["status"],
-            result["error_message"] or None,
-            _json(result["metadata"]),
-            now,
-        ),
-    )
-    return result
 
 
 def refresh_model_metric_values(
@@ -2883,9 +2956,6 @@ def refresh_metric_comparison(
     ]
     skill_extraction["manual_overrides"] = manual_overrides
     formatted_extraction = skill_extraction.get("formatted_output") or {}
-    agent_valuation_date = formatted_extraction.get("valuation_date")
-    if not isinstance(agent_valuation_date, dict):
-        agent_valuation_date = {}
     actual_metrics = {
         key: _normalize_actual_metric(key, market_metrics.get(key)) for key in METRIC_KEYS
     }
@@ -2917,11 +2987,11 @@ def refresh_metric_comparison(
             model_version_id,
             company_name,
             ticker,
-            str(market.get("provider") or getattr(provider, "name", "unknown")),
+            "",
             str(market.get("status") or "completed"),
             str(market.get("as_of") or now),
             str(market.get("error") or "")[:2000] or None,
-            _json(market),
+            _json({key: value for key, value in market.items() if key != "provider"}),
             _json(
                 {
                     "company_name": company_name,
@@ -2933,16 +3003,6 @@ def refresh_metric_comparison(
             ),
             now,
         ),
-    )
-    price_comparison = refresh_price_comparison(
-        conn,
-        dataset_id=dataset_id,
-        series=series,
-        version=version,
-        snapshot_id=snapshot_id,
-        provider=provider,
-        valuation_date_override=str(agent_valuation_date.get("value") or ""),
-        valuation_date_metadata=agent_valuation_date,
     )
     comparisons: list[dict[str, Any]] = []
     for model in model_metrics:
@@ -3128,7 +3188,6 @@ def refresh_metric_comparison(
         "as_of": str(market.get("as_of") or now),
         "error_message": str(market.get("error") or ""),
         "skill_extraction": skill_extraction,
-        "price_comparison": price_comparison,
         "comparisons": comparisons,
     }
 
@@ -3253,6 +3312,7 @@ def refresh_valuation_impacts(
     model_version_id: str,
     llm_client: private_fund_valuation_impact_agent.ValuationImpactChatClient | None = None,
     document_ids: list[str] | None = None,
+    sentiment_adapter: private_fund_valuation_impact_agent.SentimentEvidenceAdapter | None = None,
 ) -> dict[str, Any]:
     """Generate source-backed valuation impacts or return the latest persisted run."""
 
@@ -3270,6 +3330,7 @@ def refresh_valuation_impacts(
         model_version_id=model_version_id,
         llm_client=llm_client,
         document_ids=document_ids,
+        sentiment_adapter=sentiment_adapter,
     )
 
 
@@ -3337,9 +3398,10 @@ def _metric_timeline_payload(
         return {"default_period": "", "latest_period": "", "periods": []}
 
     facts = _facts_for_document(conn, str(version["doc_id"]))
+    prepared_facts = _prepare_model_metric_facts(facts)
     model_quarters: set[tuple[int, int]] = set()
-    for kind in ("net_profit", "revenue", "gross_profit", "gross_margin", "cost"):
-        model_quarters.update(_quarterly_values(facts, kind))
+    for values in prepared_facts["quarterly"].values():
+        model_quarters.update(values)
 
     manual_rows = conn.execute(
         """
@@ -3397,6 +3459,7 @@ def _metric_timeline_payload(
             model_version_id=model_version_id,
             doc_id=str(version["doc_id"]),
             target_period=period,
+            prepared_facts=prepared_facts,
         )
         models, _ = _apply_manual_metric_overrides(
             conn,
@@ -3635,19 +3698,6 @@ def latest_metric_payload(
                 },
             )
         )
-    price_comparison: dict[str, Any] | None = None
-    if snapshot:
-        price_row = conn.execute(
-            """
-            SELECT * FROM valuation_price_comparisons
-            WHERE snapshot_id=?
-            ORDER BY created_at DESC LIMIT 1
-            """,
-            (snapshot["snapshot_id"],),
-        ).fetchone()
-        if price_row:
-            price_comparison = dict(price_row)
-            price_comparison["metadata"] = _decode(price_comparison.pop("metadata_json", None), {})
     cards = []
     for row in conn.execute(
         """
@@ -3677,7 +3727,6 @@ def latest_metric_payload(
         "market_data": (
             {
                 "snapshot_id": snapshot["snapshot_id"],
-                "provider": snapshot["provider"],
                 "status": snapshot["status"],
                 "as_of": snapshot["as_of"],
                 "error_message": snapshot["error_message"] or "",
@@ -3689,7 +3738,6 @@ def latest_metric_payload(
             if snapshot
             else {
                 "snapshot_id": "",
-                "provider": "",
                 "status": "pending",
                 "as_of": "",
                 "error_message": "等待真实数据刷新。",
@@ -3699,29 +3747,6 @@ def latest_metric_payload(
                 "identity_snapshot": {},
             }
         ),
-        "price_comparison": price_comparison
-        or {
-            "price_comparison_id": "",
-            "snapshot_id": "",
-            "provider": "",
-            "provider_symbol": "",
-            "currency": "",
-            "valuation_date": "",
-            "benchmark_trade_date": "",
-            "benchmark_close": None,
-            "latest_trade_date": "",
-            "latest_close": None,
-            "target_price": None,
-            "target_unit": "",
-            "target_source": "",
-            "target_evidence_id": "",
-            "implied_upside": None,
-            "latest_upside": None,
-            "status": "pending",
-            "error_message": "等待 AKShare 真实价格刷新。",
-            "metadata": {},
-            "created_at": "",
-        },
         "metric_comparisons": comparisons,
         "market_snapshot": _market_snapshot_payload(
             comparisons,
@@ -3731,3 +3756,523 @@ def latest_metric_payload(
         "context_cards": cards,
         "valuation_impacts": valuation_impacts,
     }
+
+
+def period_market_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    dataset_id: str,
+    series_id: str,
+    model_version_id: str,
+    period: str,
+    provider: MarketDataProvider | None = None,
+) -> dict[str, Any]:
+    """Compare model market assumptions with iFinD values at the selected quarter end."""
+
+    ensure_metric_schema(conn)
+    quarter = _parse_quarter(period)
+    if quarter is None:
+        raise ValueError("period must use YYYYQ1-YYYYQ4 format")
+    row = conn.execute(
+        """
+        SELECT s.company_name, s.company_ticker, v.doc_id
+        FROM valuation_model_series AS s
+        JOIN valuation_model_versions AS v ON v.series_id=s.series_id
+        WHERE s.dataset_id=? AND s.series_id=? AND v.model_version_id=?
+        """,
+        (dataset_id, series_id, model_version_id),
+    ).fetchone()
+    if row is None:
+        raise KeyError(model_version_id)
+
+    models = extract_model_metrics(
+        conn,
+        dataset_id=dataset_id,
+        series_id=series_id,
+        model_version_id=model_version_id,
+        doc_id=str(row["doc_id"]),
+        target_period=_quarter_label(quarter),
+    )
+    models, _ = _apply_manual_metric_overrides(
+        conn,
+        model_version_id=model_version_id,
+        model_metrics=models,
+    )
+    model_by_key = {str(item["metric_key"]): item for item in models}
+
+    today = _now().date()
+    quarter_start = date(quarter[0], (quarter[1] - 1) * 3 + 1, 1)
+    requested_as_of = min(_quarter_end_date(quarter), today)
+    market: dict[str, Any] = {"metrics": {}, "as_of": "", "provider": "ifind"}
+    error = ""
+    active_provider = provider or default_market_data_provider()
+    fetch_period = getattr(active_provider, "fetch_market_metrics_as_of", None)
+    if quarter_start > today:
+        error = "The selected quarter has not started; no market snapshot is available."
+    elif not callable(fetch_period):
+        error = "The configured market-data provider does not support period snapshots."
+    else:
+        try:
+            market = fetch_period(ticker=str(row["company_ticker"] or ""), as_of=requested_as_of)
+        except Exception as exc:  # noqa: BLE001 - model values remain visible
+            error = str(exc)[:500]
+
+    raw_actuals = market.get("metrics") if isinstance(market.get("metrics"), dict) else {}
+    comparisons: list[dict[str, Any]] = []
+    created_at = _now_iso()
+    for definition in MARKET_METRIC_DEFINITIONS:
+        model = model_by_key[definition.key]
+        if (
+            _safe_float(model.get("value_numeric")) is not None
+            and _timeline_quarter(model.get("period")) != quarter
+        ):
+            model = {
+                **model,
+                "value_numeric": None,
+                "status": "unavailable",
+                "source": "",
+                "evidence_ids": [],
+                "quality_status": "not_in_period",
+            }
+        actual = _normalize_actual_metric(definition.key, raw_actuals.get(definition.key))
+        calculation_model = model
+        if (
+            definition.key == "avg_turnover_amount_20d"
+            and _safe_float(model.get("value_numeric")) is not None
+            and _safe_float(actual.get("value_numeric")) is not None
+        ):
+            calculation_model = {**model, "period": actual.get("period")}
+        comparison = _timeline_comparison(
+            model_version_id=model_version_id,
+            snapshot_id=f"period-{period}",
+            period=period,
+            definition=definition,
+            model=calculation_model,
+            actual=actual,
+            created_at=created_at,
+        )
+        comparison["model_period"] = str(model.get("period") or "")
+        comparisons.append(comparison)
+
+    payload = _market_snapshot_payload(
+        comparisons,
+        as_of=str(market.get("as_of") or requested_as_of.isoformat()),
+    )
+    return {
+        **payload,
+        "label": f"{_quarter_label(quarter)} 市场快照",
+        "period": _quarter_label(quarter),
+        "error_message": error,
+    }
+
+
+def _ifind_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize the common JSON/table shapes returned by iFinD HTTP."""
+
+    indicator_names = [str(item) for item in payload.get("indicators") or []]
+    if not indicator_names:
+        indicator_names = [
+            str(item.get("itemid"))
+            for item in payload.get("datatype") or []
+            if isinstance(item, dict) and item.get("itemid")
+        ]
+    if not indicator_names:
+        indicator_names = [
+            *IFIND_FINANCIAL_INDICATORS.values(),
+            *IFIND_MARKET_INDICATORS.values(),
+        ]
+    root_times = payload.get("time") if isinstance(payload.get("time"), list) else []
+    rows: list[dict[str, Any]] = []
+
+    def consume(node: Any, times: list[Any]) -> None:
+        if isinstance(node, list):
+            if node and all(isinstance(item, dict) for item in node):
+                for item in node:
+                    consume(item, times)
+                return
+            if node and all(isinstance(item, list) for item in node):
+                if times and len(node) == len(times):
+                    for index, values in enumerate(node):
+                        row = {name: value for name, value in zip(indicator_names, values)}
+                        row["time"] = times[index]
+                        rows.append(row)
+                elif times and len(node) == len(indicator_names):
+                    for index, timestamp in enumerate(times):
+                        row = {
+                            name: values[index] if index < len(values) else None
+                            for name, values in zip(indicator_names, node)
+                        }
+                        row["time"] = timestamp
+                        rows.append(row)
+                return
+            if len(indicator_names) == 1 and times and len(node) == len(times):
+                rows.extend(
+                    {"time": timestamp, indicator_names[0]: value}
+                    for timestamp, value in zip(times, node)
+                )
+            return
+        if not isinstance(node, dict):
+            return
+
+        local_times = node.get("time") if isinstance(node.get("time"), list) else times
+        scalar_time = node.get("time") if not isinstance(node.get("time"), list) else None
+        scalar_row = {
+            name: node.get(name)
+            for name in indicator_names
+            if name in node and not isinstance(node.get(name), (list, dict))
+        }
+        if scalar_time not in (None, "") and scalar_row:
+            rows.append({"time": scalar_time, **scalar_row})
+
+        series = {
+            name: node.get(name)
+            for name in indicator_names
+            if isinstance(node.get(name), list)
+        }
+        if local_times and series:
+            for index, timestamp in enumerate(local_times):
+                rows.append(
+                    {
+                        "time": timestamp,
+                        **{
+                            name: values[index] if index < len(values) else None
+                            for name, values in series.items()
+                        },
+                    }
+                )
+
+        for key in ("table", "data", "tables"):
+            child = node.get(key)
+            if child is not None:
+                consume(child, local_times)
+        for key, child in node.items():
+            if key in {"time", "table", "data", "tables", *indicator_names}:
+                continue
+            if isinstance(child, dict) and re.fullmatch(r"[A-Z0-9.]+", str(key)):
+                consume(child, local_times)
+
+    consume(payload.get("data", payload.get("tables", payload)), root_times)
+    deduplicated: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        timestamp = _date_text(row.get("time"))
+        if not timestamp:
+            continue
+        merged = deduplicated.setdefault(timestamp, {"time": timestamp})
+        merged.update({key: value for key, value in row.items() if key != "time"})
+    return [deduplicated[key] for key in sorted(deduplicated)]
+
+
+class IFindHttpMarketDataProvider:
+    """Direct adapter for the official iFinD HTTP date-sequence API."""
+
+    name = "ifind"
+
+    def __init__(
+        self,
+        base_url: str,
+        access_token: str,
+        *,
+        refresh_token: str = "",
+        http_client: Any | None = None,
+        request_timeout_seconds: float = 30.0,
+    ) -> None:
+        self.base_url = str(base_url or IFIND_DEFAULT_BASE_URL).rstrip("/")
+        self._access_token = str(access_token or "").strip()
+        self._refresh_token = str(refresh_token or "").strip()
+        self._http_client = http_client
+        self.request_timeout_seconds = request_timeout_seconds
+
+    def _refresh_access_token(self) -> str:
+        if not self._refresh_token:
+            raise ValueError("iFinD refresh token is not configured.")
+        post = self._http_client.post if self._http_client is not None else httpx.post
+        response = post(
+            f"{self.base_url}/get_access_token",
+            headers={"Content-Type": "application/json", "refresh_token": self._refresh_token},
+            timeout=self.request_timeout_seconds,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        token = str(((payload.get("data") or {}).get("access_token")) or "").strip()
+        if not token:
+            raise ValueError("iFinD get_access_token returned no access token.")
+        self._access_token = token
+        return token
+
+    def _date_sequence(self, body: dict[str, Any]) -> dict[str, Any]:
+        if not self._access_token:
+            self._refresh_access_token()
+        return self._post_date_sequence(body, retry_auth=True)
+
+    def _post_date_sequence(self, body: dict[str, Any], *, retry_auth: bool) -> dict[str, Any]:
+        headers = {"Content-Type": "application/json", "access_token": self._access_token, "ifindlang": "cn"}
+        post = self._http_client.post if self._http_client is not None else httpx.post
+        response = post(f"{self.base_url}/date_sequence", json=body, headers=headers, timeout=self.request_timeout_seconds)
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if retry_auth and exc.response.status_code in {401, 403} and self._refresh_token:
+                self._refresh_access_token()
+                return self._post_date_sequence(body, retry_auth=False)
+            raise
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("iFinD date_sequence returned a non-object payload")
+        error_code = payload.get("errorcode", 0)
+        if str(error_code).strip() not in {"", "0", "0.0"}:
+            message = str(payload.get("errmsg") or "unknown iFinD error")[:500]
+            if retry_auth and self._refresh_token and "token" in message.lower():
+                self._refresh_access_token()
+                return self._post_date_sequence(body, retry_auth=False)
+            raise ValueError(f"iFinD error {error_code}: {message}")
+        return payload
+
+    def _safe_error(self, exc: BaseException) -> str:
+        message = str(exc)
+        if self._access_token:
+            message = message.replace(self._access_token, "[redacted]")
+        if self._refresh_token:
+            message = message.replace(self._refresh_token, "[redacted]")
+        return message[:500]
+
+    @staticmethod
+    def _financial_metrics(
+        rows: list[dict[str, Any]],
+        indicators: dict[str, str] | None = None,
+    ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+        indicators = indicators or IFIND_FINANCIAL_INDICATORS
+        by_quarter: dict[tuple[int, int], dict[str, Any]] = {}
+        for row in rows:
+            quarter = _quarter_from_end_date(str(row.get("time") or ""))
+            if quarter is not None:
+                by_quarter[quarter] = row
+
+        def raw(key: tuple[int, int], indicator: str) -> float | None:
+            return _safe_float((by_quarter.get(key) or {}).get(indicator))
+
+        def build(key: tuple[int, int]) -> dict[str, dict[str, Any]]:
+            prior = _previous_quarter(key)
+            observed_at = str((by_quarter.get(key) or {}).get("time") or "")
+            result: dict[str, dict[str, Any]] = {}
+            net_profit = raw(key, indicators["net_profit_yoy"])
+            if net_profit is not None:
+                result["quarter_net_profit_yoy"] = {
+                    "value": net_profit / 100.0,
+                    "period": _quarter_label(key),
+                    "unit": "percent",
+                    "source": "iFinD official date_sequence",
+                    "observed_at": observed_at,
+                    "metadata": {
+                        "indicator": indicators["net_profit_yoy"],
+                        "raw_value": net_profit,
+                        "raw_unit": "percent",
+                    },
+                }
+
+            margin_indicator = indicators["gross_margin"]
+            current_margin = raw(key, margin_indicator)
+            prior_margin = raw(prior, margin_indicator)
+            fallback = indicators.get("gross_margin_fallback")
+            if fallback and (current_margin is None or prior_margin is None):
+                fallback_current = raw(key, fallback)
+                fallback_prior = raw(prior, fallback)
+                if fallback_current is not None and fallback_prior is not None:
+                    margin_indicator = fallback
+                    current_margin, prior_margin = fallback_current, fallback_prior
+            if current_margin is not None and prior_margin is not None:
+                result["quarter_gross_margin_qoq_delta"] = {
+                    "value": (current_margin - prior_margin) / 100.0,
+                    "period": _quarter_label(key),
+                    "unit": "percentage_point",
+                    "source": "iFinD official date_sequence",
+                    "observed_at": observed_at,
+                    "metadata": {
+                        "indicator": margin_indicator,
+                        "current_raw_value": current_margin,
+                        "previous_raw_value": prior_margin,
+                        "raw_unit": "percent",
+                    },
+                }
+
+            current_revenue = raw(key, indicators["revenue_yoy"])
+            prior_revenue = raw(prior, indicators["revenue_yoy"])
+            if current_revenue is not None and prior_revenue is not None:
+                result["quarter_revenue_growth_qoq"] = {
+                    "value": (current_revenue - prior_revenue) / 100.0,
+                    "period": _quarter_label(key),
+                    "unit": "percentage_point",
+                    "source": "iFinD official date_sequence",
+                    "observed_at": observed_at,
+                    "metadata": {
+                        "indicator": indicators["revenue_yoy"],
+                        "current_raw_value": current_revenue,
+                        "previous_raw_value": prior_revenue,
+                        "raw_unit": "percent",
+                    },
+                }
+            return result
+
+        built = [(key, build(key)) for key in sorted(by_quarter, reverse=True)]
+        latest = next((values for _key, values in built if values), {})
+        history = [
+            {
+                "period": _quarter_label(key),
+                "observed_at": str((by_quarter.get(key) or {}).get("time") or ""),
+                "metrics": values,
+            }
+            for key, values in reversed(built[:20])
+            if values
+        ]
+        return latest, history
+
+    @staticmethod
+    def _market_metrics(
+        rows: list[dict[str, Any]],
+        indicators: dict[str, str] | None = None,
+        *,
+        currency: str = "CNY",
+    ) -> dict[str, dict[str, Any]]:
+        indicators = indicators or IFIND_MARKET_INDICATORS
+        metrics: dict[str, dict[str, Any]] = {}
+        dated_rows = sorted(rows, key=lambda row: str(row.get("time") or ""))
+        forward_indicator = indicators["forward_pe"]
+        forward_rows = [
+            row for row in dated_rows if _safe_float(row.get(forward_indicator)) is not None
+        ]
+        if forward_rows:
+            latest = forward_rows[-1]
+            metrics["forward_pe"] = {
+                "value": _safe_float(latest.get(forward_indicator)),
+                "period": str(latest.get("time") or ""),
+                "unit": "multiple",
+                "source": "iFinD official date_sequence",
+                "observed_at": str(latest.get("time") or ""),
+                "metadata": {"indicator": forward_indicator},
+            }
+
+        amount_indicator = indicators["turnover_amount"]
+        amount_rows = [
+            row for row in dated_rows if _safe_float(row.get(amount_indicator)) is not None
+        ]
+        sample = amount_rows[-20:]
+        if len(sample) == 20:
+            amounts = [_safe_float(row.get(amount_indicator)) for row in sample]
+            end_date = str(sample[-1].get("time") or "")
+            metrics["avg_turnover_amount_20d"] = {
+                "value": sum(value for value in amounts if value is not None) / 20.0,
+                "period": f"20D@{end_date}",
+                "unit": "currency",
+                "source": "iFinD official date_sequence",
+                "observed_at": end_date,
+                "metadata": {
+                    "indicator": amount_indicator,
+                    "raw_unit": currency,
+                    "unit_assumption": True,
+                    "sample_count": 20,
+                    "window_start": str(sample[0].get("time") or ""),
+                    "window_end": end_date,
+                },
+            }
+        return metrics
+
+    def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]:
+        del company_name
+        identity = _security_identity(ticker)
+
+        if not self._access_token and not self._refresh_token:
+            return {
+                "provider": self.name,
+                "status": "unavailable",
+                "as_of": _now_iso(),
+                "ticker": identity.canonical_ticker,
+                "metrics": {},
+                "metric_history": [],
+                "error": "iFinD access or refresh token is not configured.",
+            }
+
+        end = _now().date()
+        metrics: dict[str, dict[str, Any]] = {}
+        history: list[dict[str, Any]] = []
+        errors: list[str] = []
+        financial_indicators, _market_indicators = _ifind_indicators(identity)
+        financial_body = {
+            "codes": _ifind_ticker(identity),
+            "startdate": (end - timedelta(days=5 * 366)).isoformat(),
+            "enddate": end.isoformat(),
+            "functionpara": {"Interval": "Q", "Fill": "Blank", "Days": "Alldays"},
+            "indipara": [
+                {
+                    "indicator": indicator,
+                    "indiparams": [""] if identity.market == "hk" else ["", ""],
+                }
+                for indicator in financial_indicators.values()
+            ],
+        }
+        try:
+            financial_payload = self._date_sequence(financial_body)
+            financial_metrics, history = self._financial_metrics(
+                _ifind_rows(financial_payload), financial_indicators
+            )
+            metrics.update(financial_metrics)
+        except Exception as exc:  # noqa: BLE001 - the market request must still run
+            errors.append(self._safe_error(exc))
+
+        try:
+            market = self.fetch_market_metrics_as_of(ticker=ticker, as_of=end)
+            metrics.update(market["metrics"])
+        except Exception as exc:  # noqa: BLE001 - financial fields remain usable
+            errors.append(self._safe_error(exc))
+
+        missing = [key for key in METRIC_KEYS if key not in metrics]
+        return {
+            "provider": self.name,
+            "status": "completed" if not missing else "partial" if metrics else "unavailable",
+            "as_of": _now_iso(),
+            "ticker": identity.canonical_ticker,
+            "metrics": metrics,
+            "metric_history": history,
+            "missing_metric_keys": missing,
+            "error": "; ".join(dict.fromkeys(error for error in errors if error)),
+        }
+
+    def fetch_market_metrics_as_of(self, *, ticker: str, as_of: date) -> dict[str, Any]:
+        identity = _security_identity(ticker)
+
+        if not self._access_token and not self._refresh_token:
+            raise ValueError("iFinD access or refresh token is not configured.")
+        _financial_indicators, market_indicators = _ifind_indicators(identity)
+        market_body = {
+            "codes": _ifind_ticker(identity),
+            "startdate": (as_of - timedelta(days=60)).isoformat(),
+            "enddate": as_of.isoformat(),
+            "functionpara": {"Interval": "D", "Fill": "Blank", "Days": "Tradedays"},
+            "indipara": [
+                {
+                    "indicator": indicator,
+                    "indiparams": ["", "BB"]
+                    if identity.market == "hk"
+                    and indicator == market_indicators["turnover_amount"]
+                    else [""],
+                }
+                for indicator in market_indicators.values()
+            ],
+        }
+        market_payload = self._date_sequence(market_body)
+        metrics = self._market_metrics(
+            _ifind_rows(market_payload),
+            market_indicators,
+            currency=identity.currency,
+        )
+        return {
+            "provider": self.name,
+            "status": "completed" if len(metrics) == 2 else "partial" if metrics else "unavailable",
+            "as_of": max(
+                (str(item.get("observed_at") or "") for item in metrics.values()),
+                default=as_of.isoformat(),
+            ),
+            "ticker": identity.canonical_ticker,
+            "metrics": metrics,
+            "missing_metric_keys": [
+                item.key for item in MARKET_METRIC_DEFINITIONS if item.key not in metrics
+            ],
+        }

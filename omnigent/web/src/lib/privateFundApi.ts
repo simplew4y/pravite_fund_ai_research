@@ -705,6 +705,8 @@ export interface PrivateFundValuationMetricTimeline {
 
 export interface PrivateFundValuationMarketSnapshot {
   label: string;
+  period?: string;
+  errorMessage?: string;
   asOf: string;
   status: string;
   modelAvailableCount: number;
@@ -724,7 +726,6 @@ export interface PrivateFundMarketDataProviderAttempt {
 
 export interface PrivateFundValuationMarketDataStatus {
   snapshotId: string;
-  provider: string;
   status: string;
   asOf: string;
   errorMessage: string;
@@ -732,29 +733,6 @@ export interface PrivateFundValuationMarketDataStatus {
   createdAt: string;
   isStale: boolean;
   identitySnapshot: Record<string, unknown>;
-}
-
-export interface PrivateFundValuationPriceComparison {
-  priceComparisonId: string;
-  snapshotId: string;
-  provider: string;
-  providerSymbol: string;
-  currency: string;
-  valuationDate: string;
-  benchmarkTradeDate: string;
-  benchmarkClose: number | null;
-  latestTradeDate: string;
-  latestClose: number | null;
-  targetPrice: number | null;
-  targetUnit: string;
-  targetSource: string;
-  targetEvidenceId: string;
-  impliedUpside: number | null;
-  latestUpside: number | null;
-  status: string;
-  errorMessage: string;
-  metadata: Record<string, unknown>;
-  createdAt: string;
 }
 
 export interface PrivateFundValuationContextCard {
@@ -780,6 +758,7 @@ export interface PrivateFundValuationImpactCard {
   watchItems: string[];
   sourceRefs: string[];
   evidenceIds: string[];
+  evidenceLocations: Array<Record<string, unknown>>;
   createdAt: string;
 }
 
@@ -798,7 +777,6 @@ export interface PrivateFundValuationImpactAnalysis {
 
 export interface PrivateFundValuationMetricAnalysis {
   marketData: PrivateFundValuationMarketDataStatus;
-  priceComparison: PrivateFundValuationPriceComparison;
   metricComparisons: PrivateFundValuationMetricComparison[];
   marketSnapshot?: PrivateFundValuationMarketSnapshot;
   metricTimeline?: PrivateFundValuationMetricTimeline;
@@ -1600,6 +1578,8 @@ interface ValuationMetricTimelineWire {
 
 interface ValuationMarketSnapshotWire {
   label?: string | null;
+  period?: string | null;
+  error_message?: string | null;
   as_of?: string | null;
   status?: string | null;
   model_available_count?: number | null;
@@ -1619,7 +1599,6 @@ interface ValuationMarketDataProviderAttemptWire {
 
 interface ValuationMarketDataStatusWire {
   snapshot_id?: string;
-  provider?: string;
   status?: string;
   as_of?: string | null;
   error_message?: string | null;
@@ -1627,29 +1606,6 @@ interface ValuationMarketDataStatusWire {
   created_at?: string | null;
   is_stale?: boolean | number | null;
   identity_snapshot?: Record<string, unknown> | null;
-}
-
-interface ValuationPriceComparisonWire {
-  price_comparison_id?: string;
-  snapshot_id?: string;
-  provider?: string;
-  provider_symbol?: string;
-  currency?: string;
-  valuation_date?: string | null;
-  benchmark_trade_date?: string | null;
-  benchmark_close?: number | null;
-  latest_trade_date?: string | null;
-  latest_close?: number | null;
-  target_price?: number | null;
-  target_unit?: string | null;
-  target_source?: string | null;
-  target_evidence_id?: string | null;
-  implied_upside?: number | null;
-  latest_upside?: number | null;
-  status?: string;
-  error_message?: string | null;
-  metadata?: Record<string, unknown>;
-  created_at?: string | null;
 }
 
 interface ValuationContextCardWire {
@@ -1675,6 +1631,7 @@ interface ValuationImpactCardWire {
   watch_items?: string[];
   source_refs?: string[];
   evidence_ids?: string[];
+  evidence_locations?: Array<Record<string, unknown>>;
   created_at?: string | null;
 }
 
@@ -1693,7 +1650,6 @@ interface ValuationImpactAnalysisWire {
 
 interface ValuationMetricAnalysisWire {
   market_data?: ValuationMarketDataStatusWire;
-  price_comparison?: ValuationPriceComparisonWire;
   metric_comparisons?: ValuationMetricComparisonWire[];
   market_snapshot?: ValuationMarketSnapshotWire;
   metric_timeline?: ValuationMetricTimelineWire;
@@ -2424,7 +2380,6 @@ function valuationModelSeriesFromWire(
 ): PrivateFundValuationModelSeries {
   const metricAnalysis = series.metric_analysis ?? {};
   const marketData = metricAnalysis.market_data ?? {};
-  const priceComparison = metricAnalysis.price_comparison ?? {};
   return {
     seriesId: series.series_id,
     seriesKey: series.series_key,
@@ -2460,7 +2415,6 @@ function valuationModelSeriesFromWire(
     metricAnalysis: {
       marketData: {
         snapshotId: marketData.snapshot_id ?? "",
-        provider: marketData.provider ?? "",
         status: marketData.status ?? "pending",
         asOf: marketData.as_of ?? "",
         errorMessage: marketData.error_message ?? "",
@@ -2474,28 +2428,6 @@ function valuationModelSeriesFromWire(
           durationMs: attempt.duration_ms ?? 0,
         })),
         createdAt: marketData.created_at ?? "",
-      },
-      priceComparison: {
-        priceComparisonId: priceComparison.price_comparison_id ?? "",
-        snapshotId: priceComparison.snapshot_id ?? "",
-        provider: priceComparison.provider ?? "",
-        providerSymbol: priceComparison.provider_symbol ?? "",
-        currency: priceComparison.currency ?? "",
-        valuationDate: priceComparison.valuation_date ?? "",
-        benchmarkTradeDate: priceComparison.benchmark_trade_date ?? "",
-        benchmarkClose: priceComparison.benchmark_close ?? null,
-        latestTradeDate: priceComparison.latest_trade_date ?? "",
-        latestClose: priceComparison.latest_close ?? null,
-        targetPrice: priceComparison.target_price ?? null,
-        targetUnit: priceComparison.target_unit ?? "",
-        targetSource: priceComparison.target_source ?? "",
-        targetEvidenceId: priceComparison.target_evidence_id ?? "",
-        impliedUpside: priceComparison.implied_upside ?? null,
-        latestUpside: priceComparison.latest_upside ?? null,
-        status: priceComparison.status ?? "pending",
-        errorMessage: priceComparison.error_message ?? "",
-        metadata: priceComparison.metadata ?? {},
-        createdAt: priceComparison.created_at ?? "",
       },
       metricComparisons: (metricAnalysis.metric_comparisons ?? []).map(
         valuationMetricComparisonFromWire,
@@ -2557,6 +2489,7 @@ function valuationModelSeriesFromWire(
           watchItems: card.watch_items ?? [],
           sourceRefs: card.source_refs ?? [],
           evidenceIds: card.evidence_ids ?? [],
+          evidenceLocations: card.evidence_locations ?? [],
           createdAt: card.created_at ?? "",
         })),
         errorMessage: metricAnalysis.valuation_impacts?.error_message ?? "",
@@ -3201,6 +3134,39 @@ export async function getPrivateFundValuationTrackingOverview(
   return valuationTrackingOverviewFromWire(payload);
 }
 
+export async function getPrivateFundValuationPeriodMarket(
+  datasetId: string,
+  seriesId: string,
+  modelVersionId: string,
+  period: string,
+): Promise<PrivateFundValuationMarketSnapshot> {
+  const query = new URLSearchParams({
+    series_id: seriesId,
+    model_version_id: modelVersionId,
+    period,
+  });
+  const snapshot = await jsonOrThrow<ValuationMarketSnapshotWire>(
+    await authenticatedFetch(
+      "/v1/private-fund/projects/" +
+        encodeURIComponent(datasetId) +
+        "/valuation-tracking/period-market?" +
+        query,
+    ),
+  );
+  return {
+    label: snapshot.label ?? period + " 市场快照",
+    period: snapshot.period ?? period,
+    errorMessage: snapshot.error_message ?? "",
+    asOf: snapshot.as_of ?? "",
+    status: snapshot.status ?? "unavailable",
+    modelAvailableCount: snapshot.model_available_count ?? 0,
+    actualAvailableCount: snapshot.actual_available_count ?? 0,
+    comparedCount: snapshot.compared_count ?? 0,
+    periodMismatchCount: snapshot.period_mismatch_count ?? 0,
+    comparisons: (snapshot.comparisons ?? []).map(valuationMetricComparisonFromWire),
+  };
+}
+
 export async function runPrivateFundValuationTracking(
   datasetId: string,
   scope?: { seriesId?: string; modelVersionId?: string; documentIds?: string[] },
@@ -3218,7 +3184,6 @@ export async function runPrivateFundValuationTracking(
   );
   return (body.jobs ?? []).map(valuationTrackingJobFromWire);
 }
-
 
 export async function searchPrivateFundValuationSecurities(
   datasetId: string,
@@ -3246,7 +3211,11 @@ export async function updatePrivateFundValuationModelIdentity(
   datasetId: string,
   seriesId: string,
   input: { companyName: string; companyTicker: string; changeSource?: string },
-): Promise<{ series: PrivateFundValuationModelSeries | null; jobs: PrivateFundValuationTrackingJob[]; auditId: string }> {
+): Promise<{
+  series: PrivateFundValuationModelSeries | null;
+  jobs: PrivateFundValuationTrackingJob[];
+  auditId: string;
+}> {
   const body = await jsonOrThrow<{
     series?: ValuationModelSeriesWire | null;
     jobs?: ValuationTrackingJobWire[];
