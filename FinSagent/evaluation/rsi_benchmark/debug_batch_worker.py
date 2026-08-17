@@ -38,12 +38,19 @@ def append_jsonl(path: Path, row: dict[str, Any]) -> None:
 
 def apply_retrieval_overrides(
     config: dict[str, Any], *, persist_directory: str = "", collection_name: str = "",
+    legacy_company_collection: bool = False,
 ) -> dict[str, Any]:
     resolved = dict(config)
     if persist_directory:
         resolved["persist_directory"] = str(Path(persist_directory).resolve())
     if collection_name:
         resolved["collection_name"] = collection_name
+    if legacy_company_collection:
+        if not persist_directory or not collection_name:
+            raise ValueError("legacy company collection requires explicit persist directory and collection name")
+        resolved["retrieval_scope_required"] = False
+        resolved["retrieval_mode"] = "rag_only"
+        resolved["datasets"] = {}
     return resolved
 
 
@@ -58,6 +65,7 @@ async def run(args: argparse.Namespace) -> None:
         yaml.safe_load(config_path.read_text(encoding="utf-8")),
         persist_directory=args.persist_directory,
         collection_name=args.collection_name,
+        legacy_company_collection=args.legacy_company_collection,
     )
     state_dir = Path(args.state_dir).resolve()
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -122,6 +130,7 @@ def main() -> None:
     parser.add_argument("--rerank-topk", type=int, default=5)
     parser.add_argument("--persist-directory", default="")
     parser.add_argument("--collection-name", default="")
+    parser.add_argument("--legacy-company-collection", action="store_true")
     asyncio.run(run(parser.parse_args()))
 
 

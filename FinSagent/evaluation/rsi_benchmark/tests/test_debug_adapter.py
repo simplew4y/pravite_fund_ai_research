@@ -31,6 +31,24 @@ class DebugAdapterTest(unittest.TestCase):
         self.assertEqual(resolved["collection_name"], "lotus")
         self.assertEqual(resolved["persist_directory"], "/tmp/new")
 
+    def test_legacy_company_collection_disables_incompatible_dci_scope(self):
+        source = {
+            "retrieval_scope_required": True,
+            "retrieval_mode": "dci_rag_cascade",
+            "datasets": {"active_dataset": "test_real_data"},
+        }
+        resolved = apply_retrieval_overrides(
+            source, persist_directory="/tmp/lotus", collection_name="lotus",
+            legacy_company_collection=True,
+        )
+        self.assertFalse(resolved["retrieval_scope_required"])
+        self.assertEqual(resolved["retrieval_mode"], "rag_only")
+        self.assertEqual(resolved["datasets"], {})
+
+    def test_legacy_company_collection_requires_explicit_physical_scope(self):
+        with self.assertRaises(ValueError):
+            apply_retrieval_overrides({}, legacy_company_collection=True)
+
 
 if __name__ == "__main__":
     unittest.main()
