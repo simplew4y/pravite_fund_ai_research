@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import type { SessionEvent } from "@private-fund/contracts";
 
@@ -17,9 +17,7 @@ import type { ApiConfig } from "./config.js";
 import { createApiRuntime, type ApiRuntime } from "./main.js";
 import { ProjectResearchStoreManager } from "./research-stores.js";
 
-const WORKER_ENTRY = fileURLToPath(
-  new URL("../test/fixtures/fake-agent-worker.mjs", import.meta.url),
-);
+const WORKER_ENTRY = "unused-agent-worker-entry";
 const DATA_NAMESPACE = "00000000-0000-4000-8000-000000000078";
 
 async function eventually<T>(
@@ -34,6 +32,24 @@ async function eventually<T>(
   }
   return value;
 }
+
+import { startFakeChatServer } from "../test/fixtures/fake-chat-server.mjs";
+
+let fakeChat: Awaited<ReturnType<typeof startFakeChatServer>> | undefined;
+
+function fakeModelEndpoint(): { baseUrl: string; apiKey: string; model: string } {
+  if (fakeChat === undefined) throw new Error("fake chat server not started");
+  return { baseUrl: fakeChat.url, apiKey: "test-model-key", model: "fake-model" };
+}
+
+beforeAll(async () => {
+  fakeChat = await startFakeChatServer();
+});
+
+afterAll(async () => {
+  await fakeChat?.close();
+  fakeChat = undefined;
+});
 
 describe("evidence-grounded session questions", () => {
   let runtime: ApiRuntime | undefined;
@@ -61,6 +77,7 @@ describe("evidence-grounded session questions", () => {
         dataNamespace: DATA_NAMESPACE,
       },
       agentWorkerEntry: WORKER_ENTRY,
+    agentModel: fakeModelEndpoint(),
     };
     runtime = await createApiRuntime(config);
 
@@ -153,17 +170,19 @@ describe("evidence-grounded session questions", () => {
     );
     expect(events.map((event) => event.type)).toEqual(
       expect.arrayContaining([
-        "test.evidence-search-result",
-        "test.evidence-get-result",
+        "tool.started",
+        "tool.completed",
         "message.assistant.delta",
         "operation.completed",
       ]),
     );
     const searchResult = events.find(
-      (event) => event.type === "test.evidence-search-result",
+      (event) =>
+        event.type === "tool.completed" &&
+        event.payload.toolName === "evidence.search",
     );
     expect(searchResult?.payload).toMatchObject({
-      ok: true,
+      isError: false,
       result: {
         hits: [
           {
@@ -175,10 +194,12 @@ describe("evidence-grounded session questions", () => {
       },
     });
     const detailResult = events.find(
-      (event) => event.type === "test.evidence-get-result",
+      (event) =>
+        event.type === "tool.completed" &&
+        event.payload.toolName === "evidence.get",
     );
     expect(detailResult?.payload).toMatchObject({
-      ok: true,
+      isError: false,
       result: {
         items: [
           {

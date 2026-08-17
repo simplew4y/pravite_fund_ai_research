@@ -3,16 +3,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import type { Operation, Project, SessionEvent } from "@private-fund/contracts";
 
 import type { ApiConfig } from "./config.js";
 import { createApiRuntime, type ApiRuntime } from "./main.js";
 
-const WORKER_ENTRY = fileURLToPath(
-  new URL("../test/fixtures/fake-agent-worker.mjs", import.meta.url),
-);
+const WORKER_ENTRY = "unused-agent-worker-entry";
 const ALPHA_NAMESPACE = "00000000-0000-4000-8000-0000000000a1";
 const BETA_NAMESPACE = "00000000-0000-4000-8000-0000000000b2";
 
@@ -32,6 +30,7 @@ function configFor(
       dataNamespace,
     },
     agentWorkerEntry: WORKER_ENTRY,
+    agentModel: fakeModelEndpoint(),
   };
 }
 
@@ -50,6 +49,24 @@ async function eventually<T>(
   }
   return value;
 }
+
+import { startFakeChatServer } from "../test/fixtures/fake-chat-server.mjs";
+
+let fakeChat: Awaited<ReturnType<typeof startFakeChatServer>> | undefined;
+
+function fakeModelEndpoint(): { baseUrl: string; apiKey: string; model: string } {
+  if (fakeChat === undefined) throw new Error("fake chat server not started");
+  return { baseUrl: fakeChat.url, apiKey: "test-model-key", model: "fake-model" };
+}
+
+beforeAll(async () => {
+  fakeChat = await startFakeChatServer();
+});
+
+afterAll(async () => {
+  await fakeChat?.close();
+  fakeChat = undefined;
+});
 
 describe("legacy session project/event/item replacements", () => {
   let dataRoot: string | undefined;

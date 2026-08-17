@@ -64,6 +64,12 @@ const environmentSchema = z.object({
     .default(30_000),
   PRIVATE_FUND_WEB_ROOT: z.string().min(1).optional(),
   PRIVATE_FUND_SESSION_JOURNAL_SHADOW: z.string().default("1"),
+  PRIVATE_FUND_AGENT_BASE_URL: z.string().url().optional(),
+  PRIVATE_FUND_AGENT_API_KEY: z.string().min(8).optional(),
+  PRIVATE_FUND_AGENT_MODEL: z.string().trim().min(1).max(200).optional(),
+  DASHSCOPE_API_KEY: z.string().min(8).optional(),
+  OPENAI_API_KEY: z.string().min(8).optional(),
+  OPENAI_BASE_URL: z.string().url().optional(),
   PRIVATE_FUND_BLOB_MASTER_KEY: z.string().min(32).optional(),
   PRIVATE_FUND_BLOB_ROOT: z.string().min(1).optional(),
 });
@@ -101,6 +107,12 @@ export interface ApiConfig {
   };
   webRoot?: string;
   sessionJournalShadow?: boolean;
+  /** Development-mode chat endpoint for the in-process agent loop. */
+  agentModel?: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  };
   blobStore?: {
     rootDirectory: string;
     masterKey: string;
@@ -197,6 +209,27 @@ export function loadApiConfig(
           ),
         }),
     sessionJournalShadow: truthy(parsed.PRIVATE_FUND_SESSION_JOURNAL_SHADOW),
+    ...(() => {
+      const apiKey =
+        parsed.PRIVATE_FUND_AGENT_API_KEY ??
+        parsed.DASHSCOPE_API_KEY ??
+        parsed.OPENAI_API_KEY;
+      if (apiKey === undefined) return {};
+      const baseUrl =
+        parsed.PRIVATE_FUND_AGENT_BASE_URL ??
+        (parsed.PRIVATE_FUND_AGENT_API_KEY === undefined &&
+        parsed.DASHSCOPE_API_KEY !== undefined
+          ? "https://dashscope.aliyuncs.com/compatible-mode/v1"
+          : parsed.OPENAI_BASE_URL);
+      if (baseUrl === undefined) return {};
+      return {
+        agentModel: {
+          baseUrl: baseUrl.replace(/\/+$/, ""),
+          apiKey,
+          model: parsed.PRIVATE_FUND_AGENT_MODEL ?? "qwen-plus",
+        },
+      };
+    })(),
     ...(parsed.PRIVATE_FUND_BLOB_MASTER_KEY === undefined
       ? {}
       : {

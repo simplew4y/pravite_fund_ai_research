@@ -26,7 +26,6 @@
     "desktop:package:mac": "npm run build:mac --workspace @private-fund/desktop",
     "desktop:package:mac:dir": "npm run build:mac:dir --workspace @private-fund/desktop",
     "desktop:smoke": "npm run smoke:packaged --workspace @private-fund/desktop",
-    "postinstall": "node scripts/verify-pi-dependencies.mjs",
     "services:logs": "node scripts/manage-ts-services.mjs logs",
     "services:manifest": "node scripts/manage-ts-services.mjs manifest",
     "services:restart": "node scripts/manage-ts-services.mjs restart",
@@ -43,8 +42,7 @@
     "test:service-topology": "node --test scripts/manage-ts-services.test.mjs",
     "test:workspaces": "npm run test --workspaces --if-present",
     "typecheck": "tsc -b --pretty false",
-    "verify:pi-dependencies": "node scripts/verify-pi-dependencies.mjs",
-    "verify:all": "npm run typecheck && npm test && npm run test:compute && npm run verify:pi-dependencies && npm --prefix omnigent/web run test"
+    "verify:all": "npm run typecheck && npm test && npm run test:compute && npm --prefix omnigent/web run test"
   },
   "dependencies": {
     "brace-expansion": "5.0.9"

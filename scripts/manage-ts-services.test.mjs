@@ -63,12 +63,6 @@ test("canonical manifest contains only the TS control-plane topology", () => {
     ),
     [
       {
-        id: "pi-agent-worker",
-        runtime: "node",
-        owner: "api",
-        lifecycle: "session-demand",
-      },
-      {
         id: "python-source-preview-sidecar",
         runtime: "python",
         owner: "api",
@@ -81,10 +75,6 @@ test("canonical manifest contains only the TS control-plane topology", () => {
         lifecycle: "request-scoped",
       },
     ],
-  );
-  assert.equal(
-    manifest.ownedOnDemandProcesses[0].processModel,
-    "shared-process-per-session-agent-session",
   );
   const forbiddenProcessPattern =
     /\b(omnigent|runner|host|tmux|litellm|fastapi)\b/i;

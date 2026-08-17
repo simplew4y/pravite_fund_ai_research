@@ -23,9 +23,6 @@
       "path": "./packages/db"
     },
     {
-      "path": "./packages/agent-runtime"
-    },
-    {
       "path": "./packages/job-queue"
     },
     {
@@ -51,9 +48,6 @@
     },
     {
       "path": "./packages/session-projections"
-    },
-    {
-      "path": "./apps/agent-worker"
     },
     {
       "path": "./apps/job-worker"

@@ -48,14 +48,6 @@
   ],
   "ownedOnDemandProcesses": [
     {
-      "id": "pi-agent-worker",
-      "runtime": "node",
-      "owner": "api",
-      "entry": "apps/agent-worker/dist/main.js",
-      "lifecycle": "session-demand",
-      "processModel": "shared-process-per-session-agent-session"
-    },
-    {
       "id": "python-source-preview-sidecar",
       "runtime": "python",
       "owner": "api",
