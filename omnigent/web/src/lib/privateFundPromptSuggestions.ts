@@ -827,12 +827,12 @@ export function generatePrivateFundPromptSuggestions({
   const merged = [...dynamic, ...templates];
   const picked = pickDiverse(merged, limit);
 
-  return picked.map(({ id, title, prompt, stage, reason }) => ({
-    id,
-    title,
-    prompt,
-    stage,
-    reason,
+  return picked.map((item) => ({
+    id: item.id,
+    title: item.title,
+    prompt: item.prompt,
+    stage: item.stage,
+    reason: item.reason,
   }));
 }
 

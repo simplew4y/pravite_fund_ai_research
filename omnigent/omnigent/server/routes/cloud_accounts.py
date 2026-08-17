@@ -29,6 +29,10 @@ from omnigent.server.accounts_store import SqlAlchemyAccountStore
 from omnigent.server.auth import UnifiedAuthProvider
 from omnigent.server.cloud_accounts_config import CloudAccountsConfig
 from omnigent.server.oidc import mint_session_cookie
+from omnigent.server.private_fund_locale import (
+    normalize_app_locale,
+    write_user_locale,
+)
 from omnigent.server.routes.accounts_auth import _clear_session_cookie, _set_session_cookie
 from omnigent.server.user_llm_config_store import UserLlmConfigStore
 from omnigent.server.user_model_routing_store import UserModelRoutingStore
@@ -55,6 +59,7 @@ class CloudRegistrationRequest(CloudRegistrationEmailRequest):
     code: str = Field(pattern=r"^\d{6}$")
     password: str = Field(min_length=8, max_length=1024)
     nick_name: str | None = Field(default=None, max_length=120)
+    preferred_locale: Literal["zh-CN", "en-US"] = "zh-CN"
 
 
 class CloudChangePasswordRequest(BaseModel):
@@ -69,6 +74,10 @@ class CloudPasswordResetRequest(CloudRegistrationEmailRequest):
 
 class CloudUpdateProfileRequest(BaseModel):
     nick_name: str | None = Field(default=None, max_length=120)
+
+
+class CloudUpdatePreferencesRequest(BaseModel):
+    preferred_locale: Literal["zh-CN", "en-US"]
 
 
 class CloudFeedbackRequest(BaseModel):
@@ -167,6 +176,7 @@ def _cloud_user(data: Any) -> dict[str, Any]:
         "id": user_id,
         "email": email,
         "nick_name": data.get("nick_name"),
+        "preferred_locale": normalize_app_locale(data.get("preferred_locale")),
         "status": str(data["status"]),
         "is_admin": False,
         "is_platform_admin": bool(data.get("is_admin", False)),
@@ -279,6 +289,10 @@ def create_cloud_accounts_router(
             user["id"],
             user["data_namespace"],
             logged_in_at=int(time.time()),
+        )
+        write_user_locale(
+            user["data_namespace"],
+            normalize_app_locale(user.get("preferred_locale")),
         )
 
     def bundle_from_token_response(
@@ -570,6 +584,7 @@ def create_cloud_accounts_router(
                     "code": body.code,
                     "password": body.password,
                     "nick_name": body.nick_name.strip() if body.nick_name else None,
+                    "preferred_locale": body.preferred_locale,
                 },
             )
         except RuntimeError:
@@ -722,6 +737,41 @@ def create_cloud_accounts_router(
                 "PATCH",
                 "me/profile",
                 json_body={"nick_name": nick_name or None},
+            )
+        except RuntimeError:
+            return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")
+        if upstream is None or bundle is None:
+            response = _cloud_error(401, "not_authenticated", "登录状态已失效")
+            clear_cookies(response)
+            return response
+        if upstream.status_code != 200:
+            return proxy_authenticated_response(
+                upstream,
+                bundle,
+                refreshed_user=refreshed_user,
+            )
+        try:
+            user = _cloud_user(_safe_json(upstream))
+            persist_shadow(user)
+        except (KeyError, TypeError, ValueError):
+            return _cloud_error(502, "invalid_cloud_response", "云端账户服务返回了无效数据")
+        response = JSONResponse(user, headers={"Cache-Control": "private, no-store"})
+        set_cloud_cookie(response, bundle)
+        if refreshed_user is not None:
+            set_local_session(response, user["id"])
+        return response
+
+    @router.patch("/auth/users/me/preferences")
+    async def update_preferences(
+        body: CloudUpdatePreferencesRequest,
+        request: Request,
+    ) -> Response:
+        try:
+            upstream, bundle, refreshed_user = await authorized_request(
+                request,
+                "PATCH",
+                "me/preferences",
+                json_body={"preferred_locale": body.preferred_locale},
             )
         except RuntimeError:
             return _cloud_error(503, "cloud_service_unavailable", "云端账户服务暂时不可用")

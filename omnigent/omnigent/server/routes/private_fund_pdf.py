@@ -1726,7 +1726,7 @@ def _project_memo_stats(dataset_id: str) -> dict[str, Any]:
         latest_name = Path(str(latest_path)).name if latest_path else None
     return {
         "memo_count": len(versions),
-        "latest_memo_path": str(latest_path) if latest_path else None,
+        "latest_memo_path": _project_artifact_relative_path(dataset_id, latest_path),
         "latest_memo_name": latest_name,
     }
 
@@ -1873,8 +1873,8 @@ def _project_assets_payload(
     memo_dir = _project_dataset_root(dataset_id) / "memos"
     private_fund_tracking.backfill_memo_artifacts(collection_db, dataset_id, memo_dir)
     for memo in private_fund_tracking.list_memo_versions(collection_db, dataset_id):
-        artifact_paths = [
-            str(path)
+        artifacts = [
+            _project_artifact_descriptor(dataset_id, path)
             for path in (
                 memo.get("markdown_path"),
                 memo.get("html_path"),
@@ -1882,7 +1882,10 @@ def _project_assets_payload(
             )
             if path
         ]
+        artifacts = [artifact for artifact in artifacts if artifact is not None]
+        artifact_paths = [str(artifact["path"]) for artifact in artifacts]
         preferred_path = memo.get("pdf_path") or memo.get("html_path") or memo.get("markdown_path")
+        preferred_relative_path = _project_artifact_relative_path(dataset_id, preferred_path)
         content = ""
         markdown_path = memo.get("markdown_path")
         if markdown_path:
@@ -1918,13 +1921,14 @@ def _project_assets_payload(
                 "file_type": Path(str(preferred_path)).suffix.lower().lstrip(".")
                 if preferred_path
                 else "markdown",
-                "stored_path": str(preferred_path) if preferred_path else None,
+                "stored_path": preferred_relative_path,
                 "metadata": {
                     "series_id": memo.get("series_id"),
                     "memo_version_id": memo.get("memo_version_id"),
                     "revision_of_version_id": memo.get("revision_of_version_id"),
                     "as_of_date": memo.get("as_of_date"),
                     "artifact_paths": artifact_paths,
+                    "artifacts": artifacts,
                 },
             }
         )
@@ -1949,6 +1953,8 @@ def _project_assets_payload(
                     content = ""
             timestamp = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
             key = hashlib.sha256(str(path).encode()).hexdigest()[:16]
+            relative_path = _project_artifact_relative_path(dataset_id, path)
+            artifact = _project_artifact_descriptor(dataset_id, path)
             assets.append(
                 {
                     "asset_id": f"{asset_type}:{key}",
@@ -1959,15 +1965,19 @@ def _project_assets_payload(
                     "format": path.suffix.lower().lstrip("."),
                     "status": "completed",
                     "source_kind": source_kind,
-                    "source_id": str(path),
+                    "source_id": relative_path,
                     "tags": [],
                     "created_at": timestamp,
                     "updated_at": timestamp,
                     "version_no": 1,
                     "evidence_count": 0,
                     "file_type": path.suffix.lower().lstrip("."),
-                    "stored_path": str(path),
-                    "metadata": {"size": stat.st_size},
+                    "stored_path": relative_path,
+                    "metadata": {
+                        "size": stat.st_size,
+                        "artifact_paths": [relative_path] if relative_path else [],
+                        "artifacts": [artifact] if artifact is not None else [],
+                    },
                 }
             )
 
@@ -2234,12 +2244,14 @@ def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
                 "file_type": path.suffix.lower().lstrip("."),
                 "size": stat.st_size,
                 "uploaded_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-                "source_path": str(path),
+                "source_path": _project_relative_storage_path(dataset_id, path),
                 "status": row["status"] if row else "pending",
                 "doc_id": row["doc_id"] if row else None,
                 "chunk_count": int(row["chunk_count"] or 0) if row else 0,
                 "error_message": row["error_message"] if row else None,
-                "stored_path": row["stored_path"] if row else None,
+                "stored_path": _project_relative_storage_path(
+                    dataset_id, row["stored_path"] if row else None
+                ),
                 "doc_type": indexed_value(row, "doc_type", "unknown"),
                 "doc_subtype": indexed_value(row, "doc_subtype", ""),
                 "doc_type_confidence": float(
@@ -2271,7 +2283,7 @@ def _project_files_payload(dataset_id: str) -> list[dict[str, Any]]:
                     "doc_id": row["doc_id"],
                     "chunk_count": int(row["chunk_count"] or 0),
                     "error_message": row["error_message"],
-                    "stored_path": row["stored_path"],
+                    "stored_path": _project_relative_storage_path(dataset_id, row["stored_path"]),
                     "doc_type": indexed_value(row, "doc_type", "unknown"),
                     "doc_subtype": indexed_value(row, "doc_subtype", ""),
                     "doc_type_confidence": float(
@@ -3096,26 +3108,110 @@ def _dataset_pdf_path_by_evidence_id(
     return candidate if candidate.is_file() and candidate.suffix.lower() == ".pdf" else None
 
 
-def _dataset_memo_artifact_path(raw_path: str) -> Path:
+_PREVIEWABLE_ARTIFACT_SUFFIXES = {
+    ".csv",
+    ".html",
+    ".json",
+    ".markdown",
+    ".md",
+    ".pdf",
+    ".txt",
+}
+_ARTIFACT_DIRECTORIES = {"memos", "reports"}
+
+
+def _project_relative_storage_path(dataset_id: str, raw_path: Any) -> str | None:
+    """Return a tenant-validated path relative to the current project root."""
     if not raw_path:
+        return None
+    project_root = _project_dataset_root(dataset_id).resolve()
+    candidate = Path(str(raw_path)).expanduser()
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    try:
+        relative = candidate.resolve().relative_to(project_root)
+    except (OSError, ValueError):
+        return None
+    return relative.as_posix() if relative.parts else None
+
+
+def _project_artifact_relative_path(dataset_id: str, raw_path: Any) -> str | None:
+    """Return a project-relative artifact path without exposing server directories."""
+    relative_path = _project_relative_storage_path(dataset_id, raw_path)
+    if relative_path is None:
+        return None
+    relative = Path(relative_path)
+    if not relative.parts or relative.parts[0] not in _ARTIFACT_DIRECTORIES:
+        return None
+    return relative.as_posix()
+
+
+def _project_artifact_descriptor(dataset_id: str, raw_path: Any) -> dict[str, Any] | None:
+    relative_path = _project_artifact_relative_path(dataset_id, raw_path)
+    if relative_path is None:
+        return None
+    suffix = Path(relative_path).suffix.lower()
+    if suffix not in _PREVIEWABLE_ARTIFACT_SUFFIXES:
+        return None
+    return {
+        "format": suffix.lstrip("."),
+        "path": relative_path,
+        "url": "/v1/private-fund/dataset/memo/file?"
+        + urlencode({"dataset_id": dataset_id, "path": relative_path}),
+    }
+
+
+def _normalize_artifact_request_path(raw_path: str, dataset_id: str | None) -> tuple[str, str]:
+    """Resolve legacy absolute and new relative artifact references to a project scope."""
+    value = str(raw_path or "").strip().replace("\\", "/")
+    if not value:
         raise HTTPException(status_code=400, detail="memo artifact path is required")
+
     workspace_root = _dataset_workspace_root().resolve()
-    try:
-        candidate = Path(raw_path).expanduser().resolve()
-    except OSError as exc:
+    requested_dataset = str(dataset_id or "").strip()
+    raw_candidate = Path(value).expanduser()
+    if raw_candidate.is_absolute():
+        try:
+            workspace_relative = raw_candidate.resolve().relative_to(workspace_root)
+        except (OSError, ValueError) as exc:
+            # Return 404 instead of revealing whether another tenant owns the path.
+            raise HTTPException(status_code=404, detail="Memo artifact not found.") from exc
+        if len(workspace_relative.parts) < 3:
+            raise HTTPException(status_code=404, detail="Memo artifact not found.")
+        inferred_dataset = workspace_relative.parts[0]
+        if requested_dataset and requested_dataset != inferred_dataset:
+            raise HTTPException(status_code=404, detail="Memo artifact not found.")
+        return inferred_dataset, Path(*workspace_relative.parts[1:]).as_posix()
+
+    parts = Path(value).parts
+    if len(parts) >= 3 and parts[0] == "private_fund_datasets":
+        inferred_dataset = parts[1]
+        if requested_dataset and requested_dataset != inferred_dataset:
+            raise HTTPException(status_code=404, detail="Memo artifact not found.")
+        return inferred_dataset, Path(*parts[2:]).as_posix()
+    if not requested_dataset:
         raise HTTPException(
-            status_code=400, detail=f"Invalid memo artifact path: {raw_path}"
-        ) from exc
-    if candidate.suffix.lower() not in {".pdf", ".html"}:
-        raise HTTPException(status_code=400, detail="Only memo PDF/HTML artifacts can be opened.")
+            status_code=400,
+            detail="dataset_id is required for a relative memo artifact path",
+        )
+    return requested_dataset, Path(*parts).as_posix()
+
+
+def _dataset_memo_artifact_path(raw_path: str, dataset_id: str | None = None) -> Path:
+    active_dataset, relative_path = _normalize_artifact_request_path(raw_path, dataset_id)
+    _require_project_row(active_dataset)
+    project_root = _project_dataset_root(active_dataset).resolve()
     try:
-        candidate.relative_to(workspace_root)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=403, detail="Memo artifact is outside the dataset workspace."
-        ) from exc
+        candidate = (project_root / relative_path).resolve()
+        relative = candidate.relative_to(project_root)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Memo artifact not found.") from exc
+    if not relative.parts or relative.parts[0] not in _ARTIFACT_DIRECTORIES:
+        raise HTTPException(status_code=404, detail="Memo artifact not found.")
+    if candidate.suffix.lower() not in _PREVIEWABLE_ARTIFACT_SUFFIXES:
+        raise HTTPException(status_code=400, detail="This artifact format cannot be previewed.")
     if not candidate.is_file():
-        raise HTTPException(status_code=404, detail=f"Memo artifact not found: {candidate}")
+        raise HTTPException(status_code=404, detail="Memo artifact not found.")
     return candidate
 
 
@@ -3459,7 +3555,9 @@ def _excel_workbook_source(
                     "dataset_id": active_dataset,
                     "doc_id": doc_id,
                     "file_name": doc["original_filename"],
-                    "stored_path": doc["stored_path"],
+                    "stored_path": _project_relative_storage_path(
+                        active_dataset, doc["stored_path"]
+                    ),
                     "sheets": [_excel_sheet_payload(row) for row in sheets],
                 }
 
@@ -3488,7 +3586,9 @@ def _excel_workbook_source(
                     "dataset_id": active_dataset,
                     "doc_id": doc_id,
                     "file_name": doc["original_filename"],
-                    "stored_path": doc["stored_path"],
+                    "stored_path": _project_relative_storage_path(
+                        active_dataset, doc["stored_path"]
+                    ),
                     "sheet": _excel_sheet_payload(sheet),
                     "regions": [_excel_region_payload(row) for row in regions],
                 }
@@ -3633,7 +3733,7 @@ def _excel_workbook_source(
         "dataset_id": active_dataset,
         "doc_id": doc_id,
         "file_name": doc["original_filename"],
-        "stored_path": doc["stored_path"],
+        "stored_path": _project_relative_storage_path(active_dataset, doc["stored_path"]),
         "sheet": _excel_sheet_payload(sheet),
         "range_ref": str(window["display_range_ref"]),
         "requested_range_ref": range_ref,
@@ -3698,7 +3798,7 @@ def _document_text_preview(file_name: str, dataset_id: str) -> dict[str, Any]:
         "doc_id": doc["doc_id"],
         "file_name": doc["original_filename"],
         "file_type": doc["file_type"],
-        "stored_path": doc["stored_path"],
+        "stored_path": _project_relative_storage_path(active_dataset, doc["stored_path"]),
         "chunk_count": len(rows),
         "content_markdown": "\n\n".join(parts),
         "truncated": len(rows) >= 400 or total_chars >= 200_000,
@@ -4716,7 +4816,6 @@ def create_private_fund_pdf_router(
 
         private_fund_workflow.delete_assets(_collection_db_path(dataset_id), dataset_id, requested)
 
-        dataset_root = _project_dataset_root(dataset_id).resolve()
         for asset_id in requested:
             asset = by_id[asset_id]
             if asset.get("source_kind") not in {"memo", "equity_report"}:
@@ -4727,12 +4826,12 @@ def create_private_fund_pdf_router(
             for raw_path in raw_paths:
                 if not raw_path:
                     continue
-                path = Path(str(raw_path)).expanduser().resolve()
-                if not path.is_relative_to(dataset_root) or path.parent.name not in {
-                    "memos",
-                    "reports",
-                }:
-                    raise HTTPException(status_code=400, detail="Unsafe asset path.")
+                try:
+                    path = _dataset_memo_artifact_path(str(raw_path), dataset_id)
+                except HTTPException as exc:
+                    if exc.status_code == 404:
+                        continue
+                    raise
                 if path.is_file():
                     path.unlink()
             if asset.get("source_kind") == "memo" and asset.get("source_id"):
@@ -5590,16 +5689,23 @@ def create_private_fund_pdf_router(
         return FileResponse(pdf_path, media_type="application/pdf", filename=pdf_path.name)
 
     @router.get("/private-fund/dataset/memo/file")
-    def dataset_memo_file(path: str = Query(..., max_length=4096)) -> FileResponse:
-        artifact_path = _dataset_memo_artifact_path(path)
-        media_type = (
-            "application/pdf"
-            if artifact_path.suffix.lower() == ".pdf"
-            else "text/html; charset=utf-8"
-        )
+    def dataset_memo_file(
+        path: str = Query(..., max_length=4096),
+        dataset_id: str | None = Query(default=None, min_length=1, max_length=240),
+    ) -> FileResponse:
+        artifact_path = _dataset_memo_artifact_path(path, dataset_id)
+        media_types = {
+            ".pdf": "application/pdf",
+            ".html": "text/html; charset=utf-8",
+            ".md": "text/markdown; charset=utf-8",
+            ".markdown": "text/markdown; charset=utf-8",
+            ".txt": "text/plain; charset=utf-8",
+            ".csv": "text/csv; charset=utf-8",
+            ".json": "application/json; charset=utf-8",
+        }
         return FileResponse(
             artifact_path,
-            media_type=media_type,
+            media_type=media_types[artifact_path.suffix.lower()],
             filename=artifact_path.name,
             content_disposition_type="inline",
         )

@@ -20,6 +20,14 @@ vi.mock("@/lib/privateFundApi", async (importOriginal) => {
     getPrivateFundResearchItemTimeline: vi.fn(),
   };
 });
+vi.mock("./PrivateFundMemoDiffViewer", () => ({
+  PrivateFundMemoDiffViewer: ({ before, after }: { before: string; after: string }) => (
+    <div data-testid="memo-diff-viewer">
+      <span>{before}</span>
+      <span>{after}</span>
+    </div>
+  ),
+}));
 
 const memoVersion = (versionNo: number, seriesId = "series-1"): PrivateFundMemoVersion => ({
   memoVersionId: `${seriesId}-memo-v${versionNo}`,
@@ -90,8 +98,40 @@ describe("PrivateFundHistoryPanel", () => {
       isError: false,
     } as unknown as ReturnType<typeof usePrivateFundTracking>);
     vi.mocked(comparePrivateFundMemoVersions).mockResolvedValue({
-      fromVersion: memoVersion(1),
-      toVersion: memoVersion(2),
+      fromVersion: {
+        ...memoVersion(1),
+        sections: [
+          {
+            sectionId: "section-thesis-v1",
+            sectionKey: "thesis",
+            title: "投资逻辑",
+            content: "海外收入保持高增长。",
+            evidenceIds: ["chunk:1"],
+            needsReview: false,
+          },
+          {
+            sectionId: "section-valuation-v1",
+            sectionKey: "valuation",
+            title: "估值",
+            content: "目标估值 20 倍。",
+            evidenceIds: ["chunk:3"],
+            needsReview: false,
+          },
+        ],
+      },
+      toVersion: {
+        ...memoVersion(2),
+        sections: [
+          {
+            sectionId: "section-thesis-v2",
+            sectionKey: "thesis",
+            title: "投资逻辑",
+            content: "海外增长放缓，储能业务补位。",
+            evidenceIds: ["chunk:2"],
+            needsReview: false,
+          },
+        ],
+      },
       sectionChanges: [
         {
           sectionKey: "thesis",
@@ -167,8 +207,10 @@ describe("PrivateFundHistoryPanel", () => {
         "series-1-memo-v2",
       ),
     );
-    expect(await screen.findByText("海外增长放缓，储能业务补位。")).toBeInTheDocument();
-    expect(screen.getByText("新版未提及")).toBeInTheDocument();
+    expect(await screen.findByTestId("memo-diff-viewer")).toHaveTextContent(
+      "海外增长放缓，储能业务补位。",
+    );
+    expect(screen.getByText("新版未提及 1")).toBeInTheDocument();
     expect(await screen.findByText("2026 年收入增速假设下调至 20%。")).toBeInTheDocument();
     expect(screen.getByText("2026 年收入增速假设为 25%。")).toBeInTheDocument();
   });

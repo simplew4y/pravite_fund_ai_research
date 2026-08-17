@@ -20,6 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
 import { usePrivateFundTracking } from "@/hooks/usePrivateFundProjects";
 import { InlineSourcePopover } from "@/components/private-fund/InlineSourcePopover";
@@ -41,89 +43,31 @@ import {
 } from "@/lib/privateFundApi";
 import type { PdfSourceSelection } from "@/shell/FileViewerContext";
 import { cn } from "@/lib/utils";
+import { currentAppLocale } from "@/lib/localeFormat";
 
-const ITEM_LABELS: Record<string, string> = {
-  all: "风险与催化剂",
-  risk: "风险",
-  catalyst: "催化剂",
+const IMPACT_VALUES = ["low", "medium", "high", "critical"] as const;
+const FREQUENCY_TRANSLATION_KEYS: Record<string, string> = {
+  on_ingest: "onIngest",
+  daily: "daily",
+  weekly: "weekly",
 };
-const STATE_LABELS: Record<string, string> = {
-  emerging: "新出现",
-  announced: "已公布",
-  identified: "已识别",
-  watching: "持续观察",
-  triggered: "已触发",
-  materialized: "已兑现",
-  resolved: "已化解",
-  achieved: "已达成",
-  missed: "未达预期",
-  active: "持续跟踪",
-  valid: "持续跟踪",
-  effective: "持续跟踪",
-  confirmed: "已确认",
-  pending: "待验证",
-  expected: "预期中",
-  planned: "计划中",
-  in_progress: "推进中",
-  completed: "已完成",
-  cancelled: "已取消",
-};
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  order_award: "订单落地",
-  order_win: "获得订单",
-  order_pipeline: "订单储备",
-  order_growth: "订单增长",
-  order_delay: "订单延期",
-  product_launch: "产品发布",
-  production_start: "开始量产",
-  capacity_expansion: "产能扩张",
-  capacity_ramp: "产能爬坡",
-  local_factory: "本地建厂",
-  demand_growth: "需求增长",
-  demand_decline: "需求下降",
-  market_demand_shift: "市场需求变化",
-  cost_increase: "成本上升",
-  cost_pressure: "成本压力",
-  product_cost_pressure: "产品成本压力",
-  margin_pressure: "利润率承压",
-  project_delay: "项目延期",
-  regulatory_change: "监管变化",
-  geopolitical_restriction: "地缘政治限制",
-  financing_restriction: "融资限制",
-  market_access_restriction: "市场准入限制",
-  certification: "认证进展",
-  grid_connection: "项目并网",
-  policy_support: "政策支持",
-  share_buyback: "股份回购",
-};
-const IMPACT_LABELS: Record<string, string> = {
-  critical: "重大",
-  high: "高",
-  medium: "中",
-  low: "低",
-};
-const FREQUENCY_LABELS: Record<string, string> = {
-  on_ingest: "资料更新时",
-  daily: "每日最多一次",
-  weekly: "每周最多一次",
-};
-const CHANGE_TYPE_LABELS: Record<string, string> = {
-  new: "新增事项",
-  status_changed: "状态变化",
-  value_changed: "数值变化",
-  timing_changed: "时间变化",
-  probability_changed: "概率变化",
-  stance_changed: "判断变化",
-  content_changed: "内容变化",
+const CHANGE_TYPE_TRANSLATION_KEYS: Record<string, string> = {
+  new: "new",
+  status_changed: "statusChanged",
+  value_changed: "valueChanged",
+  timing_changed: "timingChanged",
+  probability_changed: "probabilityChanged",
+  stance_changed: "stanceChanged",
+  content_changed: "contentChanged",
 };
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 }
 
-function diffValue(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "未设置";
-  if (Array.isArray(value)) return value.length ? value.join("、") : "未设置";
+function diffValue(value: unknown, t: TFunction): string {
+  if (value === null || value === undefined || value === "") return t("tracking.unset");
+  if (Array.isArray(value)) return value.length ? value.join(", ") : t("tracking.unset");
   if (typeof value === "number" && value >= 0 && value <= 1) {
     return `${Math.round(value * 100)}%`;
   }
@@ -135,7 +79,7 @@ function formatTime(value?: string | null): string {
   if (!value) return "—";
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(currentAppLocale(), {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -181,21 +125,92 @@ function evidenceSourceSelection(
   return null;
 }
 
-function stateLabel(value?: string | null): string {
+const STATE_TRANSLATION_KEYS: Record<string, string> = {
+  emerging: "emerging",
+  announced: "announced",
+  identified: "identified",
+  watching: "watching",
+  triggered: "triggered",
+  materialized: "materialized",
+  resolved: "resolved",
+  achieved: "achieved",
+  missed: "missed",
+  active: "active",
+  valid: "active",
+  effective: "active",
+  confirmed: "confirmed",
+  pending: "pending",
+  expected: "expected",
+  planned: "planned",
+  in_progress: "inProgress",
+  completed: "completed",
+  cancelled: "cancelled",
+};
+
+const EVENT_TYPE_TRANSLATION_KEYS: Record<string, string> = {
+  order_award: "orderAward",
+  order_win: "orderWin",
+  order_pipeline: "orderPipeline",
+  order_growth: "orderGrowth",
+  order_delay: "orderDelay",
+  product_launch: "productLaunch",
+  production_start: "productionStart",
+  capacity_expansion: "capacityExpansion",
+  capacity_ramp: "capacityRamp",
+  local_factory: "localFactory",
+  demand_growth: "demandGrowth",
+  demand_decline: "demandDecline",
+  market_demand_shift: "marketDemandShift",
+  cost_increase: "costIncrease",
+  cost_pressure: "costPressure",
+  product_cost_pressure: "productCostPressure",
+  margin_pressure: "marginPressure",
+  project_delay: "projectDelay",
+  regulatory_change: "regulatoryChange",
+  geopolitical_restriction: "geopoliticalRestriction",
+  financing_restriction: "financingRestriction",
+  market_access_restriction: "marketAccessRestriction",
+  certification: "certification",
+  grid_connection: "gridConnection",
+  policy_support: "policySupport",
+  share_buyback: "shareBuyback",
+};
+
+function itemTypeLabel(value: string, t: TFunction): string {
+  if (value === "all") return t("tracking.allRiskCatalyst");
+  if (value === "risk") return t("tracking.risk");
+  if (value === "catalyst") return t("tracking.catalyst");
+  return value;
+}
+
+function frequencyLabel(value: string, t: TFunction): string {
+  const key = FREQUENCY_TRANSLATION_KEYS[value];
+  return key ? t(`tracking.frequencies.${key}`) : value;
+}
+
+function changeTypeLabel(value: string, t: TFunction): string {
+  const key = CHANGE_TYPE_TRANSLATION_KEYS[value];
+  return key ? t(`tracking.changeTypes.${key}`) : value;
+}
+
+function stateLabel(value: string | null | undefined, t: TFunction): string {
   const normalized = String(value ?? "")
     .trim()
     .toLocaleLowerCase();
-  return STATE_LABELS[normalized] ?? "待确认";
+  const key = STATE_TRANSLATION_KEYS[normalized];
+  return key ? t(`tracking.states.${key}`) : t("tracking.pendingConfirmation");
 }
 
-function eventTypeLabel(value: string): string {
+function eventTypeLabel(value: string, t: TFunction): string {
   const normalized = value.trim().toLocaleLowerCase().replaceAll("-", "_");
   if (!normalized) return "";
-  if (EVENT_TYPE_LABELS[normalized]) return EVENT_TYPE_LABELS[normalized];
-  return /[\u3400-\u9fff]/u.test(value) ? value : "其他事件";
+  const key = EVENT_TYPE_TRANSLATION_KEYS[normalized];
+  if (key) return t(`tracking.eventTypes.${key}`);
+  return /[\u3400-\u9fff]/u.test(value) ? value : t("tracking.otherEvent");
 }
 
 function QualityBadge({ quality }: { quality: string }) {
+  const { t } = useTranslation();
   const verified = quality === "verified";
   return (
     <span
@@ -206,9 +221,26 @@ function QualityBadge({ quality }: { quality: string }) {
           : "bg-[var(--pf-review-soft)] text-[var(--pf-review-ink)]",
       )}
     >
-      {verified ? "已验证" : "待复核"}
+      {verified ? t("tracking.verified") : t("tracking.needsReview")}
     </span>
   );
+}
+
+function impactLabel(value: string | null | undefined, t: TFunction): string {
+  const normalized = String(value ?? "").trim().toLocaleLowerCase();
+  return ["critical", "high", "medium", "low"].includes(normalized)
+    ? t(`tracking.impacts.${normalized}`)
+    : value || "—";
+}
+
+function trackingDisplayTitle(item: PrivateFundResearchItem, t: TFunction): string {
+  if (currentAppLocale() !== "en-US") return item.title;
+  const entity = metadataText(item, "entity");
+  const subject = metadataText(item, "subject");
+  const event = eventTypeLabel(metadataText(item, "event_type"), t);
+  const core = subject || event;
+  if (entity && core) return `${entity}: ${core}`;
+  return core || entity || item.title;
 }
 
 function AlertRow({
@@ -220,6 +252,7 @@ function AlertRow({
   pending: boolean;
   onUpdate: (status: "acknowledged" | "dismissed") => void;
 }) {
+  const { t } = useTranslation();
   return (
     <article className="border-b border-[var(--pf-line)] px-4 py-3 last:border-b-0">
       <div className="flex items-start gap-3">
@@ -235,34 +268,35 @@ function AlertRow({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-xs font-semibold text-[var(--pf-ink)]">{alert.title}</h3>
             <span className="text-[10px] text-[var(--pf-ink-muted)]">
-              {IMPACT_LABELS[alert.priority] ?? alert.priority}
+              {impactLabel(alert.priority, t)}
             </span>
           </div>
           <p className="mt-1 text-[11px] leading-5 text-[var(--pf-ink-secondary)]">
             {alert.summary}
           </p>
           <p className="mt-1.5 text-[10px] text-[var(--pf-ink-muted)]">
-            {formatTime(alert.createdAt)} · {alert.evidenceIds.length} 条证据
+            {formatTime(alert.createdAt)} ·{" "}
+            {t("tracking.alertEvidenceCount", { count: alert.evidenceIds.length })}
           </p>
         </div>
         {alert.status === "new" ? (
           <div className="flex shrink-0 gap-1">
             <button
-              aria-label={`确认提醒 ${alert.title}`}
+              aria-label={t("tracking.acknowledgeAlert", { title: alert.title })}
               className="pf-icon-button"
               disabled={pending}
               onClick={() => onUpdate("acknowledged")}
-              title="确认已阅"
+              title={t("tracking.markRead")}
               type="button"
             >
               {pending ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
             </button>
             <button
-              aria-label={`忽略提醒 ${alert.title}`}
+              aria-label={t("tracking.dismissAlert", { title: alert.title })}
               className="pf-icon-button"
               disabled={pending}
               onClick={() => onUpdate("dismissed")}
-              title="忽略"
+              title={t("tracking.dismiss")}
               type="button"
             >
               <X className="size-3" />
@@ -283,6 +317,7 @@ function ItemDetailDrawer({
   item: PrivateFundResearchItem;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [expandedEvidence, setExpandedEvidence] = useState<Set<string>>(new Set());
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(new Set());
   const timelineQuery = useQuery({
@@ -295,10 +330,10 @@ function ItemDetailDrawer({
   );
   const evidenceSources = detailedCurrent?.evidenceSources ?? [];
   const fields = [
-    ["事件类型", eventTypeLabel(metadataText(item, "event_type"))],
-    ["影响对象", metadataText(item, "subject")],
-    ["触发因素", metadataText(item, "trigger")],
-    ["传导路径", metadataText(item, "transmission_path")],
+    [t("tracking.eventType"), eventTypeLabel(metadataText(item, "event_type"), t)],
+    [t("tracking.subject"), metadataText(item, "subject")],
+    [t("tracking.trigger"), metadataText(item, "trigger")],
+    [t("tracking.transmissionPath"), metadataText(item, "transmission_path")],
   ].filter((entry) => entry[1]);
 
   return (
@@ -307,20 +342,26 @@ function ItemDetailDrawer({
       role="dialog"
       aria-modal="true"
     >
-      <button aria-label="关闭详情" className="absolute inset-0 cursor-default" onClick={onClose} />
+      <button
+        aria-label={t("tracking.closeDetails")}
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
       <aside className="relative h-full w-full max-w-xl overflow-y-auto border-l border-[var(--pf-line)] bg-[var(--pf-panel-raised)] shadow-2xl">
         <header className="sticky top-0 z-10 flex items-start justify-between border-b border-[var(--pf-line)] bg-[var(--pf-panel-raised)]/95 px-5 py-4 backdrop-blur">
           <div className="min-w-0 pr-4">
             <div className="mb-2 flex items-center gap-2">
               <span className={item.itemType === "risk" ? "pf-risk-badge" : "pf-catalyst-badge"}>
-                {ITEM_LABELS[item.itemType]}
+                {itemTypeLabel(item.itemType, t)}
               </span>
               <QualityBadge quality={qualityOf(item)} />
               <span className="text-[10px] text-[var(--pf-ink-muted)]">
                 v{item.currentVersionNo}
               </span>
             </div>
-            <h2 className="text-base font-semibold leading-6 text-[var(--pf-ink)]">{item.title}</h2>
+            <h2 className="text-base font-semibold leading-6 text-[var(--pf-ink)]">
+              {trackingDisplayTitle(item, t)}
+            </h2>
           </div>
           <button className="pf-icon-button" onClick={onClose} type="button">
             <X className="size-4" />
@@ -329,9 +370,9 @@ function ItemDetailDrawer({
 
         <div className="space-y-6 p-5">
           <section>
-            <h3 className="pf-section-label">当前判断</h3>
+            <h3 className="pf-section-label">{t("tracking.currentJudgement")}</h3>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--pf-ink-secondary)]">
-              {current?.content || "暂无内容"}
+              {current?.content || t("tracking.noContent")}
             </p>
           </section>
 
@@ -348,24 +389,26 @@ function ItemDetailDrawer({
 
           <section>
             <div className="flex items-center justify-between">
-              <h3 className="pf-section-label">证据</h3>
+              <h3 className="pf-section-label">{t("tracking.evidence")}</h3>
               <span className="text-[10px] text-[var(--pf-ink-muted)]">
-                {current?.evidenceIds.length ?? 0} 条
+                {t("tracking.evidenceCountShort", {
+                  count: current?.evidenceIds.length ?? 0,
+                })}
               </span>
             </div>
             {timelineQuery.isLoading ? (
               <p className="mt-3 flex items-center gap-2 text-xs text-[var(--pf-ink-muted)]">
-                <Loader2 className="size-3 animate-spin" /> 正在解析证据来源
+                <Loader2 className="size-3 animate-spin" /> {t("tracking.resolvingEvidence")}
               </p>
             ) : timelineQuery.isError ? (
               <div className="mt-2 rounded-lg border border-[var(--pf-danger-ink)]/20 bg-[var(--pf-danger-soft)] p-3 text-xs text-[var(--pf-danger-ink)]">
-                <p>证据内容加载失败，请检查文件是否仍存在或当前账号是否有权限。</p>
+                <p>{t("tracking.evidenceLoadFailed")}</p>
                 <button
                   className="mt-2 underline"
                   onClick={() => timelineQuery.refetch()}
                   type="button"
                 >
-                  重新加载
+                  {t("tracking.reload")}
                 </button>
               </div>
             ) : evidenceSources.length ? (
@@ -406,7 +449,7 @@ function ItemDetailDrawer({
                             )}
                           >
                             {(isExpanded ? evidenceContent : source.excerpt) ||
-                              "该证据暂无可展示的文本摘录。"}
+                              t("tracking.noEvidenceExcerpt")}
                           </p>
                           <div className="mt-2 flex flex-wrap items-center gap-3">
                             {canExpand ? (
@@ -422,7 +465,9 @@ function ItemDetailDrawer({
                                 }
                                 type="button"
                               >
-                                {isExpanded ? "收起证据" : "展开完整证据"}
+                                {isExpanded
+                                  ? t("tracking.collapseEvidence")
+                                  : t("tracking.expandEvidence")}
                               </button>
                             ) : null}
                           </div>
@@ -437,19 +482,21 @@ function ItemDetailDrawer({
               </div>
             ) : (
               <div className="mt-2 rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] p-3 text-xs text-[var(--pf-ink-muted)]">
-                无法解析证据内容。对应资料可能已被删除、尚未完成索引，或属于旧版记录。
+                {t("tracking.evidenceUnavailable")}
               </div>
             )}
           </section>
 
           <section>
             <div className="flex items-center justify-between">
-              <h3 className="pf-section-label">版本时间线</h3>
-              <span className="text-[10px] text-[var(--pf-ink-muted)]">逐字段对比</span>
+              <h3 className="pf-section-label">{t("tracking.versionTimeline")}</h3>
+              <span className="text-[10px] text-[var(--pf-ink-muted)]">
+                {t("tracking.fieldComparison")}
+              </span>
             </div>
             {timelineQuery.isLoading ? (
               <p className="mt-3 flex items-center gap-2 text-xs text-[var(--pf-ink-muted)]">
-                <Loader2 className="size-3 animate-spin" /> 正在读取历史版本
+                <Loader2 className="size-3 animate-spin" /> {t("tracking.loadingVersions")}
               </p>
             ) : (
               <ol className="mt-3 space-y-3 border-l border-[var(--pf-line-strong)] pl-4">
@@ -471,17 +518,22 @@ function ItemDetailDrawer({
                       >
                         <span>
                           <span className="block text-xs font-medium text-[var(--pf-ink)]">
-                            v{version.versionNo} · {stateLabel(version.state)}
+                            v{version.versionNo} · {stateLabel(version.state, t)}
                           </span>
                           <span className="mt-0.5 block text-[10px] text-[var(--pf-ink-muted)]">
-                            {formatTime(version.observedAt)} · {version.evidenceIds.length} 条证据
+                            {t("tracking.versionEvidenceCount", {
+                              time: formatTime(version.observedAt),
+                              count: version.evidenceIds.length,
+                            })}
                           </span>
                         </span>
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--pf-panel-subtle)] px-2 py-1 text-[10px] text-[var(--pf-accent-ink)]">
                           <GitCompare className="size-3" />
                           {version.versionNo === 1
-                            ? "首次建立"
-                            : `${version.fieldChanges.length} 项变化`}
+                            ? t("tracking.initialVersion")
+                            : t("tracking.changeCount", {
+                                count: version.fieldChanges.length,
+                              })}
                         </span>
                       </button>
                       {expanded ? (
@@ -497,18 +549,18 @@ function ItemDetailDrawer({
                                 </p>
                                 <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-start gap-2 text-[10px] leading-4">
                                   <span className="break-words text-[var(--pf-ink-muted)]">
-                                    {diffValue(change.before)}
+                                    {diffValue(change.before, t)}
                                   </span>
                                   <span className="text-[var(--pf-ink-muted)]">→</span>
                                   <span className="break-words font-medium text-[var(--pf-ink-secondary)]">
-                                    {diffValue(change.after)}
+                                    {diffValue(change.after, t)}
                                   </span>
                                 </div>
                               </div>
                             ))
                           ) : (
                             <p className="text-[10px] text-[var(--pf-ink-muted)]">
-                              本版本未检测到结构化字段变化。
+                              {t("tracking.noStructuredChanges")}
                             </p>
                           )}
                         </div>
@@ -549,6 +601,7 @@ function RuleEditor({
   onCancel: () => void;
   onSubmit: (draft: RuleDraft) => void;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<RuleDraft>(() => ({
     name: rule?.name ?? "",
     targetType: rule?.targetType ?? "all",
@@ -574,74 +627,72 @@ function RuleEditor({
     <form className="space-y-4 p-4" onSubmit={submit}>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="space-y-1 text-[10px] font-semibold text-[var(--pf-ink-muted)]">
-          <span>规则名称</span>
+          <span>{t("tracking.ruleName")}</span>
           <input
             className="pf-filter-input w-full"
             maxLength={80}
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-            placeholder="例如：海外订单风险"
+            placeholder={t("tracking.ruleNamePlaceholder")}
             required
             value={draft.name}
           />
         </label>
         <label className="space-y-1 text-[10px] font-semibold text-[var(--pf-ink-muted)]">
-          <span>事项类型</span>
+          <span>{t("tracking.ruleItemType")}</span>
           <select
             className="pf-filter-input w-full"
             onChange={(event) => setDraft({ ...draft, targetType: event.target.value })}
             value={draft.targetType}
           >
-            <option value="all">风险与催化剂</option>
-            <option value="risk">仅风险</option>
-            <option value="catalyst">仅催化剂</option>
+            <option value="all">{t("tracking.allRiskCatalyst")}</option>
+            <option value="risk">{t("tracking.risksOnly")}</option>
+            <option value="catalyst">{t("tracking.catalystsOnly")}</option>
           </select>
         </label>
         <label className="space-y-1 text-[10px] font-semibold text-[var(--pf-ink-muted)]">
-          <span>最低重要度</span>
+          <span>{t("tracking.minimumPriority")}</span>
           <select
             className="pf-filter-input w-full"
             onChange={(event) => setDraft({ ...draft, minPriority: event.target.value })}
             value={draft.minPriority}
           >
-            {Object.entries(IMPACT_LABELS)
-              .toReversed()
-              .map(([value, label]) => (
+            {IMPACT_VALUES.toReversed().map((value) => (
                 <option key={value} value={value}>
-                  {label}
+                  {impactLabel(value, t)}
                 </option>
               ))}
           </select>
         </label>
         <label className="space-y-1 text-[10px] font-semibold text-[var(--pf-ink-muted)]">
-          <span>检查频率</span>
+          <span>{t("tracking.checkFrequency")}</span>
           <select
             className="pf-filter-input w-full"
             onChange={(event) => setDraft({ ...draft, frequency: event.target.value })}
             value={draft.frequency}
           >
-            {Object.entries(FREQUENCY_LABELS).map(([value, label]) => (
+            {Object.keys(FREQUENCY_TRANSLATION_KEYS).map((value) => (
               <option key={value} value={value}>
-                {label}
+                {frequencyLabel(value, t)}
               </option>
             ))}
           </select>
         </label>
       </div>
       <label className="block space-y-1 text-[10px] font-semibold text-[var(--pf-ink-muted)]">
-        <span>关键词（使用逗号、顿号或换行分隔；任一命中即可）</span>
+        <span>{t("tracking.keywordsLabel")}</span>
         <textarea
           className="pf-filter-input min-h-20 w-full resize-y py-2"
           onChange={(event) => setDraft({ ...draft, keywords: event.target.value })}
-          placeholder="关税、海外订单、认证"
+          placeholder={t("tracking.keywordsPlaceholder")}
           value={draft.keywords}
         />
       </label>
       <fieldset>
         <legend className="text-[10px] font-semibold text-[var(--pf-ink-muted)]">
-          事件类型（不选表示全部）
+          {t("tracking.eventTypesLegend")}
         </legend>
         <div className="mt-2 grid max-h-40 gap-1.5 overflow-y-auto rounded-lg border border-[var(--pf-line)] p-2 sm:grid-cols-3">
-          {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
+          {Object.keys(EVENT_TYPE_TRANSLATION_KEYS).map((value) => (
             <label
               className="flex items-center gap-1.5 text-[10px] text-[var(--pf-ink-secondary)]"
               key={value}
@@ -651,17 +702,17 @@ function RuleEditor({
                 onChange={() => toggle("eventTypes", value)}
                 type="checkbox"
               />
-              {label}
+              {eventTypeLabel(value, t)}
             </label>
           ))}
         </div>
       </fieldset>
       <fieldset>
         <legend className="text-[10px] font-semibold text-[var(--pf-ink-muted)]">
-          变化类型（不选表示全部）
+          {t("tracking.changeTypesLegend")}
         </legend>
         <div className="mt-2 flex flex-wrap gap-2">
-          {Object.entries(CHANGE_TYPE_LABELS).map(([value, label]) => (
+          {Object.keys(CHANGE_TYPE_TRANSLATION_KEYS).map((value) => (
             <label
               className="flex items-center gap-1.5 rounded-full bg-[var(--pf-panel-subtle)] px-2 py-1 text-[10px] text-[var(--pf-ink-secondary)]"
               key={value}
@@ -671,7 +722,7 @@ function RuleEditor({
                 onChange={() => toggle("changeTypes", value)}
                 type="checkbox"
               />
-              {label}
+              {changeTypeLabel(value, t)}
             </label>
           ))}
         </div>
@@ -682,12 +733,12 @@ function RuleEditor({
           onChange={(event) => setDraft({ ...draft, active: event.target.checked })}
           type="checkbox"
         />
-        保存后立即启用
+        {t("tracking.enableAfterSave")}
       </label>
       {error ? <p className="text-xs text-[var(--pf-danger-ink)]">{error}</p> : null}
       <div className="flex justify-end gap-2 border-t border-[var(--pf-line)] pt-3">
         <button className="pf-secondary-button" onClick={onCancel} type="button">
-          取消
+          {t("tracking.cancel")}
         </button>
         <button
           className="pf-primary-button"
@@ -695,7 +746,7 @@ function RuleEditor({
           type="submit"
         >
           {pending ? <Loader2 className="size-3.5 animate-spin" /> : null}
-          保存规则
+          {t("tracking.saveRule")}
         </button>
       </div>
     </form>
@@ -703,6 +754,7 @@ function RuleEditor({
 }
 
 export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const trackingQuery = usePrivateFundTracking(datasetId);
   const [view, setView] = useState<"ledger" | "alerts" | "rules" | "governance">("ledger");
@@ -799,7 +851,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
   const trackedItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return (data?.items ?? []).filter((item) => {
-      if (!ITEM_LABELS[item.itemType]) return false;
+      if (item.itemType !== "risk" && item.itemType !== "catalyst") return false;
       if (typeFilter !== "all" && item.itemType !== typeFilter) return false;
       if (qualityFilter !== "all" && qualityOf(item) !== qualityFilter) return false;
       return (
@@ -827,14 +879,14 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
     return (
       <div className="flex min-h-[420px] items-center justify-center gap-2 text-sm text-[var(--pf-ink-secondary)]">
         <Loader2 className="size-4 animate-spin" />
-        正在读取追踪台账
+        {t("tracking.loading")}
       </div>
     );
   }
   if (trackingQuery.isError || !data) {
     return (
       <div className="m-6 rounded-xl border border-[var(--pf-danger-ink)]/25 bg-[var(--pf-danger-soft)] p-4 text-sm text-[var(--pf-danger-ink)]">
-        无法读取追踪台账：{trackingQuery.error?.message ?? "未知错误"}
+        {t("tracking.loadFailed")}：{trackingQuery.error?.message ?? t("common.unknown")}
       </div>
     );
   }
@@ -846,15 +898,25 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
       (alertStatusFilter === "all" || alert.status === alertStatusFilter),
   );
   const stats = [
-    { key: "risk", label: "风险事项", value: data.counts.risk ?? 0, icon: ShieldAlert },
-    { key: "catalyst", label: "催化剂", value: data.counts.catalyst ?? 0, icon: Sparkles },
+    { key: "risk", label: t("tracking.risks"), value: data.counts.risk ?? 0, icon: ShieldAlert },
+    {
+      key: "catalyst",
+      label: t("tracking.catalysts"),
+      value: data.counts.catalyst ?? 0,
+      icon: Sparkles,
+    },
     {
       key: "needs_review",
-      label: "待复核",
+      label: t("tracking.needsReview"),
       value: data.qualityCounts.needs_review ?? 0,
       icon: Clock3,
     },
-    { key: "unread", label: "未读提醒", value: data.unreadAlertCount, icon: BellRing },
+    {
+      key: "unread",
+      label: t("tracking.unreadAlerts"),
+      value: data.unreadAlertCount,
+      icon: BellRing,
+    },
   ] as const;
 
   const applySummaryFilter = (key: (typeof stats)[number]["key"]) => {
@@ -885,16 +947,18 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
 
   return (
     <section
-      aria-label="风险与催化剂追踪"
+      aria-label={t("tracking.title")}
       className="min-h-0 flex-1 overflow-y-auto bg-[var(--pf-canvas)]"
     >
       <div className="mx-auto max-w-[1480px] p-4 lg:p-6">
         <header className="flex flex-col gap-4 border-b border-[var(--pf-line)] pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="pf-section-label">持续监测</p>
-            <h1 className="mt-1 text-xl font-semibold text-[var(--pf-ink)]">风险与催化剂追踪</h1>
+            <p className="pf-section-label">{t("tracking.eyebrow")}</p>
+            <h1 className="mt-1 text-xl font-semibold text-[var(--pf-ink)]">
+              {t("tracking.title")}
+            </h1>
             <p className="mt-1 text-xs text-[var(--pf-ink-secondary)]">
-              只让经过证据与质量门校验的重大变化进入提醒。
+              {t("tracking.description")}
             </p>
           </div>
           <button
@@ -908,16 +972,16 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
             ) : (
               <RefreshCw className="size-3.5" />
             )}
-            {activeJob ? "更新中" : "立即更新"}
+            {activeJob ? t("tracking.updating") : t("tracking.updateNow")}
           </button>
         </header>
 
         {data.rebuildRequired ? (
           <div className="mt-5 flex flex-col gap-3 rounded-lg border border-amber-500/35 bg-amber-50 px-4 py-3 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-semibold">旧版数据待复核</p>
+              <p className="text-xs font-semibold">{t("tracking.legacyTitle")}</p>
               <p className="mt-1 text-[11px] opacity-80">
-                发现 {data.legacyItemCount} 条旧版风险或催化剂记录。它们仍可查看，但不会触发提醒。
+                {t("tracking.legacyFound", { count: data.legacyItemCount })}
               </p>
             </div>
             <button
@@ -926,7 +990,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
               onClick={() => {
                 if (
                   window.confirm(
-                    "重新分析会调用当前模型并产生用量。旧版记录会保留到分析成功，是否继续？",
+                    t("tracking.rebuildConfirm"),
                   )
                 ) {
                   rebuildMutation.mutate();
@@ -939,7 +1003,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
               ) : (
                 <RotateCcw className="size-3.5" />
               )}
-              重新分析旧版数据
+              {t("tracking.rebuild")}
             </button>
           </div>
         ) : null}
@@ -949,7 +1013,10 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
             const active = summaryIsActive(stat.key);
             return (
               <button
-                aria-label={`查看${stat.label}，共 ${stat.value} 项`}
+                aria-label={t("tracking.viewSummary", {
+                  label: stat.label,
+                  count: stat.value,
+                })}
                 aria-pressed={active}
                 className={cn(
                   "group bg-[var(--pf-panel-raised)] px-4 py-3.5 text-left transition-colors hover:bg-[var(--pf-panel-subtle)] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--pf-accent)]",
@@ -974,15 +1041,18 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
           })}
         </div>
 
-        <nav className="mt-5 flex gap-1 border-b border-[var(--pf-line)]" aria-label="追踪视图">
+        <nav
+          className="mt-5 flex gap-1 border-b border-[var(--pf-line)]"
+          aria-label={t("tracking.viewsLabel")}
+        >
           {(
             [
-              ["ledger", "追踪台账"],
-              ["alerts", `提醒收件箱 ${data.unreadAlertCount}`],
-              ["rules", "规则"],
+              ["ledger", t("tracking.ledger")],
+              ["alerts", `${t("tracking.inbox")} ${data.unreadAlertCount}`],
+              ["rules", t("tracking.rules")],
               [
                 "governance",
-                `数据治理 ${data.governanceCounts.activeUnqualified + data.governanceCounts.archived}`,
+                `${t("tracking.governance")} ${data.governanceCounts.activeUnqualified + data.governanceCounts.archived}`,
               ],
             ] as const
           ).map(([key, label]) => (
@@ -1011,18 +1081,18 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
               <label className="relative min-w-0 flex-1">
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
                 <input
-                  aria-label="搜索追踪事项"
+                  aria-label={t("tracking.searchLabel")}
                   className="pf-filter-input pl-8"
                   onChange={(event) => {
                     setSearch(event.target.value);
                     setPage(1);
                   }}
-                  placeholder="搜索事项或内容"
+                  placeholder={t("tracking.search")}
                   value={search}
                 />
               </label>
               <select
-                aria-label="事项类型"
+                aria-label={t("tracking.typeFilterLabel")}
                 className="pf-filter-input lg:w-32"
                 onChange={(event) => {
                   setTypeFilter(event.target.value);
@@ -1030,12 +1100,12 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                 }}
                 value={typeFilter}
               >
-                <option value="all">全部类型</option>
-                <option value="risk">风险</option>
-                <option value="catalyst">催化剂</option>
+                <option value="all">{t("tracking.allTypes")}</option>
+                <option value="risk">{t("tracking.risk")}</option>
+                <option value="catalyst">{t("tracking.catalyst")}</option>
               </select>
               <select
-                aria-label="质量状态"
+                aria-label={t("tracking.qualityFilterLabel")}
                 className="pf-filter-input lg:w-32"
                 onChange={(event) => {
                   setQualityFilter(event.target.value);
@@ -1043,25 +1113,25 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                 }}
                 value={qualityFilter}
               >
-                <option value="all">全部质量</option>
-                <option value="verified">已验证</option>
-                <option value="needs_review">待复核</option>
+                <option value="all">{t("tracking.allQuality")}</option>
+                <option value="verified">{t("tracking.verified")}</option>
+                <option value="needs_review">{t("tracking.needsReview")}</option>
               </select>
               <span className="px-1 text-[10px] text-[var(--pf-ink-muted)]">
-                {trackedItems.length} 项
+                {t("tracking.itemCount", { count: trackedItems.length })}
               </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[920px] text-left">
                 <thead className="bg-[var(--pf-panel-subtle)] text-[10px] font-semibold text-[var(--pf-ink-muted)]">
                   <tr>
-                    <th className="px-4 py-2.5">类型</th>
-                    <th className="px-3 py-2.5">事项</th>
-                    <th className="px-3 py-2.5">状态</th>
-                    <th className="px-3 py-2.5">影响</th>
-                    <th className="px-3 py-2.5">时间窗口</th>
-                    <th className="px-3 py-2.5">质量</th>
-                    <th className="px-3 py-2.5">证据</th>
+                    <th className="px-4 py-2.5">{t("tracking.type")}</th>
+                    <th className="px-3 py-2.5">{t("tracking.item")}</th>
+                    <th className="px-3 py-2.5">{t("tracking.state")}</th>
+                    <th className="px-3 py-2.5">{t("tracking.impact")}</th>
+                    <th className="px-3 py-2.5">{t("tracking.window")}</th>
+                    <th className="px-3 py-2.5">{t("tracking.quality")}</th>
+                    <th className="px-3 py-2.5">{t("tracking.evidence")}</th>
                     <th className="w-10" />
                   </tr>
                 </thead>
@@ -1080,22 +1150,22 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                               item.itemType === "risk" ? "pf-risk-badge" : "pf-catalyst-badge"
                             }
                           >
-                            {ITEM_LABELS[item.itemType]}
+                            {itemTypeLabel(item.itemType, t)}
                           </span>
                         </td>
                         <td className="max-w-xl px-3 py-3">
                           <p className="truncate text-xs font-semibold text-[var(--pf-ink)]">
-                            {item.title}
+                            {trackingDisplayTitle(item, t)}
                           </p>
                           <p className="mt-1 line-clamp-1 text-[10px] text-[var(--pf-ink-muted)]">
                             {current?.content}
                           </p>
                         </td>
                         <td className="px-3 py-3 text-xs text-[var(--pf-ink-secondary)]">
-                          {stateLabel(current?.state)}
+                          {stateLabel(current?.state, t)}
                         </td>
                         <td className="px-3 py-3 text-xs text-[var(--pf-ink-secondary)]">
-                          {IMPACT_LABELS[current?.impact ?? ""] ?? current?.impact ?? "—"}
+                          {impactLabel(current?.impact, t)}
                         </td>
                         <td className="px-3 py-3 text-xs text-[var(--pf-ink-secondary)]">
                           {current?.expectedStart || current?.expectedEnd || "—"}
@@ -1104,7 +1174,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                           <QualityBadge quality={qualityOf(item)} />
                           {current?.metadata?.requires_rebuild ? (
                             <p className="mt-1 text-[9px] font-medium text-amber-700 dark:text-amber-300">
-                              旧版数据
+                              {t("tracking.legacyData")}
                             </p>
                           ) : null}
                           <p className="mt-1 text-[9px] text-[var(--pf-ink-muted)]">
@@ -1124,7 +1194,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
               </table>
               {!trackedItems.length ? (
                 <div className="p-10 text-center text-xs text-[var(--pf-ink-muted)]">
-                  没有符合当前筛选条件的事项。
+                  {t("tracking.empty")}
                 </div>
               ) : null}
             </div>
@@ -1132,12 +1202,16 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
               <div className="flex flex-col gap-3 border-t border-[var(--pf-line)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2 text-[10px] text-[var(--pf-ink-muted)]">
                   <span>
-                    {`显示 ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, trackedItems.length)}，共 ${trackedItems.length} 项`}
+                    {t("tracking.rangeSummary", {
+                      start: (page - 1) * pageSize + 1,
+                      end: Math.min(page * pageSize, trackedItems.length),
+                      count: trackedItems.length,
+                    })}
                   </span>
                   <label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-                    每页
+                    {t("tracking.perPage")}
                     <select
-                      aria-label="每页显示数量"
+                      aria-label={t("tracking.perPageLabel")}
                       className="pf-filter-input h-7 w-16 py-0 text-[10px]"
                       onChange={(event) => {
                         setPageSize(Number(event.target.value));
@@ -1151,19 +1225,19 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                     </select>
                   </label>
                 </div>
-                <nav aria-label="追踪列表分页" className="flex items-center gap-1">
+                <nav aria-label={t("tracking.paginationLabel")} className="flex items-center gap-1">
                   <button
                     className="pf-pagination-button"
                     disabled={page === 1}
                     onClick={() => setPage((current) => Math.max(1, current - 1))}
                     type="button"
                   >
-                    上一页
+                    {t("common.previous")}
                   </button>
                   {visiblePages.map((pageNumber) => (
                     <button
                       aria-current={pageNumber === page ? "page" : undefined}
-                      aria-label={`第 ${pageNumber} 页`}
+                      aria-label={t("tracking.pageLabel", { page: pageNumber })}
                       className={cn(
                         "pf-pagination-button min-w-7",
                         pageNumber === page && "pf-pagination-button-active",
@@ -1181,7 +1255,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                     onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                     type="button"
                   >
-                    下一页
+                    {t("common.next")}
                   </button>
                 </nav>
               </div>
@@ -1204,7 +1278,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
               ))
             ) : (
               <div className="p-10 text-center text-xs text-[var(--pf-ink-muted)]">
-                当前没有待处理提醒。
+                {t("tracking.noAlerts")}
               </div>
             )}
           </div>
@@ -1214,9 +1288,11 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
           <div className="mt-4 overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
             <div className="flex items-center justify-between border-b border-[var(--pf-line)] px-4 py-3">
               <div>
-                <h2 className="text-xs font-semibold text-[var(--pf-ink)]">追踪规则</h2>
+                <h2 className="text-xs font-semibold text-[var(--pf-ink)]">
+                  {t("tracking.trackingRules")}
+                </h2>
                 <p className="mt-1 text-[10px] text-[var(--pf-ink-muted)]">
-                  关键词、事件类型、变化类型与最低重要度共同决定哪些变化进入提醒。
+                  {t("tracking.trackingRulesDescription")}
                 </p>
               </div>
               <button
@@ -1224,7 +1300,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                 onClick={() => setEditingRule(null)}
                 type="button"
               >
-                <Plus className="size-3.5" /> 新建规则
+                <Plus className="size-3.5" /> {t("tracking.newRule")}
               </button>
             </div>
             {editingRule !== undefined ? (
@@ -1249,7 +1325,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                 key={rule.ruleId}
               >
                 <input
-                  aria-label={`启用追踪规则 ${rule.name}`}
+                  aria-label={t("tracking.enableRule", { name: rule.name })}
                   checked={rule.active}
                   className="size-4 accent-[var(--pf-accent)]"
                   disabled={ruleMutation.isPending}
@@ -1261,9 +1337,11 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-[var(--pf-ink)]">{rule.name}</p>
                   <p className="mt-1 text-[10px] text-[var(--pf-ink-muted)]">
-                    {ITEM_LABELS[rule.targetType] ?? rule.targetType} · 最低优先级{" "}
-                    {IMPACT_LABELS[rule.minPriority] ?? rule.minPriority} ·{" "}
-                    {FREQUENCY_LABELS[rule.frequency] ?? rule.frequency}
+                    {t("tracking.ruleSummary", {
+                      type: itemTypeLabel(rule.targetType, t),
+                      priority: impactLabel(rule.minPriority, t),
+                      frequency: frequencyLabel(rule.frequency, t),
+                    })}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {stringList(rule.query.keywords).map((keyword) => (
@@ -1271,7 +1349,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                         className="rounded-full bg-[var(--pf-accent-soft)] px-2 py-0.5 text-[9px] text-[var(--pf-accent-ink)]"
                         key={keyword}
                       >
-                        关键词：{keyword}
+                        {t("tracking.keyword", { keyword })}
                       </span>
                     ))}
                     {stringList(rule.query.event_types).map((eventType) => (
@@ -1279,13 +1357,13 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                         className="rounded-full bg-[var(--pf-panel-subtle)] px-2 py-0.5 text-[9px] text-[var(--pf-ink-secondary)]"
                         key={eventType}
                       >
-                        {eventTypeLabel(eventType)}
+                        {eventTypeLabel(eventType, t)}
                       </span>
                     ))}
                     {!stringList(rule.query.keywords).length &&
                     !stringList(rule.query.event_types).length ? (
                       <span className="text-[9px] text-[var(--pf-ink-muted)]">
-                        匹配该事项类型下的全部事件
+                        {t("tracking.matchAllEvents")}
                       </span>
                     ) : null}
                   </div>
@@ -1293,7 +1371,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                 <button
                   className="pf-icon-button"
                   onClick={() => setEditingRule(rule)}
-                  title="编辑规则"
+                  title={t("tracking.editRule")}
                   type="button"
                 >
                   <Pencil className="size-3.5" />
@@ -1307,9 +1385,11 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
           <div className="mt-4 overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
             <div className="flex flex-col gap-3 border-b border-[var(--pf-line)] p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xs font-semibold text-[var(--pf-ink)]">历史低质量数据治理</h2>
+                <h2 className="text-xs font-semibold text-[var(--pf-ink)]">
+                  {t("tracking.governanceTitle")}
+                </h2>
                 <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
-                  这里只收纳未通过当前质量门的旧记录。归档可恢复；永久清理会同时删除版本、证据关联与提醒。
+                  {t("tracking.governanceDescription")}
                 </p>
               </div>
               <div className="flex gap-1 rounded-lg bg-[var(--pf-panel-subtle)] p-1">
@@ -1329,19 +1409,25 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                     type="button"
                   >
                     {status === "active"
-                      ? `待治理 ${data.governanceCounts.activeUnqualified}`
-                      : `已归档 ${data.governanceCounts.archived}`}
+                      ? t("tracking.governancePending", {
+                          count: data.governanceCounts.activeUnqualified,
+                        })
+                      : t("tracking.governanceArchived", {
+                          count: data.governanceCounts.archived,
+                        })}
                   </button>
                 ))}
               </div>
             </div>
             {governanceQuery.isLoading ? (
               <div className="flex items-center justify-center gap-2 p-10 text-xs text-[var(--pf-ink-muted)]">
-                <Loader2 className="size-3.5 animate-spin" /> 正在读取治理队列
+                <Loader2 className="size-3.5 animate-spin" /> {t("tracking.governanceLoading")}
               </div>
             ) : governanceQuery.isError ? (
               <div className="m-4 rounded-lg bg-[var(--pf-danger-soft)] p-3 text-xs text-[var(--pf-danger-ink)]">
-                治理队列加载失败：{governanceQuery.error.message}
+                {t("tracking.governanceLoadFailed", {
+                  error: governanceQuery.error.message,
+                })}
               </div>
             ) : (
               <>
@@ -1361,7 +1447,9 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                       }
                       type="checkbox"
                     />
-                    全选（已选 {selectedGovernanceIds.size} 项）
+                    {t("tracking.selectAllGovernance", {
+                      count: selectedGovernanceIds.size,
+                    })}
                   </label>
                   {governanceStatus === "active" ? (
                     <button
@@ -1375,7 +1463,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                       }
                       type="button"
                     >
-                      <Archive className="size-3.5" /> 归档选中
+                      <Archive className="size-3.5" /> {t("tracking.archiveSelected")}
                     </button>
                   ) : (
                     <div className="flex gap-2">
@@ -1390,7 +1478,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                         }
                         type="button"
                       >
-                        <RotateCcw className="size-3.5" /> 恢复选中
+                        <RotateCcw className="size-3.5" /> {t("tracking.restoreSelected")}
                       </button>
                       <button
                         className="pf-secondary-button text-[var(--pf-danger-ink)]"
@@ -1398,7 +1486,9 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                         onClick={() => {
                           if (
                             window.confirm(
-                              `将永久删除 ${selectedGovernanceIds.size} 条已归档记录及其历史版本，且无法恢复。确定继续吗？`,
+                              t("tracking.purgeConfirm", {
+                                count: selectedGovernanceIds.size,
+                              }),
                             )
                           ) {
                             governanceMutation.mutate({
@@ -1409,14 +1499,16 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                         }}
                         type="button"
                       >
-                        <Trash2 className="size-3.5" /> 永久清理
+                        <Trash2 className="size-3.5" /> {t("tracking.purgeSelected")}
                       </button>
                     </div>
                   )}
                 </div>
                 {governanceMutation.isError ? (
                   <p className="border-b border-[var(--pf-line)] px-4 py-2 text-xs text-[var(--pf-danger-ink)]">
-                    操作失败：{governanceMutation.error.message}
+                    {t("tracking.governanceActionFailed", {
+                      error: governanceMutation.error.message,
+                    })}
                   </p>
                 ) : null}
                 {(governanceQuery.data ?? []).length ? (
@@ -1446,21 +1538,25 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                                 item.itemType === "risk" ? "pf-risk-badge" : "pf-catalyst-badge"
                               }
                             >
-                              {ITEM_LABELS[item.itemType]}
+                              {itemTypeLabel(item.itemType, t)}
                             </span>
                             <span className="truncate text-xs font-semibold text-[var(--pf-ink)]">
-                              {item.title || "无有效标题"}
+                              {item.title || t("tracking.invalidTitle")}
                             </span>
                           </span>
                           <span className="mt-1.5 block text-[10px] font-medium text-[var(--pf-danger-ink)]">
-                            {item.qualityIssue ?? item.archiveReason ?? "未通过质量门"}
+                            {item.qualityIssue ??
+                              item.archiveReason ??
+                              t("tracking.failedQualityGate")}
                           </span>
                           <span className="mt-1 block line-clamp-2 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
-                            {item.currentVersion?.content || "无有效内容"}
+                            {item.currentVersion?.content || t("tracking.invalidContent")}
                           </span>
                           {item.archivedAt ? (
                             <span className="mt-1 block text-[9px] text-[var(--pf-ink-muted)]">
-                              归档于 {formatTime(item.archivedAt)}
+                              {t("tracking.archivedAt", {
+                                time: formatTime(item.archivedAt),
+                              })}
                             </span>
                           ) : null}
                         </span>
@@ -1470,8 +1566,8 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                 ) : (
                   <div className="p-10 text-center text-xs text-[var(--pf-ink-muted)]">
                     {governanceStatus === "active"
-                      ? "没有待治理的低质量记录。"
-                      : "尚未归档低质量记录。"}
+                      ? t("tracking.noPendingGovernance")
+                      : t("tracking.noArchivedGovernance")}
                   </div>
                 )}
               </>

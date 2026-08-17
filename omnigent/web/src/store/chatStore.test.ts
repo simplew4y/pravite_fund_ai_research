@@ -1992,6 +1992,37 @@ describe("chatStore — send (first-send ordering)", () => {
     );
     expect(streamOpens).toHaveLength(1);
   });
+
+  it("keeps managed display text separate from the posted execution prompt", async () => {
+    seedSession("conv_existing");
+    useChatStore.setState({ conversationId: "conv_existing" });
+
+    await useChatStore.getState().send("internal research-note prompt", "agent_xyz", undefined, {
+      displayText: "Summarize the storage growth thesis",
+      generationKind: "research_note",
+      generationFormat: "chart",
+    });
+
+    const post = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).endsWith("/v1/sessions/conv_existing/events") &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(post).toBeDefined();
+    expect(JSON.parse((post![1] as RequestInit).body as string)).toEqual({
+      type: "message",
+      data: {
+        role: "user",
+        content: [{ type: "input_text", text: "internal research-note prompt" }],
+        display_text: "Summarize the storage growth thesis",
+      },
+    });
+    expect(useChatStore.getState().pendingUserMessages[0]?.content).toEqual([
+      { type: "input_text", text: "Summarize the storage growth thesis" },
+    ]);
+    expect(useChatStore.getState().pendingUserMessages[0]?.generationKind).toBe("research_note");
+    expect(useChatStore.getState().pendingUserMessages[0]?.generationFormat).toBe("chart");
+  });
 });
 
 describe("chatStore — sendSlashCommand", () => {
@@ -2020,6 +2051,34 @@ describe("chatStore — sendSlashCommand", () => {
       type: "slash_command",
       data: { kind: "skill", name: "grill-me", arguments: "review this plan" },
     });
+  });
+
+  it("posts and optimistically renders managed display text separately", async () => {
+    useChatStore.setState({
+      conversationId: "conv_existing",
+      abortController: new AbortController(),
+    });
+
+    await useChatStore
+      .getState()
+      .sendSlashCommand("private-fund-memo", "internal memo prompt", "agent_xyz", {
+        displayText: "Analyze overseas profitability",
+        generationKind: "memo",
+      });
+
+    expect(lastEventBody()).toEqual({
+      type: "slash_command",
+      data: {
+        kind: "skill",
+        name: "private-fund-memo",
+        arguments: "internal memo prompt",
+        display_text: "Analyze overseas profitability",
+      },
+    });
+    expect(useChatStore.getState().pendingUserMessages[0]?.content).toEqual([
+      { type: "input_text", text: "Analyze overseas profitability" },
+    ]);
+    expect(useChatStore.getState().pendingUserMessages[0]?.generationKind).toBe("memo");
   });
 
   it("sends empty arguments when the skill is invoked with no args", async () => {

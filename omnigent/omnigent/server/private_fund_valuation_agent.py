@@ -22,6 +22,19 @@ from typing import Any, Protocol
 from omnigent.server import private_fund_valuation_tracking as valuation
 
 VALUATION_AGENT_VERSION = "valuation-agent-v1"
+
+
+def _current_user_locale() -> str:
+    from omnigent.server.private_fund_locale import read_user_locale
+    from omnigent.server.private_fund_tenant import current_tenant
+
+    tenant = current_tenant()
+    if tenant is None:
+        return "zh-CN"
+    try:
+        return read_user_locale(tenant.data_namespace)
+    except ValueError:
+        return "zh-CN"
 MAX_MODEL_EVIDENCE = 180
 MAX_RESEARCH_EVIDENCE = 120
 MAX_SELECTED_EVIDENCE = 24
@@ -648,7 +661,10 @@ def _plan_evidence(
     llm_client: ValuationAgentChatClient,
     analysis: dict[str, Any],
     context: dict[str, Any],
+    locale: str,
 ) -> dict[str, Any]:
+    from omnigent.server.private_fund_memory import read_current_user_memory
+
     catalog = list(context["catalog"].values())
     catalog_text = "\n".join(
         f"[{item['evidence_id']}] {item['kind']} | {item['label']} | "
@@ -666,6 +682,8 @@ merely repeating the numeric delta. Return JSON only with:
   "comparison_questions": ["..."]}}
 Select at most {MAX_SELECTED_EVIDENCE} IDs and use only IDs in the catalog.
 User focus: {analysis.get("focus") or "全面分析"}
+
+{read_current_user_memory(fallback_locale=locale)}
 
 Evidence catalog:
 {catalog_text}
@@ -774,7 +792,10 @@ def _synthesize_analysis(
     analysis: dict[str, Any],
     context: dict[str, Any],
     planner: dict[str, Any],
+    locale: str,
 ) -> tuple[dict[str, Any], str]:
+    from omnigent.server.private_fund_memory import read_current_user_memory
+
     selected_ids = planner["selected_evidence_ids"]
     selected = [context["catalog"][item] for item in selected_ids]
     evidence_text = "\n\n".join(
@@ -846,10 +867,12 @@ Return a compact JSON object only with this shape:
 }}
 
 Keep the response decision-dense: 5-6 key findings, no more than 3 risks, and
-no more than 3 open questions. Keep each detail within 160 Chinese characters.
+no more than 3 open questions. Keep each detail concise and within 320 characters.
 State whether an explanation is deterministic from the workbook or an inference.
 Treat a matching historical snapshot as rollback, not as a new economic change.
 Do not invent evidence, values, formulas, or reasons for changes.
+
+{read_current_user_memory(fallback_locale=locale)}
 
 Model: {version["series_name"]} v{version["document_version_no"]}
 Company: {version["company_name"]} {version["company_ticker"]}
@@ -896,12 +919,14 @@ Return one compact JSON object only:
   ]
 }}
 Return 3-5 evidence-chain items and no more than 5 changes. Keep each reasoning
-or rationale within 160 Chinese characters. Recommend a numeric change only
+or rationale within 320 characters. Recommend a numeric change only
 when evidence supports a specific value. Do not invent evidence, values,
 formulas, or node IDs. Findings about formula outputs belong in the evidence
 chain, not as a direct cell-write recommendation. Every recommended change
 must cite both its target evidence_id from Writable targets and the supporting
 evidence for the new value.
+
+{read_current_user_memory(fallback_locale=locale)}
 
 Executive summary: {executive_summary}
 Investment conclusion: {str(analysis_payload.get("investment_conclusion") or "")[:2000]}
@@ -962,6 +987,7 @@ def run_agent_analysis(
     analysis = get_analysis(collection_db, dataset_id, analysis_id)
     if analysis["status"] == "completed":
         return analysis
+    locale = _current_user_locale()
     now = _now_iso()
     with _connect(collection_db) as conn:
         conn.execute(
@@ -979,7 +1005,7 @@ def run_agent_analysis(
         planner = (
             stored_planner
             if stored_ids and all(str(item) in context["catalog"] for item in stored_ids)
-            else _plan_evidence(llm_client, analysis, context)
+            else _plan_evidence(llm_client, analysis, context, locale)
         )
         with _connect(collection_db) as conn:
             conn.execute(
@@ -990,7 +1016,9 @@ def run_agent_analysis(
                 (_json(planner), _now_iso(), analysis_id),
             )
             conn.commit()
-        result, raw_response = _synthesize_analysis(llm_client, analysis, context, planner)
+        result, raw_response = _synthesize_analysis(
+            llm_client, analysis, context, planner, locale
+        )
         evidence_ids = list(
             dict.fromkeys(
                 evidence_id

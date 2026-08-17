@@ -12,6 +12,7 @@ import {
   BotIcon,
   ChartNoAxesCombinedIcon,
   KeyboardIcon,
+  LanguagesIcon,
   MessageSquareTextIcon,
   PaletteIcon,
   PanelRightOpenIcon,
@@ -25,10 +26,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useServerInfo } from "@/lib/CapabilitiesContext";
 import { isElectronShell, supportsDesktopLlmConfiguration } from "@/lib/nativeBridge";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 export type SettingsSectionId =
   | "skills"
   | "appearance"
+  | "language"
   | "shortcuts"
   | "account"
   | "platform-usage"
@@ -40,6 +43,7 @@ export type SettingsSectionId =
 const SECTION_IDS: readonly SettingsSectionId[] = [
   "skills",
   "appearance",
+  "language",
   "shortcuts",
   "account",
   "platform-usage",
@@ -71,33 +75,55 @@ export function settingsNavGroups(
   isDesktop: boolean,
   llmEnabled = false,
   cloudAccountsEnabled = false,
+  translate?: (key: string) => string,
 ): SettingsNavGroup[] {
+  const label = (key: string, fallback: string) => translate?.(key) ?? fallback;
   const general: SettingsNavItem[] = [
-    { id: "skills", label: "技能 Skills", icon: SparklesIcon },
-    { id: "appearance", label: "Appearance", icon: PaletteIcon },
-    { id: "shortcuts", label: "Keyboard shortcuts", icon: KeyboardIcon, hideOnMobile: true },
+    { id: "skills", label: label("settings.skills", "Skills"), icon: SparklesIcon },
+    { id: "appearance", label: label("settings.appearance", "Appearance"), icon: PaletteIcon },
+    {
+      id: "shortcuts",
+      label: label("settings.shortcuts", "Keyboard shortcuts"),
+      icon: KeyboardIcon,
+      hideOnMobile: true,
+    },
   ];
   if (accountsEnabled) {
     // Account leads the group when present — it's the most-visited section
     // on accounts deploys.
-    general.unshift({ id: "account", label: "账户", icon: UserCogIcon });
+    general.unshift({
+      id: "account",
+      label: label("settings.account", "Account"),
+      icon: UserCogIcon,
+    });
+    general.splice(1, 0, {
+      id: "language",
+      label: label("language.label", "Language"),
+      icon: LanguagesIcon,
+    });
     if (cloudAccountsEnabled) {
-      general.splice(1, 0, {
+      general.splice(2, 0, {
         id: "llm",
-        label: "模型服务",
+        label: label("settings.modelService", "Model service"),
         icon: BotIcon,
       });
-      general.splice(2, 0, {
+      general.splice(3, 0, {
         id: "platform-usage",
-        label: "平台用量",
+        label: label("settings.platformUsage", "Platform usage"),
         icon: ChartNoAxesCombinedIcon,
       });
-      general.splice(3, 0, {
+      general.splice(4, 0, {
         id: "feedback",
-        label: "用户反馈",
+        label: label("settings.feedback", "Feedback"),
         icon: MessageSquareTextIcon,
       });
     }
+  } else {
+    general.unshift({
+      id: "language",
+      label: label("language.label", "Language"),
+      icon: LanguagesIcon,
+    });
   }
   const groups: SettingsNavGroup[] = [];
   // Desktop (Local CLI) leads when present — it's the shell-specific section a
@@ -105,19 +131,29 @@ export function settingsNavGroups(
   if (isDesktop || (llmEnabled && !cloudAccountsEnabled)) {
     const desktopItems: SettingsNavItem[] = [];
     if (llmEnabled && !cloudAccountsEnabled) {
-      desktopItems.push({ id: "llm", label: "模型服务", icon: BotIcon });
+      desktopItems.push({
+        id: "llm",
+        label: label("settings.modelService", "Model service"),
+        icon: BotIcon,
+      });
     }
     if (isDesktop) desktopItems.push({ id: "cli", label: "Local CLI", icon: TerminalIcon });
     groups.push({
-      title: "Desktop",
+      title: label("settings.desktop", "Desktop"),
       items: desktopItems,
     });
   }
   groups.push(
-    { title: "General", items: general },
+    { title: label("settings.application", "Application"), items: general },
     {
-      title: "Archived",
-      items: [{ id: "archived", label: "Archived sessions", icon: ArchiveIcon }],
+      title: label("settings.archivedGroup", "Archived"),
+      items: [
+        {
+          id: "archived",
+          label: label("settings.archived", "Archived sessions"),
+          icon: ArchiveIcon,
+        },
+      ],
     },
   );
   return groups;
@@ -158,6 +194,7 @@ export function SettingsSidebarBody({
   onNavClick: (e: React.MouseEvent<HTMLAnchorElement>) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const info = useServerInfo();
   const accountsEnabled = info !== "loading" && info.accounts_enabled;
   const cloudAccountsEnabled = info !== "loading" && info.cloud_accounts_enabled === true;
@@ -169,6 +206,7 @@ export function SettingsSidebarBody({
     isElectronShell(),
     llmEnabled,
     cloudAccountsEnabled,
+    t,
   );
 
   return (
@@ -183,7 +221,7 @@ export function SettingsSidebarBody({
           card), so dropping it changes nothing there. */}
           <Link to="/">
             <ArrowLeftIcon className="size-4" />
-            Back
+            {t("common.back")}
           </Link>
         </Button>
         <Tooltip>
@@ -192,14 +230,16 @@ export function SettingsSidebarBody({
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Close sidebar"
+              aria-label={t("common.close")}
               onClick={onClose}
               className="rounded-full"
             >
               <PanelRightOpenIcon className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Collapse sidebar</TooltipContent>
+          <TooltipContent side="bottom">
+            {t("settings.collapseSidebar", "Collapse sidebar")}
+          </TooltipContent>
         </Tooltip>
       </div>
       <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-3">

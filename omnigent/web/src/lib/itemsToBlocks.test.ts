@@ -79,6 +79,23 @@ function functionCallOutput(
 }
 
 describe("itemsToBlocks — flat shape", () => {
+  it("renders a managed message display_text instead of its internal prompt", () => {
+    const item: ConversationItem = {
+      ...userMessage(
+        "resp_managed",
+        "internal research-note prompt\ndataset_id: 300274\n必须调用 private_fund_research_node_save 保存节点\n本次节点输出形式: 表格",
+      ),
+      display_text: "Summarize the storage growth thesis",
+    };
+    const blocks = itemsToBlocks([item]);
+    const message = blocks[0] as UserMessageBlock;
+    expect(message.content).toEqual([
+      { type: "input_text", text: "Summarize the storage growth thesis" },
+    ]);
+    expect(message.generationKind).toBe("research_note");
+    expect(message.generationFormat).toBe("table");
+  });
+
   it("skips meta messages so hidden skill context is not rendered on reload", () => {
     const items: ConversationItem[] = [
       {
@@ -394,6 +411,29 @@ describe("itemsToBlocks — native tools and compaction", () => {
     expect(echo.ctx.responseId).toBe("resp_slash");
     // Authorship carries over for shared-session labels.
     expect(echo.ctx.createdBy).toBe("alice@example.com");
+  });
+
+  it("uses managed display text without exposing slash-command arguments", () => {
+    const blocks = itemsToBlocks([
+      {
+        id: "sc_memo",
+        response_id: "resp_memo",
+        type: "slash_command",
+        status: "completed",
+        kind: "skill",
+        name: "private-fund-memo",
+        arguments: "internal memo prompt and hidden context",
+        display_text: "Focus on overseas margins",
+        model: "claude-native-ui",
+      },
+    ]);
+
+    const echo = blocks[0] as UserMessageBlock;
+    expect(echo.content).toEqual([{ type: "input_text", text: "Focus on overseas margins" }]);
+    expect(echo.generationKind).toBe("memo");
+    const slash = blocks[1] as SlashCommandBlock;
+    expect(slash.displayText).toBe("Focus on overseas margins");
+    expect(slash.arguments).toBe("internal memo prompt and hidden context");
   });
 
   it("kind='command' propagates through the translator (and gets no user echo)", () => {

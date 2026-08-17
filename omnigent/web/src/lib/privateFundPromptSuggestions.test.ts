@@ -22,10 +22,7 @@ function file(
   };
 }
 
-function asset(
-  assetType: string,
-  overrides: Partial<PrivateFundAsset> = {},
-): PrivateFundAsset {
+function asset(assetType: string, overrides: Partial<PrivateFundAsset> = {}): PrivateFundAsset {
   return {
     assetId: `${assetType}-${overrides.title ?? "1"}`,
     assetType,
@@ -65,9 +62,11 @@ describe("generatePrivateFundPromptSuggestions", () => {
     // Prefer dynamic compare over static-only ids when possible
     expect(
       suggestions.some((s) =>
-        ["dyn_compare_report_meeting", "dyn_check_model_vs_report", "dyn_guidance_into_model"].includes(
-          s.id,
-        ),
+        [
+          "dyn_compare_report_meeting",
+          "dyn_check_model_vs_report",
+          "dyn_guidance_into_model",
+        ].includes(s.id),
       ),
     ).toBe(true);
   });
@@ -79,9 +78,9 @@ describe("generatePrivateFundPromptSuggestions", () => {
       assets: [asset("memo", { title: "阳光电源一页纸" })],
     });
 
-    expect(suggestions.some((s) => s.id === "dyn_update_memo" || s.id === "update_existing_memo")).toBe(
-      true,
-    );
+    expect(
+      suggestions.some((s) => s.id === "dyn_update_memo" || s.id === "update_existing_memo"),
+    ).toBe(true);
     expect(suggestions.some((s) => s.prompt.includes("阳光电源一页纸"))).toBe(true);
     expect(suggestions.some((s) => s.id === "generate_investment_memo")).toBe(false);
   });
@@ -96,12 +95,14 @@ describe("generatePrivateFundPromptSuggestions", () => {
 
     expect(suggestions.some((s) => s.id === "dyn_continue_topic")).toBe(true);
     expect(suggestions.find((s) => s.id === "dyn_continue_topic")?.prompt).toContain("单位盈利");
-    expect(detectPrivateFundSituation({
-      companyName: "阳光电源",
-      files: [file("电话会文字稿.pdf", "meeting_transcript")],
-      assets: [],
-      recentUserMessages: ["阳光电源储能业务 2027 年单位盈利大概多少"],
-    })).toBe("mid_conversation");
+    expect(
+      detectPrivateFundSituation({
+        companyName: "阳光电源",
+        files: [file("电话会文字稿.pdf", "meeting_transcript")],
+        assets: [],
+        recentUserMessages: ["阳光电源储能业务 2027 年单位盈利大概多少"],
+      }),
+    ).toBe("mid_conversation");
   });
 
   it("uses open questions from the last assistant reply", () => {
@@ -165,9 +166,9 @@ describe("generatePrivateFundPromptSuggestions", () => {
     });
 
     expect(suggestions.length).toBeGreaterThan(0);
-    expect(suggestions.some((s) => s.id === "dyn_empty_framework" || s.id === "empty_project_plan")).toBe(
-      true,
-    );
+    expect(
+      suggestions.some((s) => s.id === "dyn_empty_framework" || s.id === "empty_project_plan"),
+    ).toBe(true);
     expect(suggestions[0]?.prompt).toContain("当前公司");
     expect(detectPrivateFundSituation({ files: [], assets: [] })).toBe("empty");
   });

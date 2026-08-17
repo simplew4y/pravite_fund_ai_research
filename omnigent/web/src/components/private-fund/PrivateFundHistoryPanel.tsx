@@ -1,6 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, GitCompareArrows, History, Loader2, Quote, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeftRight,
+  ArrowRight,
+  Columns2,
+  GitCompareArrows,
+  History,
+  Loader2,
+  Quote,
+  Rows2,
+} from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 
 import { usePrivateFundTracking } from "@/hooks/usePrivateFundProjects";
 import {
@@ -9,6 +18,12 @@ import {
   type PrivateFundMemoVersion,
 } from "@/lib/privateFundApi";
 import { cn } from "@/lib/utils";
+
+const PrivateFundMemoDiffViewer = lazy(() =>
+  import("./PrivateFundMemoDiffViewer").then((module) => ({
+    default: module.PrivateFundMemoDiffViewer,
+  })),
+);
 
 const ITEM_LABELS: Record<string, string> = {
   thesis: "投资观点",
@@ -23,16 +38,6 @@ const CHANGE_LABELS: Record<string, string> = {
   not_mentioned: "新版未提及",
 };
 
-const CHANGE_STYLES: Record<string, string> = {
-  added:
-    "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-200",
-  changed:
-    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/35 dark:text-amber-200",
-  not_mentioned:
-    "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900/35 dark:text-slate-300",
-  unchanged: "border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] text-[var(--pf-ink-muted)]",
-};
-
 function versionLabel(version: PrivateFundMemoVersion): string {
   return `v${version.versionNo} · ${version.asOfDate || version.createdAt.slice(0, 10)}`;
 }
@@ -40,6 +45,14 @@ function versionLabel(version: PrivateFundMemoVersion): string {
 function compact(value: string, limit = 560): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > limit ? `${normalized.slice(0, limit)}…` : normalized;
+}
+
+function memoVersionMarkdown(version: PrivateFundMemoVersion): string {
+  const sections = version.sections.map((section) => {
+    const body = section.content.trim();
+    return `## ${section.title}\n\n${body || "_无内容_"}`;
+  });
+  return (sections.join("\n\n").trimEnd() || "_无章节内容_") + "\n";
 }
 
 export function PrivateFundHistoryPanel({
@@ -54,6 +67,8 @@ export function PrivateFundHistoryPanel({
   const [fromVersionId, setFromVersionId] = useState("");
   const [toVersionId, setToVersionId] = useState("");
   const [selectedItemId, setSelectedItemId] = useState("");
+  const [diffLayout, setDiffLayout] = useState<"unified" | "split">("split");
+  const [hideWhitespace, setHideWhitespace] = useState(true);
 
   const data = trackingQuery.data;
   const versions = useMemo(
@@ -114,6 +129,31 @@ export function PrivateFundHistoryPanel({
     enabled: Boolean(selectedItemId),
   });
 
+  const comparisonSummary = useMemo(() => {
+    const comparison = comparisonQuery.data;
+    if (!comparison) return null;
+    const counts = { added: 0, changed: 0, not_mentioned: 0, unchanged: 0 };
+    for (const change of comparison.sectionChanges) {
+      if (change.changeType in counts) {
+        counts[change.changeType as keyof typeof counts] += 1;
+      }
+    }
+    const oldEvidence = new Set(
+      comparison.sectionChanges.flatMap((change) => change.oldEvidenceIds),
+    );
+    const newEvidence = new Set(
+      comparison.sectionChanges.flatMap((change) => change.newEvidenceIds),
+    );
+    return {
+      counts,
+      evidenceAdded: [...newEvidence].filter((id) => !oldEvidence.has(id)).length,
+      evidenceRemoved: [...oldEvidence].filter((id) => !newEvidence.has(id)).length,
+      needsReview: comparison.toVersion.sections.filter((section) => section.needsReview).length,
+      before: memoVersionMarkdown(comparison.fromVersion),
+      after: memoVersionMarkdown(comparison.toVersion),
+    };
+  }, [comparisonQuery.data]);
+
   if (trackingQuery.isLoading) {
     return (
       <div className="flex min-h-[420px] items-center justify-center gap-2 text-sm text-[var(--pf-ink-secondary)]">
@@ -145,7 +185,7 @@ export function PrivateFundHistoryPanel({
           </p>
         </header>
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.75fr)]">
+        <div className="space-y-6">
           <div className="space-y-4">
             <div className="flex flex-col gap-3 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] p-4 lg:flex-row lg:items-end">
               <label className="min-w-0 flex-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--pf-ink-muted)]">
@@ -216,76 +256,121 @@ export function PrivateFundHistoryPanel({
               <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700">
                 对比失败：{comparisonQuery.error.message}
               </div>
-            ) : comparisonQuery.data ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-[var(--pf-ink)]">
-                  <GitCompareArrows className="size-4 text-[var(--pf-accent-ink)]" />
-                  章节变化
-                  <span className="font-normal text-[var(--pf-ink-muted)]">
-                    {
-                      comparisonQuery.data.sectionChanges.filter(
-                        (change) => change.changeType !== "unchanged",
-                      ).length
-                    }{" "}
-                    处实质变化
-                  </span>
-                </div>
-                {comparisonQuery.data.sectionChanges.map((change) => (
-                  <article
-                    className={cn(
-                      "rounded-xl border p-4",
-                      CHANGE_STYLES[change.changeType] ?? CHANGE_STYLES.unchanged,
-                    )}
-                    key={change.sectionKey}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold">{change.title}</h3>
-                      <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px]">
-                        {CHANGE_LABELS[change.changeType] ?? change.changeType}
-                        {change.changeType === "changed"
-                          ? ` · 相似度 ${Math.round(change.similarity * 100)}%`
-                          : ""}
+            ) : comparisonQuery.data && comparisonSummary ? (
+              <div className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)]">
+                <div className="flex flex-col gap-3 border-b border-[var(--pf-line)] p-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                    <span className="mr-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--pf-ink)]">
+                      <GitCompareArrows className="size-4 text-[var(--pf-accent-ink)]" />
+                      版本差异
+                    </span>
+                    {Object.entries(comparisonSummary.counts).map(([type, count]) => (
+                      <span
+                        className={cn(
+                          "rounded-full border px-2 py-1",
+                          type === "added" && "border-emerald-200 bg-emerald-50 text-emerald-700",
+                          type === "changed" && "border-amber-200 bg-amber-50 text-amber-700",
+                          type === "not_mentioned" && "border-slate-200 bg-slate-50 text-slate-600",
+                          type === "unchanged" &&
+                            "border-[var(--pf-line)] text-[var(--pf-ink-muted)]",
+                        )}
+                        key={type}
+                      >
+                        {CHANGE_LABELS[type] ?? type} {count}
                       </span>
-                    </div>
-                    {change.changeType === "unchanged" ? (
-                      <p className="mt-2 text-xs leading-5 opacity-80">
-                        {compact(change.newContent, 320)}
-                      </p>
-                    ) : (
-                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                        <div className="rounded-lg bg-white/55 p-3 dark:bg-black/10">
-                          <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide opacity-60">
-                            旧版
-                          </p>
-                          <p className="text-xs leading-5">{compact(change.oldContent) || "—"}</p>
-                          <p className="mt-2 text-[9px] opacity-55">
-                            证据 {change.oldEvidenceIds.length} 条
-                          </p>
-                        </div>
-                        <div className="rounded-lg bg-white/55 p-3 dark:bg-black/10">
-                          <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide opacity-60">
-                            新版
-                          </p>
-                          <p className="text-xs leading-5">{compact(change.newContent) || "—"}</p>
-                          <p className="mt-2 text-[9px] opacity-55">
-                            证据 {change.newEvidenceIds.length} 条
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {change.changeType === "not_mentioned" ? (
-                      <p className="mt-3 flex items-center gap-1.5 text-[10px] opacity-75">
-                        <TriangleAlert className="size-3" />{" "}
-                        未提及不等于撤回；需要新证据或显式状态更新后才关闭观点。
-                      </p>
+                    ))}
+                    <span className="text-[var(--pf-ink-muted)]">
+                      证据 +{comparisonSummary.evidenceAdded} / -{comparisonSummary.evidenceRemoved}
+                    </span>
+                    {comparisonSummary.needsReview > 0 ? (
+                      <span className="rounded-full border border-red-200 bg-red-50 px-2 py-1 text-red-700">
+                        待复核 {comparisonSummary.needsReview}
+                      </span>
                     ) : null}
-                  </article>
-                ))}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      aria-label="交换对比版本"
+                      className="flex size-8 items-center justify-center rounded-lg border border-[var(--pf-line)] text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
+                      onClick={() => {
+                        setFromVersionId(toVersionId);
+                        setToVersionId(fromVersionId);
+                      }}
+                      title="交换对比版本"
+                      type="button"
+                    >
+                      <ArrowLeftRight className="size-3.5" />
+                    </button>
+                    <div className="flex h-8 overflow-hidden rounded-lg border border-[var(--pf-line)]">
+                      <button
+                        aria-pressed={diffLayout === "split"}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2.5 text-[10px]",
+                          diffLayout === "split"
+                            ? "bg-[var(--pf-accent-soft)] text-[var(--pf-accent-ink)]"
+                            : "text-[var(--pf-ink-muted)] hover:bg-[var(--pf-panel-subtle)]",
+                        )}
+                        onClick={() => setDiffLayout("split")}
+                        type="button"
+                      >
+                        <Columns2 className="size-3" /> 并排
+                      </button>
+                      <button
+                        aria-pressed={diffLayout === "unified"}
+                        className={cn(
+                          "flex items-center gap-1.5 border-l border-[var(--pf-line)] px-2.5 text-[10px]",
+                          diffLayout === "unified"
+                            ? "bg-[var(--pf-accent-soft)] text-[var(--pf-accent-ink)]"
+                            : "text-[var(--pf-ink-muted)] hover:bg-[var(--pf-panel-subtle)]",
+                        )}
+                        onClick={() => setDiffLayout("unified")}
+                        type="button"
+                      >
+                        <Rows2 className="size-3" /> 行内
+                      </button>
+                    </div>
+                    <button
+                      aria-pressed={hideWhitespace}
+                      className={cn(
+                        "h-8 rounded-lg border px-2.5 text-[10px]",
+                        hideWhitespace
+                          ? "border-[var(--pf-accent)] bg-[var(--pf-accent-soft)] text-[var(--pf-accent-ink)]"
+                          : "border-[var(--pf-line)] text-[var(--pf-ink-muted)] hover:bg-[var(--pf-panel-subtle)]",
+                      )}
+                      onClick={() => setHideWhitespace((current) => !current)}
+                      type="button"
+                    >
+                      忽略空白
+                    </button>
+                  </div>
+                </div>
+                <div className="h-[680px] min-h-[480px] bg-[var(--pf-panel)]">
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full items-center justify-center gap-2 text-xs text-[var(--pf-ink-muted)]">
+                        <Loader2 className="size-4 animate-spin" /> 正在加载版本差异…
+                      </div>
+                    }
+                  >
+                    <PrivateFundMemoDiffViewer
+                      after={comparisonSummary.after}
+                      before={comparisonSummary.before}
+                      hideWhitespace={hideWhitespace}
+                      layout={diffLayout}
+                    />
+                  </Suspense>
+                </div>
+                {comparisonSummary.counts.not_mentioned > 0 ? (
+                  <p className="border-t border-[var(--pf-line)] px-3 py-2 text-[10px] text-[var(--pf-ink-muted)]">
+                    新版未提及不等于观点失效；需要新证据或显式状态更新后才关闭观点。
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
 
-          <aside className="space-y-3">
+          <aside className="space-y-3 border-t border-[var(--pf-line)] pt-6">
             <div>
               <div className="flex items-center gap-2">
                 <History className="size-4 text-[var(--pf-accent-ink)]" />

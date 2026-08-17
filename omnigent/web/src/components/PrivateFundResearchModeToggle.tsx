@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { PrivateFundResearchMode } from "@/lib/privateFundApi";
+import { useTranslation } from "react-i18next";
 
 interface PrivateFundResearchModeToggleProps {
   value: PrivateFundResearchMode;
@@ -8,9 +9,9 @@ interface PrivateFundResearchModeToggleProps {
   testId?: string;
 }
 
-const OPTIONS: ReadonlyArray<{ value: PrivateFundResearchMode; label: string }> = [
-  { value: "standard", label: "常规研究" },
-  { value: "deep", label: "深度研究" },
+const OPTIONS: ReadonlyArray<{ value: PrivateFundResearchMode; labelKey: string }> = [
+  { value: "standard", labelKey: "newResearch.standardResearch" },
+  { value: "deep", labelKey: "newResearch.deepResearch" },
 ];
 
 export function PrivateFundResearchModeToggle({
@@ -19,10 +20,11 @@ export function PrivateFundResearchModeToggle({
   className,
   testId = "private-fund-research-mode",
 }: PrivateFundResearchModeToggleProps) {
+  const { t } = useTranslation();
   return (
     <div
       role="group"
-      aria-label="私募研究级别"
+      aria-label={t("newResearch.researchLevel")}
       data-testid={testId}
       className={cn(
         "inline-flex shrink-0 items-center rounded-full border border-border/60 bg-background/50 p-0.5",
@@ -45,7 +47,7 @@ export function PrivateFundResearchModeToggle({
             )}
             onClick={() => onChange(option.value)}
           >
-            {option.label}
+            {t(option.labelKey)}
           </button>
         );
       })}

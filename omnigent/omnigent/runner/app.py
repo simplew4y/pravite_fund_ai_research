@@ -1955,6 +1955,7 @@ async def _auto_create_pi_terminal(
         auth_headers=auth_headers,
         tools=pi_tools,
         system_prompt=pi_system_prompt,
+        user_memory_dir=os.environ.get("OMNIGENT_USER_MEMORY_DIR"),
     )
     pi_command = resolve_pi_executable()
     # Rebuild the local Pi session JSONL from committed Omnigent items so a
@@ -5744,6 +5745,7 @@ async def _auto_create_claude_terminal(
         ap_auth_headers=_runner_headers,
         auto_approve=session_auto_approve
         or os.environ.get("OMNIGENT_CLAUDE_NATIVE_AUTO_APPROVE"),
+        user_memory_dir=os.environ.get("OMNIGENT_USER_MEMORY_DIR"),
         bundle_dir=bundle_dir,
         agent_name=agent_name,
         skills_filter=skills_filter,

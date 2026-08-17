@@ -18,7 +18,14 @@
 //
 // Pure function. No React, no DOM. Tested in `renderItems.test.ts`.
 
-import type { AnyBlock, MessageContentBlock, ToolExecution, ToolResultBlock } from "./blocks";
+import type {
+  AnyBlock,
+  MessageContentBlock,
+  PrivateFundGenerationFormat,
+  PrivateFundGenerationKind,
+  ToolExecution,
+  ToolResultBlock,
+} from "./blocks";
 import type { RememberScope } from "./types";
 import type { ActiveResponse } from "@/store/types";
 
@@ -68,6 +75,7 @@ export type RenderItem =
       slashKind: "skill" | "command";
       name: string;
       arguments: string;
+      displayText?: string;
       output: string | null;
     }
   | {
@@ -122,6 +130,8 @@ export type Bubble =
       kind: "user";
       itemId: string;
       content: MessageContentBlock[];
+      generationKind?: PrivateFundGenerationKind;
+      generationFormat?: PrivateFundGenerationFormat;
       /** Human author email, when known. */
       createdBy?: string;
       /**
@@ -402,6 +412,8 @@ function walkBubbles(
         kind: "user",
         itemId: b.ctx.itemId ?? `user_${i}`,
         content: b.content,
+        ...(b.generationKind ? { generationKind: b.generationKind } : {}),
+        ...(b.generationFormat ? { generationFormat: b.generationFormat } : {}),
         ...(b.ctx.createdBy !== undefined ? { createdBy: b.ctx.createdBy } : {}),
         // Carry the optimistic temp id (when promoted) so bubbleKey holds
         // steady across the optimistic→committed swap — no remount/flink.
@@ -660,6 +672,7 @@ function buildAssistantItems(
         slashKind: b.kind,
         name: b.name,
         arguments: b.arguments,
+        ...(b.displayText ? { displayText: b.displayText } : {}),
         output: b.output,
       });
       i += 1;
@@ -904,6 +917,8 @@ export function bubblesEqual(a: Bubble, b: Bubble): boolean {
       a.itemId !== b.itemId ||
       a.createdBy !== b.createdBy ||
       a.stableKey !== b.stableKey ||
+      a.generationKind !== b.generationKind ||
+      a.generationFormat !== b.generationFormat ||
       a.content.length !== b.content.length
     )
       return false;

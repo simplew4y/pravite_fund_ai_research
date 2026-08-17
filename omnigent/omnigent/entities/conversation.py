@@ -277,6 +277,8 @@ class MessageData(BaseModel):
     agent: str | None = Field(default=None, serialization_alias="model")
     is_meta: bool = Field(default=False, exclude_if=lambda value: value is False)
     interrupted: bool = Field(default=False, exclude_if=lambda value: value is False)
+    # Persisted UI copy for managed actions whose full prompt is execution-only.
+    display_text: str | None = None
 
     @model_validator(mode="after")
     def check_agent_for_assistant(self) -> MessageData:
@@ -607,6 +609,8 @@ class SlashCommandData(BaseModel):
     name: str
     arguments: str
     output: str | None = None
+    # Persisted UI copy; skill resolution continues to use ``arguments``.
+    display_text: str | None = None
 
 
 ItemData = (

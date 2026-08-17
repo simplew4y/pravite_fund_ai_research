@@ -340,6 +340,8 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(prompt).toContain("content_blocks");
     expect(prompt).toContain("本次节点输出形式: 文本");
     expect(prompt).toContain("文本模式");
+    expect(vi.mocked(onGenerateNode).mock.calls[0][1]).toBe("生成研究笔记");
+    expect(vi.mocked(onGenerateNode).mock.calls[0][2]).toBe("plain_text");
   });
 
   it("writes a newly saved response into the asset cache before the request completes", async () => {
@@ -398,6 +400,7 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(prompt).toContain("海外收入同比增长 28%，但仍需核验证据");
     expect(prompt).toContain("作为分析依据的父节点: 无");
     expect(prompt).not.toContain("用户保存的回答笔记");
+    expect(vi.mocked(onGenerateNode).mock.calls[0][2]).toBe("table");
   });
 
   it("generates from existing conversation context without requiring selected information", () => {
@@ -515,6 +518,9 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(prompt).toContain("可读文字或数据表回退");
     expect(prompt).toContain("ASCII 字符画");
     expect(prompt).toContain("展示海外与国内盈利质量差异，由模型选择最合适图形");
+    expect(vi.mocked(onGenerateNode).mock.calls[0][1]).toBe(
+      "展示海外与国内盈利质量差异，由模型选择最合适图形。",
+    );
     expect(screen.getByRole("button", { name: "生成模式 文本" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -538,6 +544,10 @@ describe("PrivateFundResearchWorkbench", () => {
     expect(visiblePrompt).not.toContain("用户勾选的资产上下文");
     expect(prompt).toContain("private_fund_dataset_memo");
     expect(prompt).toContain("dataset_id: 阳光电源");
+    expect(vi.mocked(onGenerateNode).mock.calls[0][1]).toBe(
+      "聚焦海外盈利质量，分析增长持续性和主要风险。",
+    );
+    expect(vi.mocked(onGenerateNode).mock.calls[0][2]).toBe("memo");
   });
 
   it("renders agent-selected metrics, tables, and charts as rich node content", async () => {
@@ -662,8 +672,7 @@ describe("PrivateFundResearchWorkbench", () => {
   });
 
   it("embeds PDF memo assets instead of showing only their filesystem path", () => {
-    const storedPath =
-      "/Users/feiyuzi/project/pravite_fund_ai_research/output/private_fund_datasets/阳光电源/memos/private_fund_memo_阳光电源_20260712_161105.pdf";
+    const storedPath = "memos/private_fund_memo_阳光电源_20260712_161105.pdf";
     vi.mocked(usePrivateFundAssets).mockReturnValue({
       data: {
         contextAssetIds: [],
@@ -682,6 +691,9 @@ describe("PrivateFundResearchWorkbench", () => {
             fileType: "pdf",
             format: "pdf",
             contentMarkdown: "",
+            metadata: {
+              artifacts: [{ format: "pdf", path: storedPath }],
+            },
           },
         ],
       },
@@ -693,12 +705,59 @@ describe("PrivateFundResearchWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Memo" }));
     fireEvent.click(screen.getByText("private_fund_memo_阳光电源_20260712_161105"));
 
-    const frame = screen.getByTitle("private_fund_memo_阳光电源_20260712_161105 PDF 预览");
+    const frame = screen.getByTitle(
+      "private_fund_datasets/阳光电源/memos/private_fund_memo_阳光电源_20260712_161105.pdf PDF preview",
+    );
     expect(frame).toHaveAttribute(
       "src",
-      `/v1/private-fund/dataset/memo/file?path=${encodeURIComponent(storedPath)}`,
+      `/v1/private-fund/dataset/memo/file?dataset_id=${encodeURIComponent("阳光电源")}&path=${encodeURIComponent(storedPath)}`,
     );
     expect(screen.queryByTestId("pdf-preview-toolbar")).toBeNull();
+  });
+
+  it("lets users switch a memo between Markdown, HTML, and PDF previews", async () => {
+    vi.mocked(usePrivateFundAssets).mockReturnValue({
+      data: {
+        contextAssetIds: [],
+        assets: [
+          {
+            ...assetCatalog.assets[0],
+            assetId: "memo:multi-format",
+            assetType: "memo",
+            displayGroup: "memo",
+            displayLabel: "Memo",
+            title: "阳光电源主营业务",
+            summary: "Memo v2",
+            sourceKind: "memo",
+            storedPath: "memos/memo-v2.pdf",
+            fileType: "pdf",
+            format: "pdf",
+            contentMarkdown: "# 主营业务\n\n核心结论。",
+            metadata: {
+              artifacts: [
+                { format: "md", path: "memos/memo-v2.md" },
+                { format: "html", path: "memos/memo-v2.html" },
+                { format: "pdf", path: "memos/memo-v2.pdf" },
+              ],
+            },
+          },
+        ],
+      },
+      isLoading: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof usePrivateFundAssets>);
+
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("button", { name: "Memo" }));
+    fireEvent.click(screen.getByText("阳光电源主营业务"));
+
+    expect(screen.getByRole("tab", { name: "PDF" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Markdown" }));
+    expect(await screen.findByRole("heading", { name: "主营业务" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "HTML" }));
+    expect(
+      screen.getByTitle("private_fund_datasets/阳光电源/memos/memo-v2.html HTML preview"),
+    ).toBeInTheDocument();
   });
 
   it("renders Excel document assets with the structured workbook viewer", () => {
@@ -842,7 +901,7 @@ describe("PrivateFundResearchWorkbench", () => {
   });
 
   it("previews side-panel Memo files without replacing the active conversation", () => {
-    const storedPath = "/dataset/memos/investment-case.pdf";
+    const storedPath = "memos/investment-case.pdf";
     window.localStorage.setItem("omnigent.privateFund.workbenchChrome", "ide");
     vi.mocked(usePrivateFundAssets).mockReturnValue({
       data: {
@@ -861,6 +920,9 @@ describe("PrivateFundResearchWorkbench", () => {
             fileType: "pdf",
             format: "pdf",
             contentMarkdown: "",
+            metadata: {
+              artifacts: [{ format: "pdf", path: storedPath }],
+            },
           },
         ],
       },
@@ -877,7 +939,7 @@ describe("PrivateFundResearchWorkbench", () => {
 
     expect(screen.getByLabelText("真实 AI 对话")).toBeInTheDocument();
     expect(screen.getByTestId("private-fund-side-asset-detail")).toContainElement(
-      screen.getByTitle("投资逻辑 Memo PDF 预览"),
+      screen.getByTitle("private_fund_datasets/阳光电源/memos/investment-case.pdf PDF preview"),
     );
     expect(screen.getByRole("button", { name: "返回Memo列表" })).toBeInTheDocument();
     expect(screen.getByTestId("asset-preview-metadata")).toHaveTextContent("PDF");

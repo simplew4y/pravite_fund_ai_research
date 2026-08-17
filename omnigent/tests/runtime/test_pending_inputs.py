@@ -93,6 +93,20 @@ def test_snapshot_returns_deep_copies() -> None:
     assert pending_inputs.snapshot_for("conv_a")[0]["content"] == [_text_block("orig")]
 
 
+def test_display_text_is_replayed_without_replacing_execution_content() -> None:
+    """Managed prompts show concise copy while draining preserves runner input."""
+    execution = [_text_block("internal generation prompt")]
+    pending_inputs.record("conv_a", execution, display_text="Focus on overseas margins")
+
+    snapshot = pending_inputs.snapshot_for("conv_a")
+    assert snapshot[0]["content"] == [_text_block("Focus on overseas margins")]
+
+    drained = pending_inputs.resolve_oldest("conv_a")
+    assert drained is not None
+    assert drained.content == execution
+    assert drained.display_text == "Focus on overseas margins"
+
+
 def test_resolve_oldest_drains_fifo_and_returns_entry() -> None:
     """
     A persisted message drains the oldest pending entry (FIFO).

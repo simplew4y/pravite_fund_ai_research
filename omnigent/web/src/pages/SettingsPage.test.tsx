@@ -241,7 +241,7 @@ afterEach(cleanup);
 describe("SettingsPage", () => {
   it("renders the Appearance section and applies a theme on card click", () => {
     renderPage("/settings/appearance");
-    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "外观" })).toBeInTheDocument();
     // System is selected (theme = "system").
     expect(screen.getByTestId("theme-system")).toHaveAttribute("aria-checked", "true");
     fireEvent.click(screen.getByTestId("theme-dark"));
@@ -257,7 +257,7 @@ describe("SettingsPage", () => {
     cleanup();
     mocks.accountsEnabled = false;
     renderPage("/settings");
-    expect(screen.getByRole("heading", { name: "Appearance" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "外观" })).toBeInTheDocument();
   });
 
   it("renders the Account section at /settings/account when auth is enabled", async () => {
@@ -308,7 +308,7 @@ describe("SettingsPage", () => {
     fireEvent.change(screen.getByPlaceholderText("确认新密码"), {
       target: { value: "new-password" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+    fireEvent.click(screen.getByRole("button", { name: "修改密码" }));
 
     await waitFor(() =>
       expect(mocks.changePassword).toHaveBeenCalledWith({

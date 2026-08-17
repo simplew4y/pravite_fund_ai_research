@@ -33,6 +33,10 @@ import {
   useWorkspacePaths,
 } from "@/shell/FileViewerContext";
 import { InlineSourcePopover } from "@/components/private-fund/InlineSourcePopover";
+import {
+  PrivateFundArtifactPopoverLink,
+  type PrivateFundArtifactReference,
+} from "@/components/private-fund/PrivateFundArtifactPreview";
 import { toWorkspaceRelativePath, useWorkspaceFileExists } from "@/hooks/useWorkspaceChangedFiles";
 import { ElicitationCard } from "./ApprovalCard";
 import { AssistantHtmlPreview, splitAssistantHtml } from "./AssistantHtmlPreview";
@@ -148,6 +152,9 @@ function ZoomableMarkdownImage({ src, alt, ...props }: React.ComponentProps<"img
 
 const PDF_SOURCE_HASH = "#private-fund-pdf-source";
 const EXCEL_SOURCE_HASH = "#private-fund-excel-source";
+const ARTIFACT_SOURCE_HASH = "#private-fund-artifact";
+const PRIVATE_FUND_ARTIFACT_INLINE_CODE_RE =
+  /`([^`\n\r]{1,4096}\.(?:md|markdown|html|pdf|txt|csv|json))`/giu;
 const BRACKETED_PDF_FILE_PAGE_CITATION_RE =
   /\[([^\n\r\[\]{}()（）【】*，,；;。:：]{1,180}?\.pdf)\s+(?:p\.\s*(\d{1,4}))(?:\s*[-–—]\s*(?:p\.\s*)?(\d{1,4}))?\]/giu;
 const PDF_FILE_PAGE_CITATION_RE =
@@ -261,6 +268,50 @@ function isInsideMarkdownLink(markdown: string, offset: number): boolean {
   const lastLinkTargetOpen = markdown.lastIndexOf("](", offset);
   const lastLinkTargetClose = markdown.lastIndexOf(")", offset);
   return lastLinkTargetOpen > lastLinkTargetClose;
+}
+
+function privateFundArtifactHref(rawPath: string): string | null {
+  const normalized = rawPath.trim().replace(/\\/g, "/");
+  const match = normalized.match(
+    /(?:^|\/)private_fund_datasets\/([^/]+)\/((?:memos|reports)\/[^?#]+\.(?:md|markdown|html|pdf|txt|csv|json))$/iu,
+  );
+  if (!match) return null;
+  const datasetId = match[1];
+  const path = match[2];
+  if (
+    !datasetId ||
+    !path ||
+    path.split("/").some((part) => !part || part === "." || part === "..")
+  ) {
+    return null;
+  }
+  const format = path.split(".").at(-1)?.toLowerCase();
+  if (!format) return null;
+  const displayPath = `private_fund_datasets/${datasetId}/${path}`;
+  const params = new URLSearchParams({
+    dataset_id: datasetId,
+    path,
+    display_path: displayPath,
+    format,
+  });
+  return `${ARTIFACT_SOURCE_HASH}?${params.toString()}`;
+}
+
+export function linkifyPrivateFundArtifactPaths(markdown: string): string {
+  return markdown.replace(
+    PRIVATE_FUND_ARTIFACT_INLINE_CODE_RE,
+    (match: string, rawPath: string, offset: number) => {
+      if (isInsideMarkdownLink(markdown, offset)) return match;
+      const href = privateFundArtifactHref(rawPath);
+      if (!href) return match;
+      const displayPath = new URLSearchParams(href.slice(href.indexOf("?") + 1)).get(
+        "display_path",
+      );
+      const fileName = displayPath?.split("/").at(-1);
+      if (!fileName) return match;
+      return `[${escapeMarkdownLinkText(fileName)}](${href})`;
+    },
+  );
 }
 
 function normalizePrivateFundSourceMarkdown(markdown: string): string {
@@ -490,7 +541,9 @@ function linkifyStandaloneDocumentMentions(markdown: string): string {
 }
 
 export function linkifyPdfPageCitations(markdown: string): string {
-  const normalizedMarkdown = normalizePrivateFundSourceMarkdown(markdown);
+  const normalizedMarkdown = normalizePrivateFundSourceMarkdown(
+    linkifyPrivateFundArtifactPaths(markdown),
+  );
   const withBracketedExcelLinks = linkifyBracketedExcelRangeCitations(normalizedMarkdown);
   const withBracketedPdfLinks = linkifyBracketedPdfFilePageCitations(withBracketedExcelLinks);
   const withExcelLinks = linkifyExcelRangeCitations(withBracketedPdfLinks);
@@ -570,6 +623,22 @@ function parseExcelSourceHref(href: string | undefined) {
   };
 }
 
+function parsePrivateFundArtifactHref(
+  href: string | undefined,
+): PrivateFundArtifactReference | null {
+  const query = sourceHashQuery(href, ARTIFACT_SOURCE_HASH);
+  if (query === null) return null;
+  const params = new URLSearchParams(query);
+  const datasetId = params.get("dataset_id")?.trim();
+  const path = params.get("path")?.trim();
+  const displayPath = params.get("display_path")?.trim();
+  const format = params.get("format")?.trim();
+  if (!datasetId || !path || !displayPath || !format) return null;
+  if (!/^(?:memos|reports)\//u.test(path)) return null;
+  if (path.split("/").some((part) => !part || part === "." || part === "..")) return null;
+  return { datasetId, path, displayPath, format };
+}
+
 function parsePrivateFundSourceHref(href: string | undefined) {
   return parsePdfSourceHref(href) ?? parseExcelSourceHref(href);
 }
@@ -591,6 +660,17 @@ function PdfCitationLink({
   // superscript footnote numbers in the prose adds noise without adding a
   // useful action, so omit the generated references as well as backrefs.
   if ("data-footnote-ref" in props) return null;
+
+  const artifact = parsePrivateFundArtifactHref(href);
+  if (artifact) {
+    void onClick;
+    void props;
+    return (
+      <PrivateFundArtifactPopoverLink artifact={artifact} className={className}>
+        {children}
+      </PrivateFundArtifactPopoverLink>
+    );
+  }
 
   const source = parsePrivateFundSourceHref(href);
 
@@ -990,7 +1070,7 @@ function renderItem(
           key={key}
           kind={item.slashKind}
           name={item.name}
-          arguments={item.arguments}
+          arguments={item.displayText ? "" : item.arguments}
           output={item.output}
         />
       );

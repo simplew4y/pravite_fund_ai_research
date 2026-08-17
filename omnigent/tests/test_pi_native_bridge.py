@@ -199,6 +199,7 @@ def test_write_extension_files_embeds_tools(tmp_path: Path) -> None:
         auth_headers={"Authorization": "Bearer t"},
         tools=tools,
         system_prompt="Act as the global orchestrator.",
+        user_memory_dir="/data/users/demo/memory",
     )
 
     payload = json.loads(cfg.read_text(encoding="utf-8"))
@@ -207,6 +208,7 @@ def test_write_extension_files_embeds_tools(tmp_path: Path) -> None:
     assert payload["serverUrl"] == "http://omnigent.test"
     assert payload["tools"] == tools
     assert payload["systemPrompt"] == "Act as the global orchestrator."
+    assert payload["userMemoryDir"] == "/data/users/demo/memory"
 
 
 def test_write_extension_files_defaults_tools_to_empty(tmp_path: Path) -> None:
@@ -223,3 +225,4 @@ def test_write_extension_files_defaults_tools_to_empty(tmp_path: Path) -> None:
     payload = json.loads(cfg.read_text(encoding="utf-8"))
     assert payload["tools"] == []
     assert payload["systemPrompt"] == ""
+    assert payload["userMemoryDir"] == ""

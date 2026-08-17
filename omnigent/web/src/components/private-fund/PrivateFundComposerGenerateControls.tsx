@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo } from "react";
 import { BarChart3, FileText, NotebookPen, Sparkles, Table2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -33,6 +34,18 @@ const MODE_BTN_ACTIVE =
 
 export type PrivateFundComposeIntent = "note" | "memo" | null;
 
+const NOTE_LABEL_KEYS: Record<PresentationMode, string> = {
+  plain_text: "privateFund.text",
+  table: "privateFund.table",
+  chart: "privateFund.chart",
+};
+
+const NOTE_DESCRIPTION_KEYS: Record<PresentationMode, string> = {
+  plain_text: "privateFund.textNoteDescription",
+  table: "privateFund.tableNoteDescription",
+  chart: "privateFund.chartNoteDescription",
+};
+
 function isNoteMode(mode: PrivateFundGenerationMode): mode is PresentationMode {
   return mode === "plain_text" || mode === "table" || mode === "chart";
 }
@@ -52,16 +65,24 @@ export function PrivateFundComposerGenerateControls({
   noteMode: PresentationMode;
   onNoteModeChange: (mode: PresentationMode) => void;
 }) {
+  const { t } = useTranslation();
+
   useEffect(() => {
     if (isNoteMode(actions.generationMode) && intent === "note") {
       onNoteModeChange(actions.generationMode);
     }
   }, [actions.generationMode, intent, onNoteModeChange]);
 
-  const activeNote = useMemo(
-    () => PRIVATE_FUND_NOTE_OPTIONS.find((option) => option.value === noteMode),
-    [noteMode],
+  const localizedNoteOptions = useMemo(
+    () =>
+      PRIVATE_FUND_NOTE_OPTIONS.map((option) => ({
+        ...option,
+        label: t(NOTE_LABEL_KEYS[option.value]),
+        description: t(NOTE_DESCRIPTION_KEYS[option.value]),
+      })),
+    [t],
   );
+  const activeNote = localizedNoteOptions.find((option) => option.value === noteMode);
 
   const armNote = () => {
     if (intent === "note") {
@@ -104,7 +125,7 @@ export function PrivateFundComposerGenerateControls({
           variant="ghost"
           disabled={disabled}
           aria-pressed={intent === "note"}
-          aria-label="生成笔记"
+          aria-label={t("privateFund.generateNote")}
           data-testid="private-fund-generate-note-button"
           onClick={armNote}
           className={cn(
@@ -114,8 +135,8 @@ export function PrivateFundComposerGenerateControls({
           )}
         >
           <Sparkles className="size-3.5 shrink-0 opacity-80" />
-          <span className="hidden sm:inline">生成笔记</span>
-          <span className="sm:hidden">笔记</span>
+          <span className="hidden sm:inline">{t("privateFund.generateNote")}</span>
+          <span className="sm:hidden">{t("privateFund.noteShort")}</span>
           {intent === "note" ? (
             <span className="text-[11px] opacity-70">· {activeNote?.label}</span>
           ) : null}
@@ -125,9 +146,9 @@ export function PrivateFundComposerGenerateControls({
           <div
             className="flex items-center gap-0.5 border-l border-[var(--pf-line)] px-1"
             role="radiogroup"
-            aria-label="笔记形态"
+            aria-label={t("privateFund.noteFormat")}
           >
-            {PRIVATE_FUND_NOTE_OPTIONS.map((option) => {
+            {localizedNoteOptions.map((option) => {
               const Icon = NOTE_ICONS[option.value];
               const active = noteMode === option.value;
               return (
@@ -161,7 +182,7 @@ export function PrivateFundComposerGenerateControls({
         variant="ghost"
         disabled={disabled}
         aria-pressed={intent === "memo"}
-        aria-label="生成 Memo"
+        aria-label={t("privateFund.generateMemo")}
         data-testid="private-fund-generate-memo-button"
         onClick={armMemo}
         className={cn(
@@ -173,7 +194,7 @@ export function PrivateFundComposerGenerateControls({
         )}
       >
         <NotebookPen className="size-3.5 shrink-0 opacity-80" />
-        <span className="hidden sm:inline">生成 Memo</span>
+        <span className="hidden sm:inline">{t("privateFund.generateMemo")}</span>
         <span className="sm:hidden">Memo</span>
       </Button>
     </div>
@@ -190,12 +211,13 @@ export function PrivateFundComposeIntentBanner({
   noteMode: PresentationMode;
   onClear: () => void;
 }) {
-  const noteLabel = PRIVATE_FUND_NOTE_OPTIONS.find((o) => o.value === noteMode)?.label ?? "文本";
-  const title = intent === "memo" ? "生成 Memo 模式" : `生成${noteLabel}笔记模式`;
-  const hint =
+  const { t } = useTranslation();
+  const noteLabel = t(NOTE_LABEL_KEYS[noteMode]);
+  const title =
     intent === "memo"
-      ? "在下方输入主题/范围（可留空若已有对话上下文），按发送开始生成"
-      : "在下方输入补充要求（可留空），按发送生成研究笔记";
+      ? t("privateFund.memoModeTitle")
+      : t("privateFund.noteModeTitle", { format: noteLabel });
+  const hint = intent === "memo" ? t("privateFund.memoModeHint") : t("privateFund.noteModeHint");
 
   return (
     <div
@@ -216,8 +238,8 @@ export function PrivateFundComposeIntentBanner({
         type="button"
         onClick={onClear}
         className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--pf-ink-muted)] hover:bg-[var(--pf-panel-raised)] hover:text-[var(--pf-ink)]"
-        aria-label="取消生成模式"
-        title="取消，恢复普通对话"
+        aria-label={t("privateFund.cancelGenerationMode")}
+        title={t("privateFund.cancelGenerationModeTitle")}
       >
         <X className="size-3.5" />
       </button>

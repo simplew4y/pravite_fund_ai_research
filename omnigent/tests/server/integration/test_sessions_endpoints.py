@@ -1092,6 +1092,7 @@ async def test_skill_slash_command_persists_visible_item_and_hidden_meta_message
                     "kind": "skill",
                     "name": "grill-me",
                     "arguments": "review this rollout",
+                    "display_text": "Review the rollout risks",
                 },
             },
         )
@@ -1110,6 +1111,7 @@ async def test_skill_slash_command_persists_visible_item_and_hidden_meta_message
     assert visible["name"] == "grill-me"
     assert visible["kind"] == "skill"
     assert visible["arguments"] == "review this rollout"
+    assert visible["display_text"] == "Review the rollout risks"
     assert visible["response_id"] == meta["response_id"]
     text = meta["content"][0]["text"]
     assert "<skill>" in text
@@ -1136,16 +1138,16 @@ async def test_skill_slash_command_persists_visible_item_and_hidden_meta_message
     assert published[0][1]["item"]["type"] == "slash_command"
     assert published[0][1]["item"]["id"] == visible["id"]
 
-    # The dispatch also seeds the sidebar title from the typed command,
+    # The dispatch also seeds the sidebar title from the user-facing copy,
     # mirroring the plain-message path. Without it, a session whose FIRST
     # message is a skill invocation (web landing composer, REPL) keeps a
     # NULL title and the UI falls back to the conversation id. The title
-    # must come from the visible "/name args" text — the hidden meta
+    # must come from display_text — the hidden meta
     # item's SKILL.md blob leaking here would show skill instructions in
     # the sidebar.
     session_resp = await client.get(f"/v1/sessions/{session['id']}")
     assert session_resp.status_code == 200, session_resp.text
-    assert session_resp.json()["title"] == "/grill-me review this rollout"
+    assert session_resp.json()["title"] == "Review the rollout risks"
 
 
 async def test_skill_slash_command_keeps_existing_title(
@@ -1361,6 +1363,7 @@ async def test_external_user_message_folds_pending_image_into_durable_item(
             {"type": "input_image", "file_id": "file_real_99", "filename": "diagram.png"},
             {"type": "input_text", "text": "explain this diagram"},
         ],
+        display_text="Analyze the selected research material",
     )
     try:
         # The transcript forwarder mirrors the message back TEXT-ONLY.
@@ -1396,6 +1399,7 @@ async def test_external_user_message_folds_pending_image_into_durable_item(
         }
         expected_text = "[Attached: /tmp/diagram.png]\n\nexplain this diagram"
         assert user_msg["content"][1]["text"] == expected_text
+        assert user_msg["display_text"] == "Analyze the selected research material"
         # The pending entry was drained — it won't double-render on rebind.
         assert pending_inputs.snapshot_for(session["id"]) == []
     finally:

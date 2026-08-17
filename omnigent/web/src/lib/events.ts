@@ -302,6 +302,8 @@ export interface SlashCommand {
   name: string;
   /** Raw `<command-args>` text; empty when none. */
   arguments: string;
+  /** Optional user-facing copy for managed skill invocations. */
+  displayText?: string;
   /** `<local-command-stdout>` text, or `null` when none. */
   output: string | null;
   /** Harness/agent name that observed the command. */

@@ -60,6 +60,40 @@ def test_memo_schema_requires_explicit_semantic_operation() -> None:
     assert "[memo:<memo_version_id>]" in schema["properties"]["revision_of"]["description"]
 
 
+def test_equity_report_payload_hides_internal_artifact_paths(tmp_path: Path) -> None:
+    reports = (
+        tmp_path
+        / "output"
+        / "users"
+        / "alice"
+        / "private_fund_datasets"
+        / "demo"
+        / "reports"
+    )
+    manifest = {
+        "markdown_path": str(reports / "report.md"),
+        "html_path": str(reports / "report.html"),
+        "pdf_path": str(reports / "report.pdf"),
+        "package_path": str(reports / "report.json"),
+        "chart_paths": [str(reports / "charts" / "revenue.png")],
+    }
+
+    payload = _DatasetStore._equity_report_run_payload(
+        {"run_id": "run-demo", "artifact_manifest_json": json.dumps(manifest)}
+    )
+
+    public_root = "private_fund_datasets/demo/reports"
+    assert payload["artifact_manifest"] == {
+        "markdown_path": f"{public_root}/report.md",
+        "html_path": f"{public_root}/report.html",
+        "pdf_path": f"{public_root}/report.pdf",
+        "package_path": f"{public_root}/report.json",
+        "chart_paths": [f"{public_root}/charts/revenue.png"],
+    }
+    assert "dataset_id=demo" in payload["pdf_url"]
+    assert str(tmp_path) not in json.dumps(payload)
+
+
 @pytest.mark.parametrize(
     ("payload", "expected_error"),
     [
@@ -335,8 +369,13 @@ def test_structured_memo_is_gated_and_persists_audit_before_artifact_write(
         ],
     )
 
-    audit_path = Path(str(result["citation_gate_audit_path"]))
-    markdown_path = Path(str(result["memo_markdown_path"]))
+    public_prefix = Path("private_fund_datasets") / "demo"
+    audit_path = dataset_root / Path(str(result["citation_gate_audit_path"])).relative_to(
+        public_prefix
+    )
+    markdown_path = dataset_root / Path(str(result["memo_markdown_path"])).relative_to(
+        public_prefix
+    )
     assert result["render_mode"] == "assistant_supplied_structured_claims"
     assert result["citation_gate"]["status"] == "passed"
     assert audit_path.is_file()

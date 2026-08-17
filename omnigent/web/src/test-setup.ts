@@ -1,5 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { vi } from "vitest";
+import i18n from "./i18n";
+import { beforeEach, vi } from "vitest";
+
+beforeEach(async () => {
+  window.localStorage.removeItem("omnigent.locale");
+  await i18n.changeLanguage("zh-CN");
+  document.documentElement.lang = "zh-CN";
+});
 
 // The @lobehub icon packages have broken nested-module resolution
 // under vitest; stub presentational glyphs so component modules that

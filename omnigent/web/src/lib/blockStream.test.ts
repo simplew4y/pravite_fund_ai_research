@@ -225,6 +225,28 @@ describe("BlockStream — block ctx carries response_id and item_id", () => {
     expect(echo.ctx.createdBy).toBeUndefined();
   });
 
+  it("renders managed skill display text while retaining execution arguments", () => {
+    const blocks = reduce([
+      {
+        type: "slash_command",
+        kind: "skill",
+        name: "private-fund-memo",
+        arguments: "internal memo prompt",
+        displayText: "Analyze overseas profitability",
+        output: null,
+        agentName: "claude-native-ui",
+        itemId: "sc_memo",
+        responseId: "resp_memo",
+      },
+    ]);
+    const echo = blocks[0] as UserMessageBlock;
+    expect(echo.content).toEqual([{ type: "input_text", text: "Analyze overseas profitability" }]);
+    expect(echo.generationKind).toBe("memo");
+    const slash = blocks[1] as SlashCommandBlock;
+    expect(slash.displayText).toBe("Analyze overseas profitability");
+    expect(slash.arguments).toBe("internal memo prompt");
+  });
+
   it("slash_command kind='command' stays indicator-only (no user echo)", () => {
     const blocks = reduce([
       {

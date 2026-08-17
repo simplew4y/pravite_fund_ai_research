@@ -56,8 +56,8 @@ describe("PrivateFundEditProjectDialog", () => {
     );
 
     expect(screen.queryByText(/Dataset ID/i)).toBeNull();
-    expect(screen.getByLabelText("编辑研究项目名称")).toHaveValue("阳光电源");
-    fireEvent.change(screen.getByLabelText("编辑研究项目股票代码"), {
+    expect(screen.getByLabelText("项目名称")).toHaveValue("阳光电源");
+    fireEvent.change(screen.getByLabelText("股票代码"), {
       target: { value: "300274" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));

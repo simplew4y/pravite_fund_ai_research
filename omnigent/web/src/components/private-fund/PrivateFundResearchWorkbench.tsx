@@ -8,8 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns2,
-  Download,
-  ExternalLink,
   FileStack,
   History,
   Loader2,
@@ -62,8 +60,13 @@ import { PrivateFundHistoryPanel } from "./PrivateFundHistoryPanel";
 import { PrivateFundTrackingPanel } from "./PrivateFundTrackingPanel";
 import { PrivateFundValuationTrackingPanel } from "./PrivateFundValuationTrackingPanel";
 import { FilePathAwareMessageResponse } from "@/components/blocks/BlockRenderer";
+import {
+  PrivateFundArtifactPreview,
+  type PrivateFundArtifactReference,
+} from "./PrivateFundArtifactPreview";
 import { hostFetch } from "@/lib/host";
 import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
+import { useTranslation } from "react-i18next";
 
 const RichNodeContent = lazy(() =>
   import("./RichNodeContent").then((module) => ({ default: module.RichNodeContent })),
@@ -206,7 +209,7 @@ export type PrivateFundResearchWorkbenchProps = {
   recentUserMessages?: string[];
   recentAssistantMessages?: string[];
   /** Available after the first research question creates a conversation. */
-  onGenerateNode?: (prompt: string) => void;
+  onGenerateNode?: (prompt: string, displayText: string, mode: PrivateFundGenerationMode) => void;
   sidebarOpen?: boolean;
   onOpenSidebar?: () => void;
 };
@@ -252,6 +255,40 @@ function assetSourceCount(asset: PrivateFundAsset): number {
     asset.metadata.trusted_source_count,
   ].find((value) => typeof value === "number");
   return typeof metadataCount === "number" ? metadataCount : asset.evidenceCount;
+}
+
+function assetArtifactReferences(
+  asset: PrivateFundAsset,
+  datasetId: string,
+): PrivateFundArtifactReference[] {
+  const rawArtifacts = Array.isArray(asset.metadata.artifacts) ? asset.metadata.artifacts : [];
+  const artifacts = rawArtifacts.flatMap((raw): PrivateFundArtifactReference[] => {
+    if (!raw || typeof raw !== "object") return [];
+    const value = raw as Record<string, unknown>;
+    const path = typeof value.path === "string" ? value.path : "";
+    const format = typeof value.format === "string" ? value.format : "";
+    if (!path || !format || !/^(?:memos|reports)\//u.test(path)) return [];
+    if (path.split("/").some((part) => !part || part === "." || part === "..")) return [];
+    return [
+      {
+        datasetId,
+        path,
+        format,
+        displayPath: `private_fund_datasets/${datasetId}/${path}`,
+      },
+    ];
+  });
+  if (artifacts.length > 0) return artifacts;
+  const storedPath = asset.storedPath ?? "";
+  if (!/^(?:memos|reports)\//u.test(storedPath)) return [];
+  return [
+    {
+      datasetId,
+      path: storedPath,
+      format: asset.format,
+      displayPath: `private_fund_datasets/${datasetId}/${storedPath}`,
+    },
+  ];
 }
 
 type DocumentPreviewPayload = {
@@ -437,12 +474,26 @@ export function PrivateFundResearchWorkbench({
   sidebarOpen = true,
   onOpenSidebar,
 }: PrivateFundResearchWorkbenchProps) {
+  const { t } = useTranslation();
   void _conversationId;
   const queryClient = useQueryClient();
   const workflowQuery = usePrivateFundWorkflow(datasetId);
   const assetsQuery = usePrivateFundAssets(datasetId);
   const projectQuery = usePrivateFundProject(datasetId);
   const resolvedDatasetName = projectQuery.data?.project.name || datasetName;
+  const viewLabel = useCallback(
+    (view: WorkspaceView) =>
+      ({
+        research: t("privateFund.research", "Research"),
+        sources: t("privateFund.sources"),
+        notes: t("privateFund.notes"),
+        memos: t("privateFund.memo"),
+        valuation: t("privateFund.valuation"),
+        history: t("privateFund.history"),
+        tracking: t("privateFund.tracking"),
+      })[view],
+    [t],
+  );
   const workflow = workflowQuery.data;
   const assetCatalog = assetsQuery.data;
   const [selectedAssetId, setSelectedAssetId] = useState("");
@@ -613,18 +664,15 @@ export function PrivateFundResearchWorkbench({
     [chromeMode, sidePanelKind],
   );
 
-  const openMemoHistory = useCallback(
-    (seriesId: string) => {
-      setHistorySeriesId(seriesId);
-      setReturnToResearchAfterPreview(false);
-      setSelectedAssetId("");
-      setSidePanelAssetId("");
-      setAssetPanelExpanded(false);
-      setWorkspaceView("history");
-      setIdePanelOpen(false);
-    },
-    [],
-  );
+  const openMemoHistory = useCallback((seriesId: string) => {
+    setHistorySeriesId(seriesId);
+    setReturnToResearchAfterPreview(false);
+    setSelectedAssetId("");
+    setSidePanelAssetId("");
+    setAssetPanelExpanded(false);
+    setWorkspaceView("history");
+    setIdePanelOpen(false);
+  }, []);
 
   const onIdeResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -699,16 +747,21 @@ export function PrivateFundResearchWorkbench({
     onSuccess: (next) => {
       queryClient.setQueryData(["private-fund-assets", datasetId], next);
       void workflowQuery.refetch();
-      setNotice("问题上下文已更新，下一次提问或生成会使用已选项");
+      setNotice(t("privateFund.contextUpdated", "Question context updated"));
     },
-    onError: (error) => setNotice(error instanceof Error ? error.message : "更新对话上下文失败"),
+    onError: (error) =>
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : t("privateFund.contextUpdateFailed", "Could not update question context"),
+      ),
   });
 
   const saveInformationMutation = useMutation({
     mutationFn: ({ responseId, content }: SaveInformationInput) =>
       savePrivateFundAsset(datasetId, {
         assetType: "information",
-        title: cleanText(content).slice(0, 42) || "回答笔记",
+        title: cleanText(content).slice(0, 42) || t("privateFund.answerNote", "Answer note"),
         summary: cleanText(content).slice(0, 180),
         contentMarkdown: content,
         sourceResponseId: responseId,
@@ -777,7 +830,11 @@ export function PrivateFundResearchWorkbench({
               : current,
         );
       }
-      setNotice(error instanceof Error ? error.message : "保存回答笔记失败");
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : t("privateFund.saveAnswerNoteFailed", "Could not save answer note"),
+      );
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: ["private-fund-assets", datasetId] }),
@@ -794,7 +851,12 @@ export function PrivateFundResearchWorkbench({
         queryClient.invalidateQueries({ queryKey: ["private-fund-project", datasetId] }),
         queryClient.invalidateQueries({ queryKey: ["private-fund-projects"] }),
       ]);
-      setNotice(`已删除 ${deletedIds.length} 项`);
+      setNotice(
+        t("privateFund.deletedCount", {
+          count: deletedIds.length,
+          defaultValue: `${deletedIds.length} items deleted`,
+        }),
+      );
     },
   });
 
@@ -813,7 +875,7 @@ export function PrivateFundResearchWorkbench({
         }
         return [...current, { responseId, content: normalized }];
       });
-      setNotice("已保存为回答笔记");
+      setNotice(t("privateFund.answerNoteSaved", "Saved as an answer note"));
     },
     [saveInformationMutation],
   );
@@ -832,7 +894,12 @@ export function PrivateFundResearchWorkbench({
     (modeOverride?: PrivateFundGenerationMode, instructionOverride?: string) => {
       if (!workflow) return;
       if (!onGenerateNode) {
-        setNotice("请先在研究区输入问题并创建会话，再生成研究笔记");
+        setNotice(
+          t(
+            "privateFund.startConversationFirst",
+            "Start a conversation before generating a research note",
+          ),
+        );
         return;
       }
       const mode = modeOverride ?? presentationMode;
@@ -848,7 +915,12 @@ export function PrivateFundResearchWorkbench({
         selectedInformation.length === 0 &&
         contextAssets.length === 0
       ) {
-        setNotice("请先提供对话内容，或选择至少一项上下文");
+        setNotice(
+          t(
+            "privateFund.selectContextFirst",
+            "Provide conversation content or select at least one context item",
+          ),
+        );
         return;
       }
       if (
@@ -858,7 +930,9 @@ export function PrivateFundResearchWorkbench({
         !hasConversationContext &&
         !instruction.trim()
       ) {
-        setNotice("请填写 Memo 主题，或先选择至少一项上下文");
+        setNotice(
+          t("privateFund.memoNeedsTopic", "Enter a memo topic or select at least one context item"),
+        );
         return;
       }
       if (modeOverride !== undefined) {
@@ -867,6 +941,11 @@ export function PrivateFundResearchWorkbench({
       if (instructionOverride !== undefined) {
         setPresentationInstruction(instructionOverride);
       }
+      const displayText =
+        instruction.trim() ||
+        (mode === "memo"
+          ? t("privateFund.generateMemo", "Generate Memo")
+          : t("privateFund.generateNote", "Generate research note"));
       onGenerateNode(
         buildGenerationPrompt(
           datasetId,
@@ -880,11 +959,16 @@ export function PrivateFundResearchWorkbench({
           mode,
           instruction,
         ),
+        displayText,
+        mode,
       );
       setNotice(
         mode === "memo"
-          ? "已调用 private-fund-memo，Agent 将核验证据并生成 Memo"
-          : "已交给 Agent：它会核验信息并保存为研究笔记",
+          ? t("privateFund.memoStarted", "The Agent will verify evidence and generate the memo")
+          : t(
+              "privateFund.noteStarted",
+              "The Agent will verify the information and save a research note",
+            ),
       );
       setSelectedInformation([]);
       setPresentationMode("plain_text");
@@ -902,6 +986,7 @@ export function PrivateFundResearchWorkbench({
       assets,
       workflow,
       workflowQuery,
+      t,
     ],
   );
 
@@ -994,12 +1079,10 @@ export function PrivateFundResearchWorkbench({
     const node = asset.sourceKind.startsWith("research_node")
       ? workflow.nodes.find((candidate) => candidate.nodeId === asset.sourceId)
       : undefined;
-    const memoUrl =
-      (asset.assetType === "memo" || asset.assetType === "report") &&
-      asset.storedPath &&
-      ["pdf", "html"].includes(asset.format.toLowerCase())
-        ? `/v1/private-fund/dataset/memo/file?path=${encodeURIComponent(asset.storedPath)}`
-        : null;
+    const generatedArtifacts =
+      asset.assetType === "memo" || asset.assetType === "report"
+        ? assetArtifactReferences(asset, datasetId)
+        : [];
     const documentUrl =
       asset.assetType === "document" && asset.format.toLowerCase() === "pdf"
         ? `/v1/private-fund/dataset/document/file?${new URLSearchParams({
@@ -1096,42 +1179,12 @@ export function PrivateFundResearchWorkbench({
               />
             </Suspense>
           </div>
-        ) : memoUrl && asset.format.toLowerCase() === "pdf" ? (
-          <iframe
-            className={cn(embeddedPreviewClass, !compact && "mt-4")}
-            src={memoUrl}
-            title={`${asset.title} PDF 预览`}
+        ) : generatedArtifacts.length > 0 ? (
+          <PrivateFundArtifactPreview
+            artifacts={generatedArtifacts}
+            className={cn(embeddedPreviewClass, "overflow-hidden", !compact && "mt-4")}
+            markdownFallback={asset.contentMarkdown}
           />
-        ) : memoUrl && asset.format.toLowerCase() === "html" ? (
-          <>
-            <div className={cn("flex justify-end gap-1", compact ? "mb-2" : "mb-2 mt-4")}>
-              <a
-                aria-label={`下载 ${asset.title}`}
-                className="flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
-                download
-                href={memoUrl}
-                title="下载"
-              >
-                <Download className="size-3.5" />
-              </a>
-              <a
-                aria-label={`打开原文件 ${asset.title}`}
-                className="flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
-                href={memoUrl}
-                rel="noreferrer"
-                target="_blank"
-                title="打开原文件"
-              >
-                <ExternalLink className="size-3.5" />
-              </a>
-            </div>
-            <iframe
-              className={embeddedPreviewClass}
-              sandbox=""
-              src={memoUrl}
-              title={`${asset.title} HTML 预览`}
-            />
-          </>
         ) : documentUrl ? (
           <iframe
             className={cn(embeddedPreviewClass, !compact && "mt-4")}
@@ -1196,17 +1249,17 @@ export function PrivateFundResearchWorkbench({
         zone={zone}
         description={
           view === "sources"
-            ? `${assetsForView.length} 份资料，勾选后加入问题上下文`
+            ? t("privateFund.sourcesDescription", { count: assetsForView.length })
             : view === "memos"
-              ? `${assetsForView.length} 份 Memo`
-              : `${assetsForView.length} 条笔记（回答笔记与研究笔记）`
+              ? t("privateFund.memosDescription", { count: assetsForView.length })
+              : t("privateFund.notesDescription", { count: assetsForView.length })
         }
         emptyMessage={
           view === "sources"
-            ? "当前项目还没有资料。请从左侧资料来源上传文档。"
+            ? t("privateFund.noSourcesDetail")
             : view === "memos"
-              ? "还没有 Memo。在研究区选择 Memo 并生成。"
-              : "还没有笔记。可在对话中保存回答笔记，或生成研究笔记。"
+              ? t("privateFund.noMemosDetail")
+              : t("privateFund.noNotesDetail")
         }
         onDeleteAssets={(assetIds) =>
           deleteAssetsMutation.mutateAsync(assetIds).then(() => undefined)
@@ -1215,14 +1268,14 @@ export function PrivateFundResearchWorkbench({
         onOpenMemoHistory={view === "memos" ? openMemoHistory : undefined}
         managementRequestId={view === "notes" ? assetManagementRequestId : undefined}
         onSetContext={(assetIds) => contextMutation.mutateAsync(assetIds).then(() => undefined)}
-        title={view === "sources" ? "资料" : view === "memos" ? "Memo" : "笔记"}
+        title={viewLabel(view)}
       />
     );
   };
 
   const renderSidePanelAssetDetail = () => {
     if (!sidePanelAsset) return null;
-    const listLabel = sidePanelView === "notes" ? "笔记" : "Memo";
+    const listLabel = viewLabel(sidePanelView);
     const updatedLabel = formatPreviewDate(sidePanelAsset.updatedAt ?? sidePanelAsset.createdAt);
     const previewNode = sidePanelAsset.sourceKind.startsWith("research_node")
       ? workflow.nodes.find((node) => node.nodeId === sidePanelAsset.sourceId)
@@ -1286,7 +1339,7 @@ export function PrivateFundResearchWorkbench({
               onChange={() => toggleContextAsset(sidePanelAsset.assetId)}
               type="checkbox"
             />
-            上下文
+            {t("privateFund.context", "Context")}
           </label>
           <button
             aria-label={`在主工作区展开 ${sidePanelAsset.title}`}
@@ -1310,10 +1363,18 @@ export function PrivateFundResearchWorkbench({
           </span>
           {updatedLabel ? (
             <time dateTime={sidePanelAsset.updatedAt ?? sidePanelAsset.createdAt ?? undefined}>
-              更新于 {updatedLabel}
+              {t("privateFund.updatedAt", {
+                value: updatedLabel,
+                defaultValue: `Updated ${updatedLabel}`,
+              })}
             </time>
           ) : null}
-          <span>来源 {sourceCount} 条</span>
+          <span>
+            {t("privateFund.sourceCount", {
+              count: sourceCount,
+              defaultValue: `${sourceCount} sources`,
+            })}
+          </span>
           <span className="ml-auto tabular-nums">
             {sidePanelAssetIndex + 1} / {sidePanelAssets.length}
           </span>
@@ -1344,7 +1405,9 @@ export function PrivateFundResearchWorkbench({
               <ArrowLeft size={15} />
             </button>
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold">详情</p>
+              <p className="truncate text-xs font-semibold">
+                {t("privateFund.details", "Details")}
+              </p>
               <p className="truncate text-[11px] text-[var(--pf-ink-muted)]">
                 {selectedAsset.displayLabel || selectedAsset.assetType}
               </p>
@@ -1358,7 +1421,7 @@ export function PrivateFundResearchWorkbench({
                 onChange={() => toggleContextAsset(selectedAsset.assetId)}
                 type="checkbox"
               />
-              加入上下文
+              {t("privateFund.addContext")}
             </label>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -1390,7 +1453,7 @@ export function PrivateFundResearchWorkbench({
               <button
                 type="button"
                 onClick={onOpenSidebar}
-                aria-label="打开项目栏"
+                aria-label={t("sidebar.open", "Open project sidebar")}
                 className="flex size-9 items-center justify-center rounded-lg text-[var(--pf-ink-secondary)] transition-colors hover:bg-[var(--pf-panel-subtle)]"
               >
                 <Menu size={18} />
@@ -1400,9 +1463,13 @@ export function PrivateFundResearchWorkbench({
               <Package size={18} />
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold">私募研究工作台</p>
+              <p className="text-sm font-semibold">{t("common.productName")}</p>
               <p className="truncate text-xs text-[var(--pf-ink-secondary)]">
-                {resolvedDatasetName} · 上下文 {contextAssetIds.length} 项
+                {resolvedDatasetName} ·{" "}
+                {t("privateFund.contextCount", {
+                  count: contextAssetIds.length,
+                  defaultValue: `${contextAssetIds.length} context items`,
+                })}
               </p>
             </div>
           </div>
@@ -1430,7 +1497,7 @@ export function PrivateFundResearchWorkbench({
                     type="button"
                   >
                     <Icon className="size-3.5" />
-                    {item.label}
+                    {viewLabel(item.value)}
                   </button>
                 );
               })}
@@ -1463,7 +1530,7 @@ export function PrivateFundResearchWorkbench({
                         type="button"
                       >
                         <Icon className="size-3.5 opacity-80" />
-                        {item.label}
+                        {viewLabel(item.value)}
                       </button>
                     );
                   })}
@@ -1481,8 +1548,8 @@ export function PrivateFundResearchWorkbench({
               <button
                 type="button"
                 aria-pressed={!isIde}
-                title="顶部标签布局"
-                aria-label="顶部标签布局"
+                title={t("privateFund.tabLayout", "Tab layout")}
+                aria-label={t("privateFund.tabLayout", "Tab layout")}
                 className={cn(
                   "flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-muted)] transition-all duration-200 hover:text-[var(--pf-ink)]",
                   !isIde && "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-sm",
@@ -1494,8 +1561,8 @@ export function PrivateFundResearchWorkbench({
               <button
                 type="button"
                 aria-pressed={isIde}
-                title="侧栏布局"
-                aria-label="侧栏布局"
+                title={t("privateFund.sidebarLayout", "Sidebar layout")}
+                aria-label={t("privateFund.sidebarLayout", "Sidebar layout")}
                 className={cn(
                   "flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-muted)] transition-all duration-200 hover:text-[var(--pf-ink)]",
                   isIde && "bg-[var(--pf-panel-raised)] text-[var(--pf-accent-ink)] shadow-sm",
@@ -1594,7 +1661,7 @@ export function PrivateFundResearchWorkbench({
                 >
                   <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--pf-line)] px-3">
                     <h2 className="flex items-center gap-1.5 text-xs font-semibold text-[var(--pf-ink)]">
-                      <span>{sidePanelView === "notes" ? "笔记" : "Memo"}</span>
+                      <span>{viewLabel(sidePanelView)}</span>
                       <span
                         aria-hidden="true"
                         className="min-w-5 rounded bg-[var(--pf-panel-subtle)] px-1.5 py-0.5 text-center text-[10px] font-medium tabular-nums text-[var(--pf-ink-muted)]"
@@ -1603,8 +1670,8 @@ export function PrivateFundResearchWorkbench({
                       </span>
                     </h2>
                     <button
-                      aria-label="收起侧栏"
-                      title="收起侧栏"
+                      aria-label={t("settings.collapseSidebar", "Collapse sidebar")}
+                      title={t("settings.collapseSidebar", "Collapse sidebar")}
                       type="button"
                       className="flex size-7 items-center justify-center rounded-md text-[var(--pf-ink-muted)] transition-colors hover:bg-[var(--pf-panel-subtle)] hover:text-[var(--pf-ink)]"
                       onClick={() => setIdePanelOpen(false)}
@@ -1638,8 +1705,8 @@ export function PrivateFundResearchWorkbench({
                   <button
                     key={item.value}
                     type="button"
-                    title={item.label}
-                    aria-label={item.label}
+                    title={viewLabel(item.value)}
+                    aria-label={viewLabel(item.value)}
                     aria-current={!isSide && workspaceView === item.value ? "page" : undefined}
                     aria-pressed={
                       isSide ? showIdeSidePanel && sidePanelView === item.value : undefined

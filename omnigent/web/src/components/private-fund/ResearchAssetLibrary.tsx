@@ -21,6 +21,9 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
+import { currentAppLocale, formatLocalizedDate } from "@/lib/localeFormat";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -77,6 +80,18 @@ const typeLabels: Record<string, string> = {
   report: "专业研报",
 };
 
+const typeLabelsEn: Record<string, string> = {
+  document: "Source",
+  information: "Answer note",
+  analysis: "Research note",
+  metrics: "Key metrics",
+  table: "Table",
+  chart: "Chart",
+  infographic: "Infographic",
+  memo: "Memo",
+  report: "Research report",
+};
+
 const documentTypeLabels: Record<string, string> = {
   financial_valuation_data: "财报与估值数据",
   meeting_third_party: "会议与第三方信息",
@@ -121,6 +136,50 @@ const documentTypeLabels: Record<string, string> = {
   unknown: "待识别",
 };
 
+const documentTypeLabelsEn: Record<string, string> = {
+  financial_valuation_data: "Financial and valuation data",
+  meeting_third_party: "Meetings and third-party information",
+  other: "Other",
+  financial_report: "Financial report",
+  annual_report: "Annual report",
+  interim_report: "Interim report",
+  quarterly_report: "Quarterly report",
+  earnings_release: "Earnings release",
+  preliminary_results: "Preliminary results",
+  results_announcement: "Results announcement",
+  meeting_minutes: "Meeting minutes",
+  earnings_call: "Earnings call",
+  research_meeting: "Research meeting notes",
+  expert_interview: "Expert interview",
+  internal_meeting: "Internal meeting",
+  valuation_model: "Valuation model",
+  dcf_model: "DCF model",
+  comparable_company_model: "Comparable-company valuation",
+  financial_forecast_model: "Financial forecast model",
+  integrated_valuation_model: "Integrated valuation model",
+  research_report: "Research report",
+  broker_company_report: "Broker company report",
+  broker_industry_report: "Broker industry report",
+  internal_research_report: "Internal research report",
+  investor_presentation: "Investor presentation",
+  roadshow: "Roadshow materials",
+  investor_day: "Investor day materials",
+  results_presentation: "Results presentation",
+  regulatory_announcement: "Regulatory announcement",
+  exchange_announcement: "Exchange announcement",
+  corporate_action: "Corporate action announcement",
+  risk_disclosure: "Risk disclosure",
+  financial_dataset: "Financial data",
+  financial_statements: "Financial statements",
+  operating_data: "Operating data",
+  market_data: "Market data",
+  company_material: "Company materials",
+  company_profile: "Company profile",
+  product_material: "Product materials",
+  strategy_material: "Strategy materials",
+  unknown: "Unclassified",
+};
+
 function documentType(asset: PrivateFundAsset): string {
   if (asset.assetType !== "document") return "";
   const type = asset.metadata.doc_type;
@@ -130,10 +189,13 @@ function documentType(asset: PrivateFundAsset): string {
 }
 
 function assetTypeLabel(asset: PrivateFundAsset): string {
+  const english = currentAppLocale() === "en-US";
   const classifiedType = documentType(asset);
-  if (classifiedType) return documentTypeLabels[classifiedType] ?? classifiedType;
+  if (classifiedType) {
+    return (english ? documentTypeLabelsEn : documentTypeLabels)[classifiedType] ?? classifiedType;
+  }
   if (asset.displayLabel) return asset.displayLabel;
-  return typeLabels[asset.assetType] ?? asset.assetType;
+  return (english ? typeLabelsEn : typeLabels)[asset.assetType] ?? asset.assetType;
 }
 
 function AssetIcon({ type, className }: { type: string; className?: string }) {
@@ -158,27 +220,25 @@ function formatDate(value: string | null | undefined): string {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(date);
+  return formatLocalizedDate(date, { month: "2-digit", day: "2-digit" });
 }
 
 function formatUpdatedDate(value: string | null | undefined): string {
-  if (!value) return "更新时间未知";
+  if (!value) return i18n.t("assets.updatedUnknown");
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "更新时间未知";
+  if (Number.isNaN(date.getTime())) return i18n.t("assets.updatedUnknown");
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
   const dayDifference = Math.round((startOfToday - startOfDate) / 86_400_000);
-  if (dayDifference === 0) return "更新于今天";
-  if (dayDifference === 1) return "更新于昨天";
-  return `更新于 ${formatDate(value)}`;
+  if (dayDifference === 0) return i18n.t("assets.updatedToday");
+  if (dayDifference === 1) return i18n.t("assets.updatedYesterday");
+  return i18n.t("assets.updatedDate", { value: formatDate(value) });
 }
 
 function memoSeriesId(asset: PrivateFundAsset): string {
   const seriesId = asset.metadata.series_id;
-  return typeof seriesId === "string" && seriesId.trim()
-    ? seriesId
-    : `standalone:${asset.assetId}`;
+  return typeof seriesId === "string" && seriesId.trim() ? seriesId : `standalone:${asset.assetId}`;
 }
 
 function groupMemoAssets(assets: PrivateFundAsset[]): MemoAssetSeries[] {
@@ -220,7 +280,7 @@ function AssetRowCheckbox({
 }) {
   return (
     <input
-      aria-label={label ?? `加入上下文 ${asset.title}`}
+      aria-label={label ?? i18n.t("assets.addContext", { title: asset.title })}
       checked={checked}
       className="size-3.5 cursor-pointer accent-[var(--pf-accent)] disabled:cursor-wait"
       disabled={disabled}
@@ -265,9 +325,9 @@ function AssetSelectionCheckbox({
 export function ResearchAssetLibrary({
   assets,
   contextAssetIds,
-  title = "资产库",
+  title: titleProp,
   description,
-  emptyMessage = "暂无内容。上传资料、保存回答笔记或生成研究笔记后会出现在这里。",
+  emptyMessage: emptyMessageProp,
   compact = false,
   zone = "generic",
   contextPending,
@@ -277,6 +337,14 @@ export function ResearchAssetLibrary({
   onDeleteAssets,
   managementRequestId,
 }: ResearchAssetLibraryProps) {
+  const { t } = useTranslation();
+  const title = titleProp ?? t("privateFund.assets");
+  const emptyMessage =
+    emptyMessageProp ??
+    t(
+      "privateFund.assetEmptyDetail",
+      "暂无内容。上传资料、保存回答笔记或生成研究笔记后会出现在这里。",
+    );
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [documentTypeFilter, setDocumentTypeFilter] = useState("all");
@@ -290,9 +358,7 @@ export function ResearchAssetLibrary({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const [expandedMemoSeriesIds, setExpandedMemoSeriesIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [expandedMemoSeriesIds, setExpandedMemoSeriesIds] = useState<Set<string>>(() => new Set());
   const compactSideLibrary = compact && (zone === "notes" || zone === "memos");
 
   useEffect(() => {
@@ -423,7 +489,9 @@ export function ResearchAssetLibrary({
       await onDeleteAssets(managedAssetIds);
       leaveManagement();
     } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : "删除失败");
+      setDeleteError(
+        error instanceof Error ? error.message : t("privateFund.deleteFailed", "删除失败"),
+      );
     } finally {
       setDeletePending(false);
     }
@@ -437,10 +505,12 @@ export function ResearchAssetLibrary({
       <Dialog open={deleteOpen} onOpenChange={(open) => !deletePending && setDeleteOpen(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>删除 {managedAssetIds.length} 项？</DialogTitle>
+            <DialogTitle>
+              {t("privateFund.deleteItems", { count: managedAssetIds.length })}
+            </DialogTitle>
             <DialogDescription>
-              此操作不可撤销。研究笔记会连同其中的图表等内容一起删除；Memo 会删除对应产物文件。
-              {includesDocument ? "所选资料也会从当前项目资料来源中移除。" : ""}
+              {t("assets.deleteDescription")}
+              {includesDocument ? t("assets.deleteDocumentsDescription") : ""}
             </DialogDescription>
           </DialogHeader>
           {deleteError ? (
@@ -455,7 +525,7 @@ export function ResearchAssetLibrary({
               type="button"
               variant="ghost"
             >
-              取消
+              {t("common.cancel")}
             </Button>
             <Button
               disabled={deletePending}
@@ -463,7 +533,9 @@ export function ResearchAssetLibrary({
               type="button"
               variant="destructive"
             >
-              {deletePending ? "正在删除…" : "确认删除"}
+              {deletePending
+                ? t("privateFund.deleting", "正在删除…")
+                : t("privateFund.confirmDelete", "确认删除")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -480,20 +552,24 @@ export function ResearchAssetLibrary({
               <label className="relative min-w-0 flex-1">
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
                 <input
-                  aria-label="搜索"
+                  aria-label={t("common.search")}
                   className="h-8 w-full rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-8 pr-2 text-xs outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder={zone === "memos" ? "搜索 Memo" : "搜索笔记"}
+                  placeholder={
+                    zone === "memos"
+                      ? t("privateFund.searchMemo", "搜索 Memo")
+                      : t("privateFund.searchNotes", "搜索笔记")
+                  }
                   value={query}
                 />
               </label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
-                    aria-label="筛选与排序"
+                    aria-label={t("privateFund.filterSort")}
                     className="size-8 shrink-0"
                     size="icon"
-                    title="筛选与排序"
+                    title={t("privateFund.filterSort")}
                     type="button"
                     variant={sort === "updated" ? "ghost" : "secondary"}
                   >
@@ -501,26 +577,30 @@ export function ResearchAssetLibrary({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-56 space-y-2.5 p-3">
-                  <p className="text-xs font-semibold text-[var(--pf-ink)]">筛选与排序</p>
+                  <p className="text-xs font-semibold text-[var(--pf-ink)]">
+                    {t("privateFund.filterSort", "筛选与排序")}
+                  </p>
                   <label className="block space-y-1">
-                    <span className="text-[11px] text-[var(--pf-ink-muted)]">排序方式</span>
+                    <span className="text-[11px] text-[var(--pf-ink-muted)]">
+                      {t("assets.sortBy")}
+                    </span>
                     <select
-                      aria-label="排序"
+                      aria-label={t("assets.sort")}
                       className="h-8 w-full rounded-md border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
                       onChange={(event) => setSort(event.target.value as AssetSort)}
                       value={sort}
                     >
-                      <option value="updated">最近更新</option>
-                      <option value="oldest">最早更新</option>
-                      <option value="title">标题</option>
-                      <option value="type">类型</option>
-                      <option value="evidence">溯源数量</option>
+                      <option value="updated">{t("assets.sortUpdated")}</option>
+                      <option value="oldest">{t("assets.sortOldest")}</option>
+                      <option value="title">{t("assets.sortTitle")}</option>
+                      <option value="type">{t("assets.sortType")}</option>
+                      <option value="evidence">{t("assets.sortEvidence")}</option>
                     </select>
                   </label>
                 </PopoverContent>
               </Popover>
               <Button
-                aria-label={managing ? "完成批量管理" : "进入批量管理"}
+                aria-label={managing ? t("assets.finishManaging") : t("assets.startManaging")}
                 className="h-8 shrink-0 gap-1.5 px-2 text-xs"
                 disabled={assets.length === 0 || deletePending}
                 onClick={toggleManagementMode}
@@ -529,27 +609,27 @@ export function ResearchAssetLibrary({
                 variant={managing ? "secondary" : "ghost"}
               >
                 {managing ? <Check className="size-3.5" /> : <ListChecks className="size-3.5" />}
-                {managing ? "完成" : "管理"}
+                {managing ? t("common.confirm", "完成") : t("privateFund.batchManage")}
               </Button>
             </div>
             {zone === "notes" ? (
               <div
-                aria-label="笔记类型"
+                aria-label={t("assets.noteType")}
                 className="grid h-8 grid-cols-3 rounded-md bg-[var(--pf-panel-subtle)] p-0.5"
                 role="group"
               >
                 {[
-                  ["all", "全部"],
-                  ["answer_note", "回答"],
-                  ["research_note", "研究"],
+                  ["all", t("common.all")],
+                  ["answer_note", t("assets.answer")],
+                  ["research_note", t("assets.research")],
                 ].map(([value, label]) => (
                   <button
                     aria-label={
                       value === "all"
-                        ? "显示全部笔记"
+                        ? t("assets.showAllNotes")
                         : value === "answer_note"
-                          ? "仅显示回答笔记"
-                          : "仅显示研究笔记"
+                          ? t("assets.showAnswerNotes")
+                          : t("assets.showResearchNotes")
                     }
                     aria-pressed={noteGroupFilter === value}
                     className={cn(
@@ -576,14 +656,17 @@ export function ResearchAssetLibrary({
                 <h2 className="text-sm font-semibold">{title}</h2>
                 <p className="mt-0.5 text-xs text-[var(--pf-ink-muted)]">
                   {description ??
-                    `${assets.length} 项资产，${assets.filter((asset) => contextSet.has(asset.assetId)).length} 项已加入上下文`}
+                    t("assets.summary", {
+                      total: assets.length,
+                      selected: assets.filter((asset) => contextSet.has(asset.assetId)).length,
+                    })}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {!compact ? (
                   <div className="flex rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] p-0.5">
                     <button
-                      aria-label="列表视图"
+                      aria-label={t("assets.listView")}
                       className={cn(
                         "rounded-md p-1.5 text-[var(--pf-ink-muted)]",
                         view === "list" &&
@@ -595,7 +678,7 @@ export function ResearchAssetLibrary({
                       <LayoutList size={14} />
                     </button>
                     <button
-                      aria-label="卡片视图"
+                      aria-label={t("assets.cardView")}
                       className={cn(
                         "rounded-md p-1.5 text-[var(--pf-ink-muted)]",
                         view === "grid" &&
@@ -609,7 +692,7 @@ export function ResearchAssetLibrary({
                   </div>
                 ) : null}
                 <Button
-                  aria-label={managing ? "完成批量管理" : "进入批量管理"}
+                  aria-label={managing ? t("assets.finishManaging") : t("assets.startManaging")}
                   className="h-8 gap-1.5 px-2 text-xs"
                   disabled={assets.length === 0 || deletePending}
                   onClick={toggleManagementMode}
@@ -618,26 +701,26 @@ export function ResearchAssetLibrary({
                   variant={managing ? "secondary" : "ghost"}
                 >
                   {managing ? <Check className="size-3.5" /> : <ListChecks className="size-3.5" />}
-                  {managing ? "完成" : "管理"}
+                  {managing ? t("common.confirm") : t("privateFund.batchManage")}
                 </Button>
               </div>
             </div>
             <label className="relative block">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
               <input
-                aria-label="搜索"
+                aria-label={t("common.search")}
                 className="h-9 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-8 pr-3 text-xs outline-none placeholder:text-[var(--pf-ink-muted)] focus:border-[var(--pf-accent)] focus:ring-2 focus:ring-[var(--pf-accent-soft)]"
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索标题、摘要或标签"
+                placeholder={t("privateFund.searchAssets", "搜索标题、摘要或标签")}
                 value={query}
               />
             </label>
             <div className="grid grid-cols-2 gap-2">
               {zone === "notes" ? (
                 <label className="relative col-span-2">
-                  <span className="sr-only">笔记类型</span>
+                  <span className="sr-only">{t("assets.noteType")}</span>
                   <select
-                    aria-label="笔记类型"
+                    aria-label={t("assets.noteType")}
                     className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
                     onChange={(event) =>
                       setNoteGroupFilter(
@@ -646,22 +729,22 @@ export function ResearchAssetLibrary({
                     }
                     value={noteGroupFilter}
                   >
-                    <option value="all">全部笔记</option>
-                    <option value="answer_note">回答笔记</option>
-                    <option value="research_note">研究笔记</option>
+                    <option value="all">{t("privateFund.allNotes", "全部笔记")}</option>
+                    <option value="answer_note">{t("chat.answerNote")}</option>
+                    <option value="research_note">{t("privateFund.notes")}</option>
                   </select>
                 </label>
               ) : null}
               {zone === "sources" || (zone === "generic" && availableDocumentTypes.length > 0) ? (
                 <label className={zone === "sources" ? "relative col-span-2" : "relative"}>
-                  <span className="sr-only">资料类型</span>
+                  <span className="sr-only">{t("assets.sourceType")}</span>
                   <select
-                    aria-label="资料类型"
+                    aria-label={t("assets.sourceType")}
                     className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
                     onChange={(event) => setDocumentTypeFilter(event.target.value)}
                     value={documentTypeFilter}
                   >
-                    <option value="all">全部资料类型</option>
+                    <option value="all">{t("assets.allSourceTypes")}</option>
                     {availableDocumentTypes.map((type) => (
                       <option key={type} value={type}>
                         {documentTypeLabels[type] ?? type}
@@ -672,14 +755,14 @@ export function ResearchAssetLibrary({
               ) : null}
               {zone === "generic" ? (
                 <label className="relative">
-                  <span className="sr-only">条目类型</span>
+                  <span className="sr-only">{t("assets.itemType")}</span>
                   <select
-                    aria-label="条目类型"
+                    aria-label={t("assets.itemType")}
                     className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 text-xs"
                     onChange={(event) => setTypeFilter(event.target.value)}
                     value={typeFilter}
                   >
-                    <option value="all">全部类型</option>
+                    <option value="all">{t("privateFund.allTypes", "全部类型")}</option>
                     {availableTypes.map((type) => (
                       <option key={type} value={type}>
                         {typeLabels[type] ?? type}
@@ -690,18 +773,18 @@ export function ResearchAssetLibrary({
               ) : null}
               <label className="relative col-span-2">
                 <ArrowDownAZ className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-[var(--pf-ink-muted)]" />
-                <span className="sr-only">排序</span>
+                <span className="sr-only">{t("assets.sort")}</span>
                 <select
-                  aria-label="排序"
+                  aria-label={t("assets.sort")}
                   className="h-8 w-full rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] pl-7 pr-2 text-xs"
                   onChange={(event) => setSort(event.target.value as AssetSort)}
                   value={sort}
                 >
-                  <option value="updated">最近更新</option>
-                  <option value="oldest">最早更新</option>
-                  <option value="title">标题</option>
-                  <option value="type">类型</option>
-                  <option value="evidence">溯源数量</option>
+                  <option value="updated">{t("assets.sortUpdated")}</option>
+                  <option value="oldest">{t("assets.sortOldest")}</option>
+                  <option value="title">{t("assets.sortTitle")}</option>
+                  <option value="type">{t("assets.sortType")}</option>
+                  <option value="evidence">{t("assets.sortEvidence")}</option>
                 </select>
               </label>
             </div>
@@ -715,16 +798,18 @@ export function ResearchAssetLibrary({
             <label className="flex min-w-0 cursor-pointer items-center gap-2 text-xs font-medium">
               <AssetSelectionCheckbox
                 checked={allVisibleManaged}
-                label="选择当前显示的全部管理条目"
+                label={t("assets.selectAllVisible")}
                 mixed={someVisibleManaged}
                 disabled={visibleAssetIds.length === 0 || deletePending}
                 onChange={toggleVisibleManagedAssets}
               />
-              <span className="truncate">{managedAssetIds.length} 项已选</span>
+              <span className="truncate">
+                {t("assets.selectedCount", { count: managedAssetIds.length })}
+              </span>
             </label>
             <div className="ml-auto flex shrink-0 items-center gap-1">
               <Button
-                aria-label={`删除管理选中 ${managedAssetIds.length} 项`}
+                aria-label={t("assets.deleteSelected", { count: managedAssetIds.length })}
                 className="h-7 shrink-0 gap-1 px-2 text-xs"
                 disabled={managedAssetIds.length === 0 || deletePending}
                 onClick={() => {
@@ -736,11 +821,12 @@ export function ResearchAssetLibrary({
                 variant="destructive"
               >
                 <Trash2 className="size-3" />
-                删除{managedAssetIds.length > 0 ? ` ${managedAssetIds.length}` : ""}
+                {t("common.delete")}
+                {managedAssetIds.length > 0 ? ` ${managedAssetIds.length}` : ""}
               </Button>
               {managedAssetIds.length > 0 ? (
                 <Button
-                  aria-label="清除管理选择"
+                  aria-label={t("assets.clearSelection")}
                   className="size-7"
                   disabled={deletePending}
                   onClick={() => setManagedSelection(new Set())}
@@ -773,7 +859,7 @@ export function ResearchAssetLibrary({
                       asset={series.current}
                       checked={currentInContext}
                       disabled={contextPending}
-                      label={`加入上下文 ${series.title} 当前版本`}
+                      label={t("assets.addCurrentVersion", { title: series.title })}
                       onChange={() => toggleContextAsset(series.current.assetId)}
                     />
                     <span className="mt-0.5 rounded-md bg-[var(--pf-accent-soft)] p-1.5 text-[var(--pf-accent-ink)]">
@@ -781,38 +867,43 @@ export function ResearchAssetLibrary({
                     </span>
                     <div className="min-w-0 flex-1">
                       <button
-                        aria-label={`打开资产 ${series.title}`}
+                        aria-label={t("assets.openAsset", { title: series.title })}
                         className="block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)]"
                         onClick={() => onOpenAsset(series.current)}
                         type="button"
                       >
                         <span className="block truncate text-sm font-semibold">{series.title}</span>
                         <span className="mt-0.5 block text-[11px] text-[var(--pf-ink-muted)]">
-                          当前 v{series.current.versionNo} · 共 {series.versions.length} 个版本 ·{" "}
-                          {formatUpdatedDate(
-                            series.current.updatedAt ?? series.current.createdAt,
-                          )}
+                          {t("assets.currentVersionSummary", {
+                            version: series.current.versionNo,
+                            count: series.versions.length,
+                          })}{" "}
+                          ·{" "}
+                          {formatUpdatedDate(series.current.updatedAt ?? series.current.createdAt)}
                         </span>
                       </button>
                       {currentInContext ? (
                         <p className="mt-1 text-[11px] text-[var(--pf-accent-ink)]">
-                          当前版本已加入上下文
+                          {t("assets.currentVersionInContext")}
                         </p>
                       ) : null}
                       <div className="mt-2 flex flex-wrap items-center gap-1">
                         <Button
-                          aria-label={`打开当前版本 ${series.title}`}
+                          aria-label={t("assets.openCurrentVersion", { title: series.title })}
                           className="h-7 gap-1 px-2 text-xs"
                           onClick={() => onOpenAsset(series.current)}
                           size="sm"
                           type="button"
                           variant="secondary"
                         >
-                          打开
+                          {t("privateFund.openArtifact")}
                         </Button>
                         <Button
                           aria-expanded={expanded}
-                          aria-label={`${expanded ? "收起" : "查看"}版本记录 ${series.title}`}
+                          aria-label={t(
+                            expanded ? "assets.collapseVersions" : "assets.viewVersions",
+                            { title: series.title },
+                          )}
                           className="h-7 gap-1 px-2 text-xs"
                           onClick={() => toggleMemoSeries(series.seriesId)}
                           size="sm"
@@ -820,7 +911,7 @@ export function ResearchAssetLibrary({
                           variant="ghost"
                         >
                           <History className="size-3" />
-                          版本记录
+                          {t("assets.versionHistory")}
                           {expanded ? (
                             <ChevronDown className="size-3" />
                           ) : (
@@ -829,7 +920,7 @@ export function ResearchAssetLibrary({
                         </Button>
                         {series.versions.length > 1 && onOpenMemoHistory ? (
                           <Button
-                            aria-label={`对比版本 ${series.title}`}
+                            aria-label={t("assets.compareVersions", { title: series.title })}
                             className="h-7 gap-1 px-2 text-xs"
                             onClick={() => onOpenMemoHistory(series.seriesId)}
                             size="sm"
@@ -837,7 +928,7 @@ export function ResearchAssetLibrary({
                             variant="ghost"
                           >
                             <GitCompareArrows className="size-3" />
-                            对比
+                            {t("assets.compare")}
                           </Button>
                         ) : null}
                       </div>
@@ -851,11 +942,17 @@ export function ResearchAssetLibrary({
                             asset={version}
                             checked={contextSet.has(version.assetId)}
                             disabled={contextPending}
-                            label={`加入上下文 ${series.title} v${version.versionNo}`}
+                            label={t("assets.addVersion", {
+                              title: series.title,
+                              version: version.versionNo,
+                            })}
                             onChange={() => toggleContextAsset(version.assetId)}
                           />
                           <button
-                            aria-label={`打开 ${series.title} v${version.versionNo}`}
+                            aria-label={t("assets.openVersion", {
+                              title: series.title,
+                              version: version.versionNo,
+                            })}
                             className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-[var(--pf-panel-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)]"
                             onClick={() => onOpenAsset(version)}
                             type="button"
@@ -865,7 +962,7 @@ export function ResearchAssetLibrary({
                             </span>
                             <span className="truncate text-[11px] text-[var(--pf-ink-muted)]">
                               {formatDate(version.updatedAt ?? version.createdAt)}
-                              {index === 0 ? " · 当前" : ""}
+                              {index === 0 ? ` · ${t("assets.current")}` : ""}
                             </span>
                           </button>
                         </li>
@@ -892,13 +989,17 @@ export function ResearchAssetLibrary({
                     managing ? managedSelection.has(asset.assetId) : contextSet.has(asset.assetId)
                   }
                   disabled={managing ? deletePending : contextPending}
-                  label={managing ? `选择管理 ${asset.title}` : `加入上下文 ${asset.title}`}
+                  label={
+                    managing
+                      ? t("assets.selectManage", { title: asset.title })
+                      : t("assets.addContext", { title: asset.title })
+                  }
                   onChange={() =>
                     managing ? toggleManagedAsset(asset.assetId) : toggleContextAsset(asset.assetId)
                   }
                 />
                 <button
-                  aria-label={`打开资产 ${asset.title}`}
+                  aria-label={t("assets.openAsset", { title: asset.title })}
                   className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)]"
                   onClick={() => onOpenAsset(asset)}
                   type="button"
@@ -910,7 +1011,7 @@ export function ResearchAssetLibrary({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">{asset.title}</span>
                       <span className="mt-0.5 block line-clamp-2 text-xs leading-5 text-[var(--pf-ink-secondary)]">
-                        {asset.summary || asset.contentMarkdown || "暂无摘要"}
+                        {asset.summary || asset.contentMarkdown || t("assets.noSummary")}
                       </span>
                       <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] text-[var(--pf-ink-muted)]">
                         <span>{assetTypeLabel(asset)}</span>
@@ -919,7 +1020,9 @@ export function ResearchAssetLibrary({
                         {contextSet.has(asset.assetId) ? (
                           <>
                             <span>·</span>
-                            <span className="text-[var(--pf-accent-ink)]">已加入上下文</span>
+                            <span className="text-[var(--pf-accent-ink)]">
+                              {t("assets.inContext")}
+                            </span>
                           </>
                         ) : null}
                       </span>
@@ -935,13 +1038,13 @@ export function ResearchAssetLibrary({
               <tr>
                 <th
                   className="w-16 px-3 py-2"
-                  title={managing ? "选择要管理的条目" : "加入问题上下文"}
+                  title={managing ? t("assets.selectManagedItems") : t("assets.addQuestionContext")}
                 >
-                  {managing ? "选择" : "加入"}
+                  {managing ? t("assets.select") : t("assets.add")}
                 </th>
-                <th className="px-2 py-2">资产</th>
-                <th className="w-20 px-2 py-2">类型</th>
-                <th className="w-14 px-2 py-2">更新</th>
+                <th className="px-2 py-2">{t("privateFund.assets")}</th>
+                <th className="w-20 px-2 py-2">{t("assets.type")}</th>
+                <th className="w-14 px-2 py-2">{t("assets.updated")}</th>
               </tr>
             </thead>
             <tbody>
@@ -963,7 +1066,11 @@ export function ResearchAssetLibrary({
                           : contextSet.has(asset.assetId)
                       }
                       disabled={managing ? deletePending : contextPending}
-                      label={managing ? `选择管理 ${asset.title}` : `加入上下文 ${asset.title}`}
+                      label={
+                        managing
+                          ? t("assets.selectManage", { title: asset.title })
+                          : t("assets.addContext", { title: asset.title })
+                      }
                       onChange={() =>
                         managing
                           ? toggleManagedAsset(asset.assetId)
@@ -982,8 +1089,11 @@ export function ResearchAssetLibrary({
                           {asset.summary || asset.contentMarkdown}
                         </p>
                         <p className="mt-1 text-[11px] text-[var(--pf-ink-muted)]">
-                          v{asset.versionNo} / {asset.evidenceCount} 条溯源
-                          {contextSet.has(asset.assetId) ? " / 已加入上下文" : ""}
+                          {t("assets.versionEvidence", {
+                            version: asset.versionNo,
+                            count: asset.evidenceCount,
+                          })}
+                          {contextSet.has(asset.assetId) ? ` / ${t("assets.inContext")}` : ""}
                         </p>
                       </div>
                     </div>
@@ -1025,7 +1135,11 @@ export function ResearchAssetLibrary({
                           : contextSet.has(asset.assetId)
                       }
                       disabled={managing ? deletePending : contextPending}
-                      label={managing ? `选择管理 ${asset.title}` : `加入上下文 ${asset.title}`}
+                      label={
+                        managing
+                          ? t("assets.selectManage", { title: asset.title })
+                          : t("assets.addContext", { title: asset.title })
+                      }
                       onChange={() =>
                         managing
                           ? toggleManagedAsset(asset.assetId)
@@ -1034,15 +1148,15 @@ export function ResearchAssetLibrary({
                     />
                     {managing
                       ? managedSelection.has(asset.assetId)
-                        ? "已选择"
-                        : "选择"
+                        ? t("assets.selected")
+                        : t("assets.select")
                       : contextSet.has(asset.assetId)
-                        ? "已加入上下文"
-                        : "加入上下文"}
+                        ? t("assets.inContext")
+                        : t("privateFund.addContext")}
                   </label>
                 </div>
                 <button
-                  aria-label={`打开资产 ${asset.title}`}
+                  aria-label={t("assets.openAsset", { title: asset.title })}
                   className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pf-accent)]"
                   onClick={() => onOpenAsset(asset)}
                   type="button"
@@ -1052,7 +1166,8 @@ export function ResearchAssetLibrary({
                     {asset.summary || asset.contentMarkdown}
                   </p>
                   <p className="mt-2 text-[11px] text-[var(--pf-ink-muted)]">
-                    {assetTypeLabel(asset)} / {asset.evidenceCount} 条溯源
+                    {assetTypeLabel(asset)} /{" "}
+                    {t("assets.evidenceCount", { count: asset.evidenceCount })}
                   </p>
                 </button>
               </div>
