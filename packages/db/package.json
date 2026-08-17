@@ -1,0 +1,25 @@
+{
+  "name": "@private-fund/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run --exclude 'dist/**'"
+  },
+  "dependencies": {
+    "@private-fund/contracts": "0.1.0",
+    "@private-fund/core": "0.1.0"
+  }
+}

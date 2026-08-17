@@ -1,0 +1,32 @@
+{
+  "name": "@private-fund/legacy-migrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "private-fund-legacy-migrate": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "migrate": "node ./dist/cli.js",
+    "postbuild": "node --input-type=module -e \"import { chmodSync } from 'node:fs'; chmodSync('dist/cli.js', 0o755)\"",
+    "test": "vitest run --exclude 'dist/**'"
+  },
+  "dependencies": {
+    "@private-fund/core": "0.1.0",
+    "@private-fund/db": "0.1.0",
+    "@private-fund/research-store": "0.1.0",
+    "@private-fund/workflow-store": "0.1.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@private-fund/job-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "test": "vitest run --exclude 'dist/**'"
+  },
+  "dependencies": {
+    "@private-fund/compute-client": "0.1.0",
+    "@private-fund/compute-projector": "0.1.0",
+    "@private-fund/contracts": "0.1.0",
+    "@private-fund/db": "0.1.0",
+    "@private-fund/job-queue": "0.1.0",
+    "@private-fund/research-store": "0.1.0",
+    "@private-fund/workflow-store": "0.1.0",
+    "tsx": "4.20.6"
+  }
+}

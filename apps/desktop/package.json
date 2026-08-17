@@ -1,0 +1,75 @@
+{
+  "name": "@private-fund/desktop",
+  "productName": "Private Fund AI Research",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Canonical macOS desktop distribution for the Private Fund AI Research platform",
+  "author": "Private Fund AI Research",
+  "main": "src/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "setup:build": "../../python/compute-worker/.venv/bin/python -m pip install -r python/build-requirements.txt",
+    "build:compute": "node scripts/build-compute.mjs",
+    "prepare:runtime": "node scripts/prepare-runtime.mjs",
+    "prepare:package": "npm --prefix ../.. run build && npm --prefix ../../omnigent/web run build && npm run build:compute && npm run prepare:runtime",
+    "build:mac:dir": "npm run prepare:package && electron-builder --mac dir --arm64",
+    "build:mac": "npm run prepare:package && electron-builder --mac dmg zip --arm64",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs"
+  },
+  "devDependencies": {
+    "electron": "42.3.3",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "ai.privatefund.research.desktop",
+    "productName": "Private Fund AI Research",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".build/runtime",
+        "to": "runtime"
+      },
+      {
+        "from": ".build/runtime/node_modules",
+        "to": "runtime-modules"
+      },
+      {
+        "from": "../../omnigent/web/dist",
+        "to": "web"
+      },
+      {
+        "from": ".build/compute/private-fund-compute-worker",
+        "to": "compute/private-fund-compute-worker"
+      },
+      {
+        "from": "../../python/compute-worker/worker.py",
+        "to": "compute/worker.py"
+      }
+    ],
+    "afterPack": "scripts/after-pack.cjs",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.finance",
+      "icon": "../../omnigent/web/electron/icons/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "dmg": {
+      "sign": false
+    }
+  }
+}

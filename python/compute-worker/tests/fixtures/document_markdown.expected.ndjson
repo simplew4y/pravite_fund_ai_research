@@ -1,0 +1,5 @@
+{"recordType":"document","format":"markdown","sourceName":"document_markdown.md"}
+{"recordType":"text","text":"Investment case","locator":{"kind":"text_heading","headingNumber":1,"level":1,"lineStart":1,"lineEnd":1},"headingPath":["Investment case"]}
+{"recordType":"text","text":"Revenue accelerated.","locator":{"kind":"text_block","blockNumber":1,"lineStart":3,"lineEnd":3},"headingPath":["Investment case"]}
+{"recordType":"text","text":"Risks","locator":{"kind":"text_heading","headingNumber":2,"level":2,"lineStart":5,"lineEnd":5},"headingPath":["Investment case","Risks"]}
+{"recordType":"text","text":"```text\nsupply\n```","locator":{"kind":"text_block","blockNumber":2,"lineStart":7,"lineEnd":9},"headingPath":["Investment case","Risks"]}

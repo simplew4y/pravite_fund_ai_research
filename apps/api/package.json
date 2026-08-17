@@ -1,0 +1,30 @@
+{
+  "name": "@private-fund/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch src/main.ts",
+    "start": "node --enable-source-maps dist/main.js",
+    "test": "vitest run --exclude 'dist/**'"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "@fastify/multipart": "10.1.0",
+    "@private-fund/auth": "0.1.0",
+    "@private-fund/contracts": "0.1.0",
+    "@private-fund/compute-client": "0.1.0",
+    "@private-fund/core": "0.1.0",
+    "@private-fund/db": "0.1.0",
+    "@private-fund/job-queue": "0.1.0",
+    "@private-fund/model-runtime": "0.1.0",
+    "@private-fund/research-store": "0.1.0",
+    "@private-fund/workflow-store": "0.1.0",
+    "fastify": "5.11.0"
+  },
+  "devDependencies": {
+    "tsx": "4.20.6"
+  }
+}

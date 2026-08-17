@@ -1,0 +1,37 @@
+{
+  "provider": "fixture",
+  "ticker": "600519.SH",
+  "startDate": "2026-07-27",
+  "endDate": "2026-07-29",
+  "retrievedAt": "2026-07-30T00:00:00Z",
+  "source": "golden offline fixture",
+  "bars": [
+    {
+      "tradeDate": "2026-07-29",
+      "open": 1420,
+      "high": 1455,
+      "low": 1410,
+      "close": 1448,
+      "volume": 12000,
+      "amount": 17280000
+    },
+    {
+      "tradeDate": "2026-07-27",
+      "open": 1400,
+      "high": 1430,
+      "low": 1390,
+      "close": 1420,
+      "volume": 10000,
+      "amount": 14100000
+    },
+    {
+      "tradeDate": "2026-07-28",
+      "open": 1422,
+      "high": 1440,
+      "low": 1408,
+      "close": 1418,
+      "volume": 11000,
+      "amount": 15600000
+    }
+  ]
+}

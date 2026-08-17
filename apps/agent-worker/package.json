@@ -1,0 +1,17 @@
+{
+  "name": "@private-fund/agent-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --enable-source-maps dist/main.js",
+    "test": "tsc -b && vitest run --exclude 'dist/**'"
+  },
+  "dependencies": {
+    "@private-fund/agent-runtime": "0.1.0",
+    "@private-fund/contracts": "0.1.0"
+  }
+}

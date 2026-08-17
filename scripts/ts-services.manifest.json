@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "architecture": "typescript-pi",
+  "managedServices": [
+    {
+      "id": "api",
+      "runtime": "node",
+      "role": "tenant-aware control plane, on-demand Pi supervisor, and request-scoped source-preview compute owner",
+      "entry": "apps/api/dist/main.js",
+      "nodeArguments": [
+        "--enable-source-maps"
+      ],
+      "readiness": {
+        "kind": "http",
+        "hostEnvironment": "PRIVATE_FUND_API_HOST",
+        "defaultHost": "127.0.0.1",
+        "portEnvironment": "PRIVATE_FUND_API_PORT",
+        "defaultPort": 6768,
+        "path": "/health"
+      }
+    },
+    {
+      "id": "job-worker",
+      "runtime": "node",
+      "role": "durable job consumer and compute-sidecar owner",
+      "entry": "apps/job-worker/dist/main.js",
+      "nodeArguments": [],
+      "readiness": {
+        "kind": "log",
+        "pattern": "\"event\":\"compute_worker_ready\""
+      }
+    },
+    {
+      "id": "obsidian-worker",
+      "runtime": "node",
+      "role": "durable knowledge projection consumer",
+      "entry": "apps/obsidian-worker/dist/main.js",
+      "nodeArguments": [],
+      "readiness": {
+        "kind": "http",
+        "hostEnvironment": "PRIVATE_FUND_OBSIDIAN_HEALTH_HOST",
+        "defaultHost": "127.0.0.1",
+        "portEnvironment": "PRIVATE_FUND_OBSIDIAN_HEALTH_PORT",
+        "defaultPort": 6791,
+        "path": "/health/ready"
+      }
+    }
+  ],
+  "ownedOnDemandProcesses": [
+    {
+      "id": "pi-agent-worker",
+      "runtime": "node",
+      "owner": "api",
+      "entry": "apps/agent-worker/dist/main.js",
+      "lifecycle": "session-demand",
+      "processModel": "shared-process-per-session-agent-session"
+    },
+    {
+      "id": "python-source-preview-sidecar",
+      "runtime": "python",
+      "owner": "api",
+      "entry": "python/compute-worker/worker.py",
+      "lifecycle": "request-scoped"
+    },
+    {
+      "id": "python-compute-sidecar",
+      "runtime": "python",
+      "owner": "job-worker",
+      "entry": "python/compute-worker/worker.py",
+      "lifecycle": "request-scoped"
+    }
+  ]
+}
