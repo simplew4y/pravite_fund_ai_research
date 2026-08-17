@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   getPrivateFundPipelineJob,
   runPrivateFundPipeline,
+  type PrivateFundPipelineJob,
   uploadPrivateFundFiles,
 } from "@/lib/privateFundApi";
 import type {
@@ -24,6 +25,12 @@ const SUPPORTED_UPLOAD_SUFFIXES = new Set([
   "txt",
 ]);
 
+const ACTIVE_PIPELINE_JOB_STATUSES = new Set(["queued", "running", "indexing"]);
+
+function isActivePipelineJob(job: PrivateFundPipelineJob): boolean {
+  return ACTIVE_PIPELINE_JOB_STATUSES.has(job.status);
+}
+
 export function usePrivateFundDocumentUpload(datasetId: string | null | undefined) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -38,20 +45,42 @@ export function usePrivateFundDocumentUpload(datasetId: string | null | undefine
       const uploaded = await uploadPrivateFundFiles(datasetId, files);
       setStage("queued");
       setMessage(t("sourceLibrary.uploadQueued"));
-      // New servers enqueue automatically with the upload.  The fallback keeps
-      // compatibility with older deployments during rolling upgrades.
-      let job = uploaded.job ?? (await runPrivateFundPipeline(datasetId));
-      while (["queued", "running", "indexing"].includes(job.status)) {
-        setStage(job.status === "queued" ? "queued" : "running");
-        setMessage(job.message || t("sourceLibrary.pipelineRunning"));
-        job = await getPrivateFundPipelineJob(job.jobId);
-        if (["queued", "running", "indexing"].includes(job.status)) {
+      // Canonical multi-file uploads enqueue one durable job per file. Poll
+      // every active job in rounds so a fast failure cannot hide another job
+      // that is still running. The singular job and explicit pipeline start
+      // preserve compatibility with older deployments during rolling upgrades.
+      const canonicalJobs =
+        "jobs" in uploaded && Array.isArray(uploaded.jobs)
+          ? (uploaded.jobs as PrivateFundPipelineJob[])
+          : [];
+      let jobs =
+        canonicalJobs.length > 0
+          ? canonicalJobs
+          : uploaded.job
+            ? [uploaded.job]
+            : [await runPrivateFundPipeline(datasetId)];
+      while (jobs.some(isActivePipelineJob)) {
+        const activeJobs = jobs.filter(isActivePipelineJob);
+        setStage(activeJobs.every((job) => job.status === "queued") ? "queued" : "running");
+        setMessage(
+          activeJobs.find((job) => job.message)?.message || t("sourceLibrary.pipelineRunning"),
+        );
+        // eslint-disable-next-line no-await-in-loop -- each polling round depends on the previous job states.
+        jobs = await Promise.all(
+          jobs.map((job) =>
+            isActivePipelineJob(job) ? getPrivateFundPipelineJob(job.jobId) : job,
+          ),
+        );
+        if (jobs.some(isActivePipelineJob)) {
+          // eslint-disable-next-line no-await-in-loop -- delay only between sequential polling rounds.
           await new Promise((resolve) => window.setTimeout(resolve, 1500));
         }
       }
-      if (job.status !== "completed") {
+      const incompleteJob = jobs.find((job) => job.status !== "completed");
+      if (incompleteJob) {
         throw new Error(
-          job.message || t("sourceLibrary.pipelineIncomplete", { status: job.status }),
+          incompleteJob.message ||
+            t("sourceLibrary.pipelineIncomplete", { status: incompleteJob.status }),
         );
       }
       return { count: files.length, skipped };

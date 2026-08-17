@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&display=swap">
+<link rel="stylesheet" href="_ds/industry-693bd6b7-ad9d-4475-b552-3d45ef4ba497/styles.css">
+<script src="_ds/industry-693bd6b7-ad9d-4475-b552-3d45ef4ba497/_ds_bundle.js"></script>
+<style>
+  html, body { margin:0; padding:0; background:var(--color-bg); }
+  a { color:var(--color-accent-700); text-decoration:none; }
+  a:hover { color:var(--color-accent-800); }
+  [data-lang="en"] .zh { display:none; }
+  [data-lang="zh"] .en { display:none; }
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--color-text) 20%, transparent); }
+</style>
+</helmet>
+
+<div data-lang="{{ lang }}" style="display:grid;grid-template-columns:248px minmax(0,1fr) 372px;height:100vh;min-width:1320px;overflow:hidden;background:var(--color-bg);color:var(--color-text);font:400 13px/1.55 var(--font-body);text-wrap:pretty">
+
+  <!-- 左：项目管理 -->
+  <aside style="display:flex;flex-direction:column;border-right:1px solid var(--color-divider);overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;padding:var(--space-4) var(--space-4) var(--space-3)">
+      <span style="width:24px;height:24px;border:1px solid var(--color-text)"></span>
+      <span style="font:600 15px/1.1 var(--font-heading);letter-spacing:.02em"><span class="zh">投研项目</span><span class="en">Projects</span></span>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px">+</button>
+    </div>
+    <div style="padding:0 var(--space-4) var(--space-3)">
+      <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--color-divider)">
+        <span style="width:9px;height:9px;border:1px solid var(--color-neutral-500);border-radius:50%"></span>
+        <span style="font-size:12px;color:var(--color-neutral-600)"><span class="zh">搜索项目 / 公司 / 代码</span><span class="en">Search project / ticker</span></span>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow:auto;padding-bottom:var(--space-3)">
+      <button onClick="{{ pick0 }}" style="position:relative;display:block;width:100%;text-align:left;padding:var(--space-3) var(--space-4);background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:inherit;font:inherit" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+        <i style="position:absolute;inset:0;background:var(--color-accent-100);border-left:2px solid var(--color-accent);opacity:{{ on0 }}"></i>
+        <div style="position:relative;display:flex;align-items:baseline;gap:8px">
+          <span style="font:600 14px/1.2 var(--font-heading)">恒瑞医药</span>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">600276</span>
+        </div>
+        <div style="position:relative;font:500 9px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.05em;color:var(--color-neutral-600)"><span class="zh">128 资料 · 索引就绪 · 3 会话</span><span class="en">128 DOCS · INDEXED · 3 CHATS</span></div>
+      </button>
+      <button onClick="{{ pick1 }}" style="position:relative;display:block;width:100%;text-align:left;padding:var(--space-3) var(--space-4);background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:inherit;font:inherit" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+        <i style="position:absolute;inset:0;background:var(--color-accent-100);border-left:2px solid var(--color-accent);opacity:{{ on1 }}"></i>
+        <div style="position:relative;display:flex;align-items:baseline;gap:8px">
+          <span style="font:600 14px/1.2 var(--font-heading)">贵州茅台</span>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">600519</span>
+        </div>
+        <div style="position:relative;font:500 9px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.05em;color:var(--color-neutral-600)"><span class="zh">64 资料 · 索引中 41% · 1 会话</span><span class="en">64 DOCS · INDEXING 41% · 1 CHAT</span></div>
+      </button>
+      <button onClick="{{ pick2 }}" style="position:relative;display:block;width:100%;text-align:left;padding:var(--space-3) var(--space-4);background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:inherit;font:inherit" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+        <i style="position:absolute;inset:0;background:var(--color-accent-100);border-left:2px solid var(--color-accent);opacity:{{ on2 }}"></i>
+        <div style="position:relative;display:flex;align-items:baseline;gap:8px">
+          <span style="font:600 14px/1.2 var(--font-heading)">宁德时代</span>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">300750</span>
+        </div>
+        <div style="position:relative;font:500 9px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.05em;color:var(--color-neutral-600)"><span class="zh">203 资料 · 索引就绪 · 5 会话</span><span class="en">203 DOCS · INDEXED · 5 CHATS</span></div>
+      </button>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:var(--space-3) var(--space-4);opacity:.45">
+        <div style="height:8px;background:color-mix(in srgb, var(--color-text) 13%, transparent);width:66%"></div>
+        <div style="height:6px;background:color-mix(in srgb, var(--color-text) 10%, transparent);width:44%"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;padding:var(--space-3) var(--space-4);opacity:.3">
+        <div style="height:8px;background:color-mix(in srgb, var(--color-text) 13%, transparent);width:74%"></div>
+        <div style="height:6px;background:color-mix(in srgb, var(--color-text) 10%, transparent);width:38%"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-3) var(--space-4);border-top:1px solid var(--color-divider)">
+      <div style="font:500 9px/1 ui-monospace,Menlo,monospace;letter-spacing:.07em;color:var(--color-neutral-600)"><span class="zh">项目操作</span><span class="en">PROJECT</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">编辑</span><span class="en">Edit</span></button>
+        <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">删除</span><span class="en">Delete</span></button>
+        <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">归档会话</span><span class="en">Archive</span></button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding-top:var(--space-2);border-top:1px solid color-mix(in srgb, var(--color-text) 8%, transparent)">
+        <span style="position:relative;width:18px;height:18px;border:1px solid var(--color-neutral-600)">
+          <i style="position:absolute;top:-5px;right:-6px;min-width:14px;height:14px;padding:0 3px;background:var(--color-accent);color:var(--color-bg);font:500 9px/14px ui-monospace,Menlo,monospace;text-align:center">5</i>
+        </span>
+        <span style="font-size:12px;color:var(--color-neutral-700)"><span class="zh">收件箱</span><span class="en">Inbox</span></span>
+        <div style="flex:1"></div>
+        <span style="width:16px;height:16px;border:1px dashed var(--color-neutral-600);border-radius:50%"></span>
+        <span style="font-size:12px;color:var(--color-neutral-700)"><span class="zh">设置</span><span class="en">Settings</span></span>
+        <button onClick="{{ toggleLang }}" class="btn btn-secondary" style="padding:2px 7px;font:500 10px/1 ui-monospace,Menlo,monospace">{{ langBtn }}</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 中：上传区 + 会话气泡 + 展开的对话 -->
+  <main style="display:flex;flex-direction:column;overflow:hidden">
+    <header style="display:flex;align-items:center;gap:var(--space-4);padding:var(--space-4) var(--space-6);border-bottom:1px solid var(--color-divider)">
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+        <h2 style="margin:0;font:600 19px/1.1 var(--font-heading);letter-spacing:.01em">{{ projName }}</h2>
+        <div style="font:500 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-neutral-600)">{{ projMeta }}</div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" style="font-size:12px"><span class="zh">研究资产库</span><span class="en">Assets</span></button>
+      <button class="btn btn-primary" style="font-size:12px"><span class="zh">新建研究</span><span class="en">New research</span></button>
+    </header>
+
+    <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:var(--space-6);padding:var(--space-6)">
+
+      <!-- 文件上传区（始终保留） -->
+      <section class="blueprint" style="padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:var(--space-3)">
+          <h3 style="margin:0;font:600 15px/1.2 var(--font-heading)"><span class="zh">资料上传</span><span class="en">Corpus upload</span></h3>
+          <span style="display:{{ specDisp }};padding:1px 5px;background:var(--color-neutral-200);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:var(--color-neutral-700)">§2</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">文件夹</span><span class="en">Folders</span></button>
+          <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">全部资料</span><span class="en">All docs</span></button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-3);padding:var(--space-8) var(--space-6);border:1px dashed color-mix(in srgb, var(--color-text) 35%, transparent);color:var(--color-neutral-700);text-align:center">
+          <span style="width:34px;height:34px;border:1px solid currentColor"></span>
+          <span style="font:600 17px/1.2 var(--font-heading)"><span class="zh">拖入文件到此处</span><span class="en">Drop files here</span></span>
+          <button class="btn btn-primary" style="padding:10px 24px;font-size:15px"><span class="zh">选择文件上传</span><span class="en">Choose files</span></button>
+          <span style="font:500 9px/1.6 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">PDF · XLSX · DOCX · PPTX · CSV · MD · <span class="zh">上传后自动归入当前项目</span><span class="en">files land in this project</span></span>
+        </div>
+      </section>
+
+      <!-- 会话气泡（横向） -->
+      <section style="display:flex;flex-direction:column;gap:var(--space-3)">
+        <div style="display:flex;align-items:center;gap:var(--space-3)">
+          <h3 style="margin:0;font:600 15px/1.2 var(--font-heading)"><span class="zh">研究会话</span><span class="en">Research chats</span></h3>
+          <span style="display:{{ specDisp }};padding:1px 5px;background:var(--color-neutral-200);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:var(--color-neutral-700)">§4 · §11</span>
+          <div style="flex:1"></div>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">点击气泡展开对话</span><span class="en">CLICK A BUBBLE TO OPEN</span></span>
+        </div>
+        <div style="display:flex;gap:var(--space-3);overflow-x:auto;padding-bottom:var(--space-2)">
+          <button onClick="{{ openS1 }}" style="position:relative;flex:0 0 236px;text-align:left;padding:var(--space-3);background:none;border:1px solid var(--color-divider);cursor:pointer;color:inherit;font:inherit" style-hover="border-color:var(--color-accent)">
+            <i style="position:absolute;inset:0;background:var(--color-accent-100);border:1px solid var(--color-accent);opacity:{{ s1On }}"></i>
+            <div style="position:relative;display:flex;align-items:center;gap:6px;margin-bottom:5px">
+              <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent)"></span>
+              <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">生成中 · 深度</span><span class="en">LIVE · DEEP</span></span>
+            </div>
+            <div style="position:relative;font:600 14px/1.25 var(--font-heading)"><span class="zh">集采对 2026 毛利率的影响</span><span class="en">VBP impact on 2026 margin</span></div>
+            <div style="position:relative;margin-top:5px;font-size:11px;color:var(--color-neutral-700)"><span class="zh">14 条消息 · 6 资料 · 3 引用</span><span class="en">14 msgs · 6 docs · 3 cites</span></div>
+          </button>
+          <button onClick="{{ openS2 }}" style="position:relative;flex:0 0 236px;text-align:left;padding:var(--space-3);background:none;border:1px solid var(--color-divider);cursor:pointer;color:inherit;font:inherit" style-hover="border-color:var(--color-accent)">
+            <i style="position:absolute;inset:0;background:var(--color-accent-100);border:1px solid var(--color-accent);opacity:{{ s2On }}"></i>
+            <div style="position:relative;display:flex;align-items:center;gap:6px;margin-bottom:5px">
+              <span style="width:7px;height:7px;border-radius:50%;border:1px solid var(--color-neutral-500)"></span>
+              <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">已完成 · 08-14</span><span class="en">DONE · 08-14</span></span>
+            </div>
+            <div style="position:relative;font:600 14px/1.25 var(--font-heading)"><span class="zh">创新药管线估值拆分</span><span class="en">Pipeline valuation split</span></div>
+            <div style="position:relative;margin-top:5px;font-size:11px;color:var(--color-neutral-700)"><span class="zh">22 条消息 · 2 资产</span><span class="en">22 msgs · 2 assets</span></div>
+          </button>
+          <button onClick="{{ openS3 }}" style="position:relative;flex:0 0 236px;text-align:left;padding:var(--space-3);background:none;border:1px solid var(--color-divider);cursor:pointer;color:inherit;font:inherit" style-hover="border-color:var(--color-accent)">
+            <i style="position:absolute;inset:0;background:var(--color-accent-100);border:1px solid var(--color-accent);opacity:{{ s3On }}"></i>
+            <div style="position:relative;display:flex;align-items:center;gap:6px;margin-bottom:5px">
+              <span style="width:7px;height:7px;border-radius:50%;border:1px solid var(--color-neutral-500)"></span>
+              <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">待审批 1 · 08-09</span><span class="en">1 APPROVAL · 08-09</span></span>
+            </div>
+            <div style="position:relative;font:600 14px/1.25 var(--font-heading)"><span class="zh">海外授权收入复盘</span><span class="en">Out-licensing review</span></div>
+            <div style="position:relative;margin-top:5px;font-size:11px;color:var(--color-neutral-700)"><span class="zh">9 条消息 · 共享 2 人</span><span class="en">9 msgs · shared with 2</span></div>
+          </button>
+          <button style="flex:0 0 152px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:var(--space-3);background:none;border:1px dashed color-mix(in srgb, var(--color-text) 32%, transparent);cursor:pointer;color:var(--color-neutral-700);font:inherit" style-hover="border-color:var(--color-accent)">
+            <span style="font:600 16px/1 var(--font-heading)">+</span>
+            <span style="font-size:12px"><span class="zh">新会话</span><span class="en">New chat</span></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 展开的对话框 -->
+      <sc-if value="{{ chatOpen }}" hint-placeholder-val="{{ true }}">
+        <section class="blueprint" style="padding:0;display:flex;flex-direction:column">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--color-divider)">
+            <span style="font:600 15px/1.2 var(--font-heading)">{{ chatTitle }}</span>
+            <span class="tag tag-neutral" style="font-size:10px">{{ chatState }}</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">中断</span><span class="en">Stop</span></button>
+            <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">分叉</span><span class="en">Fork</span></button>
+            <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">分享</span><span class="en">Share</span></button>
+            <button onClick="{{ closeChat }}" class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">收起</span><span class="en">Collapse</span></button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-4);max-height:460px;overflow:auto">
+            <div style="align-self:flex-end;max-width:70%;padding:var(--space-3);border:1px solid color-mix(in srgb, var(--color-text) 30%, transparent);background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+              <div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600);margin-bottom:5px">USER · 14:02</div>
+              <div style="font-size:13px"><span class="zh">集采对 2026 年毛利率的影响？给出证据与区间。</span><span class="en">VBP impact on 2026 gross margin? Evidence and a range.</span></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:var(--space-3)">
+              <div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">AGENT · RESEARCHER-01</div>
+              <details open style="border:1px solid var(--color-divider);padding:8px 10px">
+                <summary style="cursor:pointer;font:500 10px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-700)"><span class="zh">推理过程 · 6 步</span><span class="en">REASONING · 6 STEPS</span></summary>
+                <div style="display:flex;flex-direction:column;gap:5px;padding-top:8px">
+                  <div style="height:6px;background:color-mix(in srgb, var(--color-text) 10%, transparent);width:92%"></div>
+                  <div style="height:6px;background:color-mix(in srgb, var(--color-text) 10%, transparent);width:74%"></div>
+                </div>
+              </details>
+              <div style="border:1px solid var(--color-divider)">
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid color-mix(in srgb, var(--color-text) 10%, transparent);font:500 10px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-700)">
+                  <span style="width:9px;height:9px;border:1px solid currentColor"></span>TOOL · corpus.search
+                  <div style="flex:1"></div><span class="tag tag-neutral" style="font-size:10px">1.2s</span>
+                </div>
+                <div style="padding:8px 10px;font:400 11px/1.5 ui-monospace,Menlo,monospace;color:var(--color-neutral-700)">query="集采 毛利率 2026" · hits=14 · files=5</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px;padding:var(--space-3);border:1px solid var(--color-divider)">
+                <div style="height:7px;background:color-mix(in srgb, var(--color-text) 13%, transparent);width:96%"></div>
+                <div style="height:7px;background:color-mix(in srgb, var(--color-text) 13%, transparent);width:84%"></div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span style="font-size:12px"><span class="zh">结论区间</span><span class="en">Range</span></span>
+                  <span class="tag tag-accent" style="font-size:11px">-1.8pp ~ -3.4pp</span>
+                  <a href="#" style="padding:0 5px;border:1px solid var(--color-accent);font:500 10px/1.6 ui-monospace,Menlo,monospace">1</a>
+                  <a href="#" style="padding:0 5px;border:1px solid var(--color-accent);font:500 10px/1.6 ui-monospace,Menlo,monospace">2</a>
+                  <a href="#" style="padding:0 5px;border:1px solid var(--color-accent);font:500 10px/1.6 ui-monospace,Menlo,monospace">3</a>
+                  <div style="flex:1"></div>
+                  <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">存为资产</span><span class="en">Save asset</span></button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:var(--space-3);padding:var(--space-3);border:1px solid var(--color-accent);background:var(--color-accent-100)">
+                <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+                  <div style="font:600 12px/1.2 var(--font-heading);letter-spacing:.03em"><span class="zh">审批请求 · 写入项目资料</span><span class="en">APPROVAL · write to corpus</span></div>
+                  <div style="font-size:12px;color:var(--color-accent-800)"><span class="zh">Agent 请求将派生模型 DCF_v3_adj 写入当前项目。</span><span class="en">Agent requests writing DCF_v3_adj into this project.</span></div>
+                </div>
+                <button class="btn btn-secondary" style="padding:3px 9px;font-size:11px"><span class="zh">拒绝</span><span class="en">Reject</span></button>
+                <button class="btn btn-primary" style="padding:3px 9px;font-size:11px"><span class="zh">批准</span><span class="en">Approve</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-3) var(--space-4);border-top:1px solid var(--color-divider)">
+            <div style="display:flex;align-items:center;gap:7px;font:500 10px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">
+              <span class="zh">上下文：6 资料 · 2 资产（来自上方上传区选择）</span><span class="en">CONTEXT: 6 DOCS · 2 ASSETS (SELECTED ABOVE)</span>
+              <div style="flex:1"></div>
+              <span class="zh">草稿已保存</span><span class="en">DRAFT SAVED</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3);border:1px solid var(--color-divider)">
+              <span style="flex:1;font-size:12px;color:var(--color-neutral-600)"><span class="zh">继续追问…（生成中将排队）</span><span class="en">Ask a follow-up… (queued while generating)</span></span>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">附件</span><span class="en">Attach</span></button>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">技能</span><span class="en">Skills</span></button>
+              <button class="btn btn-primary" style="padding:3px 9px;font-size:11px"><span class="zh">发送</span><span class="en">Send</span></button>
+            </div>
+          </div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ chatClosed }}" hint-placeholder-val="{{ false }}">
+        <section style="display:flex;align-items:center;justify-content:center;gap:8px;padding:var(--space-8);border:1px dashed color-mix(in srgb, var(--color-text) 28%, transparent);color:var(--color-neutral-700);font-size:12px">
+          <span class="zh">选择上方任一会话气泡展开对话 · 上传区保持可见</span><span class="en">Pick a chat bubble above · the upload area stays visible</span>
+        </section>
+      </sc-if>
+    </div>
+  </main>
+
+  <!-- 右：Memo + 估值跟踪 + 追踪提醒 -->
+  <aside style="display:flex;flex-direction:column;border-left:1px solid var(--color-divider);overflow:hidden">
+    <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-4) var(--space-4) var(--space-3);border-bottom:1px solid var(--color-divider)">
+      <h3 style="margin:0;font:600 15px/1.2 var(--font-heading)"><span class="zh">研究看板</span><span class="en">Research board</span></h3>
+      <div style="flex:1"></div>
+      <span style="display:{{ specDisp }};padding:1px 5px;background:var(--color-neutral-200);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:var(--color-neutral-700)">§8 · §9 · §10</span>
+    </div>
+
+    <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-4)">
+
+      <section class="blueprint" style="padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 var(--font-heading)"><span class="zh">项目资料</span><span class="en">Documents</span></h4>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">128</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">文件夹</span><span class="en">Folders</span></button>
+          <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">管理</span><span class="en">Manage</span></button>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--color-divider)">
+          <span style="width:9px;height:9px;border:1px solid var(--color-neutral-500);border-radius:50%"></span>
+          <span style="font-size:12px;color:var(--color-neutral-600)"><span class="zh">搜索资料…</span><span class="en">Search documents…</span></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:var(--space-3);padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="width:11px;height:11px;border:1px solid var(--color-accent);background:var(--color-accent)"></span>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">2025 年报.pdf</span>
+            <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-16</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--space-3);padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="width:11px;height:11px;border:1px solid var(--color-accent);background:var(--color-accent)"></span>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">DCF_v3.xlsx</span>
+            <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-15</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--space-3);padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="width:11px;height:11px;border:1px solid var(--color-neutral-500)"></span>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">调研纪要_0812.md</span>
+            <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-12</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--space-3);padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="width:11px;height:11px;border:1px solid var(--color-neutral-500)"></span>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">创新药竞争格局.docx</span>
+            <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-10</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font:500 9px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">
+          <span class="zh">…其余 124 条 · 选择 / 删除 / 移动</span><span class="en">…124 more · select / delete / move</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-ghost" style="padding:0;font-size:11px"><span class="zh">加入上下文</span><span class="en">To context</span></button>
+        </div>
+      </section>
+
+      <section class="blueprint" style="padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 var(--font-heading)">Memo</h4>
+          <span class="tag tag-neutral" style="font-size:10px">v4 · 08-16</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">修订</span><span class="en">Revise</span></button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div style="height:7px;background:color-mix(in srgb, var(--color-text) 13%, transparent);width:94%"></div>
+          <div style="height:7px;background:color-mix(in srgb, var(--color-text) 11%, transparent);width:72%"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px">
+          <span style="padding:3px 8px;border:1px solid color-mix(in srgb, var(--color-text) 30%, transparent)">v2</span>
+          <span style="color:var(--color-neutral-600)">→</span>
+          <span style="padding:3px 8px;border:1px solid var(--color-accent);color:var(--color-accent-700)">v4</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-ghost" style="padding:0;font-size:11px"><span class="zh">比较</span><span class="en">Compare</span></button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <div style="padding:6px;border:1px solid var(--color-accent)"><div style="font:600 17px/1 var(--font-heading);color:var(--color-accent-700)">6</div><div style="font:500 8px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">新增</span><span class="en">ADDED</span></div></div>
+          <div style="padding:6px;border:1px solid color-mix(in srgb, var(--color-text) 26%, transparent)"><div style="font:600 17px/1 var(--font-heading)">9</div><div style="font:500 8px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">变化</span><span class="en">CHANGED</span></div></div>
+          <div style="padding:6px;border:1px dashed color-mix(in srgb, var(--color-text) 28%, transparent)"><div style="font:600 17px/1 var(--font-heading)">4</div><div style="font:500 8px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">未提及</span><span class="en">N/M</span></div></div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">历史版本</span><span class="en">History</span></button>
+          <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">下载</span><span class="en">Download</span></button>
+          <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">加入上下文</span><span class="en">Add to context</span></button>
+        </div>
+      </section>
+
+      <section class="blueprint" style="padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 var(--font-heading)"><span class="zh">估值跟踪</span><span class="en">Valuation</span></h4>
+          <span class="tag tag-neutral" style="font-size:10px">DCF_v3</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">刷新</span><span class="en">Refresh</span></button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">PRICE</div><div style="font:600 18px/1.1 var(--font-heading)">48.62</div></div>
+          <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">模型隐含</span><span class="en">IMPLIED</span></div><div style="font:600 18px/1.1 var(--font-heading);color:var(--color-accent-700)">53.10</div></div>
+        </div>
+        <table class="table" style="font-size:11px;table-layout:fixed">
+          <thead><tr>
+            <th><span class="zh">指标</span><span class="en">Metric</span></th>
+            <th><span class="zh">模型</span><span class="en">Model</span></th>
+            <th><span class="zh">实际</span><span class="en">Actual</span></th>
+            <th><span class="zh">差异</span><span class="en">Gap</span></th>
+          </tr></thead>
+          <tbody>
+            <tr><td><span class="zh">营收</span><span class="en">Rev</span></td><td>7,820</td><td>7,655</td><td style="color:var(--color-accent-700)">−2.1%</td></tr>
+            <tr><td><span class="zh">毛利率</span><span class="en">GM</span></td><td>84.1%</td><td>82.3%</td><td style="color:var(--color-accent-700)">−1.8pp</td></tr>
+            <tr><td><span class="zh">研发率</span><span class="en">R&amp;D</span></td><td>21.5%</td><td style="color:var(--color-neutral-500)">—</td><td style="color:var(--color-neutral-500)"><span class="zh">缺失</span><span class="en">n/a</span></td></tr>
+          </tbody>
+        </table>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--color-accent);background:var(--color-accent-100)">
+          <div style="flex:1;font-size:11px;color:var(--color-accent-800)"><span class="zh">派生模型 DCF_v3_adj 待确认入库</span><span class="en">DCF_v3_adj awaiting confirmation</span></div>
+          <button class="btn btn-primary" style="padding:2px 8px;font-size:11px"><span class="zh">确认</span><span class="en">Confirm</span></button>
+        </div>
+      </section>
+
+      <section class="blueprint" style="padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 var(--font-heading)"><span class="zh">风险 · 催化剂</span><span class="en">Risks · catalysts</span></h4>
+          <div style="flex:1"></div>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">7 · 4 · <span class="zh">未读 5</span><span class="en">5 UNREAD</span></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--color-divider)">
+          <div style="display:flex;align-items:center;gap:7px">
+            <span class="tag tag-outline" style="font-size:10px"><span class="zh">风险</span><span class="en">RISK</span></span>
+            <span style="flex:1;font-size:12px"><span class="zh">主力品种进入第十一批集采</span><span class="en">Key SKU enters 11th VBP</span></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent)"></span>
+          </div>
+          <div style="padding:6px 8px;border-left:2px solid var(--color-accent-400);background:color-mix(in srgb, var(--color-text) 3%, transparent);font-size:11px;color:var(--color-neutral-700)">
+            <span class="zh">摘录：「……已列入拟纳入清单……」</span><span class="en">"…appears on the proposed list…"</span> <a href="#">[1]</a>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">确认</span><span class="en">Ack</span></button>
+            <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">忽略</span><span class="en">Dismiss</span></button>
+            <button class="btn btn-ghost" style="padding:0 4px;font-size:11px"><span class="zh">版本变化</span><span class="en">Diff</span></button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:7px;padding:8px;border:1px solid var(--color-divider)">
+          <span class="tag tag-neutral" style="font-size:10px"><span class="zh">催化剂</span><span class="en">CAT</span></span>
+          <span style="flex:1;font-size:12px"><span class="zh">III 期数据读出（Q4）</span><span class="en">Phase III readout (Q4)</span></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font:500 9px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">
+          <span class="zh">观察规则 4 条 · 手动触发更新</span><span class="en">4 WATCH RULES · RUN UPDATE</span>
+          <div style="flex:1"></div>
+          <span style="width:52px;height:5px;background:var(--color-neutral-300)"><i style="display:block;width:44%;height:5px;background:var(--color-accent)"></i></span>
+        </div>
+      </section>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;padding:8px var(--space-4);border-top:1px solid var(--color-divider);font:500 9px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-neutral-600)">
+      <span class="zh">线框稿 · 异常态：重试 / 重连 / 克隆 / 换模型</span><span class="en">WIREFRAME · RETRY / RECONNECT / CLONE / SWITCH</span>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;zh&quot;,&quot;en&quot;],&quot;default&quot;:&quot;zh&quot;,&quot;tsType&quot;:&quot;'zh'|'en'&quot;},&quot;openChatByDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;showSpecTags&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { proj: null, chat: undefined, lang: null };
+
+  get proj() { return this.state.proj ?? 0; }
+  get chat() { return this.state.chat === undefined ? (this.props.openChatByDefault ?? true ? 1 : 0) : this.state.chat; }
+  get lang() { return this.state.lang ?? this.props.lang ?? "zh"; }
+
+  renderVals() {
+    const zh = this.lang === "zh", p = this.proj, c = this.chat;
+    const projects = [
+      { n: "恒瑞医药 · 600276", m: zh ? "128 资料 · 索引就绪 · 41 资产 · AGENT 就绪" : "128 DOCS · INDEXED · 41 ASSETS · AGENT READY" },
+      { n: "贵州茅台 · 600519", m: zh ? "64 资料 · 索引中 41% · 12 资产" : "64 DOCS · INDEXING 41% · 12 ASSETS" },
+      { n: "宁德时代 · 300750", m: zh ? "203 资料 · 索引就绪 · 68 资产" : "203 DOCS · INDEXED · 68 ASSETS" }
+    ];
+    const chats = {
+      1: { t: zh ? "集采对 2026 毛利率的影响" : "VBP impact on 2026 margin", s: zh ? "生成中" : "LIVE" },
+      2: { t: zh ? "创新药管线估值拆分" : "Pipeline valuation split", s: zh ? "已完成" : "DONE" },
+      3: { t: zh ? "海外授权收入复盘" : "Out-licensing review", s: zh ? "待审批 1" : "1 APPROVAL" }
+    };
+    const ch = chats[c] || chats[1];
+    return {
+      lang: this.lang,
+      langBtn: zh ? "EN" : "中",
+      toggleLang: () => this.setState({ lang: zh ? "en" : "zh" }),
+      specDisp: (this.props.showSpecTags ?? true) ? "inline-block" : "none",
+      projName: projects[p].n, projMeta: projects[p].m,
+      on0: p === 0 ? 1 : 0, on1: p === 1 ? 1 : 0, on2: p === 2 ? 1 : 0,
+      pick0: () => this.setState({ proj: 0 }), pick1: () => this.setState({ proj: 1 }), pick2: () => this.setState({ proj: 2 }),
+      s1On: c === 1 ? 1 : 0, s2On: c === 2 ? 1 : 0, s3On: c === 3 ? 1 : 0,
+      openS1: () => this.setState({ chat: 1 }), openS2: () => this.setState({ chat: 2 }), openS3: () => this.setState({ chat: 3 }),
+      closeChat: () => this.setState({ chat: 0 }),
+      chatOpen: c !== 0, chatClosed: c === 0,
+      chatTitle: ch.t, chatState: ch.s
+    };
+  }
+}
+</script>
+</body>
+</html>

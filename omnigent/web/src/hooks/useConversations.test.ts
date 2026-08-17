@@ -10,6 +10,7 @@ import type { Session } from "@/lib/types";
 import { useSessionUpdatesConnected } from "./useSessionUpdatesConnected";
 import {
   deleteConversation,
+  fetchConversationById,
   renameConversation,
   useArchiveConversation,
   useBulkArchiveConversations,
@@ -90,6 +91,128 @@ describe("renameConversation", () => {
   it("throws on non-2xx", async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({}, { ok: false, status: 404 }));
     await expect(renameConversation("missing", "x")).rejects.toThrow(/404/);
+  });
+});
+
+describe("session response normalization", () => {
+  function renderConversationsList(searchQuery = "") {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children);
+    return renderHook(() => useConversations(searchQuery), { wrapper });
+  }
+
+  it("normalizes, filters, and sorts the current TypeScript sessions list contract", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        sessions: [
+          {
+            id: "session_alpha_old",
+            projectId: "project_alpha",
+            title: "Alpha older thesis",
+            status: "idle",
+            archivedAt: null,
+            forkedFromSessionId: null,
+            createdAt: "2026-08-15T09:00:00.000Z",
+            updatedAt: "2026-08-16T09:00:00.000Z",
+            lastSequence: 3,
+          },
+          {
+            id: "session_noise",
+            projectId: "project_noise",
+            title: "Unrelated company",
+            status: "running",
+            archivedAt: null,
+            forkedFromSessionId: null,
+            createdAt: "2026-08-17T10:00:00.000Z",
+            updatedAt: "2026-08-17T11:00:00.000Z",
+            lastSequence: 4,
+          },
+          {
+            id: "session_alpha_new",
+            projectId: "project_alpha",
+            title: "ALPHA current thesis",
+            status: "interrupted",
+            archivedAt: "2026-08-17T12:30:00.000Z",
+            forkedFromSessionId: null,
+            createdAt: "2026-08-16T10:00:00.000Z",
+            updatedAt: "2026-08-17T12:00:00.000Z",
+            lastSequence: 8,
+          },
+        ],
+      }),
+    );
+
+    const { result } = renderConversationsList("alpha");
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const page = result.current.data?.pages[0];
+    expect(page).toMatchObject({
+      first_id: "session_alpha_new",
+      last_id: "session_alpha_old",
+      has_more: false,
+    });
+    expect(page?.data.map((session) => session.id)).toEqual([
+      "session_alpha_new",
+      "session_alpha_old",
+    ]);
+    expect(page?.data[0]).toMatchObject({
+      object: "conversation",
+      title: "ALPHA current thesis",
+      created_at: Date.parse("2026-08-16T10:00:00.000Z") / 1000,
+      updated_at: Date.parse("2026-08-17T12:00:00.000Z") / 1000,
+      labels: {
+        "private_fund.dataset_id": "project_alpha",
+        "private_fund.project_id": "project_alpha",
+      },
+      permission_level: null,
+      status: "failed",
+      archived: true,
+    });
+  });
+
+  it("fails closed when a successful list response has an unknown shape", async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ results: [] }));
+
+    const { result } = renderConversationsList();
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect((result.current.error as Error).message).toMatch(/Invalid \/v1\/sessions response/);
+  });
+
+  it("normalizes the current TypeScript single-session contract", async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        id: "session_current",
+        projectId: "project_current",
+        title: "Current investment case",
+        status: "running",
+        archivedAt: null,
+        forkedFromSessionId: null,
+        createdAt: "2026-08-17T01:02:03.000Z",
+        updatedAt: "2026-08-17T04:05:06.000Z",
+        lastSequence: 5,
+      }),
+    );
+
+    const result = await fetchConversationById("session_current");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/v1/sessions/session_current");
+    expect(result).toMatchObject({
+      id: "session_current",
+      object: "conversation",
+      title: "Current investment case",
+      created_at: Date.parse("2026-08-17T01:02:03.000Z") / 1000,
+      updated_at: Date.parse("2026-08-17T04:05:06.000Z") / 1000,
+      labels: {
+        "private_fund.dataset_id": "project_current",
+        "private_fund.project_id": "project_current",
+      },
+      permission_level: null,
+      status: "running",
+      archived: false,
+    });
   });
 });
 

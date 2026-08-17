@@ -2,17 +2,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { authenticatedFetch } from "./identity";
 import {
   PRIVATE_FUND_RESEARCH_MODE_STORAGE_KEY,
+  activatePrivateFundProject,
   addPrivateFundValuationDerivedModelToResources,
+  createPrivateFundProject,
   createPrivateFundSourceFolder,
   deletePrivateFundAssets,
+  deletePrivateFundFile,
   deletePrivateFundFiles,
   deletePrivateFundProject,
+  deletePrivateFundSourceFolder,
   derivePrivateFundValuationModel,
   fetchPrivateFundValuationDerivedModelFile,
   comparePrivateFundMemoVersions,
   comparePrivateFundValuationModelVersions,
   getPrivateFundValuationAgentAnalysis,
   getPrivateFundProject,
+  getPrivateFundPipelineJob,
   getPrivateFundSourceFolders,
   getPrivateFundResearchItemTimeline,
   getPrivateFundTrackingOverview,
@@ -21,6 +26,7 @@ import {
   getPrivateFundWorkflow,
   privateFundTokenUsageFromWire,
   privateFundProjectPreamble,
+  listPrivateFundProjects,
   wrapPrivateFundPromptContext,
   readPrivateFundResearchMode,
   runPrivateFundPipeline,
@@ -33,16 +39,126 @@ import {
   updatePrivateFundValuationAlert,
   updatePrivateFundValuationWatchRule,
   updatePrivateFundProject,
+  uploadPrivateFundFiles,
   writePrivateFundResearchMode,
 } from "./privateFundApi";
 
 vi.mock("./identity", () => ({ authenticatedFetch: vi.fn() }));
 
 const PROJECT = { datasetId: "sungrow", name: "阳光电源" };
+const CANONICAL_PROJECT = {
+  id: "sungrow",
+  name: "阳光电源",
+  companyName: "阳光电源股份有限公司",
+  ticker: "300274.SZ",
+  createdAt: "2026-08-17T00:00:00.000Z",
+  updatedAt: "2026-08-17T00:00:00.000Z",
+};
+
+function canonicalDocument(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "doc-1",
+    logicalKey: "upload:annual.pdf",
+    sourceRoot: "upload",
+    sourceRelpath: "annual.pdf",
+    title: "Annual report",
+    status: "active",
+    currentVersionId: "ver-1",
+    currentVersionNo: 1,
+    metadata: {},
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+    deletedAt: null,
+    ...overrides,
+  };
+}
+
+function canonicalVersion(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ver-1",
+    documentId: "doc-1",
+    versionNo: 1,
+    supersedesVersionId: null,
+    sha256: "a".repeat(64),
+    originalFilename: "annual.pdf",
+    storedPath: "/srv/private/sungrow/annual.pdf",
+    fileType: "pdf",
+    mimeType: "application/pdf",
+    fileSize: 128,
+    status: "indexed",
+    lifecycle: "active",
+    parserName: "worker",
+    parserVersion: "1",
+    metadata: {
+      chunkCount: 12,
+      docType: "financial_report",
+      docSubtype: "annual_report",
+      docTypeConfidence: 0.97,
+      classificationStatus: "accepted",
+      classificationMethod: "rules",
+      companyName: "阳光电源股份有限公司",
+      companyTicker: "300274.SZ",
+      companyConfidence: 0.96,
+    },
+    createdAt: "2026-08-17T00:00:00.000Z",
+    updatedAt: "2026-08-17T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function canonicalPage(items: unknown[], offset = 0, hasMore = false) {
+  return {
+    items,
+    total: hasMore ? offset + items.length + 1 : offset + items.length,
+    limit: 500,
+    offset,
+    hasMore,
+  };
+}
+
+function apiResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+const CANONICAL_SOURCE_FOLDERS = {
+  folders: [
+    {
+      id: "folder-old",
+      parentId: null,
+      name: "核心资料",
+      folderKind: "legacy",
+      classificationKey: null,
+      documentCount: 1,
+      createdAt: "2026-08-17T00:00:00.000Z",
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    },
+    {
+      id: "folder-new",
+      parentId: null,
+      name: "财务报告",
+      folderKind: "classification",
+      classificationKey: "financial_report",
+      documentCount: 0,
+      createdAt: "2026-08-17T00:00:00.000Z",
+      updatedAt: "2026-08-17T00:00:00.000Z",
+    },
+  ],
+  assignments: [
+    {
+      documentId: "doc-1",
+      folderId: "folder-old",
+      assignmentSource: "legacy",
+      legacyFileName: "annual.pdf",
+    },
+  ],
+};
 
 afterEach(() => {
   localStorage.clear();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
 });
 
 describe("private-fund research instructions", () => {
@@ -108,72 +224,157 @@ describe("private-fund pipeline requests", () => {
 });
 
 describe("private-fund source folder requests", () => {
-  const folderTree = {
-    dataset_id: "sungrow",
-    folders: [
-      {
-        folder_id: "system:financial_report",
-        name: "财务报告",
-        kind: "system",
-        classification_key: "financial_report",
-        files: [{ file_name: "annual.pdf", assignment: "auto" }],
-        file_count: 1,
-        created_at: "2026-07-14T00:00:00Z",
-        updated_at: "2026-07-14T00:00:00Z",
-      },
-    ],
-  };
+  function mockSourceFolderApi(documents = [canonicalDocument()]) {
+    vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
+      const href = String(url);
+      if (href.includes("/documents/") && href.includes("/versions?")) {
+        const documentId = href.split("/documents/")[1]!.split("/")[0]!;
+        return apiResponse(
+          canonicalPage([
+            canonicalVersion({
+              id: documentId === "doc-1" ? "ver-1" : `ver-${documentId}`,
+              documentId,
+              originalFilename: documentId === "doc-2" ? "unassigned.pdf" : "annual.pdf",
+            }),
+          ]),
+        );
+      }
+      if (href.includes("/documents?")) return apiResponse(canonicalPage(documents));
+      if (href.endsWith("/source-folders") && (!init?.method || init.method === "GET")) {
+        return apiResponse(CANONICAL_SOURCE_FOLDERS);
+      }
+      if (href.includes("/source-folders")) return apiResponse(CANONICAL_SOURCE_FOLDERS);
+      throw new Error(`Unexpected request: ${href}`);
+    });
+  }
 
-  it("maps the source folder tree", async () => {
-    vi.mocked(authenticatedFetch).mockResolvedValue(
-      new Response(JSON.stringify(folderTree), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
+  it("maps canonical assignments and places every unassigned active document in a virtual folder", async () => {
+    mockSourceFolderApi([
+      canonicalDocument(),
+      canonicalDocument({
+        id: "doc-2",
+        logicalKey: "upload:unassigned.pdf",
+        sourceRelpath: "unassigned.pdf",
+        currentVersionId: "ver-doc-2",
       }),
-    );
+    ]);
 
     const tree = await getPrivateFundSourceFolders("sungrow");
 
-    expect(tree.folders[0]).toMatchObject({
-      folderId: "system:financial_report",
-      classificationKey: "financial_report",
-      fileCount: 1,
-      files: [{ fileName: "annual.pdf", assignment: "auto" }],
+    expect(tree.folders.find((folder) => folder.folderId === "folder-old")).toMatchObject({
+      kind: "custom",
+      files: [{ fileName: "annual.pdf", assignment: "manual" }],
     });
+    expect(tree.folders.find((folder) => folder.folderId === "folder-new")?.kind).toBe("auto");
+    expect(tree.folders.find((folder) => folder.folderId === "system:unassigned")).toMatchObject({
+      name: "待识别",
+      kind: "system",
+      files: [{ fileName: "unassigned.pdf", assignment: "auto" }],
+    });
+    expect(
+      tree.folders.flatMap((folder) => folder.files.map((file) => file.fileName)).sort(),
+    ).toEqual(["annual.pdf", "unassigned.pdf"]);
   });
 
-  it("creates, renames, and moves files with the folder API", async () => {
-    vi.mocked(authenticatedFetch).mockImplementation(() =>
-      Promise.resolve(
-        new Response(JSON.stringify(folderTree), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    );
+  it("creates and renames folders through canonical routes but protects the virtual folder", async () => {
+    mockSourceFolderApi();
 
     await createPrivateFundSourceFolder("sungrow", "核心资料");
-    await renamePrivateFundSourceFolder("sungrow", "folder_1", "重点跟踪");
-    await movePrivateFundSourceFile("sungrow", "annual.pdf", "folder_1");
+    await renamePrivateFundSourceFolder("sungrow", "folder-old", "重点跟踪");
 
-    expect(authenticatedFetch).toHaveBeenNthCalledWith(
-      1,
-      "/v1/private-fund/projects/sungrow/source-folders",
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      "/v1/projects/sungrow/source-folders",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "核心资料" }) }),
     );
-    expect(authenticatedFetch).toHaveBeenNthCalledWith(
-      2,
-      "/v1/private-fund/projects/sungrow/source-folders/folder_1",
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      "/v1/projects/sungrow/source-folders/folder-old",
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ name: "重点跟踪" }) }),
     );
-    expect(authenticatedFetch).toHaveBeenNthCalledWith(
-      3,
-      "/v1/private-fund/projects/sungrow/source-folders/move-file",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ file_name: "annual.pdf", folder_id: "folder_1" }),
-      }),
+    const callsBeforeVirtualMutations = vi.mocked(authenticatedFetch).mock.calls.length;
+    await expect(
+      renamePrivateFundSourceFolder("sungrow", "system:unassigned", "非法重命名"),
+    ).rejects.toThrow("virtual");
+    await expect(deletePrivateFundSourceFolder("sungrow", "system:unassigned")).rejects.toThrow(
+      "virtual",
     );
+    expect(authenticatedFetch).toHaveBeenCalledTimes(callsBeforeVirtualMutations);
+  });
+
+  it("uses canonical atomic assignment for a real-folder move", async () => {
+    const moved = {
+      ...CANONICAL_SOURCE_FOLDERS,
+      assignments: [
+        {
+          documentId: "doc-1",
+          folderId: "folder-new",
+          assignmentSource: "manual",
+          legacyFileName: "annual.pdf",
+        },
+      ],
+    };
+    mockSourceFolderApi();
+    vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
+      const href = String(url);
+      if (href.includes("/documents/") && href.includes("/versions?")) {
+        return apiResponse(canonicalPage([canonicalVersion()]));
+      }
+      if (href.includes("/documents?")) return apiResponse(canonicalPage([canonicalDocument()]));
+      if (href.endsWith("/source-folders/folder-new/documents") && init?.method === "POST") {
+        return apiResponse(moved);
+      }
+      if (href.endsWith("/source-folders")) return apiResponse(CANONICAL_SOURCE_FOLDERS);
+      throw new Error(`Unexpected request: ${href}`);
+    });
+
+    const tree = await movePrivateFundSourceFile("sungrow", " ＡＮＮＵＡＬ.PDF ", "folder-new");
+
+    const mutationCalls = vi
+      .mocked(authenticatedFetch)
+      .mock.calls.filter(([, init]) => Boolean(init?.method && init.method !== "GET"));
+    expect(mutationCalls).toEqual([
+      [
+        "/v1/projects/sungrow/source-folders/folder-new/documents",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ documentId: "doc-1", assignmentSource: "manual" }),
+        }),
+      ],
+    ]);
+    expect(tree.folders.find((folder) => folder.folderId === "folder-new")?.files).toEqual([
+      { fileName: "annual.pdf", assignment: "manual" },
+    ]);
+  });
+
+  it("treats the virtual folder target as unassign without sending its synthetic id", async () => {
+    const unassigned = { ...CANONICAL_SOURCE_FOLDERS, assignments: [] };
+    mockSourceFolderApi();
+    vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
+      const href = String(url);
+      if (href.includes("/documents/") && href.includes("/versions?")) {
+        return apiResponse(canonicalPage([canonicalVersion()]));
+      }
+      if (href.includes("/documents?")) return apiResponse(canonicalPage([canonicalDocument()]));
+      if (href.includes("/folder-old/documents/doc-1") && init?.method === "DELETE") {
+        return apiResponse(unassigned);
+      }
+      if (href.endsWith("/source-folders")) return apiResponse(CANONICAL_SOURCE_FOLDERS);
+      throw new Error(`Unexpected request: ${href}`);
+    });
+
+    const tree = await movePrivateFundSourceFile("sungrow", "annual.pdf", "system:unassigned");
+
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      "/v1/projects/sungrow/source-folders/folder-old/documents/doc-1",
+      { method: "DELETE" },
+    );
+    expect(
+      vi
+        .mocked(authenticatedFetch)
+        .mock.calls.some(([url]) => String(url).includes("system%3Aunassigned")),
+    ).toBe(false);
+    expect(tree.folders.find((folder) => folder.folderId === "system:unassigned")?.files).toEqual([
+      { fileName: "annual.pdf", assignment: "auto" },
+    ]);
   });
 });
 
@@ -1148,36 +1349,61 @@ describe("private-fund valuation tracking requests", () => {
 });
 
 describe("private-fund document classification", () => {
-  it("maps controlled business type, company and confidence fields", async () => {
-    vi.mocked(authenticatedFetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          project: { dataset_id: "sungrow", name: "阳光电源", status: "completed" },
-          files: [
-            {
-              name: "2024-annual-report.pdf",
-              file_type: "pdf",
-              size: 128,
-              status: "indexed",
-              chunk_count: 12,
-              doc_type: "financial_report",
-              doc_subtype: "annual_report",
-              doc_type_confidence: 0.97,
-              classification_status: "accepted",
-              classification_method: "rules",
-              company_name: "阳光电源股份有限公司",
-              company_ticker: "300274.SZ",
-              company_confidence: 0.96,
-            },
-          ],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    );
+  it("combines canonical project, paginated active documents and their actual versions", async () => {
+    const secondDocument = canonicalDocument({
+      id: "doc-2",
+      logicalKey: "upload:model.xlsx",
+      sourceRelpath: "model.xlsx",
+      currentVersionId: "ver-2",
+      currentVersionNo: 2,
+    });
+    vi.mocked(authenticatedFetch).mockImplementation(async (url) => {
+      const href = String(url);
+      if (href === "/v1/projects/sungrow") return apiResponse(CANONICAL_PROJECT);
+      if (href.endsWith("/documents?limit=500&offset=0")) {
+        return apiResponse(
+          canonicalPage(
+            [canonicalDocument(), canonicalDocument({ id: "removed", status: "removed" })],
+            0,
+            true,
+          ),
+        );
+      }
+      if (href.endsWith("/documents?limit=500&offset=2")) {
+        return apiResponse(canonicalPage([secondDocument], 2));
+      }
+      if (href.includes("/documents/doc-1/versions?")) {
+        return apiResponse(canonicalPage([canonicalVersion()]));
+      }
+      if (href.includes("/documents/doc-2/versions?")) {
+        return apiResponse(
+          canonicalPage([
+            canonicalVersion({
+              id: "ver-2",
+              documentId: "doc-2",
+              versionNo: 2,
+              originalFilename: "model.xlsx",
+              fileType: "xlsx",
+              storedPath: "/srv/private/sungrow/model.xlsx",
+            }),
+          ]),
+        );
+      }
+      throw new Error(`Unexpected request: ${href}`);
+    });
 
     const payload = await getPrivateFundProject("sungrow");
 
+    expect(payload.project).toMatchObject({
+      datasetId: "sungrow",
+      documentCount: 2,
+      indexedDocumentCount: 2,
+      indexReady: true,
+    });
+    expect(payload.files).toHaveLength(2);
     expect(payload.files[0]).toMatchObject({
+      name: "annual.pdf",
+      status: "indexed",
       docType: "financial_report",
       docSubtype: "annual_report",
       docTypeConfidence: 0.97,
@@ -1185,95 +1411,271 @@ describe("private-fund document classification", () => {
       companyName: "阳光电源股份有限公司",
       companyTicker: "300274.SZ",
       companyConfidence: 0.96,
+      storedPath: null,
     });
+    expect(vi.mocked(authenticatedFetch).mock.calls.map(([url]) => url)).not.toContain(
+      expect.stringContaining("/documents/removed/versions"),
+    );
   });
 });
 
-describe("private-fund project updates", () => {
-  it("updates editable project identity fields while keeping dataset id in the route", async () => {
-    vi.mocked(authenticatedFetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          project: {
-            dataset_id: "dataset_internal_id",
-            name: "阳光电源研究",
-            status: "completed",
-            company_name: "阳光电源",
-            company_ticker: "300274",
-          },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    );
-
-    const updated = await updatePrivateFundProject("dataset_internal_id", {
-      name: "阳光电源研究",
-      companyName: "阳光电源",
-      companyTicker: "300274",
+describe("private-fund canonical project requests", () => {
+  it("enriches the canonical project list with document readiness", async () => {
+    vi.mocked(authenticatedFetch).mockImplementation(async (url) => {
+      const href = String(url);
+      if (href === "/v1/projects") return apiResponse({ projects: [CANONICAL_PROJECT] });
+      if (href.includes("/documents/doc-1/versions?")) {
+        return apiResponse(canonicalPage([canonicalVersion()]));
+      }
+      if (href.includes("/documents?")) {
+        return apiResponse(canonicalPage([canonicalDocument()]));
+      }
+      throw new Error(`Unexpected request: ${href}`);
     });
 
-    expect(updated).toMatchObject({
-      datasetId: "dataset_internal_id",
-      name: "阳光电源研究",
-      companyTicker: "300274",
-    });
-    expect(authenticatedFetch).toHaveBeenCalledWith(
-      "/v1/private-fund/projects/dataset_internal_id",
+    const projects = await listPrivateFundProjects();
+
+    expect(projects).toEqual([
       expect.objectContaining({
-        method: "PATCH",
+        datasetId: "sungrow",
+        documentCount: 1,
+        indexedDocumentCount: 1,
+        indexReady: true,
+      }),
+    ]);
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      "/v1/projects/sungrow/documents?limit=500&offset=0",
+    );
+  });
+
+  it("creates and deletes through canonical routes while activation stays client-side", async () => {
+    vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
+      if (url === "/v1/projects" && init?.method === "POST") {
+        return apiResponse(CANONICAL_PROJECT, 201);
+      }
+      if (url === "/v1/projects/sungrow" && init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`Unexpected request: ${String(url)}`);
+    });
+
+    const created = await createPrivateFundProject({
+      name: "阳光电源",
+      datasetId: "legacy-client-id",
+      companyName: "阳光电源股份有限公司",
+      companyTicker: "300274.SZ",
+    });
+    await deletePrivateFundProject("sungrow");
+    await activatePrivateFundProject("sungrow");
+
+    expect(created).toMatchObject({ datasetId: "sungrow", name: "阳光电源" });
+    expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+    expect(authenticatedFetch).toHaveBeenNthCalledWith(
+      1,
+      "/v1/projects",
+      expect.objectContaining({
+        method: "POST",
         body: JSON.stringify({
-          name: "阳光电源研究",
-          company_name: "阳光电源",
-          company_ticker: "300274",
+          name: "阳光电源",
+          companyName: "阳光电源股份有限公司",
+          ticker: "300274.SZ",
         }),
       }),
+    );
+    expect(authenticatedFetch).toHaveBeenNthCalledWith(2, "/v1/projects/sungrow", {
+      method: "DELETE",
+    });
+  });
+
+  it("fails explicitly when the canonical API cannot update a project", async () => {
+    await expect(
+      updatePrivateFundProject("sungrow", {
+        name: "阳光电源研究",
+        companyName: "阳光电源",
+        companyTicker: "300274",
+      }),
+    ).rejects.toThrow("not supported by the canonical API");
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves every canonical upload job and polls jobs through /v1/jobs", async () => {
+    const documents = [
+      canonicalDocument({ currentVersionId: null, currentVersionNo: 0 }),
+      canonicalDocument({
+        id: "doc-2",
+        logicalKey: "upload:model.xlsx",
+        sourceRelpath: "model.xlsx",
+        currentVersionId: null,
+        currentVersionNo: 0,
+      }),
+    ];
+    const versions = [
+      canonicalVersion({ status: "parsing", lifecycle: "pending" }),
+      canonicalVersion({
+        id: "ver-2",
+        documentId: "doc-2",
+        originalFilename: "model.xlsx",
+        fileType: "xlsx",
+        storedPath: "/srv/private/sungrow/model.xlsx",
+        status: "parsing",
+        lifecycle: "pending",
+      }),
+    ];
+    const jobs = [
+      {
+        id: "job-1",
+        projectId: "sungrow",
+        status: "queued",
+        createdAt: "2026-08-17T00:00:00.000Z",
+        startedAt: null,
+        completedAt: null,
+        result: null,
+        error: null,
+        tenantNamespace: "server-only",
+        payload: { inputPath: "/server-only/path" },
+      },
+      {
+        id: "job-2",
+        projectId: "sungrow",
+        status: "running",
+        createdAt: "2026-08-17T00:00:01.000Z",
+        startedAt: "2026-08-17T00:00:02.000Z",
+        completedAt: null,
+        result: null,
+        error: null,
+      },
+    ];
+    vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
+      const href = String(url);
+      if (href.endsWith("/documents/upload") && init?.method === "POST") {
+        return apiResponse(
+          {
+            uploads: documents.map((document, index) => ({
+              document,
+              version: versions[index],
+              job: jobs[index],
+              created: true,
+            })),
+          },
+          202,
+        );
+      }
+      if (href === "/v1/projects/sungrow") return apiResponse(CANONICAL_PROJECT);
+      if (href.includes("/documents?")) return apiResponse(canonicalPage(documents));
+      if (href.includes("/documents/doc-1/versions?")) {
+        return apiResponse(canonicalPage([versions[0]]));
+      }
+      if (href.includes("/documents/doc-2/versions?")) {
+        return apiResponse(canonicalPage([versions[1]]));
+      }
+      if (href === "/v1/jobs/job-1") return apiResponse(jobs[0]);
+      throw new Error(`Unexpected request: ${href}`);
+    });
+
+    const uploaded = await uploadPrivateFundFiles("sungrow", [
+      new File(["pdf"], "annual.pdf", { type: "application/pdf" }),
+      new File(["xlsx"], "model.xlsx"),
+    ]);
+    const polled = await getPrivateFundPipelineJob("job-1");
+
+    expect(uploaded.jobs.map((job) => job.jobId)).toEqual(["job-1", "job-2"]);
+    expect(uploaded.job?.jobId).toBe("job-1");
+    expect(uploaded.project.indexReady).toBe(false);
+    expect(uploaded.files.map((file) => file.status)).toEqual(["parsing", "parsing"]);
+    expect(uploaded.files.every((file) => file.storedPath === null)).toBe(true);
+    expect(uploaded.jobs[0]).not.toHaveProperty("tenantNamespace");
+    expect(uploaded.jobs[0]).not.toHaveProperty("payload");
+    expect(polled).toMatchObject({ jobId: "job-1", datasetId: "sungrow", status: "queued" });
+    expect(authenticatedFetch).toHaveBeenCalledWith("/v1/jobs/job-1");
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      "/v1/projects/sungrow/documents/upload",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     );
   });
 });
 
 describe("private-fund deletion requests", () => {
-  it("deletes a project and sends bulk source and asset selections", async () => {
-    vi.mocked(authenticatedFetch)
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ deleted_dataset_id: "sungrow" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            project: {
-              dataset_id: "sungrow",
-              name: "阳光电源",
-              status: "draft",
-              file_count: 0,
-            },
-            files: [],
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ assets: [], context_asset_ids: [] }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+  it("resolves a display filename to a canonical document id before bulk deletion", async () => {
+    let deleted = false;
+    vi.mocked(authenticatedFetch).mockImplementation(async (url, init) => {
+      const href = String(url);
+      if (href.includes("/documents?")) {
+        return apiResponse(
+          canonicalPage(
+            deleted ? [] : [canonicalDocument({ sourceRelpath: "交流会.pdf", title: "交流会" })],
+          ),
+        );
+      }
+      if (href.includes("/documents/doc-1/versions?")) {
+        return apiResponse(canonicalPage([canonicalVersion({ originalFilename: "交流会.pdf" })]));
+      }
+      if (href.endsWith("/documents/delete") && init?.method === "POST") {
+        deleted = true;
+        return apiResponse({
+          documents: [],
+          deletedDocumentIds: ["doc-1"],
+          alreadyRemovedDocumentIds: [],
+        });
+      }
+      if (href === "/v1/projects/sungrow") return apiResponse(CANONICAL_PROJECT);
+      if (href.endsWith("/assets/delete")) {
+        return apiResponse({ assets: [], context_asset_ids: [] });
+      }
+      throw new Error(`Unexpected request: ${href}`);
+    });
 
-    await deletePrivateFundProject("sungrow");
     await deletePrivateFundFiles("sungrow", ["交流会.pdf"]);
     await deletePrivateFundAssets("sungrow", ["node:analysis-1"]);
 
-    expect(authenticatedFetch).toHaveBeenNthCalledWith(1, "/v1/private-fund/projects/sungrow", {
-      method: "DELETE",
-    });
-    expect(JSON.parse(String(vi.mocked(authenticatedFetch).mock.calls[1][1]?.body))).toEqual({
-      file_names: ["交流会.pdf"],
-    });
-    expect(JSON.parse(String(vi.mocked(authenticatedFetch).mock.calls[2][1]?.body))).toEqual({
+    const deleteCall = vi
+      .mocked(authenticatedFetch)
+      .mock.calls.find(([url]) => String(url).endsWith("/documents/delete"));
+    expect(deleteCall?.[0]).toBe("/v1/projects/sungrow/documents/delete");
+    expect(JSON.parse(String(deleteCall?.[1]?.body))).toEqual({ documentIds: ["doc-1"] });
+    const assetDeleteCall = vi
+      .mocked(authenticatedFetch)
+      .mock.calls.find(([url]) => String(url).endsWith("/assets/delete"));
+    expect(JSON.parse(String(assetDeleteCall?.[1]?.body))).toEqual({
       asset_ids: ["node:analysis-1"],
     });
+  });
+
+  it("fails closed when case and NFKC normalization make a filename ambiguous", async () => {
+    const documents = [
+      canonicalDocument({ sourceRelpath: "ＡＢＣ.pdf" }),
+      canonicalDocument({
+        id: "doc-2",
+        logicalKey: "upload:abc.pdf",
+        sourceRelpath: "abc.PDF",
+        currentVersionId: "ver-2",
+      }),
+    ];
+    vi.mocked(authenticatedFetch).mockImplementation(async (url) => {
+      const href = String(url);
+      if (href.includes("/documents?")) return apiResponse(canonicalPage(documents));
+      if (href.includes("/documents/doc-1/versions?")) {
+        return apiResponse(canonicalPage([canonicalVersion({ originalFilename: "ＡＢＣ.pdf" })]));
+      }
+      if (href.includes("/documents/doc-2/versions?")) {
+        return apiResponse(
+          canonicalPage([
+            canonicalVersion({
+              id: "ver-2",
+              documentId: "doc-2",
+              originalFilename: "abc.PDF",
+            }),
+          ]),
+        );
+      }
+      throw new Error(`Unexpected request: ${href}`);
+    });
+
+    await expect(deletePrivateFundFile("sungrow", " abc.pdf ")).rejects.toThrow("ambiguous");
+    expect(
+      vi
+        .mocked(authenticatedFetch)
+        .mock.calls.some(([url]) => String(url).endsWith("/documents/delete")),
+    ).toBe(false);
   });
 });
 

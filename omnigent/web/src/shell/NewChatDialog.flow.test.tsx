@@ -4,32 +4,32 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { authenticatedFetch } from "@/lib/identity";
+import { activatePrivateFundProject, type PrivateFundProject } from "@/lib/privateFundApi";
 import type { Host } from "@/hooks/useHosts";
 import { useHosts } from "@/hooks/useHosts";
 import type { AvailableAgent } from "@/hooks/useAvailableAgents";
 import { useAvailableAgents } from "@/hooks/useAvailableAgents";
 import { NewChatLandingScreen, sanitizeInitialPrompt } from "./NewChatDialog";
 
-// The landing screen drives the real Web-start flow end to end: the host and
-// first agent auto-select, the working directory seeds from the host's most-
-// recent path, the composer message is the first prompt, and hitting send
-// POSTs /v1/sessions then navigates. The branches under test are the request
-// body the screen builds (host_id + workspace + agent_id), the terminal-
-// wrapper labels for the claude-native agent, the permission-mode
-// terminal_launch_args, the git worktree fields, and the sanitized prompt
-// handoff. The host list, agent catalog, conflict hooks, navigation and HTTP
-// layers are stubbed so the test isolates that wiring.
+// The landing screen drives the project-scoped Web-start flow end to end: a
+// ready research project supplies the workspace, the composer message becomes
+// the first prompt, and hitting send activates the dataset, POSTs /v1/sessions
+// and navigates. The suite covers request metadata, native-agent launch knobs,
+// private-fund context, prompt sanitization, and the absence of retired
+// worktree controls. External catalogs, navigation and HTTP are stubbed so the
+// tests isolate that wiring.
 const navigateMock = vi.fn();
 const setPendingInitialPromptMock = vi.fn();
 
-const RECENT_KEY = "omnigent:recent-workspaces";
 // Prompt history is scoped per conversation; the landing composer writes under
 // the newly created session id (``conv_new`` in these tests), so the recall
 // stack lives at the prefixed key, not the bare one.
 const PROMPT_HISTORY_KEY = "omnigent:prompt-history:conv_new";
-// The seeded working directory (from the host's persisted recent) that the
-// create body must carry through.
+// The selected research project's workspace that the create body carries.
 const SEEDED_WORKSPACE = "/Users/corey/universe/src/foo";
+const privateFundProjectsState = vi.hoisted(() => ({
+  projects: [] as PrivateFundProject[],
+}));
 
 // The landing screen navigates via the embed-aware routing abstraction
 // (`@/lib/routing`), not react-router directly — mock that so the create
@@ -53,6 +53,10 @@ vi.mock("@/lib/skillsMarketplaceApi", () => ({
 }));
 
 vi.mock("@/lib/identity", () => ({ authenticatedFetch: vi.fn() }));
+vi.mock("@/lib/privateFundApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/privateFundApi")>()),
+  activatePrivateFundProject: vi.fn(),
+}));
 vi.mock("@/hooks/useHosts", () => ({ useHosts: vi.fn() }));
 vi.mock("@/hooks/useAvailableAgents", () => ({ useAvailableAgents: vi.fn() }));
 // The home listing is only consulted when there's no recent; the recent is
@@ -79,6 +83,11 @@ vi.mock("@/hooks/useConversations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/useConversations")>()),
   useProjects: () => ({ data: [] }),
 }));
+vi.mock("@/hooks/usePrivateFundProjects", () => ({
+  usePrivateFundProjects: () => ({ data: privateFundProjectsState.projects }),
+  usePrivateFundProject: () => ({ data: undefined }),
+  usePrivateFundAssets: () => ({ data: undefined }),
+}));
 
 function host(overrides: Partial<Host> = {}): Host {
   return {
@@ -98,6 +107,31 @@ function agent(overrides: Partial<AvailableAgent> = {}): AvailableAgent {
     description: null,
     harness: null,
     skills: [],
+    ...overrides,
+  };
+}
+
+function readyResearchProject(overrides: Partial<PrivateFundProject> = {}): PrivateFundProject {
+  return {
+    datasetId: "project_foo",
+    name: "Project Foo",
+    status: "ready",
+    datasetRoot: SEEDED_WORKSPACE,
+    sourceDir: null,
+    uploadsDir: null,
+    companyName: "Project Foo",
+    companyTicker: null,
+    fileCount: 1,
+    uploadCount: 1,
+    documentCount: 1,
+    indexedDocumentCount: 1,
+    failedDocumentCount: 0,
+    chunkCount: 1,
+    indexCount: 1,
+    memoCount: 0,
+    indexReady: true,
+    latestJob: null,
+    tokenUsage: null,
     ...overrides,
   };
 }
@@ -132,17 +166,32 @@ function typeMessage(text: string): void {
   });
 }
 
-/** Wait for the working directory to seed from the recent before submitting. */
+/** Wait for the project scope and its workspace to seed before submitting. */
 async function waitForWorkspaceSeed(): Promise<void> {
-  // The chip shows the basename ("foo") once the seed effect runs.
-  await waitFor(() =>
-    expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("foo"),
-  );
+  await waitFor(() => {
+    expect(screen.getByTestId("new-chat-landing-research-project-chip")).toHaveTextContent(
+      "Project Foo",
+    );
+    expect(screen.getByText("Workspace: foo")).toBeInTheDocument();
+  });
 }
 
-/** Open the git-worktree popover so its branch fields mount. */
-function openWorktree(): void {
-  fireEvent.click(screen.getByTestId("new-chat-landing-branch-chip"));
+type PendingPromptPayload = {
+  text: string;
+  skill: { name: string; args: string } | null;
+  files: File[];
+};
+
+function pendingPromptPayload(): PendingPromptPayload {
+  expect(setPendingInitialPromptMock).toHaveBeenCalledTimes(1);
+  return setPendingInitialPromptMock.mock.calls[0]?.[1] as PendingPromptPayload;
+}
+
+function expectPrivateFundPrompt(text: string, userText: string): void {
+  expect(text).toContain("<!-- omnigent-private-fund-context:start -->");
+  expect(text).toContain("dataset_id: project_foo");
+  expect(text).toContain("<!-- omnigent-private-fund-context:end -->");
+  expect(text).toContain(userText);
 }
 
 /**
@@ -170,12 +219,12 @@ beforeEach(() => {
   navigateMock.mockReset();
   setPendingInitialPromptMock.mockReset();
   vi.mocked(authenticatedFetch).mockReset();
+  vi.mocked(activatePrivateFundProject).mockReset();
+  vi.mocked(activatePrivateFundProject).mockResolvedValue();
   localStorage.clear();
-  // Seed host_1's recent so the working directory pre-fills deterministically
-  // (the create body must carry SEEDED_WORKSPACE through).
-  localStorage.setItem(RECENT_KEY, JSON.stringify({ host_1: [SEEDED_WORKSPACE] }));
   setHosts([host()]);
   setAgents([agent()]);
+  privateFundProjectsState.projects = [readyResearchProject()];
 });
 
 afterEach(() => {
@@ -209,27 +258,26 @@ describe("NewChatLandingScreen create flow", () => {
       host_id: "host_1",
       workspace: SEEDED_WORKSPACE,
     });
-    // A plain YAML agent carries no terminal-wrapper labels.
-    expect(body.labels).toBeUndefined();
+    // A plain YAML agent has no terminal-wrapper labels, but every launcher
+    // session is explicitly scoped to the selected research dataset.
+    expect(body.labels).toEqual({
+      "private_fund.dataset_id": "project_foo",
+      "private_fund.dataset_name": "Project Foo",
+    });
 
     // On success the screen routes to the freshly created session.
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/c/conv_new"));
   });
 
-  it("keeps the seeded working directory when the already-selected host is re-picked", async () => {
+  it("keeps the project workspace when the already-selected research project is re-picked", async () => {
     renderLanding();
     await waitForWorkspaceSeed();
 
-    // The first online host auto-selects, so the menu row the user is most
-    // likely to click is the one that's already active. Re-picking it must
-    // not clear the seeded directory: selectHost used to setWorkspace("")
-    // unconditionally, and on a same-host pick none of the seeding effect's
-    // inputs (host id, recents, derived home) change, so nothing ever
-    // re-filled the field — the chip dropped back to its empty placeholder.
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    fireEvent.click(screen.getByRole("menuitem", { name: /corey-laptop/ }));
+    fireEvent.click(screen.getByTestId("new-chat-landing-research-project-chip"));
+    const projectButtons = screen.getAllByRole("button", { name: /Project Foo/ });
+    fireEvent.click(projectButtons[projectButtons.length - 1]);
 
-    expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("foo");
+    expect(screen.getByText("Workspace: foo")).toBeInTheDocument();
   });
 
   it("does not create a session when Enter is pressed with an empty message", async () => {
@@ -329,13 +377,12 @@ describe("NewChatLandingScreen create flow", () => {
     // It's stashed in the chatStore (keyed by the new conversation id),
     // trimmed + control-char-stripped, for ChatPage to auto-send. Plain
     // text (no leading "/") carries no skill invocation.
-    await waitFor(() =>
-      expect(setPendingInitialPromptMock).toHaveBeenCalledWith("conv_new", {
-        text: "read the README and refactor",
-        skill: null,
-        files: [],
-      }),
-    );
+    await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalledTimes(1));
+    const payload = pendingPromptPayload();
+    expectPrivateFundPrompt(payload.text, "read the README and refactor");
+    expect(payload.text).not.toContain("\x07");
+    expect(payload.skill).toBeNull();
+    expect(payload.files).toEqual([]);
     expect(navigateMock).toHaveBeenCalledWith("/c/conv_new");
   });
 
@@ -357,13 +404,11 @@ describe("NewChatLandingScreen create flow", () => {
     // The picked File rides the pending-prompt handoff so ChatPage's
     // auto-dispatched first turn sends it — files never go in the create
     // body (same reason as the prompt text: initial_items never fire a turn).
-    await waitFor(() =>
-      expect(setPendingInitialPromptMock).toHaveBeenCalledWith("conv_new", {
-        text: "what is in this image?",
-        skill: null,
-        files: [file],
-      }),
-    );
+    await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalledTimes(1));
+    const payload = pendingPromptPayload();
+    expectPrivateFundPrompt(payload.text, "what is in this image?");
+    expect(payload.skill).toBeNull();
+    expect(payload.files).toEqual([file]);
   });
 
   it("hands a bundled-skill first message off as a structured invocation", async () => {
@@ -386,13 +431,12 @@ describe("NewChatLandingScreen create flow", () => {
     // slash_command instead of a plain message. If matching regressed (or
     // the handoff dropped the skill), the agent would receive literal
     // "/review-pr 123 focus on auth" text — the original bug.
-    await waitFor(() =>
-      expect(setPendingInitialPromptMock).toHaveBeenCalledWith("conv_new", {
-        text: "/review-pr 123 focus on auth",
-        skill: { name: "review-pr", args: "123 focus on auth" },
-        files: [],
-      }),
-    );
+    await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalledTimes(1));
+    const payload = pendingPromptPayload();
+    expectPrivateFundPrompt(payload.text, "/review-pr 123 focus on auth");
+    expect(payload.skill?.name).toBe("review-pr");
+    expectPrivateFundPrompt(payload.skill?.args ?? "", "123 focus on auth");
+    expect(payload.files).toEqual([]);
   });
 
   it("keeps an unknown slash command as plain text (no skill payload)", async () => {
@@ -414,13 +458,11 @@ describe("NewChatLandingScreen create flow", () => {
     typeMessage("/typo do something");
     fireEvent.click(screen.getByTestId("new-chat-landing-submit"));
 
-    await waitFor(() =>
-      expect(setPendingInitialPromptMock).toHaveBeenCalledWith("conv_new", {
-        text: "/typo do something",
-        skill: null,
-        files: [],
-      }),
-    );
+    await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalledTimes(1));
+    const payload = pendingPromptPayload();
+    expectPrivateFundPrompt(payload.text, "/typo do something");
+    expect(payload.skill).toBeNull();
+    expect(payload.files).toEqual([]);
   });
 
   it("hands native terminal skills off as structured invocations", async () => {
@@ -445,13 +487,13 @@ describe("NewChatLandingScreen create flow", () => {
     typeMessage("/review-pr 123");
     fireEvent.click(screen.getByTestId("new-chat-landing-submit"));
 
-    await waitFor(() =>
-      expect(setPendingInitialPromptMock).toHaveBeenCalledWith("conv_new", {
-        text: "/review-pr 123",
-        skill: { name: "review-pr", args: "123" },
-        files: [],
-      }),
-    );
+    await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalledTimes(1));
+    const payload = pendingPromptPayload();
+    expect(payload.text).toMatch(/^\/review-pr 123\n\n/);
+    expectPrivateFundPrompt(payload.text, "/review-pr 123");
+    expect(payload.skill?.name).toBe("review-pr");
+    expectPrivateFundPrompt(payload.skill?.args ?? "", "123");
+    expect(payload.files).toEqual([]);
   });
 
   it("records the sanitized prompt in composer history for ArrowUp recall in the new chat", async () => {
@@ -477,7 +519,8 @@ describe("NewChatLandingScreen create flow", () => {
     // surrounding whitespace is trimmed. So a recall + resend reproduces
     // exactly what was sent, not the raw keystrokes.
     expect(history[0]).not.toContain("\x07");
-    expect(history).toEqual(["read the README and refactor"]);
+    expect(history).toHaveLength(1);
+    expectPrivateFundPrompt(history[0], "read the README and refactor");
   });
 
   it("attaches terminal-wrapper labels when the claude-native agent is chosen", async () => {
@@ -502,6 +545,9 @@ describe("NewChatLandingScreen create flow", () => {
     expect(body.labels).toEqual({
       "omnigent.ui": "terminal",
       "omnigent.wrapper": "claude-code-native-ui",
+      "omnigent.claude_native.auto_approve": "1",
+      "private_fund.dataset_id": "project_foo",
+      "private_fund.dataset_name": "Project Foo",
     });
   });
 
@@ -529,6 +575,8 @@ describe("NewChatLandingScreen create flow", () => {
     expect(body.labels).toEqual({
       "omnigent.ui": "terminal",
       "omnigent.wrapper": "antigravity-native-ui",
+      "private_fund.dataset_id": "project_foo",
+      "private_fund.dataset_name": "Project Foo",
     });
   });
 
@@ -1025,19 +1073,20 @@ describe("NewChatLandingScreen create flow", () => {
     expect(body.cost_control_mode_override).toBeUndefined();
   });
 
-  it("reveals the base-branch field only after a branch name is entered", () => {
+  it("hides technical branch controls in the project-scoped launcher", async () => {
     renderLanding();
-    openWorktree();
-    // Base ref is meaningless without a worktree, so it stays hidden until the
-    // user names a branch — then it appears.
+    await waitForWorkspaceSeed();
+
+    expect(screen.queryByTestId("new-chat-landing-branch-chip")).toBeNull();
+    expect(screen.queryByTestId("new-chat-landing-branch-input")).toBeNull();
     expect(screen.queryByTestId("new-chat-landing-base-branch-input")).toBeNull();
-    fireEvent.change(screen.getByTestId("new-chat-landing-branch-input"), {
-      target: { value: "feature/login" },
-    });
-    expect(screen.getByTestId("new-chat-landing-base-branch-input")).toBeInTheDocument();
+    expect(screen.getByTestId("new-chat-landing-research-project-chip")).toHaveTextContent(
+      "Project Foo",
+    );
+    expect(screen.getByTestId("new-chat-landing-research-mode")).toBeInTheDocument();
   });
 
-  it("posts git.branch_name and git.base_branch when both are provided", async () => {
+  it("omits git fields from project-scoped session creation", async () => {
     vi.mocked(authenticatedFetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ id: "conv_new" }),
@@ -1045,45 +1094,32 @@ describe("NewChatLandingScreen create flow", () => {
 
     renderLanding();
     await waitForWorkspaceSeed();
-    openWorktree();
-    fireEvent.change(screen.getByTestId("new-chat-landing-branch-input"), {
-      target: { value: "feature/login" },
-    });
-    fireEvent.change(screen.getByTestId("new-chat-landing-base-branch-input"), {
-      target: { value: "main" },
-    });
-    typeMessage("start the branch");
+    typeMessage("start the research");
     fireEvent.click(screen.getByTestId("new-chat-landing-submit"));
 
     await waitFor(() => expect(authenticatedFetch).toHaveBeenCalledTimes(1));
     const [, init] = vi.mocked(authenticatedFetch).mock.calls[0] as [string, RequestInit];
-    // Both the new branch and its base must reach the server so the host
-    // creates the worktree off the requested ref, not HEAD.
     const body = JSON.parse(init.body as string);
-    expect(body.git).toEqual({ branch_name: "feature/login", base_branch: "main" });
+    expect(body.git).toBeUndefined();
+    expect(body.labels).toMatchObject({ "private_fund.dataset_id": "project_foo" });
+    expect(activatePrivateFundProject).toHaveBeenCalledWith("project_foo");
   });
 
-  it("omits base_branch when blank so the host branches from current HEAD", async () => {
-    vi.mocked(authenticatedFetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ id: "conv_new" }),
-    } as unknown as Response);
-
+  it("blocks project-scoped session creation until its pipeline is ready", async () => {
+    privateFundProjectsState.projects = [readyResearchProject({ indexReady: false })];
     renderLanding();
-    await waitForWorkspaceSeed();
-    openWorktree();
-    fireEvent.change(screen.getByTestId("new-chat-landing-branch-input"), {
-      target: { value: "feature/login" },
-    });
-    typeMessage("start the branch");
-    fireEvent.click(screen.getByTestId("new-chat-landing-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("new-chat-landing-research-project-chip")).toHaveTextContent(
+        "Project Foo",
+      ),
+    );
+    typeMessage("start the research");
 
-    await waitFor(() => expect(authenticatedFetch).toHaveBeenCalledTimes(1));
-    const [, init] = vi.mocked(authenticatedFetch).mock.calls[0] as [string, RequestInit];
-    // No base_branch key (undefined is dropped by JSON.stringify) → the host
-    // falls back to the source repo's current HEAD.
-    const body = JSON.parse(init.body as string);
-    expect(body.git).toEqual({ branch_name: "feature/login" });
+    expect(screen.getByTestId("new-chat-landing-submit")).toBeDisabled();
+    fireEvent.keyDown(screen.getByTestId("new-chat-landing-input"), { key: "Enter" });
+    expect(activatePrivateFundProject).not.toHaveBeenCalled();
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it("surfaces the server's reason and does not navigate on a failed create", async () => {

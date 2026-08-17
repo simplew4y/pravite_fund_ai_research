@@ -1031,48 +1031,61 @@ interface PipelineJobWire {
   result?: unknown;
 }
 
-interface GlobalUploadCandidateWire {
-  dataset_id: string;
-  project_name: string;
-  company_name?: string | null;
-  company_ticker?: string | null;
-  score?: number | null;
-  method?: string | null;
+interface CanonicalGlobalUploadCandidateWire {
+  projectId: string;
+  projectName: string;
+  companyName: string | null;
+  ticker: string | null;
+  score: number;
+  method: string;
 }
 
-interface GlobalUploadItemWire {
-  item_id: string;
-  batch_id: string;
-  file_name: string;
-  file_type: string;
-  size: number;
-  checksum: string;
+interface CanonicalGlobalUploadItemWire {
+  itemId: string;
+  batchId: string;
+  originalFilename: string;
+  fileType: string;
+  mimeType: string;
+  fileSize: number;
+  sha256: string;
   status: string;
-  company_name?: string | null;
-  company_ticker?: string | null;
-  company_confidence?: number | null;
-  company_detection_method?: string | null;
-  matched_dataset_id?: string | null;
-  matched_project_name?: string | null;
-  project_match_confidence?: number | null;
-  project_match_method?: string | null;
-  candidate_projects?: GlobalUploadCandidateWire[];
-  pipeline_job_id?: string | null;
-  error_message?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
+  companyName: string | null;
+  ticker: string | null;
+  companyConfidence: number;
+  companyDetectionMethod: string | null;
+  targetProjectId: string | null;
+  routeConfidence: number;
+  routeMethod: string | null;
+  candidateProjects: CanonicalGlobalUploadCandidateWire[];
+  pipelineJobId: string | null;
+  documentId: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
 }
 
-interface GlobalUploadBatchWire {
-  batch_id: string;
+interface CanonicalGlobalUploadBatchWire {
+  batchId: string;
   status: string;
-  file_count?: number | null;
-  message?: string | null;
-  counts?: Record<string, number>;
-  items?: GlobalUploadItemWire[];
-  created_at?: string | null;
-  updated_at?: string | null;
-  finished_at?: string | null;
+  fileCount: number;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+}
+
+interface CanonicalGlobalUploadBatchDetailWire extends CanonicalGlobalUploadBatchWire {
+  counts: Record<string, number>;
+  items: CanonicalGlobalUploadItemWire[];
+}
+
+interface CanonicalGlobalUploadBatchPageWire {
+  items: CanonicalGlobalUploadBatchWire[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
 }
 
 interface PrivateFundTokenUsageWire {
@@ -1089,67 +1102,87 @@ interface PrivateFundTokenUsageWire {
   total_cost_usd?: number | null;
 }
 
-interface ProjectWire {
-  dataset_id: string;
+interface CanonicalProjectWire {
+  id: string;
   name: string;
-  status: string;
-  source_dir?: string | null;
-  dataset_root?: string | null;
-  uploads_dir?: string | null;
-  company_name?: string | null;
-  company_ticker?: string | null;
-  file_count?: number | null;
-  upload_count?: number | null;
-  document_count?: number | null;
-  indexed_document_count?: number | null;
-  failed_document_count?: number | null;
-  chunk_count?: number | null;
-  index_count?: number | null;
-  memo_count?: number | null;
-  latest_memo_path?: string | null;
-  latest_memo_name?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  index_ready?: boolean | null;
-  latest_job?: PipelineJobWire | null;
-  token_usage?: PrivateFundTokenUsageWire | null;
+  companyName: string | null;
+  ticker: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface FileWire {
-  name: string;
-  file_type: string;
-  size: number;
-  uploaded_at?: string | null;
-  source_path?: string | null;
+interface CanonicalDocumentWire {
+  id: string;
+  logicalKey: string;
+  sourceRoot: string | null;
+  sourceRelpath: string;
+  title: string;
   status: string;
-  doc_id?: string | null;
-  chunk_count?: number | null;
-  error_message?: string | null;
-  stored_path?: string | null;
-  doc_type?: string | null;
-  doc_subtype?: string | null;
-  doc_type_confidence?: number | null;
-  classification_status?: string | null;
-  classification_method?: string | null;
-  company_name?: string | null;
-  company_ticker?: string | null;
-  company_confidence?: number | null;
+  currentVersionId: string | null;
+  currentVersionNo: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
 }
 
-interface SourceFolderTreeWire {
-  dataset_id: string;
+interface CanonicalDocumentVersionWire {
+  id: string;
+  documentId: string;
+  versionNo: number;
+  originalFilename: string;
+  storedPath: string;
+  fileType: string;
+  mimeType?: string | null;
+  fileSize: number;
+  status: string;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface CanonicalDocumentPageWire {
+  items: CanonicalDocumentWire[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+interface CanonicalDocumentVersionPageWire {
+  items: CanonicalDocumentVersionWire[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+interface CanonicalJobWire {
+  id: string;
+  projectId: string;
+  status: string;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  result: unknown | null;
+  error: string | null;
+}
+
+interface CanonicalSourceFolderSnapshotWire {
   folders: Array<{
-    folder_id: string;
+    id: string;
+    parentId: string | null;
     name: string;
-    kind: "auto" | "custom" | "system";
-    classification_key?: string | null;
-    files?: Array<{
-      file_name: string;
-      assignment: "auto" | "manual";
-    }>;
-    file_count?: number | null;
-    created_at: string;
-    updated_at: string;
+    folderKind: string;
+    classificationKey: string | null;
+    documentCount: number;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  assignments: Array<{
+    documentId: string;
+    folderId: string;
+    assignmentSource: string;
+    legacyFileName: string | null;
   }>;
 }
 
@@ -1864,45 +1897,52 @@ function jobFromWire(job: PipelineJobWire | null | undefined): PrivateFundPipeli
   };
 }
 
-function globalUploadBatchFromWire(batch: GlobalUploadBatchWire): PrivateFundGlobalUploadBatch {
+function canonicalGlobalUploadBatchFromWire(
+  batch: CanonicalGlobalUploadBatchDetailWire,
+): PrivateFundGlobalUploadBatch {
   return {
-    batchId: batch.batch_id,
+    batchId: batch.batchId,
     status: batch.status,
-    fileCount: batch.file_count ?? 0,
-    message: batch.message ?? "",
-    counts: batch.counts ?? {},
-    items: (batch.items ?? []).map((item) => ({
-      itemId: item.item_id,
-      batchId: item.batch_id,
-      fileName: item.file_name,
-      fileType: item.file_type,
-      size: item.size,
-      checksum: item.checksum,
-      status: item.status,
-      companyName: item.company_name ?? "",
-      companyTicker: item.company_ticker ?? "",
-      companyConfidence: item.company_confidence ?? 0,
-      companyDetectionMethod: item.company_detection_method ?? "",
-      matchedDatasetId: item.matched_dataset_id ?? null,
-      matchedProjectName: item.matched_project_name ?? "",
-      projectMatchConfidence: item.project_match_confidence ?? 0,
-      projectMatchMethod: item.project_match_method ?? "",
-      candidateProjects: (item.candidate_projects ?? []).map((candidate) => ({
-        datasetId: candidate.dataset_id,
-        projectName: candidate.project_name,
-        companyName: candidate.company_name ?? "",
-        companyTicker: candidate.company_ticker ?? "",
-        score: candidate.score ?? 0,
-        method: candidate.method ?? "",
-      })),
-      pipelineJobId: item.pipeline_job_id ?? null,
-      errorMessage: item.error_message ?? null,
-      createdAt: item.created_at ?? null,
-      updatedAt: item.updated_at ?? null,
-    })),
-    createdAt: batch.created_at ?? null,
-    updatedAt: batch.updated_at ?? null,
-    finishedAt: batch.finished_at ?? null,
+    fileCount: batch.fileCount,
+    message: batch.message,
+    counts: batch.counts,
+    items: batch.items.map((item) => {
+      const matchedProject = item.candidateProjects.find(
+        (candidate) => candidate.projectId === item.targetProjectId,
+      );
+      return {
+        itemId: item.itemId,
+        batchId: item.batchId,
+        fileName: item.originalFilename,
+        fileType: item.fileType,
+        size: item.fileSize,
+        checksum: item.sha256,
+        status: item.status,
+        companyName: item.companyName ?? "",
+        companyTicker: item.ticker ?? "",
+        companyConfidence: item.companyConfidence,
+        companyDetectionMethod: item.companyDetectionMethod ?? "",
+        matchedDatasetId: item.targetProjectId,
+        matchedProjectName: matchedProject?.projectName ?? "",
+        projectMatchConfidence: item.routeConfidence,
+        projectMatchMethod: item.routeMethod ?? "",
+        candidateProjects: item.candidateProjects.map((candidate) => ({
+          datasetId: candidate.projectId,
+          projectName: candidate.projectName,
+          companyName: candidate.companyName ?? "",
+          companyTicker: candidate.ticker ?? "",
+          score: candidate.score,
+          method: candidate.method,
+        })),
+        pipelineJobId: item.pipelineJobId,
+        errorMessage: item.errorMessage,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      };
+    }),
+    createdAt: batch.createdAt,
+    updatedAt: batch.updatedAt,
+    finishedAt: batch.finishedAt,
   };
 }
 
@@ -1925,73 +1965,250 @@ export function privateFundTokenUsageFromWire(
   };
 }
 
-function projectFromWire(project: ProjectWire): PrivateFundProject {
+function metadataString(metadata: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return null;
+}
+
+function metadataNumber(metadata: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function canonicalDocumentFileName(document: CanonicalDocumentWire): string {
+  const normalized = document.sourceRelpath.replaceAll("\\", "/");
+  return normalized.split("/").filter(Boolean).at(-1) ?? document.title;
+}
+
+function canonicalFileNameKey(fileName: string): string {
+  return fileName.trim().normalize("NFKC").toLocaleLowerCase("en-US");
+}
+
+function canonicalDocumentFromWire(
+  document: CanonicalDocumentWire,
+  version?: CanonicalDocumentVersionWire,
+): PrivateFundFile {
+  const metadata = { ...document.metadata, ...(version?.metadata ?? {}) };
+  const name = version?.originalFilename || canonicalDocumentFileName(document);
+  const suffix = name.includes(".") ? (name.split(".").pop()?.toLocaleLowerCase() ?? "") : "";
+  const status = version?.status ?? (document.status === "active" ? "pending" : document.status);
   return {
-    datasetId: project.dataset_id,
+    name,
+    fileType: version?.fileType || suffix || "unknown",
+    size: version?.fileSize ?? metadataNumber(metadata, "fileSize", "file_size", "size") ?? 0,
+    uploadedAt:
+      metadataString(metadata, "uploadedAt", "uploaded_at") ??
+      version?.createdAt ??
+      document.createdAt,
+    sourcePath: document.sourceRelpath,
+    status,
+    docId: document.id,
+    chunkCount: metadataNumber(metadata, "chunkCount", "chunk_count") ?? 0,
+    errorMessage: metadataString(metadata, "errorMessage", "error_message"),
+    // Canonical storedPath is a host filesystem path and must never cross the
+    // browser adapter boundary.
+    storedPath: null,
+    docType: metadataString(metadata, "docType", "doc_type") ?? "unknown",
+    docSubtype: metadataString(metadata, "docSubtype", "doc_subtype"),
+    docTypeConfidence: metadataNumber(metadata, "docTypeConfidence", "doc_type_confidence") ?? 0,
+    classificationStatus:
+      metadataString(metadata, "classificationStatus", "classification_status") ?? "pending",
+    classificationMethod: metadataString(metadata, "classificationMethod", "classification_method"),
+    companyName: metadataString(metadata, "companyName", "company_name"),
+    companyTicker: metadataString(metadata, "companyTicker", "company_ticker"),
+    companyConfidence: metadataNumber(metadata, "companyConfidence", "company_confidence") ?? 0,
+  };
+}
+
+function canonicalProjectFromWire(
+  project: CanonicalProjectWire,
+  files: PrivateFundFile[] = [],
+): PrivateFundProject {
+  const indexedDocumentCount = files.filter((file) => file.status === "indexed").length;
+  const failedDocumentCount = files.filter((file) => file.status === "failed").length;
+  const indexReady = files.length > 0 && indexedDocumentCount === files.length;
+  return {
+    datasetId: project.id,
     name: project.name,
-    status: project.status,
-    sourceDir: project.source_dir ?? null,
-    datasetRoot: project.dataset_root ?? null,
-    uploadsDir: project.uploads_dir ?? null,
-    companyName: project.company_name ?? null,
-    companyTicker: project.company_ticker ?? null,
-    fileCount: project.file_count ?? 0,
-    uploadCount: project.upload_count ?? 0,
-    documentCount: project.document_count ?? 0,
-    indexedDocumentCount: project.indexed_document_count ?? 0,
-    failedDocumentCount: project.failed_document_count ?? 0,
-    chunkCount: project.chunk_count ?? 0,
-    indexCount: project.index_count ?? 0,
-    memoCount: project.memo_count ?? 0,
-    latestMemoPath: project.latest_memo_path ?? null,
-    latestMemoName: project.latest_memo_name ?? null,
-    createdAt: project.created_at ?? null,
-    updatedAt: project.updated_at ?? null,
-    indexReady: Boolean(project.index_ready),
-    latestJob: jobFromWire(project.latest_job),
-    tokenUsage: privateFundTokenUsageFromWire(project.token_usage),
+    status:
+      files.length === 0
+        ? "draft"
+        : indexReady
+          ? "completed"
+          : failedDocumentCount > 0
+            ? "failed"
+            : "pending",
+    sourceDir: null,
+    datasetRoot: null,
+    uploadsDir: null,
+    companyName: project.companyName,
+    companyTicker: project.ticker,
+    fileCount: files.length,
+    uploadCount: files.length,
+    documentCount: files.length,
+    indexedDocumentCount,
+    failedDocumentCount,
+    chunkCount: files.reduce((total, file) => total + file.chunkCount, 0),
+    indexCount: indexedDocumentCount,
+    memoCount: 0,
+    latestMemoPath: null,
+    latestMemoName: null,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+    indexReady,
+    latestJob: null,
+    tokenUsage: null,
   };
 }
 
-function fileFromWire(file: FileWire): PrivateFundFile {
+function canonicalProjectSnapshotFromWire(
+  project: CanonicalProjectWire,
+  documents: CanonicalDocumentWire[],
+  versionsByDocumentId: ReadonlyMap<string, CanonicalDocumentVersionWire> = new Map(),
+): { project: PrivateFundProject; files: PrivateFundFile[] } {
+  const files = documents
+    .filter((document) => document.status === "active")
+    .map((document) => canonicalDocumentFromWire(document, versionsByDocumentId.get(document.id)));
   return {
-    name: file.name,
-    fileType: file.file_type,
-    size: file.size,
-    uploadedAt: file.uploaded_at ?? null,
-    sourcePath: file.source_path ?? null,
-    status: file.status,
-    docId: file.doc_id ?? null,
-    chunkCount: file.chunk_count ?? 0,
-    errorMessage: file.error_message ?? null,
-    storedPath: file.stored_path ?? null,
-    docType: file.doc_type ?? "unknown",
-    docSubtype: file.doc_subtype ?? null,
-    docTypeConfidence: file.doc_type_confidence ?? 0,
-    classificationStatus: file.classification_status ?? "pending",
-    classificationMethod: file.classification_method ?? null,
-    companyName: file.company_name ?? null,
-    companyTicker: file.company_ticker ?? null,
-    companyConfidence: file.company_confidence ?? 0,
+    project: canonicalProjectFromWire(project, files),
+    files,
   };
 }
 
-function sourceFolderTreeFromWire(payload: SourceFolderTreeWire): PrivateFundSourceFolderTree {
+function canonicalJobFromWire(job: CanonicalJobWire): PrivateFundPipelineJob {
   return {
-    datasetId: payload.dataset_id,
-    folders: payload.folders.map((folder) => ({
-      folderId: folder.folder_id,
+    jobId: job.id,
+    datasetId: job.projectId,
+    status: job.status,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    finishedAt: job.completedAt,
+    message: job.error,
+    result: job.result,
+  };
+}
+
+function canonicalSourceFolderKind(folderKind: string): "auto" | "custom" | "system" {
+  if (folderKind === "system") return "system";
+  if (folderKind === "classification" || folderKind === "classifier" || folderKind === "auto") {
+    return "auto";
+  }
+  return "custom";
+}
+
+const UNASSIGNED_SOURCE_FOLDER_ID = "system:unassigned";
+
+function canonicalSourceFolderAssignment(
+  assignmentSource: string,
+): PrivateFundSourceFolderFile["assignment"] {
+  if (assignmentSource === "manual") return "manual";
+  if (
+    assignmentSource === "classification" ||
+    assignmentSource === "classifier" ||
+    assignmentSource === "auto"
+  ) {
+    return "auto";
+  }
+  return "manual";
+}
+
+function canonicalSourceFolderTreeFromWire(
+  datasetId: string,
+  payload: CanonicalSourceFolderSnapshotWire,
+  documents: CanonicalDocumentWire[],
+  versionsByDocumentId: ReadonlyMap<string, CanonicalDocumentVersionWire>,
+): PrivateFundSourceFolderTree {
+  const activeDocumentList = documents.filter((document) => document.status === "active");
+  const activeDocuments = new Map(
+    activeDocumentList.map((document) => [
+      document.id,
+      canonicalDocumentFromWire(document, versionsByDocumentId.get(document.id)).name,
+    ]),
+  );
+  const realFolderIds = new Set(payload.folders.map((folder) => folder.id));
+  if (realFolderIds.size !== payload.folders.length) {
+    throw new Error("Canonical source folder snapshot contains duplicate folder ids");
+  }
+  if (realFolderIds.has(UNASSIGNED_SOURCE_FOLDER_ID)) {
+    throw new Error(`Canonical source folder id is reserved: ${UNASSIGNED_SOURCE_FOLDER_ID}`);
+  }
+  const assignedDocumentIds = new Set<string>();
+  for (const assignment of payload.assignments) {
+    if (!activeDocuments.has(assignment.documentId)) {
+      continue;
+    }
+    if (!realFolderIds.has(assignment.folderId)) {
+      throw new Error(
+        `Source folder assignment references a missing folder: ${assignment.folderId}`,
+      );
+    }
+    if (assignedDocumentIds.has(assignment.documentId)) {
+      throw new Error(`Document has multiple source folder assignments: ${assignment.documentId}`);
+    }
+    assignedDocumentIds.add(assignment.documentId);
+  }
+  const folders: PrivateFundSourceFolder[] = payload.folders.map((folder) => {
+    const files = payload.assignments
+      .filter(
+        (assignment) =>
+          assignment.folderId === folder.id && assignedDocumentIds.has(assignment.documentId),
+      )
+      .flatMap((assignment) => {
+        const fileName =
+          activeDocuments.get(assignment.documentId) ?? assignment.legacyFileName ?? undefined;
+        return fileName
+          ? [
+              {
+                fileName,
+                assignment: canonicalSourceFolderAssignment(assignment.assignmentSource),
+              },
+            ]
+          : [];
+      });
+    return {
+      folderId: folder.id,
       name: folder.name,
-      kind: folder.kind,
-      classificationKey: folder.classification_key ?? null,
-      files: (folder.files ?? []).map((file) => ({
-        fileName: file.file_name,
-        assignment: file.assignment,
+      kind: canonicalSourceFolderKind(folder.folderKind),
+      classificationKey: folder.classificationKey,
+      files,
+      fileCount: files.length,
+      createdAt: folder.createdAt,
+      updatedAt: folder.updatedAt,
+    };
+  });
+  const unassignedDocuments = activeDocumentList.filter(
+    (document) => !assignedDocumentIds.has(document.id),
+  );
+  if (unassignedDocuments.length > 0) {
+    folders.push({
+      folderId: UNASSIGNED_SOURCE_FOLDER_ID,
+      name: "待识别",
+      kind: "system",
+      classificationKey: null,
+      files: unassignedDocuments.map((document) => ({
+        fileName: canonicalDocumentFromWire(document, versionsByDocumentId.get(document.id)).name,
+        assignment: "auto",
       })),
-      fileCount: folder.file_count ?? folder.files?.length ?? 0,
-      createdAt: folder.created_at,
-      updatedAt: folder.updated_at,
-    })),
+      fileCount: unassignedDocuments.length,
+      createdAt: unassignedDocuments.reduce(
+        (earliest, document) => (document.createdAt < earliest ? document.createdAt : earliest),
+        unassignedDocuments[0]!.createdAt,
+      ),
+      updatedAt: unassignedDocuments.reduce(
+        (latest, document) => (document.updatedAt > latest ? document.updatedAt : latest),
+        unassignedDocuments[0]!.updatedAt,
+      ),
+    });
+  }
+  return {
+    datasetId,
+    folders,
   };
 }
 
@@ -2730,40 +2947,218 @@ function valuationTrackingOverviewFromWire(
   };
 }
 
-async function jsonOrThrow<T>(res: Response): Promise<T> {
-  if (res.ok) return (await res.json()) as T;
+async function responseError(res: Response): Promise<Error> {
   let message = `${res.status} ${res.statusText}`;
   try {
-    const body = (await res.json()) as { detail?: unknown };
+    const body = (await res.json()) as {
+      detail?: unknown;
+      error?: unknown;
+      message?: unknown;
+    };
     if (typeof body.detail === "string") message = body.detail;
+    else if (typeof body.message === "string") message = body.message;
+    else if (typeof body.error === "string") message = body.error;
   } catch {
     // Keep the status-line fallback.
   }
-  throw new Error(message);
+  return new Error(message);
+}
+
+async function responseOrThrow(res: Response): Promise<Response> {
+  if (!res.ok) throw await responseError(res);
+  return res;
+}
+
+async function jsonOrThrow<T>(res: Response): Promise<T> {
+  await responseOrThrow(res);
+  return (await res.json()) as T;
+}
+
+function privateFundIdempotencyKey(operation: string): string {
+  return `private-fund-web:${operation}:${globalThis.crypto.randomUUID()}`;
+}
+
+const CANONICAL_PAGE_LIMIT = 500;
+const CANONICAL_VERSION_FETCH_CONCURRENCY = 6;
+const CANONICAL_PROJECT_ENRICH_CONCURRENCY = 3;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        // eslint-disable-next-line no-await-in-loop -- each bounded worker consumes its queue serially.
+        results[currentIndex] = await mapper(items[currentIndex]!);
+      }
+    }),
+  );
+  return results;
+}
+
+async function getCanonicalDocuments(datasetId: string): Promise<CanonicalDocumentWire[]> {
+  const documents: CanonicalDocumentWire[] = [];
+  const documentIds = new Set<string>();
+  let offset = 0;
+  while (true) {
+    const query = new URLSearchParams({
+      limit: String(CANONICAL_PAGE_LIMIT),
+      offset: String(offset),
+    });
+    // eslint-disable-next-line no-await-in-loop -- the next page offset depends on this response.
+    const body = await authenticatedFetch(
+      `/v1/projects/${encodeURIComponent(datasetId)}/documents?${query.toString()}`,
+    ).then((response) => jsonOrThrow<CanonicalDocumentPageWire>(response));
+    for (const document of body.items) {
+      if (documentIds.has(document.id)) {
+        throw new Error(`Canonical document pagination returned a duplicate id: ${document.id}`);
+      }
+      documentIds.add(document.id);
+      documents.push(document);
+    }
+    if (!body.hasMore) return documents;
+    if (body.items.length === 0) {
+      throw new Error("Canonical document pagination made no progress");
+    }
+    offset += body.items.length;
+  }
+}
+
+async function getCanonicalDisplayVersion(
+  datasetId: string,
+  document: CanonicalDocumentWire,
+): Promise<CanonicalDocumentVersionWire | undefined> {
+  let offset = 0;
+  let currentVersion: CanonicalDocumentVersionWire | undefined;
+  let latestVersion: CanonicalDocumentVersionWire | undefined;
+  const versionIds = new Set<string>();
+  while (true) {
+    const query = new URLSearchParams({
+      limit: String(CANONICAL_PAGE_LIMIT),
+      offset: String(offset),
+    });
+    // eslint-disable-next-line no-await-in-loop -- the next page offset depends on this response.
+    const body = await authenticatedFetch(
+      `/v1/projects/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(document.id)}/versions?${query.toString()}`,
+    ).then((response) => jsonOrThrow<CanonicalDocumentVersionPageWire>(response));
+    for (const version of body.items) {
+      if (version.documentId !== document.id) {
+        throw new Error(`Canonical document version belongs to another document: ${version.id}`);
+      }
+      if (versionIds.has(version.id)) {
+        throw new Error(`Canonical version pagination returned a duplicate id: ${version.id}`);
+      }
+      versionIds.add(version.id);
+      if (!latestVersion || version.versionNo > latestVersion.versionNo) latestVersion = version;
+      if (version.id === document.currentVersionId) currentVersion = version;
+    }
+    if (!body.hasMore) break;
+    if (body.items.length === 0) {
+      throw new Error(`Canonical version pagination made no progress for document: ${document.id}`);
+    }
+    offset += body.items.length;
+  }
+  if (document.currentVersionId && !currentVersion) {
+    throw new Error(
+      `Canonical current document version was not found: ${document.currentVersionId}`,
+    );
+  }
+  if (latestVersion && latestVersion.versionNo > document.currentVersionNo) return latestVersion;
+  return currentVersion ?? latestVersion;
+}
+
+async function getCanonicalDocumentState(datasetId: string): Promise<{
+  documents: CanonicalDocumentWire[];
+  versionsByDocumentId: ReadonlyMap<string, CanonicalDocumentVersionWire>;
+}> {
+  const documents = await getCanonicalDocuments(datasetId);
+  const activeDocuments = documents.filter((document) => document.status === "active");
+  const versions = await mapWithConcurrency(
+    activeDocuments,
+    CANONICAL_VERSION_FETCH_CONCURRENCY,
+    (document) => getCanonicalDisplayVersion(datasetId, document),
+  );
+  const versionsByDocumentId = new Map<string, CanonicalDocumentVersionWire>();
+  activeDocuments.forEach((document, index) => {
+    const version = versions[index];
+    if (version) versionsByDocumentId.set(document.id, version);
+  });
+  return { documents, versionsByDocumentId };
+}
+
+async function getCanonicalProjectSnapshot(
+  datasetId: string,
+  preferredVersionsByDocumentId: ReadonlyMap<string, CanonicalDocumentVersionWire> = new Map(),
+): Promise<{ project: PrivateFundProject; files: PrivateFundFile[] }> {
+  const encodedId = encodeURIComponent(datasetId);
+  const [project, documentState] = await Promise.all([
+    authenticatedFetch(`/v1/projects/${encodedId}`).then((response) =>
+      jsonOrThrow<CanonicalProjectWire>(response),
+    ),
+    getCanonicalDocumentState(datasetId),
+  ]);
+  const versionsByDocumentId = new Map(documentState.versionsByDocumentId);
+  for (const [documentId, preferredVersion] of preferredVersionsByDocumentId) {
+    const discoveredVersion = versionsByDocumentId.get(documentId);
+    if (!discoveredVersion || preferredVersion.versionNo >= discoveredVersion.versionNo) {
+      versionsByDocumentId.set(documentId, preferredVersion);
+    }
+  }
+  return canonicalProjectSnapshotFromWire(project, documentState.documents, versionsByDocumentId);
+}
+
+function resolveCanonicalDocumentByFileName(
+  documents: CanonicalDocumentWire[],
+  versionsByDocumentId: ReadonlyMap<string, CanonicalDocumentVersionWire>,
+  fileName: string,
+): CanonicalDocumentWire {
+  const normalizedFileName = canonicalFileNameKey(fileName);
+  const matches = documents.filter(
+    (document) =>
+      document.status === "active" &&
+      canonicalFileNameKey(
+        canonicalDocumentFromWire(document, versionsByDocumentId.get(document.id)).name,
+      ) === normalizedFileName,
+  );
+  if (matches.length === 0) {
+    throw new Error(`Source document not found: ${fileName}`);
+  }
+  if (matches.length > 1) {
+    throw new Error(`Source document name is ambiguous: ${fileName}`);
+  }
+  return matches[0]!;
 }
 
 export async function listPrivateFundProjects(): Promise<PrivateFundProject[]> {
-  const body = await jsonOrThrow<{ projects: ProjectWire[] }>(
-    await authenticatedFetch("/v1/private-fund/projects"),
+  const body = await jsonOrThrow<{ projects: CanonicalProjectWire[] }>(
+    await authenticatedFetch("/v1/projects"),
   );
-  return body.projects.map(projectFromWire);
+  return mapWithConcurrency(
+    body.projects,
+    CANONICAL_PROJECT_ENRICH_CONCURRENCY,
+    async (project) => {
+      const { documents, versionsByDocumentId } = await getCanonicalDocumentState(project.id);
+      return canonicalProjectSnapshotFromWire(project, documents, versionsByDocumentId).project;
+    },
+  );
 }
 
 export async function getPrivateFundProject(
   datasetId: string,
 ): Promise<{ project: PrivateFundProject; files: PrivateFundFile[] }> {
-  const body = await jsonOrThrow<{ project: ProjectWire; files: FileWire[] }>(
-    await authenticatedFetch(`/v1/private-fund/projects/${encodeURIComponent(datasetId)}`),
-  );
-  return {
-    project: projectFromWire(body.project),
-    files: body.files.map(fileFromWire),
-  };
+  return getCanonicalProjectSnapshot(datasetId);
 }
 
 export async function deletePrivateFundProject(datasetId: string): Promise<void> {
-  await jsonOrThrow<{ deleted_dataset_id: string }>(
-    await authenticatedFetch(`/v1/private-fund/projects/${encodeURIComponent(datasetId)}`, {
+  await responseOrThrow(
+    await authenticatedFetch(`/v1/projects/${encodeURIComponent(datasetId)}`, {
       method: "DELETE",
     }),
   );
@@ -2777,18 +3172,9 @@ export async function updatePrivateFundProject(
     companyTicker?: string;
   },
 ): Promise<PrivateFundProject> {
-  const body = await jsonOrThrow<{ project: ProjectWire }>(
-    await authenticatedFetch(`/v1/private-fund/projects/${encodeURIComponent(datasetId)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: input.name,
-        company_name: input.companyName ?? "",
-        company_ticker: input.companyTicker ?? "",
-      }),
-    }),
-  );
-  return projectFromWire(body.project);
+  void datasetId;
+  void input;
+  throw new Error("Project updates are not supported by the canonical API");
 }
 
 export async function getPrivateFundAssets(datasetId: string): Promise<PrivateFundAssetCatalog> {
@@ -2868,19 +3254,17 @@ export async function createPrivateFundProject(input: {
   companyName?: string;
   companyTicker?: string;
 }): Promise<PrivateFundProject> {
-  const body = await jsonOrThrow<{ project: ProjectWire }>(
-    await authenticatedFetch("/v1/private-fund/projects", {
+  const body: Record<string, string> = { name: input.name };
+  if (input.companyName?.trim()) body.companyName = input.companyName;
+  if (input.companyTicker?.trim()) body.ticker = input.companyTicker;
+  const project = await jsonOrThrow<CanonicalProjectWire>(
+    await authenticatedFetch("/v1/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: input.name,
-        dataset_id: input.datasetId ?? "",
-        company_name: input.companyName ?? "",
-        company_ticker: input.companyTicker ?? "",
-      }),
+      body: JSON.stringify(body),
     }),
   );
-  return projectFromWire(body.project);
+  return canonicalProjectFromWire(project);
 }
 
 export async function uploadPrivateFundFilesGlobally(
@@ -2888,46 +3272,56 @@ export async function uploadPrivateFundFilesGlobally(
 ): Promise<PrivateFundGlobalUploadBatch> {
   const form = new FormData();
   for (const file of files) form.append("files", file, file.name);
-  const body = await jsonOrThrow<{ batch: GlobalUploadBatchWire }>(
-    await authenticatedFetch("/v1/private-fund/uploads", {
+  const body = await jsonOrThrow<{ batch: CanonicalGlobalUploadBatchDetailWire }>(
+    await authenticatedFetch("/v1/uploads", {
       method: "POST",
+      headers: { "Idempotency-Key": privateFundIdempotencyKey("global-upload") },
       body: form,
     }),
   );
-  return globalUploadBatchFromWire(body.batch);
+  return canonicalGlobalUploadBatchFromWire(body.batch);
 }
 
 export async function getPrivateFundGlobalUploadBatch(
   batchId: string,
 ): Promise<PrivateFundGlobalUploadBatch> {
-  const body = await jsonOrThrow<{ batch: GlobalUploadBatchWire }>(
-    await authenticatedFetch(`/v1/private-fund/upload-batches/${encodeURIComponent(batchId)}`),
+  const body = await jsonOrThrow<{ batch: CanonicalGlobalUploadBatchDetailWire }>(
+    await authenticatedFetch(`/v1/uploads/batches/${encodeURIComponent(batchId)}`),
   );
-  return globalUploadBatchFromWire(body.batch);
+  return canonicalGlobalUploadBatchFromWire(body.batch);
 }
 
 export async function listPrivateFundGlobalUploadBatches(
   limit = 20,
 ): Promise<PrivateFundGlobalUploadBatch[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  const body = await jsonOrThrow<{ batches: GlobalUploadBatchWire[] }>(
-    await authenticatedFetch(`/v1/private-fund/upload-batches?${params.toString()}`),
+  const params = new URLSearchParams({ limit: String(limit), offset: "0" });
+  const page = await jsonOrThrow<CanonicalGlobalUploadBatchPageWire>(
+    await authenticatedFetch(`/v1/uploads/batches?${params.toString()}`),
   );
-  return body.batches.map(globalUploadBatchFromWire);
+  return mapWithConcurrency(page.items, CANONICAL_PROJECT_ENRICH_CONCURRENCY, async (summary) => {
+    const detail = await getPrivateFundGlobalUploadBatch(summary.batchId);
+    if (detail.batchId !== summary.batchId) {
+      throw new Error(`Global upload batch detail mismatch: ${summary.batchId}`);
+    }
+    return detail;
+  });
 }
 
 export async function routePrivateFundGlobalUploadItem(
   itemId: string,
   datasetId: string,
 ): Promise<PrivateFundGlobalUploadBatch> {
-  const body = await jsonOrThrow<{ batch: GlobalUploadBatchWire }>(
-    await authenticatedFetch(`/v1/private-fund/upload-items/${encodeURIComponent(itemId)}/route`, {
+  const body = await jsonOrThrow<{ batch: CanonicalGlobalUploadBatchDetailWire }>(
+    await authenticatedFetch(`/v1/uploads/items/${encodeURIComponent(itemId)}/route`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dataset_id: datasetId }),
+      body: JSON.stringify({
+        projectId: datasetId,
+        idempotencyKey: `private-fund-web:global-route:${itemId}:${datasetId}`,
+      }),
     }),
   );
-  return globalUploadBatchFromWire(body.batch);
+  return canonicalGlobalUploadBatchFromWire(body.batch);
 }
 
 export async function uploadPrivateFundFiles(
@@ -2936,24 +3330,34 @@ export async function uploadPrivateFundFiles(
 ): Promise<{
   project: PrivateFundProject;
   files: PrivateFundFile[];
+  jobs: PrivateFundPipelineJob[];
   job: PrivateFundPipelineJob | null;
 }> {
   const form = new FormData();
   for (const file of files) form.append("files", file, file.name);
   const body = await jsonOrThrow<{
-    project: ProjectWire;
-    files: FileWire[];
-    job?: PipelineJobWire | null;
+    uploads: Array<{
+      document: CanonicalDocumentWire;
+      version: CanonicalDocumentVersionWire;
+      job?: CanonicalJobWire | null;
+    }>;
   }>(
-    await authenticatedFetch(`/v1/private-fund/projects/${encodeURIComponent(datasetId)}/files`, {
+    await authenticatedFetch(`/v1/projects/${encodeURIComponent(datasetId)}/documents/upload`, {
       method: "POST",
       body: form,
     }),
   );
+  const versionsByDocumentId = new Map(
+    body.uploads.map((upload) => [upload.document.id, upload.version]),
+  );
+  const snapshot = await getCanonicalProjectSnapshot(datasetId, versionsByDocumentId);
+  const jobs = body.uploads.flatMap((upload) =>
+    upload.job ? [canonicalJobFromWire(upload.job)] : [],
+  );
   return {
-    project: projectFromWire(body.project),
-    files: body.files.map(fileFromWire),
-    job: jobFromWire(body.job),
+    ...snapshot,
+    jobs,
+    job: jobs[0] ?? null,
   };
 }
 
@@ -2961,64 +3365,71 @@ export async function deletePrivateFundFile(
   datasetId: string,
   fileName: string,
 ): Promise<{ project: PrivateFundProject; files: PrivateFundFile[] }> {
-  const body = await jsonOrThrow<{ project: ProjectWire; files: FileWire[] }>(
-    await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/files/${encodeURIComponent(fileName)}`,
-      { method: "DELETE" },
-    ),
+  const { documents, versionsByDocumentId } = await getCanonicalDocumentState(datasetId);
+  const document = resolveCanonicalDocumentByFileName(documents, versionsByDocumentId, fileName);
+  await jsonOrThrow(
+    await authenticatedFetch(`/v1/projects/${encodeURIComponent(datasetId)}/documents/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentIds: [document.id] }),
+    }),
   );
-  return {
-    project: projectFromWire(body.project),
-    files: body.files.map(fileFromWire),
-  };
+  return getCanonicalProjectSnapshot(datasetId);
 }
 
 export async function deletePrivateFundFiles(
   datasetId: string,
   fileNames: string[],
 ): Promise<{ project: PrivateFundProject; files: PrivateFundFile[] }> {
-  const body = await jsonOrThrow<{ project: ProjectWire; files: FileWire[] }>(
-    await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/files/delete`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_names: fileNames }),
-      },
-    ),
+  if (fileNames.length === 0) throw new Error("At least one source document is required");
+  const { documents, versionsByDocumentId } = await getCanonicalDocumentState(datasetId);
+  const documentIds = fileNames.map(
+    (fileName) => resolveCanonicalDocumentByFileName(documents, versionsByDocumentId, fileName).id,
   );
-  return {
-    project: projectFromWire(body.project),
-    files: body.files.map(fileFromWire),
-  };
+  if (new Set(documentIds).size !== documentIds.length) {
+    throw new Error("Source document selection contains duplicates");
+  }
+  await jsonOrThrow(
+    await authenticatedFetch(`/v1/projects/${encodeURIComponent(datasetId)}/documents/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentIds }),
+    }),
+  );
+  return getCanonicalProjectSnapshot(datasetId);
 }
 
 export async function getPrivateFundSourceFolders(
   datasetId: string,
 ): Promise<PrivateFundSourceFolderTree> {
-  const body = await jsonOrThrow<SourceFolderTreeWire>(
-    await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders`,
+  const encodedId = encodeURIComponent(datasetId);
+  const [body, documentState] = await Promise.all([
+    authenticatedFetch(`/v1/projects/${encodedId}/source-folders`).then((response) =>
+      jsonOrThrow<CanonicalSourceFolderSnapshotWire>(response),
     ),
+    getCanonicalDocumentState(datasetId),
+  ]);
+  return canonicalSourceFolderTreeFromWire(
+    datasetId,
+    body,
+    documentState.documents,
+    documentState.versionsByDocumentId,
   );
-  return sourceFolderTreeFromWire(body);
 }
 
 export async function createPrivateFundSourceFolder(
   datasetId: string,
   name: string,
 ): Promise<PrivateFundSourceFolderTree> {
-  const body = await jsonOrThrow<SourceFolderTreeWire>(
-    await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      },
-    ),
+  const body = await jsonOrThrow<CanonicalSourceFolderSnapshotWire>(
+    await authenticatedFetch(`/v1/projects/${encodeURIComponent(datasetId)}/source-folders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }),
   );
-  return sourceFolderTreeFromWire(body);
+  const { documents, versionsByDocumentId } = await getCanonicalDocumentState(datasetId);
+  return canonicalSourceFolderTreeFromWire(datasetId, body, documents, versionsByDocumentId);
 }
 
 export async function renamePrivateFundSourceFolder(
@@ -3026,9 +3437,12 @@ export async function renamePrivateFundSourceFolder(
   folderId: string,
   name: string,
 ): Promise<PrivateFundSourceFolderTree> {
-  const body = await jsonOrThrow<SourceFolderTreeWire>(
+  if (folderId === UNASSIGNED_SOURCE_FOLDER_ID) {
+    throw new Error("The unassigned source folder is virtual and cannot be renamed");
+  }
+  const body = await jsonOrThrow<CanonicalSourceFolderSnapshotWire>(
     await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders/${encodeURIComponent(folderId)}`,
+      `/v1/projects/${encodeURIComponent(datasetId)}/source-folders/${encodeURIComponent(folderId)}`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -3036,20 +3450,25 @@ export async function renamePrivateFundSourceFolder(
       },
     ),
   );
-  return sourceFolderTreeFromWire(body);
+  const { documents, versionsByDocumentId } = await getCanonicalDocumentState(datasetId);
+  return canonicalSourceFolderTreeFromWire(datasetId, body, documents, versionsByDocumentId);
 }
 
 export async function deletePrivateFundSourceFolder(
   datasetId: string,
   folderId: string,
 ): Promise<PrivateFundSourceFolderTree> {
-  const body = await jsonOrThrow<SourceFolderTreeWire>(
+  if (folderId === UNASSIGNED_SOURCE_FOLDER_ID) {
+    throw new Error("The unassigned source folder is virtual and cannot be deleted");
+  }
+  const body = await jsonOrThrow<CanonicalSourceFolderSnapshotWire>(
     await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders/${encodeURIComponent(folderId)}`,
+      `/v1/projects/${encodeURIComponent(datasetId)}/source-folders/${encodeURIComponent(folderId)}`,
       { method: "DELETE" },
     ),
   );
-  return sourceFolderTreeFromWire(body);
+  const { documents, versionsByDocumentId } = await getCanonicalDocumentState(datasetId);
+  return canonicalSourceFolderTreeFromWire(datasetId, body, documents, versionsByDocumentId);
 }
 
 export async function movePrivateFundSourceFile(
@@ -3057,26 +3476,55 @@ export async function movePrivateFundSourceFile(
   fileName: string,
   folderId: string | null,
 ): Promise<PrivateFundSourceFolderTree> {
-  const body = await jsonOrThrow<SourceFolderTreeWire>(
+  const encodedId = encodeURIComponent(datasetId);
+  const targetFolderId = folderId === UNASSIGNED_SOURCE_FOLDER_ID ? null : folderId;
+  const [documentState, current] = await Promise.all([
+    getCanonicalDocumentState(datasetId),
+    authenticatedFetch(`/v1/projects/${encodedId}/source-folders`).then((response) =>
+      jsonOrThrow<CanonicalSourceFolderSnapshotWire>(response),
+    ),
+  ]);
+  const { documents, versionsByDocumentId } = documentState;
+  const document = resolveCanonicalDocumentByFileName(documents, versionsByDocumentId, fileName);
+  if (targetFolderId !== null && !current.folders.some((folder) => folder.id === targetFolderId)) {
+    throw new Error(`Target source folder not found: ${targetFolderId}`);
+  }
+  const assignments = current.assignments.filter(
+    (assignment) => assignment.documentId === document.id,
+  );
+  if (assignments.length > 1) {
+    throw new Error(`Source document has ambiguous folder assignments: ${fileName}`);
+  }
+  const currentFolderId = assignments[0]?.folderId ?? null;
+  if (currentFolderId === targetFolderId) {
+    return canonicalSourceFolderTreeFromWire(datasetId, current, documents, versionsByDocumentId);
+  }
+  if (targetFolderId !== null) {
+    const latest = await jsonOrThrow<CanonicalSourceFolderSnapshotWire>(
+      await authenticatedFetch(
+        `/v1/projects/${encodedId}/source-folders/${encodeURIComponent(targetFolderId)}/documents`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ documentId: document.id, assignmentSource: "manual" }),
+        },
+      ),
+    );
+    return canonicalSourceFolderTreeFromWire(datasetId, latest, documents, versionsByDocumentId);
+  }
+  const latest = await jsonOrThrow<CanonicalSourceFolderSnapshotWire>(
     await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/source-folders/move-file`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_name: fileName, folder_id: folderId }),
-      },
+      `/v1/projects/${encodedId}/source-folders/${encodeURIComponent(currentFolderId!)}/documents/${encodeURIComponent(document.id)}`,
+      { method: "DELETE" },
     ),
   );
-  return sourceFolderTreeFromWire(body);
+  return canonicalSourceFolderTreeFromWire(datasetId, latest, documents, versionsByDocumentId);
 }
 
 export async function activatePrivateFundProject(datasetId: string): Promise<void> {
-  await jsonOrThrow(
-    await authenticatedFetch(
-      `/v1/private-fund/projects/${encodeURIComponent(datasetId)}/activate`,
-      { method: "POST" },
-    ),
-  );
+  // The canonical API intentionally has no process-global active-project state.
+  // Selection remains a client-side routing/local-storage concern.
+  void datasetId;
 }
 
 export async function runPrivateFundPipeline(datasetId: string): Promise<PrivateFundPipelineJob> {
@@ -3094,10 +3542,10 @@ export async function runPrivateFundPipeline(datasetId: string): Promise<Private
 }
 
 export async function getPrivateFundPipelineJob(jobId: string): Promise<PrivateFundPipelineJob> {
-  const body = await jsonOrThrow<{ job: PipelineJobWire }>(
-    await authenticatedFetch(`/v1/private-fund/pipeline-jobs/${encodeURIComponent(jobId)}`),
+  const job = await jsonOrThrow<CanonicalJobWire>(
+    await authenticatedFetch(`/v1/jobs/${encodeURIComponent(jobId)}`),
   );
-  return jobFromWire(body.job)!;
+  return canonicalJobFromWire(job);
 }
 
 export async function getPrivateFundWorkflow(

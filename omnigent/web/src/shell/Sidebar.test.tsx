@@ -368,7 +368,7 @@ describe("Sidebar private fund corpus attachments", () => {
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    expect(screen.getByRole("separator", { name: "调整项目栏宽度" })).toBeInTheDocument();
+    expect(screen.getByRole("separator", { name: "Resize project sidebar" })).toBeInTheDocument();
   });
 
   it("opens the unified new research project dialog from the left project header", () => {
@@ -379,7 +379,7 @@ describe("Sidebar private fund corpus attachments", () => {
     fireEvent.click(screen.getByTestId("private-fund-project-switcher"));
     fireEvent.click(screen.getByTestId("private-fund-create-project-option"));
     expect(screen.getByRole("dialog", { name: "新建研究项目" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "创建并进入工作台" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建并打开" })).toBeDisabled();
   });
 
   it("opens document upload from the left source section", () => {
@@ -387,8 +387,8 @@ describe("Sidebar private fund corpus attachments", () => {
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    fireEvent.click(screen.getByRole("button", { name: "上传资料到Acme Solar" }));
-    expect(screen.getByRole("dialog", { name: "上传资料并建立索引" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "上传资料: Acme Solar" }));
+    expect(screen.getByRole("dialog", { name: "上传并索引资料" })).toBeInTheDocument();
   });
 
   it("starts source folders collapsed and reveals compact file rows on demand", () => {
@@ -703,7 +703,7 @@ describe("Sidebar private fund corpus attachments", () => {
     ).toBeChecked();
     expect(screen.queryByRole("button", { name: /删除管理选择/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "管理" }));
+    fireEvent.click(screen.getByRole("button", { name: "批量管理" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "选择当前项目全部资料用于管理" }));
     expect(screen.getByRole("checkbox", { name: "选择资料来源 alpha.pdf 用于管理" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "选择资料来源 beta.pdf 用于管理" })).toBeChecked();
@@ -721,7 +721,7 @@ describe("Sidebar private fund corpus attachments", () => {
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "当前研究项目操作" }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Project actions" }), {
       button: 0,
       ctrlKey: false,
     });
@@ -738,14 +738,14 @@ describe("Sidebar private fund corpus attachments", () => {
     mockConversations([]);
     renderSidebar(true, "/?private_fund_project=acme", "acme", true);
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "当前研究项目操作" }), {
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Project actions" }), {
       button: 0,
       ctrlKey: false,
     });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "编辑项目信息" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "编辑项目" }));
 
     expect(screen.getByRole("heading", { name: "编辑研究项目" })).toBeInTheDocument();
-    expect(screen.getByLabelText("编辑研究项目名称")).toHaveValue("Acme Solar");
+    expect(screen.getByLabelText("项目名称")).toHaveValue("Acme Solar");
     expect(screen.queryByText(/Dataset ID/i)).toBeNull();
   });
 });
@@ -774,7 +774,7 @@ describe("Sidebar session list", () => {
     // The same card now shows the settings nav (Back to app + sections),
     // not the conversation search/list.
     expect(screen.queryByPlaceholderText("Search sessions")).toBeNull();
-    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "返回" })).toHaveAttribute("href", "/");
     expect(screen.getByTestId("settings-nav-appearance")).toHaveAttribute(
       "href",
       "/settings/appearance",

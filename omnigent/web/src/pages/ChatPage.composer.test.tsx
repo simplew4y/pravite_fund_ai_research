@@ -1308,7 +1308,7 @@ describe("Composer private-fund context compaction", () => {
     );
     fireEvent.change(textarea(), { target: { value: "尚未发送的研究问题" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "压缩上下文" }));
+    fireEvent.click(screen.getByRole("button", { name: "压缩上下文（/compact）" }));
 
     expect(useChatStore.getState().compact).toHaveBeenCalledOnce();
     expect(textarea().value).toBe("尚未发送的研究问题");
@@ -1317,6 +1317,6 @@ describe("Composer private-fund context compaction", () => {
   it("does not add the dedicated compact button to ordinary sessions", () => {
     renderWithTooltips(<Composer {...composerProps({ isNativeWrapper: true })} />);
 
-    expect(screen.queryByRole("button", { name: "压缩上下文" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "压缩上下文（/compact）" })).toBeNull();
   });
 });

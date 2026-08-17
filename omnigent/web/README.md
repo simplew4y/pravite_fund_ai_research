@@ -1,149 +1,132 @@
-# web
+# Web UI
 
-The web UI for `omnigent server --agent <agent>`. SPA built with Vite + React + TypeScript +
-Tailwind v4 + shadcn/ui. Talks to the current Omnigent API surface
-(`/v1/agents`, `/v1/sessions`, session-scoped
-`/v1/sessions/{id}/resources/files`).
+现有私募投研 Web UI，使用 Vite、React 和 TypeScript。UI 的布局、组件结构与交互保持不变；当前开发和部署目标是 TypeScript API/BFF，而不是旧运行时入口。
+
+## Runtime contract
+
+浏览器通过 HTTP 和 SSE 调用 TypeScript API。Vite 开发服务器代理以下路径：
+
+- `/v1`
+- `/api`
+- `/auth`
+- `/health`
+
+代理目标由 `PRIVATE_FUND_API_URL` 控制，默认是 `http://localhost:6768`。该变量只配置开发代理地址；模型凭据、账号 Token 和服务端环境变量不得进入浏览器 bundle。
 
 ## Develop
 
-In one terminal, start the omnigent server (default port `6767`). Use
-`--agent` to pre-register one or more agents at startup (accepts a YAML file or
-an agent-image directory; can be repeated):
+先在仓库根目录构建并启动 TypeScript 服务：
 
 ```bash
-.venv/bin/omnigent server --agent examples/hello_world.yaml
+npm run build
+npm start
+npm run services:status
 ```
 
-In another terminal, start the Vite dev server (port `5173`):
+默认常驻拓扑包括 TypeScript API、Job Worker 和 Obsidian Worker。Pi Worker 由 API 在 Agent Session 需要时按需创建，不需要手工常驻启动。
+
+再启动 Vite 开发服务器，默认端口为 `5173`：
 
 ```bash
-cd web
+cd omnigent/web
 npm install
 npm run dev
 ```
 
-The Vite dev server proxies `/v1` and `/api` to `http://localhost:6767`. Set
-`OMNIGENT_URL` to override the proxy target:
+默认情况下无需设置代理变量。连接其他 TypeScript API 实例时使用：
 
 ```bash
-OMNIGENT_URL=http://localhost:9000 npm run dev
+PRIVATE_FUND_API_URL=http://localhost:9000 npm run dev
 ```
 
-Additional `omnigent server` options:
+前端页面地址：
 
-| Flag                  | Default                | Description                          |
-| --------------------- | ---------------------- | ------------------------------------ |
-| `--host`              | `127.0.0.1`            | Host to bind to                      |
-| `-p` / `--port`       | `6767`                 | Port to listen on                    |
-| `--database-uri`      | `<data-dir>/chat.db`   | Database URI for stores              |
-| `--artifact-location` | `<data-dir>/artifacts` | Path for artifact storage            |
-| `-c` / `--config`     | (none)                 | Path to YAML config file             |
-| `--execution-timeout` | `7200`                 | Max wall-clock seconds per execution |
-| `--agent`             | (none)                 | Pre-register an agent (repeatable)   |
+```text
+http://localhost:5173
+```
 
-## Build + serve from the Omnigent server
+API 默认地址及健康检查：
+
+```text
+http://localhost:6768
+http://localhost:6768/health
+```
+
+## Production build
 
 ```bash
-cd web
+cd omnigent/web
 npm run build
 ```
 
-Vite writes the bundle to `../omnigent/server/static/web-ui/` (configured in
-`vite.config.ts`). When that directory exists and contains `index.html`, the
-FastAPI app in `omnigent/server/app.py` mounts it at `/`. After a build:
+构建包含 TypeScript project references 校验和 Vite bundle。输出目录由 `vite.config.ts` 定义。若由 TypeScript API 提供静态文件，应在服务端用 `PRIVATE_FUND_WEB_ROOT` 指向该构建目录；不要在前端写死 API 地址或服务端凭据。
+
+## Lint and format
 
 ```bash
-.venv/bin/omnigent server --agent examples/hello_world.yaml
-# open http://localhost:6767/
+npm run lint
+npm run lint:fix
+npm run format
+npm run format:check
+npm run type-check
 ```
 
-## Lint + format
-
-```bash
-npm run lint          # oxlint .
-npm run lint:fix      # oxlint --fix .
-npm run format        # prettier --write .
-npm run format:check  # prettier --check .
-npm run type-check    # tsc -b
-```
-
-`npm run type-check` runs in CI as part of the `Pre-commit checks`
-job (`.github/workflows/lint.yml`) and gates merge. Run it locally
-before committing any change under `web/`.
+`npm run type-check` 会执行 TypeScript project references 检查。修改 `web/` 下的代码后，至少运行 type-check、测试和格式检查。
 
 ## Test
 
 ```bash
-npm run test          # vitest run
-npm run test:watch    # vitest in watch mode
+npm run test
+npm run test:watch
 ```
+
+从仓库根目录也可以执行：
+
+```bash
+npm --prefix omnigent/web run type-check
+npm --prefix omnigent/web run test
+npm --prefix omnigent/web run format:check
+```
+
+前端兼容验收应覆盖现有路由、可见文案、关键 DOM role、会话创建、消息流、Tool/approval、停止、恢复、错误重试和 SSE 重连。后端迁移不得借机修改 CSS、布局、组件结构或既有交互。
 
 ## Reducer parity
 
-The TypeScript reducer at `src/lib/blockStream.ts` is a hand-mirror of
-the Python reducer at
-`sdks/python-client/omnigent_client/_stream.py`. Same for:
+`src/lib/blockStream.ts` 与现有事件流语义保持一致。相关映射如下：
 
-| TS file                       | Mirrors                                       |
-| ----------------------------- | --------------------------------------------- |
-| `src/lib/blocks.ts`           | `omnigent_client/_blocks.py`                  |
-| `src/lib/events.ts`           | `omnigent_client/_events.py`                  |
-| `src/lib/types.ts`            | minimal subset of `omnigent_client/_types.py` |
-| `src/lib/sse.ts`              | `omnigent_client/_sse.py`                     |
-| `src/lib/blockStream.ts`      | `omnigent_client/_stream.py`                  |
-| `src/lib/blockStream.test.ts` | `tests/frontends/sdk/test_stream.py`          |
+| TypeScript file | Corresponding behavior |
+|---|---|
+| `src/lib/blocks.ts` | block definitions |
+| `src/lib/events.ts` | streamed event definitions |
+| `src/lib/types.ts` | shared client-side types |
+| `src/lib/sse.ts` | SSE parsing and reconnect behavior |
+| `src/lib/blockStream.ts` | event-to-block reduction |
+| `src/lib/blockStream.test.ts` | reducer regression coverage |
 
-There is **no cross-language CI gate** today. When `_stream.py`
-changes for a real bug (e.g. new harness quirk, dedup edge case), the
-TypeScript port can lag — drift surfaces only when someone next runs
-`npm run test` after a behavioral change. Workflow when `_stream.py`
-changes:
+当服务端事件类型、去重规则或终态语义变化时：
 
-1. Read the diff to `_stream.py` (or `_blocks.py` / `_events.py`).
-2. Update `blockStream.ts` (or `blocks.ts` / `events.ts`) to match.
-3. Add or update a case in `blockStream.test.ts` that pins the new
-   behavior — same shape as `test_stream.py`.
-4. `npm run test` → green.
+1. 先更新共享 wire contract 和 fixture。
+2. 更新对应 reducer 行为。
+3. 在 `blockStream.test.ts` 或相关 store 测试中固定新行为。
+4. 运行 `npm run type-check` 与 `npm run test`。
 
-If we ever decide cross-language fixture parity is worth the
-maintenance burden, we'd port the captured-fixture approach used
-for `test_stream.py`.
+Web 端有意保留以下客户端特性：
 
-### web-only divergences
+- `UserMessageBlock` 让持久化的用户消息参与统一 bubble 渲染。
+- `BlockContext.responseId` 与 `BlockContext.itemId` 用于关联服务端事件来源。
+- `chatStore.blocks` 使用扁平存储，并在渲染时按 `responseId` 分组。
 
-web carries a few constructs the Python SDK doesn't, on purpose.
-They're listed here so a future maintainer doesn't try to "restore
-parity" by mirroring them across.
-
-- `UserMessageBlock` (in `blocks.ts`) — surfaces persisted user
-  message items as blocks so the bubble walker sees a single flat
-  list. The SDK's `BlockStream.stream()` never emits user messages
-  (its consumers receive the user input as the caller's own argument,
-  not back through the stream).
-- `BlockContext.responseId` + `BlockContext.itemId` — populated by the
-  TS reducer from the SSE wire format (`response.created.response.id`
-  and `event.item.id` / `event.item.response_id` on
-  `output_item.done`) so each block knows its server origin. The TS
-  events `ToolCall` / `ToolResult` / `MessageDone` / `NativeToolCall`
-  carry `itemId` + `responseId` to thread the values through.
-- Flat block storage in `chatStore.blocks`, grouped at render time by
-  `buildBubbles` keyed on `ctx.responseId`. The SDK has no equivalent
-  — its consumers iterate the block stream procedurally without a
-  stateful store.
-
-When `_stream.py` / `_events.py` / `_blocks.py` change for a
-substantive reason (new event type, new dedup edge case), continue to
-mirror the _behavioral_ changes here; just leave the divergences above
-alone.
+这些特性属于现有 UI 兼容面，不应在服务端迁移中删除。
 
 ## Stack
 
-- Vite + React 19 + TypeScript
-- Tailwind v4 (`@import "tailwindcss"`, no config file)
-- shadcn/ui (`radix-nova` preset, neutral base, CSS variables)
-- TanStack Query, Zustand, React Router v7
-- streamdown (+ `@streamdown/code`, `@streamdown/math`, `@streamdown/mermaid`),
-  shiki, framer-motion, cmdk, react-hotkeys-hook, use-stick-to-bottom,
-  next-themes, react-hook-form, zod
-- Lint: oxlint. Format: prettier.
+- Vite
+- React + TypeScript
+- Tailwind CSS
+- shadcn/ui
+- TanStack Query
+- Zustand
+- React Router
+- Vitest
+- oxlint
+- Prettier

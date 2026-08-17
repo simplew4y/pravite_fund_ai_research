@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.min.js"></script>
+<style>
+  html, body { margin:0; padding:0; background:#ffffff; }
+  a { color:#006FEE; text-decoration:none; }
+  a:hover { color:#005bc4; }
+  [data-lang="en"] .zh { display:none; }
+  [data-lang="zh"] .en { display:none; }
+  [data-icon] { width:16px; height:16px; stroke-width:2; flex:none; }
+  input, button { font-family:inherit; }
+  input::placeholder { color:#a1a1aa; }
+  *:focus-visible { outline:2px solid #006FEE; outline-offset:2px; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:#d4d4d8; border-radius:8px; border:3px solid transparent; background-clip:content-box; }
+  ::-webkit-scrollbar-track { background:transparent; }
+</style>
+</helmet>
+
+<div data-lang="{{ lang }}" style="display:grid;grid-template-columns:252px minmax(0,1fr) 372px;height:100vh;min-width:1400px;overflow:hidden;background:#fafafa;color:#11181C;font:400 14px/1.5 Inter,'Noto Sans SC',system-ui,sans-serif;text-wrap:pretty;-webkit-font-smoothing:antialiased">
+
+  <!-- 左：项目 -->
+  <aside style="display:flex;flex-direction:column;gap:12px;padding:16px 12px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;padding:0 4px">
+      <span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:12px;background:#006FEE;color:#fff;font:600 12px/1 Inter,sans-serif">PI</span>
+      <span style="font:600 16px/1.2 Inter,'Noto Sans SC',sans-serif;letter-spacing:-.01em;white-space:nowrap"><span class="zh">投研工作台</span><span class="en">Research desk</span></span>
+      <div style="flex:1"></div>
+      <button title="新建项目" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:12px;background:#f4f4f5;color:#11181C;cursor:pointer;flex:none" style-hover="background:#e4e4e7"><i data-lucide="plus" data-icon></i></button>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:12px;background:#f4f4f5" style-hover="background:#e4e4e7">
+      <i data-lucide="search" data-icon style="width:15px;height:15px;color:#71717a"></i>
+      <input style="flex:1;min-width:0;border:0;background:transparent;font-size:13.5px;color:#11181C;outline:none" placeholder="{{ searchProjPh }}">
+    </label>
+
+    <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:4px">
+      <button onClick="{{ pick0 }}" style="position:relative;display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 12px;border:0;border-radius:14px;background:none;cursor:pointer;color:inherit;font:inherit" style-hover="background:#f4f4f5">
+        <i style="position:absolute;inset:0;border-radius:14px;background:rgba(0,111,238,.11);opacity:{{ on0 }}"></i>
+        <span style="position:relative;flex:1;min-width:0">
+          <span style="display:block;font:600 14.5px/1.3 Inter,'Noto Sans SC',sans-serif;white-space:nowrap">恒瑞医药</span>
+          <span style="display:block;font:500 11px/1.4 Inter,sans-serif;color:#71717a">600276.SH</span>
+        </span>
+        <span style="position:relative;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:9999px;background:rgba(23,201,100,.16);color:#0e7c43;flex:none" title="索引就绪"><i data-lucide="check" data-icon style="width:11px;height:11px"></i></span>
+      </button>
+
+      <button onClick="{{ pick1 }}" style="position:relative;display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 12px;border:0;border-radius:14px;background:none;cursor:pointer;color:inherit;font:inherit" style-hover="background:#f4f4f5">
+        <i style="position:absolute;inset:0;border-radius:14px;background:rgba(0,111,238,.11);opacity:{{ on1 }}"></i>
+        <span style="position:relative;flex:1;min-width:0">
+          <span style="display:block;font:600 14.5px/1.3 Inter,'Noto Sans SC',sans-serif;white-space:nowrap">贵州茅台</span>
+          <span style="display:block;font:500 11px/1.4 Inter,sans-serif;color:#71717a">600519.SH</span>
+        </span>
+        <span style="position:relative;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:9999px;background:rgba(0,111,238,.14);color:#005bc4;flex:none" title="索引中"><i data-lucide="loader" data-icon style="width:11px;height:11px"></i></span>
+      </button>
+
+      <button onClick="{{ pick2 }}" style="position:relative;display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 12px;border:0;border-radius:14px;background:none;cursor:pointer;color:inherit;font:inherit" style-hover="background:#f4f4f5">
+        <i style="position:absolute;inset:0;border-radius:14px;background:rgba(0,111,238,.11);opacity:{{ on2 }}"></i>
+        <span style="position:relative;flex:1;min-width:0">
+          <span style="display:block;font:600 14.5px/1.3 Inter,'Noto Sans SC',sans-serif;white-space:nowrap">宁德时代</span>
+          <span style="display:block;font:500 11px/1.4 Inter,sans-serif;color:#71717a">300750.SZ</span>
+        </span>
+        <span style="position:relative;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:9999px;background:rgba(23,201,100,.16);color:#0e7c43;flex:none" title="索引就绪"><i data-lucide="check" data-icon style="width:11px;height:11px"></i></span>
+      </button>
+
+      <div style="display:flex;align-items:center;gap:8px;padding:11px 12px;border-radius:14px;font-size:13.5px;color:#52525b;white-space:nowrap" style-hover="background:#f4f4f5">迈瑞医疗 <span style="font:500 11px/1 Inter,sans-serif;color:#a1a1aa">300760.SZ</span></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:11px 12px;border-radius:14px;font-size:13.5px;color:#52525b;white-space:nowrap" style-hover="background:#f4f4f5">药明康德 <span style="font:500 11px/1 Inter,sans-serif;color:#a1a1aa">603259.SH</span></div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:4px;padding-top:12px;border-top:1px solid rgba(17,17,17,.09)">
+      <button title="编辑项目" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="pencil" data-icon style="width:15px;height:15px"></i></button>
+      <button title="归档" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="archive" data-icon style="width:15px;height:15px"></i></button>
+      <button title="删除项目" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:12px;background:none;color:#c20e4d;cursor:pointer;flex:none" style-hover="background:rgba(243,18,96,.11)"><i data-lucide="trash-2" data-icon style="width:15px;height:15px"></i></button>
+      <div style="flex:1"></div>
+      <button title="收件箱" style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5">
+        <i data-lucide="inbox" data-icon></i>
+        <span style="position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:50%;background:#f31260"></span>
+      </button>
+      <button title="设置" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="settings" data-icon></i></button>
+      <button onClick="{{ toggleLang }}" title="语言" style="display:flex;align-items:center;justify-content:center;height:34px;min-width:40px;padding:0 9px;border:0;border-radius:12px;background:none;color:#3f3f46;font:600 12px/1 Inter,sans-serif;cursor:pointer;flex:none" style-hover="background:#f4f4f5">{{ langBtn }}</button>
+    </div>
+  </aside>
+
+  <!-- 中：上传 + 会话历史 + 聊天 -->
+  <main style="display:flex;flex-direction:column;overflow:hidden;background:#ffffff;border-left:1px solid rgba(17,17,17,.07);border-right:1px solid rgba(17,17,17,.07)">
+    <header style="display:flex;align-items:center;gap:8px;padding:13px 22px;border-bottom:1px solid rgba(17,17,17,.07)">
+      <h2 style="margin:0;min-width:0;font:600 19px/1.3 Inter,'Noto Sans SC',sans-serif;letter-spacing:-.015em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ projName }}</h2>
+      <div style="flex:1"></div>
+      <button title="上传资料" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="upload" data-icon></i></button>
+      <button title="研究资产库" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="layers" data-icon></i></button>
+      <button title="共享与权限" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="users" data-icon></i></button>
+      <button title="Agent / 模型设置" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="sliders-horizontal" data-icon></i></button>
+      <button title="新建研究" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:0;border-radius:12px;background:#006FEE;color:#fff;cursor:pointer;flex:none;box-shadow:0 2px 10px rgba(0,111,238,.24)" style-hover="background:#005bc4"><i data-lucide="plus" data-icon></i></button>
+    </header>
+
+    <div style="flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:16px 22px 20px;background:#fafafa">
+
+      <!-- 会话历史：小气泡 -->
+      <div style="display:flex;gap:8px;overflow-x:auto;padding:1px 1px 3px">
+        <button onClick="{{ openS1 }}" style="position:relative;flex:0 0 auto;max-width:220px;display:flex;align-items:center;height:30px;padding:0 13px;border:0;border-radius:9999px;background:#f4f4f5;color:#3f3f46;font:500 12.5px/1 Inter,'Noto Sans SC',sans-serif;cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#e4e4e7">
+          <i style="position:absolute;inset:0;border-radius:9999px;background:rgba(0,111,238,.14);opacity:{{ s1On }}"></i>
+          <span style="position:relative;overflow:hidden;text-overflow:ellipsis"><span class="zh">集采对 2026 年毛利率…</span><span class="en">VBP impact on 2026 margin…</span></span>
+        </button>
+        <button onClick="{{ openS2 }}" style="position:relative;flex:0 0 auto;max-width:220px;display:flex;align-items:center;height:30px;padding:0 13px;border:0;border-radius:9999px;background:#f4f4f5;color:#3f3f46;font:500 12.5px/1 Inter,'Noto Sans SC',sans-serif;cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#e4e4e7">
+          <i style="position:absolute;inset:0;border-radius:9999px;background:rgba(0,111,238,.14);opacity:{{ s2On }}"></i>
+          <span style="position:relative;overflow:hidden;text-overflow:ellipsis"><span class="zh">创新药管线估值拆分…</span><span class="en">Pipeline valuation split…</span></span>
+        </button>
+        <button onClick="{{ openS3 }}" style="position:relative;flex:0 0 auto;max-width:220px;display:flex;align-items:center;height:30px;padding:0 13px;border:0;border-radius:9999px;background:#f4f4f5;color:#3f3f46;font:500 12.5px/1 Inter,'Noto Sans SC',sans-serif;cursor:pointer;white-space:nowrap;overflow:hidden" style-hover="background:#e4e4e7">
+          <i style="position:absolute;inset:0;border-radius:9999px;background:rgba(0,111,238,.14);opacity:{{ s3On }}"></i>
+          <span style="position:relative;overflow:hidden;text-overflow:ellipsis"><span class="zh">海外授权收入复盘…</span><span class="en">Out-licensing review…</span></span>
+        </button>
+        <button onClick="{{ closeChat }}" title="新会话" style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px dashed #d4d4d8;border-radius:9999px;background:none;color:#71717a;cursor:pointer" style-hover="border-color:#006FEE;color:#006FEE"><i data-lucide="plus" data-icon style="width:14px;height:14px"></i></button>
+      </div>
+
+      <!-- 聊天 -->
+      <sc-if value="{{ chatOpen }}" hint-placeholder-val="{{ true }}">
+        <section style="display:flex;flex-direction:column;flex:1;min-height:420px;border-radius:14px;background:#fff;box-shadow:0 0 1px rgba(0,0,0,.18), 0 4px 16px rgba(0,0,0,.06)">
+          <div style="display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid rgba(17,17,17,.07)">
+            <span style="min-width:0;font:600 15px/1.3 Inter,'Noto Sans SC',sans-serif;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ chatTitle }}</span>
+            <div style="flex:1"></div>
+            <button title="中断生成" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="square" data-icon style="width:14px;height:14px"></i></button>
+            <button title="分叉会话" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="git-branch" data-icon style="width:14px;height:14px"></i></button>
+            <button title="分享" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="share-2" data-icon style="width:14px;height:14px"></i></button>
+            <button onClick="{{ closeChat }}" title="收起" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="chevron-up" data-icon style="width:14px;height:14px"></i></button>
+          </div>
+
+          <div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:18px;padding:20px;overflow:auto">
+            <div style="align-self:flex-end;max-width:68%;padding:11px 15px;border-radius:14px;border-bottom-right-radius:4px;background:#006FEE;color:#fff;font-size:14px">
+              <span class="zh">第十一批集采对 2026 年毛利率的影响有多大？给出测算区间和证据。</span><span class="en">How much does the 11th VBP round hit 2026 gross margin? Give a range with evidence.</span>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#71717a">
+                <span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:9999px;background:#f4f4f5;color:#3f3f46;flex:none"><i data-lucide="bot" data-icon style="width:14px;height:14px"></i></span>
+                Researcher-01 · 14:02
+              </div>
+
+              <details style="border-radius:12px;background:#f4f4f5;padding:11px 14px">
+                <summary style="cursor:pointer;font:500 12.5px/1.4 Inter,'Noto Sans SC',sans-serif;color:#52525b"><span class="zh">推理过程 · 6 步</span><span class="en">Reasoning · 6 steps</span></summary>
+                <div style="padding-top:10px;font-size:13px;color:#52525b;display:flex;flex-direction:column;gap:5px">
+                  <div><span class="zh">1 · 定位主力品种与 2025 年收入结构</span><span class="en">1 · Locate key SKUs and 2025 revenue mix</span></div>
+                  <div><span class="zh">2 · 检索第十一批拟纳入清单与历史降幅</span><span class="en">2 · Retrieve the 11th-round list and historical price cuts</span></div>
+                  <div><span class="zh">3 · 以 2019–2024 中标降幅分布做区间假设</span><span class="en">3 · Build the range from 2019–2024 award-cut distribution</span></div>
+                </div>
+              </details>
+
+              <div style="border-radius:12px;border:1px solid rgba(17,17,17,.09);overflow:hidden">
+                <div style="display:flex;align-items:center;gap:8px;padding:9px 13px;background:#f4f4f5;font:500 12px/1.4 Inter,sans-serif;color:#52525b">
+                  <i data-lucide="terminal" data-icon style="width:13px;height:13px"></i>corpus.search
+                </div>
+                <div style="padding:10px 13px;font:400 12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#52525b">query = "集采 中标降幅 毛利率 2026" · files = 5</div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:14px;padding:18px;border-radius:14px;background:#fafafa;border:1px solid rgba(17,17,17,.06)">
+                <p style="margin:0;font-size:14px;line-height:1.65">
+                  <span class="zh">主力品种（注射用紫杉醇、卡瑞利珠单抗组合）已列入第十一批拟纳入清单。参考 2019–2024 年同类品种中标均价降幅 42%–61%，并假设院内份额提升 6–9pp 部分对冲，测算 2026 年综合毛利率下行区间为</span><span class="en">Two key SKUs appear on the 11th-round proposed list. Using the 42%–61% award-price cuts observed in 2019–2024 and assuming 6–9pp of in-hospital share gain as partial offset, 2026 blended gross margin declines by</span>
+                  <strong> 1.8pp – 3.4pp</strong><span class="zh">，中枢 2.6pp。</span><span class="en">, midpoint 2.6pp.</span>
+                  <a href="#" style="display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:9999px;background:rgba(0,111,238,.12);font:500 11px/1 Inter,sans-serif">1</a>
+                  <a href="#" style="display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:9999px;background:rgba(0,111,238,.12);font:500 11px/1 Inter,sans-serif">2</a>
+                  <a href="#" style="display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:9999px;background:rgba(0,111,238,.12);font:500 11px/1 Inter,sans-serif">3</a>
+                </p>
+                <div style="border-radius:12px;overflow:hidden;border:1px solid rgba(17,17,17,.07);background:#fff">
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:9px 14px;background:#f4f4f5;font:500 11.5px/1.2 Inter,'Noto Sans SC',sans-serif;color:#71717a">
+                    <span><span class="zh">情景</span><span class="en">Scenario</span></span>
+                    <span><span class="zh">中标降幅</span><span class="en">Price cut</span></span>
+                    <span><span class="zh">份额对冲</span><span class="en">Share offset</span></span>
+                    <span><span class="zh">毛利率变动</span><span class="en">GM delta</span></span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:10px 14px;font-size:13px;border-top:1px solid rgba(17,17,17,.06)">
+                    <span><span class="zh">乐观</span><span class="en">Bull</span></span><span>42%</span><span>+9pp</span><span style="color:#0e7c43;font-weight:500">−1.8pp</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:10px 14px;font-size:13px;border-top:1px solid rgba(17,17,17,.06);background:rgba(0,111,238,.04)">
+                    <span><span class="zh">中性</span><span class="en">Base</span></span><span>52%</span><span>+7pp</span><span style="color:#936316;font-weight:500">−2.6pp</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;padding:10px 14px;font-size:13px;border-top:1px solid rgba(17,17,17,.06)">
+                    <span><span class="zh">悲观</span><span class="en">Bear</span></span><span>61%</span><span>+6pp</span><span style="color:#c20e4d;font-weight:500">−3.4pp</span>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px">
+                  <button title="复制" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="copy" data-icon style="width:14px;height:14px"></i></button>
+                  <button title="存为答案笔记" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="bookmark" data-icon style="width:14px;height:14px"></i></button>
+                  <button title="写入 Memo" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="file-plus" data-icon style="width:14px;height:14px"></i></button>
+                  <button title="重新生成" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="refresh-cw" data-icon style="width:14px;height:14px"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;padding:14px;border-top:1px solid rgba(17,17,17,.07)">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:9999px;background:#f4f4f5;color:#3f3f46;font-size:12px;white-space:nowrap">2025 年报.pdf <i data-lucide="x" data-icon style="width:12px;height:12px"></i></span>
+              <span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:9999px;background:#f4f4f5;color:#3f3f46;font-size:12px;white-space:nowrap">DCF_v3.xlsx <i data-lucide="x" data-icon style="width:12px;height:12px"></i></span>
+              <span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:9999px;background:rgba(0,111,238,.12);color:#005bc4;font-size:12px;white-space:nowrap"><span class="zh">管线笔记</span><span class="en">Pipeline note</span> <i data-lucide="x" data-icon style="width:12px;height:12px"></i></span>
+              <button title="添加上下文" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px dashed #d4d4d8;border-radius:9999px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="border-color:#006FEE;color:#006FEE"><i data-lucide="plus" data-icon style="width:12px;height:12px"></i></button>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;padding:8px 8px 8px 16px;border-radius:14px;background:#f4f4f5">
+              <input style="flex:1;min-width:0;border:0;background:transparent;font-size:14px;color:#11181C;outline:none" placeholder="{{ askPh }}">
+              <button title="附件" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#e4e4e7"><i data-lucide="paperclip" data-icon></i></button>
+              <button title="语音输入" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#e4e4e7"><i data-lucide="mic" data-icon></i></button>
+              <button title="技能" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#e4e4e7"><i data-lucide="wand-2" data-icon></i></button>
+              <button title="发送" style="display:flex;align-items:center;justify-content:center;width:36px;height:34px;border:0;border-radius:10px;background:#006FEE;color:#fff;cursor:pointer;flex:none" style-hover="background:#005bc4"><i data-lucide="send" data-icon style="width:15px;height:15px"></i></button>
+            </div>
+          </div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ chatClosed }}" hint-placeholder-val="{{ false }}">
+        <section style="flex:1;min-height:420px;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding:20px;border-radius:14px;background:#fff;box-shadow:0 0 1px rgba(0,0,0,.18), 0 4px 16px rgba(0,0,0,.06)">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
+            <i data-lucide="sparkles" data-icon style="width:26px;height:26px;color:#a1a1aa"></i>
+            <span style="font-size:14px;color:#71717a"><span class="zh">向当前项目的资料提问</span><span class="en">Ask this project's corpus</span></span>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:520px">
+              <span style="height:28px;padding:0 12px;border-radius:9999px;background:#f4f4f5;color:#52525b;font-size:12.5px;line-height:28px;white-space:nowrap"><span class="zh">集采影响测算</span><span class="en">VBP impact</span></span>
+              <span style="height:28px;padding:0 12px;border-radius:9999px;background:#f4f4f5;color:#52525b;font-size:12.5px;line-height:28px;white-space:nowrap"><span class="zh">管线估值拆分</span><span class="en">Pipeline value</span></span>
+              <span style="height:28px;padding:0 12px;border-radius:9999px;background:#f4f4f5;color:#52525b;font-size:12.5px;line-height:28px;white-space:nowrap"><span class="zh">季度业绩归因</span><span class="en">Quarter attribution</span></span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:8px 8px 8px 16px;border-radius:14px;background:#f4f4f5">
+            <input style="flex:1;min-width:0;border:0;background:transparent;font-size:14px;color:#11181C;outline:none" placeholder="{{ askPh }}">
+            <button title="附件" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#e4e4e7"><i data-lucide="paperclip" data-icon></i></button>
+            <button title="语音输入" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#e4e4e7"><i data-lucide="mic" data-icon></i></button>
+            <button title="技能" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:10px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#e4e4e7"><i data-lucide="wand-2" data-icon></i></button>
+            <button title="发送" style="display:flex;align-items:center;justify-content:center;width:36px;height:34px;border:0;border-radius:10px;background:#006FEE;color:#fff;cursor:pointer;flex:none" style-hover="background:#005bc4"><i data-lucide="send" data-icon style="width:15px;height:15px"></i></button>
+          </div>
+        </section>
+      </sc-if>
+    </div>
+  </main>
+
+  <!-- 右：研究看板 -->
+  <aside style="display:flex;flex-direction:column;overflow:hidden;background:#fafafa">
+    <div style="display:flex;align-items:center;gap:8px;padding:13px 16px 10px">
+      <h3 style="margin:0;font:600 15px/1.2 Inter,'Noto Sans SC',sans-serif;letter-spacing:-.01em;white-space:nowrap"><span class="zh">研究看板</span><span class="en">Research board</span></h3>
+      <div style="flex:1"></div>
+      <button title="刷新" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:12px;background:none;color:#3f3f46;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="refresh-cw" data-icon style="width:15px;height:15px"></i></button>
+    </div>
+
+    <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:0 16px 16px">
+
+      <!-- 资料 -->
+      <section style="display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:#fff;box-shadow:0 0 1px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.05)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 Inter,'Noto Sans SC',sans-serif;white-space:nowrap"><span class="zh">项目资料</span><span class="en">Documents</span></h4>
+          <div style="flex:1"></div>
+          <button title="文件夹" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="folder" data-icon style="width:14px;height:14px"></i></button>
+          <button title="展开" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="maximize-2" data-icon style="width:14px;height:14px"></i></button>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:12px;background:#f4f4f5">
+          <i data-lucide="search" data-icon style="width:14px;height:14px;color:#71717a"></i>
+          <input style="flex:1;min-width:0;border:0;background:transparent;font-size:13px;color:#11181C;outline:none" placeholder="{{ searchDocPh }}">
+        </label>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:rgba(0,111,238,.07)">
+            <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:5px;background:#006FEE;color:#fff;flex:none"><i data-lucide="check" data-icon style="width:11px;height:11px"></i></span>
+            <i data-lucide="file-text" data-icon style="width:15px;height:15px;color:#71717a"></i>
+            <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">2025 年年度报告.pdf</span>
+            <span style="font-size:11.5px;color:#a1a1aa;flex:none">08-16</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;background:rgba(0,111,238,.07)">
+            <span style="display:flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:5px;background:#006FEE;color:#fff;flex:none"><i data-lucide="check" data-icon style="width:11px;height:11px"></i></span>
+            <i data-lucide="table-2" data-icon style="width:15px;height:15px;color:#71717a"></i>
+            <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">DCF_v3.xlsx</span>
+            <span style="font-size:11.5px;color:#a1a1aa;flex:none">08-15</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px" style-hover="background:#f4f4f5">
+            <span style="width:16px;height:16px;border:2px solid #d4d4d8;border-radius:5px;flex:none"></span>
+            <i data-lucide="file-text" data-icon style="width:15px;height:15px;color:#71717a"></i>
+            <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">调研纪要_0812.md</span>
+            <span style="font-size:11.5px;color:#a1a1aa;flex:none">08-12</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px" style-hover="background:#f4f4f5">
+            <span style="width:16px;height:16px;border:2px solid #d4d4d8;border-radius:5px;flex:none"></span>
+            <i data-lucide="file-text" data-icon style="width:15px;height:15px;color:#71717a"></i>
+            <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">创新药竞争格局.docx</span>
+            <span style="font-size:11.5px;color:#a1a1aa;flex:none">08-10</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px" style-hover="background:#f4f4f5">
+            <span style="width:16px;height:16px;border:2px solid #d4d4d8;border-radius:5px;flex:none"></span>
+            <i data-lucide="table-2" data-icon style="width:15px;height:15px;color:#71717a"></i>
+            <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">季度财务明细.xlsx</span>
+            <span style="font-size:11.5px;color:#a1a1aa;flex:none">08-08</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11.5px;color:#a1a1aa;white-space:nowrap"><span class="zh">已选 2 份</span><span class="en">2 selected</span></span>
+          <div style="flex:1"></div>
+          <button style="height:30px;padding:0 12px;border:0;border-radius:10px;background:rgba(0,111,238,.11);color:#005bc4;font:500 12.5px/1 Inter,'Noto Sans SC',sans-serif;cursor:pointer;white-space:nowrap;flex:none" style-hover="background:rgba(0,111,238,.18)"><span class="zh">加入上下文</span><span class="en">To context</span></button>
+        </div>
+      </section>
+
+      <!-- Memo（略缩） -->
+      <section style="display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:#fff;box-shadow:0 0 1px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.05)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 Inter,'Noto Sans SC',sans-serif;white-space:nowrap"><span class="zh">投资备忘录</span><span class="en">Memo</span></h4>
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:9999px;background:#f4f4f5;color:#52525b;font-size:11.5px;flex:none">v4</span>
+          <div style="flex:1"></div>
+          <button title="修订" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="pencil-line" data-icon style="width:14px;height:14px"></i></button>
+          <button title="版本比较" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="git-compare" data-icon style="width:14px;height:14px"></i></button>
+          <button title="展开" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:rgba(0,111,238,.1);color:#005bc4;cursor:pointer;flex:none" style-hover="background:rgba(0,111,238,.18)"><i data-lucide="maximize-2" data-icon style="width:14px;height:14px"></i></button>
+        </div>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#3f3f46;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><span class="zh">维持增持。集采冲击集中在 2026 上半年，海外授权与创新药放量可对冲约 60% 的毛利率损失。</span><span class="en">Maintain overweight. The VBP hit lands mostly in H1 2026; out-licensing and new-product ramp offset ~60% of the margin loss.</span></p>
+        <div style="display:flex;gap:8px;align-items:center;font-size:12.5px">
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:9999px;background:rgba(23,201,100,.14);color:#0e7c43;font-size:11px;flex:none"><span class="zh">新增</span><span class="en">Add</span></span>
+          <span style="min-width:0;color:#3f3f46;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="zh">海外授权成为第二增长曲线</span><span class="en">Out-licensing as a second growth curve</span></span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;font-size:12.5px">
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:9999px;background:rgba(0,111,238,.12);color:#005bc4;font-size:11px;flex:none"><span class="zh">变化</span><span class="en">Chg</span></span>
+          <span style="min-width:0;color:#3f3f46;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="zh">2026 毛利率</span><span class="en">2026 GM</span> <span style="color:#a1a1aa;text-decoration:line-through">84.1%</span> → <strong>82.3%</strong></span>
+        </div>
+      </section>
+
+      <!-- 估值（略缩） -->
+      <section style="display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:#fff;box-shadow:0 0 1px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.05)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 Inter,'Noto Sans SC',sans-serif;white-space:nowrap"><span class="zh">估值跟踪</span><span class="en">Valuation</span></h4>
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:9999px;background:#f4f4f5;color:#52525b;font-size:11.5px;flex:none">DCF_v3</span>
+          <div style="flex:1"></div>
+          <button title="刷新数据" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="refresh-cw" data-icon style="width:14px;height:14px"></i></button>
+          <button title="展开" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:rgba(0,111,238,.1);color:#005bc4;cursor:pointer;flex:none" style-hover="background:rgba(0,111,238,.18)"><i data-lucide="maximize-2" data-icon style="width:14px;height:14px"></i></button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div style="padding:9px;border-radius:12px;background:#f4f4f5"><div style="font-size:11px;color:#71717a;white-space:nowrap"><span class="zh">现价</span><span class="en">Price</span></div><div style="font:600 19px/1.2 Inter,sans-serif">48.62</div></div>
+          <div style="padding:9px;border-radius:12px;background:rgba(0,111,238,.1)"><div style="font-size:11px;color:#52525b;white-space:nowrap"><span class="zh">隐含</span><span class="en">Implied</span></div><div style="font:600 19px/1.2 Inter,sans-serif;color:#005bc4">53.10</div></div>
+          <div style="padding:9px;border-radius:12px;background:rgba(23,201,100,.12)"><div style="font-size:11px;color:#52525b;white-space:nowrap"><span class="zh">空间</span><span class="en">Upside</span></div><div style="font:600 19px/1.2 Inter,sans-serif;color:#0e7c43">+9.2%</div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
+            <span style="flex:1;min-width:0;color:#52525b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="zh">毛利率</span><span class="en">Gross margin</span></span>
+            <span style="color:#71717a">84.1% → 82.3%</span>
+            <span style="color:#c20e4d;font-weight:500;flex:none">−1.8pp</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
+            <span style="flex:1;min-width:0;color:#52525b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="zh">营收</span><span class="en">Revenue</span></span>
+            <span style="color:#71717a">7,820 → 7,655</span>
+            <span style="color:#c20e4d;font-weight:500;flex:none">−2.1%</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 风险（略缩） -->
+      <section style="display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:#fff;box-shadow:0 0 1px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.05)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 Inter,'Noto Sans SC',sans-serif;white-space:nowrap"><span class="zh">风险与催化剂</span><span class="en">Risks &amp; catalysts</span></h4>
+          <div style="flex:1"></div>
+          <button title="观察规则" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:none;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="bell" data-icon style="width:14px;height:14px"></i></button>
+          <button title="展开" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:rgba(0,111,238,.1);color:#005bc4;cursor:pointer;flex:none" style-hover="background:rgba(0,111,238,.18)"><i data-lucide="maximize-2" data-icon style="width:14px;height:14px"></i></button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:11px;border-radius:12px;background:rgba(243,18,96,.05);border:1px solid rgba(243,18,96,.18)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:9999px;background:rgba(243,18,96,.14);color:#c20e4d;font-size:11px;flex:none"><span class="zh">风险</span><span class="en">Risk</span></span>
+            <span style="flex:1;min-width:0;font:600 13.5px/1.35 Inter,'Noto Sans SC',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="zh">主力品种进入第十一批集采</span><span class="en">Key SKU enters the 11th VBP round</span></span>
+          </div>
+          <div style="padding:8px 10px;border-radius:10px;background:#fff;font-size:12.5px;color:#52525b;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">
+            <span class="zh">「……相关品种已列入拟纳入清单，拟于 Q4 开标……」</span><span class="en">"…the SKU is on the proposed list, bidding expected in Q4…"</span> <a href="#">[1]</a>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <button title="确认" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:#fff;color:#0e7c43;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="check" data-icon style="width:14px;height:14px"></i></button>
+            <button title="忽略" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:#fff;color:#71717a;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="x" data-icon style="width:14px;height:14px"></i></button>
+            <button title="版本变化" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:10px;background:#fff;color:#52525b;cursor:pointer;flex:none" style-hover="background:#f4f4f5"><i data-lucide="history" data-icon style="width:14px;height:14px"></i></button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:12px;background:#f4f4f5">
+          <span style="display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:9999px;background:rgba(23,201,100,.14);color:#0e7c43;font-size:11px;flex:none"><span class="zh">催化剂</span><span class="en">Catalyst</span></span>
+          <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="zh">HER2 ADC III 期数据读出（Q4）</span><span class="en">HER2 ADC Phase III readout (Q4)</span></span>
+          <i data-lucide="chevron-right" data-icon style="width:14px;height:14px;color:#a1a1aa"></i>
+        </div>
+      </section>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;zh&quot;,&quot;en&quot;],&quot;default&quot;:&quot;zh&quot;,&quot;tsType&quot;:&quot;'zh'|'en'&quot;},&quot;openChatByDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { proj: null, chat: undefined, lang: null };
+
+  get proj() { return this.state.proj ?? 0; }
+  get chat() { return this.state.chat === undefined ? ((this.props.openChatByDefault ?? true) ? 1 : 0) : this.state.chat; }
+  get lang() { return this.state.lang ?? this.props.lang ?? "zh"; }
+
+  icons() { try { window.lucide && window.lucide.createIcons(); } catch (e) {} }
+  componentDidMount() { this.icons(); setTimeout(() => this.icons(), 400); setTimeout(() => this.icons(), 1500); }
+  componentDidUpdate() { this.icons(); }
+
+  renderVals() {
+    const zh = this.lang === "zh", p = this.proj, c = this.chat;
+    const projects = ["恒瑞医药 · 600276.SH", "贵州茅台 · 600519.SH", "宁德时代 · 300750.SZ"];
+    const chats = {
+      1: zh ? "集采对 2026 年毛利率的影响" : "VBP impact on 2026 gross margin",
+      2: zh ? "创新药管线估值拆分" : "Pipeline valuation split",
+      3: zh ? "海外授权收入复盘" : "Out-licensing review"
+    };
+    return {
+      lang: this.lang,
+      langBtn: zh ? "EN" : "中",
+      toggleLang: () => this.setState({ lang: zh ? "en" : "zh" }),
+      searchProjPh: zh ? "搜索项目 / 代码" : "Search project or ticker",
+      searchDocPh: zh ? "搜索资料…" : "Search documents…",
+      askPh: zh ? "向项目资料提问…" : "Ask this project's corpus…",
+      projName: projects[p],
+      on0: p === 0 ? 1 : 0, on1: p === 1 ? 1 : 0, on2: p === 2 ? 1 : 0,
+      pick0: () => this.setState({ proj: 0 }), pick1: () => this.setState({ proj: 1 }), pick2: () => this.setState({ proj: 2 }),
+      s1On: c === 1 ? 1 : 0, s2On: c === 2 ? 1 : 0, s3On: c === 3 ? 1 : 0,
+      openS1: () => this.setState({ chat: 1 }), openS2: () => this.setState({ chat: 2 }), openS3: () => this.setState({ chat: 3 }),
+      closeChat: () => this.setState({ chat: 0 }),
+      chatOpen: c !== 0, chatClosed: c === 0,
+      chatTitle: chats[c] || chats[1]
+    };
+  }
+}
+</script>
+</body>
+</html>

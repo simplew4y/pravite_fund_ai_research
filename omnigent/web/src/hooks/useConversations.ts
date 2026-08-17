@@ -127,6 +127,261 @@ export interface ConversationsPage {
   has_more: boolean;
 }
 
+type JsonRecord = Record<string, unknown>;
+
+type TsSessionStatus = "idle" | "running" | "interrupted" | "failed";
+
+function isTsSessionStatus(value: unknown): value is TsSessionStatus {
+  return value === "idle" || value === "running" || value === "interrupted" || value === "failed";
+}
+
+function invalidSessionsResponse(detail: string): Error {
+  return new Error(`Invalid /v1/sessions response: ${detail}`);
+}
+
+function jsonRecord(value: unknown, detail: string): JsonRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw invalidSessionsResponse(detail);
+  }
+  return value as JsonRecord;
+}
+
+function requiredString(record: JsonRecord, key: string, detail: string): string {
+  const value = record[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw invalidSessionsResponse(`${detail}.${key} must be a non-empty string`);
+  }
+  return value;
+}
+
+function nullableString(
+  record: JsonRecord,
+  key: string,
+  detail: string,
+): string | null | undefined {
+  const value = record[key];
+  if (value === undefined || value === null || typeof value === "string") return value;
+  throw invalidSessionsResponse(`${detail}.${key} must be a string or null`);
+}
+
+function finiteNumber(
+  record: JsonRecord,
+  key: string,
+  detail: string,
+  required: boolean,
+): number | undefined {
+  const value = record[key];
+  if (value === undefined && !required) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw invalidSessionsResponse(`${detail}.${key} must be a finite number`);
+  }
+  return value;
+}
+
+function booleanOrNull(
+  record: JsonRecord,
+  key: string,
+  detail: string,
+): boolean | null | undefined {
+  const value = record[key];
+  if (value === undefined || value === null || typeof value === "boolean") return value;
+  throw invalidSessionsResponse(`${detail}.${key} must be a boolean or null`);
+}
+
+function stringLabels(value: unknown, detail: string): Record<string, string> {
+  if (value === undefined || value === null) return {};
+  const record = jsonRecord(value, `${detail} must be an object`);
+  const labels: Record<string, string> = {};
+  for (const [key, label] of Object.entries(record)) {
+    if (typeof label !== "string") {
+      throw invalidSessionsResponse(`${detail}.${key} must be a string`);
+    }
+    labels[key] = label;
+  }
+  return labels;
+}
+
+function isoEpochSeconds(value: unknown, detail: string): number {
+  if (typeof value !== "string") {
+    throw invalidSessionsResponse(`${detail} must be an ISO timestamp`);
+  }
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds) || !/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    throw invalidSessionsResponse(`${detail} must be an ISO timestamp`);
+  }
+  return milliseconds / 1000;
+}
+
+function normalizeLegacyConversation(value: unknown, detail: string): Conversation {
+  const wire = jsonRecord(value, `${detail} must be an object`);
+  const id = requiredString(wire, "id", detail);
+  if (wire.object !== undefined && wire.object !== "conversation") {
+    throw invalidSessionsResponse(`${detail}.object must be "conversation"`);
+  }
+  const title = nullableString(wire, "title", detail) ?? null;
+  const createdAt = finiteNumber(wire, "created_at", detail, true)!;
+  const updatedAt =
+    wire.updated_at === null
+      ? createdAt
+      : (finiteNumber(wire, "updated_at", detail, false) ?? createdAt);
+  const permissionLevel =
+    wire.permission_level === null
+      ? null
+      : (finiteNumber(wire, "permission_level", detail, false) ?? null);
+  const rawStatus = wire.status;
+  if (
+    rawStatus !== undefined &&
+    rawStatus !== null &&
+    rawStatus !== "idle" &&
+    rawStatus !== "running" &&
+    rawStatus !== "failed" &&
+    rawStatus !== "interrupted"
+  ) {
+    throw invalidSessionsResponse(`${detail}.status is unsupported`);
+  }
+  const archived = wire.archived;
+  if (archived !== undefined && archived !== null && typeof archived !== "boolean") {
+    throw invalidSessionsResponse(`${detail}.archived must be a boolean`);
+  }
+
+  return {
+    id,
+    object: "conversation",
+    title,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    labels: stringLabels(wire.labels, `${detail}.labels`),
+    permission_level: permissionLevel,
+    owner: nullableString(wire, "owner", detail) ?? null,
+    runner_id: nullableString(wire, "runner_id", detail) ?? null,
+    host_id: nullableString(wire, "host_id", detail) ?? null,
+    workspace: nullableString(wire, "workspace", detail) ?? null,
+    agent_id: nullableString(wire, "agent_id", detail) ?? undefined,
+    agent_name: nullableString(wire, "agent_name", detail) ?? null,
+    pending_elicitations_count:
+      wire.pending_elicitations_count === null
+        ? 0
+        : (finiteNumber(wire, "pending_elicitations_count", detail, false) ?? 0),
+    status: rawStatus === "interrupted" ? "failed" : (rawStatus ?? "idle"),
+    runner_online: booleanOrNull(wire, "runner_online", detail),
+    host_online: booleanOrNull(wire, "host_online", detail),
+    git_branch: nullableString(wire, "git_branch", detail) ?? null,
+    archived: archived ?? false,
+    comments_count:
+      wire.comments_count === null
+        ? undefined
+        : finiteNumber(wire, "comments_count", detail, false),
+    comments_updated_at:
+      wire.comments_updated_at === null
+        ? null
+        : finiteNumber(wire, "comments_updated_at", detail, false),
+  };
+}
+
+function normalizeTsConversation(value: unknown, detail: string): Conversation {
+  const wire = jsonRecord(value, `${detail} must be an object`);
+  const id = requiredString(wire, "id", detail);
+  const projectId = requiredString(wire, "projectId", detail);
+  const title = wire.title;
+  if (typeof title !== "string") {
+    throw invalidSessionsResponse(`${detail}.title must be a string`);
+  }
+  const status = wire.status;
+  if (!isTsSessionStatus(status)) {
+    throw invalidSessionsResponse(`${detail}.status is unsupported`);
+  }
+  const archivedAt = wire.archivedAt;
+  if (archivedAt !== null) isoEpochSeconds(archivedAt, `${detail}.archivedAt`);
+
+  return {
+    id,
+    object: "conversation",
+    title,
+    created_at: isoEpochSeconds(wire.createdAt, `${detail}.createdAt`),
+    updated_at: isoEpochSeconds(wire.updatedAt, `${detail}.updatedAt`),
+    labels: {
+      ...stringLabels(wire.labels, `${detail}.labels`),
+      "private_fund.dataset_id": projectId,
+      "private_fund.project_id": projectId,
+    },
+    permission_level: null,
+    owner: null,
+    runner_id: null,
+    host_id: null,
+    workspace: null,
+    agent_name: null,
+    pending_elicitations_count: 0,
+    status: status === "interrupted" ? "failed" : status,
+    git_branch: null,
+    archived: archivedAt !== null,
+  };
+}
+
+function normalizeConversation(value: unknown, detail: string): Conversation {
+  const wire = jsonRecord(value, `${detail} must be an object`);
+  if ("projectId" in wire || "createdAt" in wire || "updatedAt" in wire || "archivedAt" in wire) {
+    return normalizeTsConversation(wire, detail);
+  }
+  if (wire.object === "conversation" || "created_at" in wire || "updated_at" in wire) {
+    return normalizeLegacyConversation(wire, detail);
+  }
+  throw invalidSessionsResponse(`${detail} does not match a supported session contract`);
+}
+
+function normalizeConversationsPage(value: unknown, searchQuery: string): ConversationsPage {
+  const wire = jsonRecord(value, "body must be an object");
+  if ("data" in wire) {
+    if (!Array.isArray(wire.data)) {
+      throw invalidSessionsResponse("body.data must be an array");
+    }
+    if (typeof wire.has_more !== "boolean") {
+      throw invalidSessionsResponse("body.has_more must be a boolean");
+    }
+    if (wire.first_id !== null && typeof wire.first_id !== "string") {
+      throw invalidSessionsResponse("body.first_id must be a string or null");
+    }
+    if (wire.last_id !== null && typeof wire.last_id !== "string") {
+      throw invalidSessionsResponse("body.last_id must be a string or null");
+    }
+    return {
+      data: wire.data.map((item, index) =>
+        normalizeLegacyConversation(item, `body.data[${index}]`),
+      ),
+      first_id: wire.first_id,
+      last_id: wire.last_id,
+      has_more: wire.has_more,
+    };
+  }
+
+  if ("sessions" in wire) {
+    if (!Array.isArray(wire.sessions)) {
+      throw invalidSessionsResponse("body.sessions must be an array");
+    }
+    const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
+    const data = wire.sessions
+      .map((item, index) => normalizeTsConversation(item, `body.sessions[${index}]`))
+      .filter(
+        (session) =>
+          normalizedSearch.length === 0 ||
+          (session.title ?? "").toLocaleLowerCase().includes(normalizedSearch),
+      )
+      .sort(
+        (left, right) =>
+          right.updated_at - left.updated_at ||
+          right.created_at - left.created_at ||
+          left.id.localeCompare(right.id),
+      );
+    return {
+      data,
+      first_id: data[0]?.id ?? null,
+      last_id: data.at(-1)?.id ?? null,
+      has_more: false,
+    };
+  }
+
+  throw invalidSessionsResponse("body does not match a supported list contract");
+}
+
 /**
  * Fetch a single session as a sidebar-shaped ``Conversation`` object.
  *
@@ -138,28 +393,7 @@ export async function fetchConversationById(id: string): Promise<Conversation | 
   const res = await authenticatedFetch(`/v1/sessions/${encodeURIComponent(id)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const wire = await res.json();
-  return {
-    id: wire.id,
-    object: "conversation",
-    title: wire.title ?? null,
-    created_at: wire.created_at,
-    updated_at: wire.updated_at ?? wire.created_at,
-    labels: wire.labels ?? {},
-    permission_level: wire.permission_level ?? null,
-    owner: wire.owner ?? null,
-    runner_id: wire.runner_id ?? null,
-    host_id: wire.host_id ?? null,
-    workspace: wire.workspace ?? null,
-    agent_id: wire.agent_id,
-    agent_name: wire.agent_name ?? null,
-    pending_elicitations_count: wire.pending_elicitations_count ?? 0,
-    status: wire.status ?? "idle",
-    runner_online: wire.runner_online ?? undefined,
-    host_online: wire.host_online ?? undefined,
-    git_branch: wire.git_branch ?? null,
-    archived: wire.archived ?? false,
-  };
+  return normalizeConversation(await res.json(), "body");
 }
 
 async function fetchConversationsPage({
@@ -187,7 +421,7 @@ async function fetchConversationsPage({
   if (includeArchived) params.set("include_archived", "true");
   const res = await authenticatedFetch(`/v1/sessions?${params.toString()}`);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return (await res.json()) as ConversationsPage;
+  return normalizeConversationsPage(await res.json(), searchQuery);
 }
 
 /**

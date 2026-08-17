@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&display=swap">
+<link rel="stylesheet" href="industry.css">
+<style>
+  html, body { margin:0; padding:0; background:#f2f2f3; }
+  a { color:#416180; text-decoration:none; }
+  a:hover { color:#2c455d; }
+  [data-lang="en"] .zh { display:none; }
+  [data-lang="zh"] .en { display:none; }
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb { background:rgba(29,31,32,.2); }
+</style>
+</helmet>
+
+<div data-lang="{{ lang }}" style="display:grid;grid-template-columns:64px 236px minmax(0,1fr);height:100vh;min-width:1320px;overflow:hidden;background:#f2f2f3;color:#1d1f20;font:400 13px/1.55 Barlow,system-ui,sans-serif;text-wrap:pretty">
+
+  <!-- 全局导航 icon rail -->
+  <nav style="display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:10px 0;border-right:1px solid rgba(29,31,32,.16)">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:0 0 12px">
+      <div style="width:26px;height:26px;border:1px solid #1d1f20"></div>
+      <span style="font:500 8px/1 ui-monospace,Menlo,monospace;letter-spacing:.14em;color:rgba(29,31,32,.5)">PIR</span>
+    </div>
+
+    <button onClick="{{ goWs }}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0;background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:#1d1f20;font:inherit" style-hover="background:rgba(29,31,32,.05)">
+      <i style="position:absolute;inset:0;background:rgba(89,128,166,.16);border-left:2px solid #5980a6;opacity:{{ onWs }}"></i>
+      <span style="position:relative;width:20px;height:20px;border:1px solid currentColor"></span>
+      <span style="position:relative;font-size:10px"><span class="zh">工作台</span><span class="en">Desk</span></span>
+    </button>
+    <button onClick="{{ goSe }}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0;background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:#1d1f20;font:inherit" style-hover="background:rgba(29,31,32,.05)">
+      <i style="position:absolute;inset:0;background:rgba(89,128,166,.16);border-left:2px solid #5980a6;opacity:{{ onSe }}"></i>
+      <span style="position:relative;width:20px;height:20px;border:1px solid currentColor;border-radius:50%"></span>
+      <span style="position:relative;font-size:10px"><span class="zh">会话</span><span class="en">Chats</span></span>
+    </button>
+    <button onClick="{{ goMo }}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0;background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:#1d1f20;font:inherit" style-hover="background:rgba(29,31,32,.05)">
+      <i style="position:absolute;inset:0;background:rgba(89,128,166,.16);border-left:2px solid #5980a6;opacity:{{ onMo }}"></i>
+      <span style="position:relative;width:20px;height:20px;border:1px solid currentColor;border-top-width:5px"></span>
+      <span style="position:relative;font-size:10px">Memo</span>
+    </button>
+    <button onClick="{{ goVa }}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0;background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:#1d1f20;font:inherit" style-hover="background:rgba(29,31,32,.05)">
+      <i style="position:absolute;inset:0;background:rgba(89,128,166,.16);border-left:2px solid #5980a6;opacity:{{ onVa }}"></i>
+      <span style="position:relative;width:20px;height:20px;border:1px solid currentColor;transform:rotate(45deg)"></span>
+      <span style="position:relative;font-size:10px"><span class="zh">估值</span><span class="en">Model</span></span>
+    </button>
+    <button onClick="{{ goTr }}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0;background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:#1d1f20;font:inherit" style-hover="background:rgba(29,31,32,.05)">
+      <i style="position:absolute;inset:0;background:rgba(89,128,166,.16);border-left:2px solid #5980a6;opacity:{{ onTr }}"></i>
+      <span style="position:relative;width:20px;height:20px;border:1px solid currentColor;border-bottom-width:5px"></span>
+      <span style="position:relative;font-size:10px"><span class="zh">追踪</span><span class="en">Watch</span></span>
+    </button>
+
+    <div style="flex:1"></div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0;opacity:.6">
+      <span style="position:relative;width:20px;height:20px;border:1px solid currentColor">
+        <i style="position:absolute;top:-5px;right:-6px;min-width:14px;height:14px;padding:0 3px;background:#5980a6;color:#f2f2f3;font:500 9px/14px ui-monospace,Menlo,monospace;text-align:center">5</i>
+      </span>
+      <span style="font-size:10px"><span class="zh">收件箱</span><span class="en">Inbox</span></span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0;opacity:.6">
+      <span style="width:20px;height:20px;border:1px solid currentColor;border-radius:50%;border-style:dashed"></span>
+      <span style="font-size:10px"><span class="zh">设置</span><span class="en">Settings</span></span>
+    </div>
+    <button onClick="{{ toggleLang }}" class="btn btn-secondary" style="margin:8px 10px 0;padding:4px 0;font:500 10px/1 ui-monospace,Menlo,monospace">{{ langBtn }}</button>
+  </nav>
+
+  <!-- 二级面板 -->
+  <aside style="display:flex;flex-direction:column;border-right:1px solid rgba(29,31,32,.16);overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 12px 10px;border-bottom:1px solid rgba(29,31,32,.16)">
+      <h3 style="margin:0;font:600 14px/1.2 'Barlow Condensed',system-ui;letter-spacing:.02em">{{ panelTitle }}</h3>
+      <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px">+</button>
+    </div>
+    <div style="padding:10px 12px;border-bottom:1px solid rgba(29,31,32,.16)">
+      <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid rgba(29,31,32,.16)">
+        <span style="width:9px;height:9px;border:1px solid rgba(29,31,32,.45);border-radius:50%"></span>
+        <span style="font-size:12px;color:rgba(29,31,32,.45)"><span class="zh">搜索…</span><span class="en">Search…</span></span>
+      </div>
+    </div>
+    <div style="flex:1;overflow:auto;padding:8px 0">
+      <div style="position:relative;display:flex;flex-direction:column;gap:5px;padding:9px 12px;background:rgba(89,128,166,.14);border-left:2px solid #5980a6">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+          <span style="font:600 13px/1.2 'Barlow Condensed',system-ui">{{ panelRow1 }}</span>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">{{ panelRow1Meta }}</span>
+        </div>
+        <div style="height:6px;background:rgba(29,31,32,.14);width:78%"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;padding:9px 14px" style-hover="background:rgba(29,31,32,.04)">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+          <span style="font:600 13px/1.2 'Barlow Condensed',system-ui">{{ panelRow2 }}</span>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">{{ panelRow2Meta }}</span>
+        </div>
+        <div style="height:6px;background:rgba(29,31,32,.12);width:62%"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;padding:9px 14px" style-hover="background:rgba(29,31,32,.04)">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+          <span style="font:600 13px/1.2 'Barlow Condensed',system-ui">{{ panelRow3 }}</span>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">{{ panelRow3Meta }}</span>
+        </div>
+        <div style="height:6px;background:rgba(29,31,32,.12);width:70%"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;padding:9px 14px;opacity:.55">
+        <div style="height:8px;background:rgba(29,31,32,.14);width:64%"></div>
+        <div style="height:6px;background:rgba(29,31,32,.1);width:48%"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;padding:9px 14px;opacity:.4">
+        <div style="height:8px;background:rgba(29,31,32,.14);width:72%"></div>
+        <div style="height:6px;background:rgba(29,31,32,.1);width:40%"></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid rgba(29,31,32,.16);font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.45)">
+      <span class="zh">批量：归档 / 删除</span><span class="en">Bulk: archive / delete</span>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <main style="display:flex;flex-direction:column;overflow:hidden">
+
+    <header style="display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid rgba(29,31,32,.16)">
+      <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <h2 style="margin:0;font:600 19px/1.1 'Barlow Condensed',system-ui;letter-spacing:.01em">恒瑞医药 · 600276</h2>
+          <span style="display:inline-block;padding:1px 6px;border:1px solid #5980a6;color:#416180;font:500 9px/1.5 ui-monospace,Menlo,monospace">{{ screenTag }}</span>
+        </div>
+        <div style="font:500 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:rgba(29,31,32,.5)">
+          <span class="zh">资料 128 · 索引 就绪 · 资产 41 · AGENT 就绪</span><span class="en">128 DOCS · INDEX READY · 41 ASSETS · AGENT READY</span>
+        </div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" style="font-size:12px"><span class="zh">编辑项目</span><span class="en">Edit project</span></button>
+      <button class="btn btn-secondary" style="font-size:12px"><span class="zh">删除</span><span class="en">Delete</span></button>
+      <button class="btn btn-primary" style="font-size:12px"><span class="zh">全局上传</span><span class="en">Upload</span></button>
+    </header>
+
+    <!-- ① 主工作台 -->
+    <sc-if value="{{ isWs }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;overflow:auto;padding:20px;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr);gap:20px;align-content:start">
+
+        <section class="blueprint" style="padding:0;grid-row:span 2">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid rgba(29,31,32,.16)">
+            <h3 style="margin:0;font:600 15px/1.2 'Barlow Condensed',system-ui"><span class="zh">项目资料库</span><span class="en">Project corpus</span></h3>
+            <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§2</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-secondary" style="padding:3px 8px;font-size:11px"><span class="zh">上传</span><span class="en">Upload</span></button>
+            <button class="btn btn-secondary" style="padding:3px 8px;font-size:11px"><span class="zh">新建文件夹</span><span class="en">New folder</span></button>
+            <button class="btn btn-secondary" style="padding:3px 8px;font-size:11px"><span class="zh">批量选择</span><span class="en">Select</span></button>
+          </div>
+          <div style="display:grid;grid-template-columns:150px minmax(0,1fr)">
+            <div style="border-right:1px solid rgba(29,31,32,.16);padding:10px 0">
+              <div style="padding:5px 12px;background:rgba(89,128,166,.14);font-size:12px"><span class="zh">全部资料 128</span><span class="en">All 128</span></div>
+              <div style="padding:5px 12px;font-size:12px"><span class="zh">年报 / 季报 24</span><span class="en">Filings 24</span></div>
+              <div style="padding:5px 12px;font-size:12px"><span class="zh">卖方研究 57</span><span class="en">Sell-side 57</span></div>
+              <div style="padding:5px 12px;font-size:12px"><span class="zh">估值模型 6</span><span class="en">Models 6</span></div>
+              <div style="padding:5px 12px;font-size:12px;color:rgba(29,31,32,.5)"><span class="zh">自动分类 41</span><span class="en">Auto 41</span></div>
+              <div style="margin:8px 12px 0;padding-top:8px;border-top:1px solid rgba(29,31,32,.12);font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.45)"><span class="zh">重命名 · 删除 · 移动 · 恢复自动分类</span><span class="en">Rename · delete · move · reset</span></div>
+            </div>
+            <div style="min-width:0;overflow:auto;padding:4px 14px 12px">
+              <table class="table" style="font-size:12px;table-layout:fixed">
+                <thead><tr>
+                  <th style="width:22px"></th>
+                  <th><span class="zh">文件</span><span class="en">File</span></th>
+                  <th style="width:74px"><span class="zh">类型</span><span class="en">Type</span></th>
+                  <th style="width:104px"><span class="zh">状态</span><span class="en">Status</span></th>
+                  <th style="width:88px"><span class="zh">上下文</span><span class="en">Context</span></th>
+                </tr></thead>
+                <tbody>
+                  <tr><td><span style="display:block;width:11px;height:11px;border:1px solid #5980a6;background:#5980a6"></span></td>
+                    <td>2025 年报.pdf</td><td>PDF</td><td><span class="tag tag-neutral"><span class="zh">已索引</span><span class="en">Indexed</span></span></td><td><button class="btn btn-ghost" style="padding:0;font-size:11px"><span class="zh">已加入</span><span class="en">Added</span></button></td></tr>
+                  <tr><td><span style="display:block;width:11px;height:11px;border:1px solid rgba(29,31,32,.4)"></span></td>
+                    <td>DCF_v3.xlsx</td><td>XLSX</td><td><span class="tag tag-neutral"><span class="zh">已索引</span><span class="en">Indexed</span></span></td><td><button class="btn btn-ghost" style="padding:0;font-size:11px">+ <span class="zh">加入</span><span class="en">Add</span></button></td></tr>
+                  <tr><td><span style="display:block;width:11px;height:11px;border:1px solid rgba(29,31,32,.4)"></span></td>
+                    <td>创新药竞争格局.docx</td><td>DOCX</td><td><span class="tag tag-accent"><span class="zh">索引中 62%</span><span class="en">Indexing 62%</span></span></td><td style="color:rgba(29,31,32,.4)">—</td></tr>
+                  <tr><td><span style="display:block;width:11px;height:11px;border:1px solid rgba(29,31,32,.4)"></span></td>
+                    <td>调研纪要_0812.md</td><td>MD</td><td><span class="tag tag-outline"><span class="zh">待确认公司</span><span class="en">Confirm co.</span></span></td><td><button class="btn btn-ghost" style="padding:0;font-size:11px"><span class="zh">改派</span><span class="en">Reassign</span></button></td></tr>
+                  <tr><td><span style="display:block;width:11px;height:11px;border:1px solid rgba(29,31,32,.4)"></span></td>
+                    <td>行业数据.csv</td><td>CSV</td><td><span class="tag tag-neutral" style="border:1px solid rgba(29,31,32,.35)"><span class="zh">解析失败</span><span class="en">Parse failed</span></span></td><td><button class="btn btn-ghost" style="padding:0;font-size:11px"><span class="zh">重试</span><span class="en">Retry</span></button></td></tr>
+                  <tr><td><span style="display:block;width:11px;height:11px;border:1px solid rgba(29,31,32,.4)"></span></td>
+                    <td style="color:rgba(29,31,32,.45)"><span class="zh">…其余 123 条</span><span class="en">…123 more</span></td><td></td><td></td><td></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="blueprint" style="padding:14px;display:flex;flex-direction:column;gap:11px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;align-items:center;gap:9px">
+            <h3 style="margin:0;font:600 15px/1.2 'Barlow Condensed',system-ui"><span class="zh">全局上传器</span><span class="en">Global uploader</span></h3>
+            <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§2 · 流程2</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:18px;border:1px dashed rgba(29,31,32,.35);color:rgba(29,31,32,.55);font-size:12px">
+            <span style="width:22px;height:22px;border:1px solid currentColor"></span>
+            <span class="zh">拖入 PDF / Excel / Word / PPT / CSV</span><span class="en">Drop PDF / Excel / Word / PPT / CSV</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px">
+              <span>贵州茅台_深度.pdf</span><span class="tag tag-neutral"><span class="zh">已匹配项目</span><span class="en">Matched</span></span>
+            </div>
+            <div style="height:5px;background:rgba(29,31,32,.12)"><i style="display:block;width:100%;height:5px;background:#5980a6"></i></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px">
+              <span>未知公司_纪要.docx</span><span class="tag tag-outline"><span class="zh">人工复核</span><span class="en">Review</span></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid rgba(29,31,32,.16)">
+              <div style="flex:1;font-size:11px;color:rgba(29,31,32,.6)"><span class="zh">识别到 2 个候选公司，冲突待确认</span><span class="en">2 candidate companies, conflict</span></div>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">改派</span><span class="en">Assign</span></button>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">新建项目</span><span class="en">New</span></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="blueprint" style="padding:14px;display:flex;flex-direction:column;gap:11px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;align-items:center;gap:9px">
+            <h3 style="margin:0;font:600 15px/1.2 'Barlow Condensed',system-ui"><span class="zh">新建研究</span><span class="en">New research</span></h3>
+            <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§3 · 流程1</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px;padding:11px;border:1px solid rgba(29,31,32,.16);min-height:78px">
+            <div style="font-size:12px;color:rgba(29,31,32,.5)"><span class="zh">输入研究问题…</span><span class="en">Ask a research question…</span></div>
+            <div style="flex:1"></div>
+            <div style="display:flex;align-items:center;gap:7px">
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">附件</span><span class="en">Attach</span></button>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">语音</span><span class="en">Voice</span></button>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">技能</span><span class="en">Skills</span></button>
+              <div style="flex:1"></div>
+              <div class="seg" style="font-size:11px">
+                <span class="seg-opt" style="padding:3px 8px;background:#5980a6;color:#f2f2f3"><span class="zh">常规</span><span class="en">Standard</span></span>
+                <span class="seg-opt" style="padding:3px 8px"><span class="zh">深度</span><span class="en">Deep</span></span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <span class="tag tag-outline" style="font-size:11px"><span class="zh">建议：集采影响</span><span class="en">Suggested: VBP impact</span></span>
+            <span class="tag tag-outline" style="font-size:11px"><span class="zh">建议：管线估值</span><span class="en">Suggested: pipeline value</span></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding-top:9px;border-top:1px solid rgba(29,31,32,.12)">
+            <span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">AGENT · MODEL · REASONING</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-primary" style="font-size:12px"><span class="zh">开始研究</span><span class="en">Start</span></button>
+          </div>
+        </section>
+      </div>
+    </sc-if>
+
+    <!-- ② 研究会话 -->
+    <sc-if value="{{ isSe }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow:hidden;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,.95fr)">
+
+        <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid rgba(29,31,32,.16)">
+          <div style="display:flex;align-items:center;gap:9px;padding:9px 20px;border-bottom:1px solid rgba(29,31,32,.16);font:500 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:rgba(29,31,32,.55)">
+            <span style="width:7px;height:7px;background:#5980a6;border-radius:50%"></span>
+            <span class="zh">生成中 · 深度研究 · 已用 4 工具</span><span class="en">GENERATING · DEEP · 4 TOOLS</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">中断</span><span class="en">Stop</span></button>
+            <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">分叉</span><span class="en">Fork</span></button>
+            <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">分享</span><span class="en">Share</span></button>
+          </div>
+
+          <div style="flex:1;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+            <div style="align-self:flex-end;max-width:74%;padding:10px 12px;border:1px solid rgba(29,31,32,.3);background:rgba(29,31,32,.04)">
+              <div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5);margin-bottom:5px">USER · 14:02</div>
+              <div style="font-size:13px"><span class="zh">集采对 2026 年毛利率的影响？请给出证据与区间。</span><span class="en">Impact of VBP on 2026 gross margin? Give evidence and a range.</span></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">AGENT · RESEARCHER-01</div>
+
+              <details open style="border:1px solid rgba(29,31,32,.16);padding:8px 10px">
+                <summary style="cursor:pointer;font:500 10px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)"><span class="zh">推理过程 · 6 步</span><span class="en">REASONING · 6 STEPS</span></summary>
+                <div style="display:flex;flex-direction:column;gap:5px;padding-top:8px">
+                  <div style="height:6px;background:rgba(29,31,32,.1);width:92%"></div>
+                  <div style="height:6px;background:rgba(29,31,32,.1);width:78%"></div>
+                  <div style="height:6px;background:rgba(29,31,32,.1);width:55%"></div>
+                </div>
+              </details>
+
+              <div style="border:1px solid rgba(29,31,32,.16)">
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(29,31,32,.12);font:500 10px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">
+                  <span style="width:9px;height:9px;border:1px solid currentColor"></span>TOOL · corpus.search
+                  <div style="flex:1"></div><span class="tag tag-neutral" style="font-size:10px">1.2s</span>
+                </div>
+                <div style="padding:8px 10px;font:400 11px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.6)">query="集采 毛利率 2026" · hits=14 · files=5</div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:7px;padding:11px;border:1px solid rgba(29,31,32,.16)">
+                <div style="height:7px;background:rgba(29,31,32,.13);width:96%"></div>
+                <div style="height:7px;background:rgba(29,31,32,.13);width:88%"></div>
+                <div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+                  <span style="font-size:12px"><span class="zh">结论区间</span><span class="en">Range</span></span>
+                  <span class="tag tag-accent" style="font-size:11px">-1.8pp ~ -3.4pp</span>
+                  <a href="#" style="padding:0 5px;border:1px solid #5980a6;font:500 10px/1.6 ui-monospace,Menlo,monospace">1</a>
+                  <a href="#" style="padding:0 5px;border:1px solid #5980a6;font:500 10px/1.6 ui-monospace,Menlo,monospace">2</a>
+                  <a href="#" style="padding:0 5px;border:1px solid #5980a6;font:500 10px/1.6 ui-monospace,Menlo,monospace">3</a>
+                </div>
+                <div style="border:1px solid rgba(29,31,32,.12)">
+                  <div style="display:flex;gap:1px;background:rgba(29,31,32,.12)">
+                    <span style="flex:1;padding:4px 7px;background:#f2f2f3;font:500 10px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">SKU</span>
+                    <span style="flex:1;padding:4px 7px;background:#f2f2f3;font:500 10px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">2025</span>
+                    <span style="flex:1;padding:4px 7px;background:#f2f2f3;font:500 10px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">2026E</span>
+                  </div>
+                  <div style="display:flex;gap:1px;background:rgba(29,31,32,.08);padding:1px 0">
+                    <span style="flex:1;padding:4px 7px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+                    <span style="flex:1;padding:4px 7px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+                    <span style="flex:1;padding:4px 7px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+                  </div>
+                  <div style="padding:4px 7px;font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.4)"><span class="zh">表格 / 公式 / MERMAID / 图片 均可渲染</span><span class="en">TABLE / MATH / MERMAID / IMAGE</span></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:7px;padding-top:5px">
+                  <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">复制</span><span class="en">Copy</span></button>
+                  <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">存为答案笔记</span><span class="en">Save as note</span></button>
+                  <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">存为研究资产</span><span class="en">Save as asset</span></button>
+                  <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§7 · 流程4</span>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:flex-start;gap:11px;padding:11px;border:1px solid #5980a6;background:rgba(89,128,166,.08)">
+                <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+                  <div style="font:600 12px/1.2 'Barlow Condensed',system-ui;letter-spacing:.03em"><span class="zh">审批请求 · 写入项目资料</span><span class="en">APPROVAL · write to corpus</span></div>
+                  <div style="font-size:12px;color:rgba(29,31,32,.65)"><span class="zh">Agent 请求将派生模型 DCF_v3_adj 写入当前项目。</span><span class="en">Agent requests writing DCF_v3_adj into this project.</span></div>
+                </div>
+                <button class="btn btn-secondary" style="padding:3px 9px;font-size:11px"><span class="zh">拒绝</span><span class="en">Reject</span></button>
+                <button class="btn btn-primary" style="padding:3px 9px;font-size:11px"><span class="zh">批准</span><span class="en">Approve</span></button>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px dashed rgba(29,31,32,.3);font-size:12px;color:rgba(29,31,32,.6)">
+                <span class="zh">结构化问题 2/3：请选择比较基准期间</span><span class="en">Structured question 2/3: pick the base period</span>
+                <div style="flex:1"></div>
+                <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">回答</span><span class="en">Answer</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div style="border-top:1px solid rgba(29,31,32,.16);padding:11px 20px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;gap:7px;font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">
+              <span class="zh">上下文：6 资料 · 2 资产</span><span class="en">CONTEXT: 6 DOCS · 2 ASSETS</span>
+              <button class="btn btn-ghost" style="padding:0;font-size:11px"><span class="zh">编辑</span><span class="en">Edit</span></button>
+              <div style="flex:1"></div>
+              <span class="zh">草稿已保存</span><span class="en">DRAFT SAVED</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid rgba(29,31,32,.16)">
+              <span style="flex:1;font-size:12px;color:rgba(29,31,32,.45)"><span class="zh">继续追问…（生成中，将排队）</span><span class="en">Ask a follow-up… (queued while generating)</span></span>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">附件</span><span class="en">Attach</span></button>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">技能</span><span class="en">Skills</span></button>
+              <button class="btn btn-primary" style="padding:3px 9px;font-size:11px"><span class="zh">排队发送</span><span class="en">Queue</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;overflow:auto">
+          <div style="display:flex;align-items:center;gap:9px;padding:9px 14px;border-bottom:1px solid rgba(29,31,32,.16)">
+            <h3 style="margin:0;font:600 15px/1.2 'Barlow Condensed',system-ui"><span class="zh">来源查看器</span><span class="en">Source viewer</span></h3>
+            <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§5</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">标记可信</span><span class="en">Trust</span></button>
+          </div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:14px">
+            <div class="blueprint" style="padding:11px;display:flex;flex-direction:column;gap:8px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">[1] 2025 年报.pdf · P.42</div>
+              <div style="border:1px solid rgba(29,31,32,.16);padding:10px;display:flex;flex-direction:column;gap:5px">
+                <div style="height:6px;background:rgba(29,31,32,.1);width:90%"></div>
+                <div style="height:6px;background:#5980a6;width:64%"></div>
+                <div style="height:6px;background:rgba(29,31,32,.1);width:82%"></div>
+                <div style="height:6px;background:rgba(29,31,32,.1);width:47%"></div>
+              </div>
+            </div>
+            <div class="blueprint" style="padding:11px;display:flex;flex-direction:column;gap:8px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">[2] DCF_v3.xlsx · 假设!B12:D18</div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(29,31,32,.14);border:1px solid rgba(29,31,32,.14)">
+                <span style="padding:5px;background:#f2f2f3;font:400 11px/1 ui-monospace,Menlo,monospace">B12</span>
+                <span style="padding:5px;background:rgba(89,128,166,.22);font:400 11px/1 ui-monospace,Menlo,monospace">0.412</span>
+                <span style="padding:5px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+                <span style="padding:5px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+                <span style="padding:5px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+                <span style="padding:5px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+                <span style="padding:5px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+                <span style="padding:5px;background:#f2f2f3"><i style="display:block;height:6px;background:rgba(29,31,32,.12)"></i></span>
+              </div>
+              <div style="font:400 11px/1.6 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.6)">
+                <span class="zh">原值 0.412 · 公式 =C12*(1-D12) · 附近上下文 3 行</span><span class="en">value 0.412 · formula =C12*(1-D12) · 3 nearby rows</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px dashed rgba(29,31,32,.3);font-size:12px;color:rgba(29,31,32,.6)">
+              <span class="zh">[3] 来源失效 · 索引缺失</span><span class="en">[3] source stale · index missing</span>
+              <div style="flex:1"></div>
+              <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px"><span class="zh">重建索引</span><span class="en">Reindex</span></button>
+            </div>
+            <div class="blueprint" style="padding:11px;display:flex;flex-direction:column;gap:8px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <div style="display:flex;align-items:center;gap:8px">
+                <h4 style="margin:0;font:600 14px/1.2 'Barlow Condensed',system-ui"><span class="zh">提问上下文</span><span class="en">Ask context</span></h4>
+                <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§6</span>
+                <div style="flex:1"></div>
+                <span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">6 + 2</span>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                <span class="tag tag-neutral" style="font-size:11px">2025 年报.pdf ×</span>
+                <span class="tag tag-neutral" style="font-size:11px">DCF_v3.xlsx ×</span>
+                <span class="tag tag-neutral" style="font-size:11px"><span class="zh">文件夹：卖方研究 ×</span><span class="en">Folder: sell-side ×</span></span>
+                <span class="tag tag-accent" style="font-size:11px"><span class="zh">资产：管线笔记 ×</span><span class="en">Asset: pipeline note ×</span></span>
+                <button class="btn btn-secondary" style="padding:2px 7px;font-size:11px">+ <span class="zh">添加</span><span class="en">Add</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ③ Memo -->
+    <sc-if value="{{ isMo }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+          <h3 style="margin:0;font:600 17px/1.2 'Barlow Condensed',system-ui"><span class="zh">投资备忘录 · 版本比较</span><span class="en">Memo · version compare</span></h3>
+          <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§8 · 流程5</span>
+          <div style="flex:1"></div>
+          <div style="display:flex;align-items:center;gap:7px;font-size:12px">
+            <span style="padding:4px 9px;border:1px solid rgba(29,31,32,.3)">v2 · 07-18</span>
+            <span style="color:rgba(29,31,32,.45)">→</span>
+            <span style="padding:4px 9px;border:1px solid #5980a6;color:#416180">v4 · 08-16</span>
+          </div>
+          <button class="btn btn-secondary" style="font-size:12px"><span class="zh">下载</span><span class="en">Download</span></button>
+          <button class="btn btn-secondary" style="font-size:12px"><span class="zh">加入上下文</span><span class="en">Add to context</span></button>
+          <button class="btn btn-primary" style="font-size:12px"><span class="zh">修订 Memo</span><span class="en">Revise memo</span></button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px">
+          <div style="padding:10px;border:1px solid #5980a6"><div style="font:600 22px/1 'Barlow Condensed',system-ui;color:#416180">6</div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)"><span class="zh">新增</span><span class="en">ADDED</span></div></div>
+          <div style="padding:10px;border:1px solid rgba(29,31,32,.28)"><div style="font:600 22px/1 'Barlow Condensed',system-ui">9</div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)"><span class="zh">变化</span><span class="en">CHANGED</span></div></div>
+          <div style="padding:10px;border:1px dashed rgba(29,31,32,.3)"><div style="font:600 22px/1 'Barlow Condensed',system-ui">4</div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)"><span class="zh">本期未提及</span><span class="en">NOT MENTIONED</span></div></div>
+          <div style="padding:10px;border:1px solid rgba(29,31,32,.16)"><div style="font:600 22px/1 'Barlow Condensed',system-ui;color:rgba(29,31,32,.45)">27</div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)"><span class="zh">未变化</span><span class="en">UNCHANGED</span></div></div>
+          <div style="padding:10px;border:1px solid rgba(29,31,32,.28);background:rgba(89,128,166,.1)"><div style="font:600 22px/1 'Barlow Condensed',system-ui">3</div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)"><span class="zh">待复核</span><span class="en">TO REVIEW</span></div></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,1fr);gap:20px;align-items:start">
+          <section class="blueprint" style="padding:0">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid rgba(29,31,32,.16)">
+              <h4 style="margin:0;font:600 14px/1.2 'Barlow Condensed',system-ui"><span class="zh">变化摘要</span><span class="en">Change summary</span></h4>
+              <div style="flex:1"></div>
+              <span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">论点 · 假设 · 指标</span><span class="en">CLAIMS · ASSUMPTIONS · METRICS</span></span>
+            </div>
+            <div style="display:flex;flex-direction:column">
+              <div style="display:flex;gap:11px;padding:11px 14px;border-bottom:1px solid rgba(29,31,32,.1)">
+                <span class="tag tag-accent" style="height:20px;font-size:10px"><span class="zh">新增</span><span class="en">ADD</span></span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                  <div style="font-size:13px"><span class="zh">海外授权收入成为第二增长曲线</span><span class="en">Out-licensing becomes a second growth curve</span></div>
+                  <div style="display:flex;align-items:center;gap:6px;font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">证据 +3</span><span class="en">EVIDENCE +3</span> · <a href="#">[1]</a><a href="#">[2]</a><a href="#">[3]</a></div>
+                </div>
+              </div>
+              <div style="display:flex;gap:11px;padding:11px 14px;border-bottom:1px solid rgba(29,31,32,.1)">
+                <span class="tag tag-neutral" style="height:20px;font-size:10px;border:1px solid rgba(29,31,32,.3)"><span class="zh">变化</span><span class="en">CHG</span></span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                  <div style="font-size:13px"><span class="zh">2026 毛利率假设</span><span class="en">2026 gross margin assumption</span> <span style="color:rgba(29,31,32,.45);text-decoration:line-through">84.1%</span> → <strong>82.3%</strong></div>
+                  <div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">证据 +2 / −1（来源：2025 年报 P.42）</span><span class="en">EVIDENCE +2 / −1 (2025 annual report P.42)</span></div>
+                </div>
+              </div>
+              <div style="display:flex;gap:11px;padding:11px 14px;border-bottom:1px solid rgba(29,31,32,.1)">
+                <span class="tag tag-outline" style="height:20px;font-size:10px"><span class="zh">未提及</span><span class="en">N/M</span></span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                  <div style="font-size:13px"><span class="zh">原料药产能扩张（v2 中的论点，本期未提及）</span><span class="en">API capacity expansion (in v2, not mentioned this period)</span></div>
+                  <div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">状态 ≠ 已失效</span><span class="en">NOT THE SAME AS INVALIDATED</span></div>
+                </div>
+              </div>
+              <div style="display:flex;gap:11px;padding:11px 14px">
+                <span class="tag tag-neutral" style="height:20px;font-size:10px;background:rgba(89,128,166,.16)"><span class="zh">待复核</span><span class="en">REV</span></span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                  <div style="height:7px;background:rgba(29,31,32,.13);width:82%"></div>
+                  <div style="height:7px;background:rgba(29,31,32,.1);width:56%"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="blueprint" style="padding:14px;display:flex;flex-direction:column;gap:12px">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <h4 style="margin:0;font:600 14px/1.2 'Barlow Condensed',system-ui"><span class="zh">版本时间线</span><span class="en">Version timeline</span></h4>
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <span style="width:10px;height:10px;margin-top:4px;background:#5980a6"></span>
+                <div style="flex:1"><div style="font-size:12px">v4 · 08-16 <span style="color:rgba(29,31,32,.5)"><span class="zh">新增 6 · 变化 9</span><span class="en">6 added · 9 changed</span></span></div><div style="height:6px;margin-top:5px;background:rgba(29,31,32,.12);width:80%"></div></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <span style="width:10px;height:10px;margin-top:4px;border:1px solid rgba(29,31,32,.4)"></span>
+                <div style="flex:1"><div style="font-size:12px">v3 · 08-02</div><div style="height:6px;margin-top:5px;background:rgba(29,31,32,.1);width:64%"></div></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-start">
+                <span style="width:10px;height:10px;margin-top:4px;border:1px solid rgba(29,31,32,.4)"></span>
+                <div style="flex:1"><div style="font-size:12px">v2 · 07-18</div><div style="height:6px;margin-top:5px;background:rgba(29,31,32,.1);width:52%"></div></div>
+              </div>
+              <div style="display:flex;gap:10px;align-items:flex-start;opacity:.5">
+                <span style="width:10px;height:10px;margin-top:4px;border:1px solid rgba(29,31,32,.4)"></span>
+                <div style="flex:1"><div style="font-size:12px">v1 · 07-01</div></div>
+              </div>
+            </div>
+            <div style="padding-top:11px;border-top:1px solid rgba(29,31,32,.12);display:flex;flex-direction:column;gap:7px">
+              <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">生成来源</span><span class="en">GENERATED FROM</span></div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                <span class="tag tag-neutral" style="font-size:11px"><span class="zh">12 资料</span><span class="en">12 docs</span></span>
+                <span class="tag tag-neutral" style="font-size:11px"><span class="zh">5 研究笔记</span><span class="en">5 notes</span></span>
+                <span class="tag tag-neutral" style="font-size:11px"><span class="zh">3 会话</span><span class="en">3 sessions</span></span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ④ 估值跟踪 -->
+    <sc-if value="{{ isVa }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+          <h3 style="margin:0;font:600 17px/1.2 'Barlow Condensed',system-ui">DCF_v3 · <span class="zh">估值跟踪</span><span class="en">Valuation tracking</span></h3>
+          <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§9 · 流程6</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary" style="font-size:12px"><span class="zh">刷新模型数据</span><span class="en">Refresh model</span></button>
+          <button class="btn btn-secondary" style="font-size:12px"><span class="zh">刷新市场数据</span><span class="en">Refresh market</span></button>
+          <button class="btn btn-primary" style="font-size:12px"><span class="zh">Agent 影响分析</span><span class="en">Agent analysis</span></button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:14px;padding:11px 14px;border:1px solid rgba(29,31,32,.16);flex-wrap:wrap">
+          <span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)"><span class="zh">模型版本 V3 · 来源 DCF_V3.XLSX · 期间 2023-2026E</span><span class="en">MODEL V3 · SOURCE DCF_V3.XLSX · 2023-2026E</span></span>
+          <div style="flex:1;min-width:120px;height:5px;background:rgba(29,31,32,.12)"><i style="display:block;width:72%;height:5px;background:#5980a6"></i></div>
+          <span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)"><span class="zh">解析 72% · 诊断 2 项</span><span class="en">PARSE 72% · 2 DIAGNOSTICS</span></span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr);gap:20px;align-items:start">
+          <section class="blueprint" style="padding:0">
+            <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+            <div style="padding:11px 14px;border-bottom:1px solid rgba(29,31,32,.16);display:flex;align-items:center;gap:9px">
+              <h4 style="margin:0;font:600 14px/1.2 'Barlow Condensed',system-ui"><span class="zh">模型值 vs 实际值</span><span class="en">Model vs actual</span></h4>
+              <div style="flex:1"></div>
+              <span class="tag tag-outline" style="font-size:10px"><span class="zh">2 项真实差异</span><span class="en">2 real gaps</span></span>
+              <span class="tag tag-neutral" style="font-size:10px"><span class="zh">1 项数据缺失</span><span class="en">1 missing</span></span>
+            </div>
+            <div style="min-width:0;overflow:auto;padding:4px 14px 12px">
+              <table class="table" style="font-size:12px;table-layout:fixed">
+                <thead><tr>
+                  <th><span class="zh">期间</span><span class="en">Period</span></th>
+                  <th><span class="zh">指标</span><span class="en">Metric</span></th>
+                  <th><span class="zh">模型值</span><span class="en">Model</span></th>
+                  <th><span class="zh">实际值</span><span class="en">Actual</span></th>
+                  <th><span class="zh">差异</span><span class="en">Gap</span></th>
+                  <th><span class="zh">状态</span><span class="en">State</span></th>
+                </tr></thead>
+                <tbody>
+                  <tr><td>2025Q4</td><td><span class="zh">营收</span><span class="en">Revenue</span></td><td>7,820</td><td>7,655</td><td style="color:#416180">−2.1%</td><td><span class="tag tag-outline" style="font-size:10px"><span class="zh">真实差异</span><span class="en">Real</span></span></td></tr>
+                  <tr><td>2025Q4</td><td><span class="zh">毛利率</span><span class="en">Gross margin</span></td><td>84.1%</td><td>82.3%</td><td style="color:#416180">−1.8pp</td><td><span class="tag tag-outline" style="font-size:10px"><span class="zh">真实差异</span><span class="en">Real</span></span></td></tr>
+                  <tr><td>2026Q1</td><td><span class="zh">研发费用率</span><span class="en">R&amp;D ratio</span></td><td>21.5%</td><td style="color:rgba(29,31,32,.4)">—</td><td style="color:rgba(29,31,32,.4)">—</td><td><span class="tag tag-neutral" style="font-size:10px"><span class="zh">数据缺失</span><span class="en">Missing</span></span></td></tr>
+                  <tr><td>2026E</td><td>WACC</td><td>8.6%</td><td>8.6%</td><td style="color:rgba(29,31,32,.45)">0.0</td><td><span class="tag tag-neutral" style="font-size:10px"><span class="zh">一致</span><span class="en">Match</span></span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <section class="blueprint" style="padding:13px;display:flex;flex-direction:column;gap:9px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <h4 style="margin:0;font:600 14px/1.2 'Barlow Condensed',system-ui"><span class="zh">市场快照</span><span class="en">Market snapshot</span></h4>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;font-size:12px">
+                <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">PRICE</div><div style="font:600 18px/1.1 'Barlow Condensed',system-ui">48.62</div></div>
+                <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">PE (TTM)</div><div style="font:600 18px/1.1 'Barlow Condensed',system-ui">41.7</div></div>
+                <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">模型隐含</span><span class="en">IMPLIED</span></div><div style="font:600 18px/1.1 'Barlow Condensed',system-ui;color:#416180">53.10</div></div>
+                <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">空间</span><span class="en">UPSIDE</span></div><div style="font:600 18px/1.1 'Barlow Condensed',system-ui;color:#416180">+9.2%</div></div>
+              </div>
+            </section>
+            <section class="blueprint" style="padding:13px;display:flex;flex-direction:column;gap:9px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <h4 style="margin:0;font:600 14px/1.2 'Barlow Condensed',system-ui"><span class="zh">Agent 影响分析</span><span class="en">Impact analysis</span></h4>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div style="height:7px;background:rgba(29,31,32,.13);width:94%"></div>
+                <div style="height:7px;background:rgba(29,31,32,.13);width:76%"></div>
+                <div style="height:7px;background:rgba(29,31,32,.1);width:58%"></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font:500 9px/1.4 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">证据</span><span class="en">EVIDENCE</span> <a href="#">[1]</a><a href="#">[2]</a></div>
+              <div style="display:flex;align-items:center;gap:8px;padding:9px;border:1px solid #5980a6;background:rgba(89,128,166,.08)">
+                <div style="flex:1;font-size:12px"><span class="zh">派生模型 DCF_v3_adj 已生成，确认后加入项目资料</span><span class="en">DCF_v3_adj generated — confirm to add to corpus</span></div>
+                <button class="btn btn-primary" style="padding:2px 8px;font-size:11px"><span class="zh">确认</span><span class="en">Confirm</span></button>
+              </div>
+            </section>
+            <section style="padding:11px;border:1px dashed rgba(29,31,32,.3);display:flex;flex-direction:column;gap:6px;font-size:12px;color:rgba(29,31,32,.6)">
+              <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">诊断信息</span><span class="en">DIAGNOSTICS</span></div>
+              <div><span class="zh">Sheet「假设」B21 公式引用外部工作簿</span><span class="en">Sheet "Assumptions" B21 references an external workbook</span></div>
+              <div><span class="zh">2026Q1 实际数据源未更新</span><span class="en">2026Q1 actuals source not refreshed</span></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ⑤ 风险 / 催化剂追踪 -->
+    <sc-if value="{{ isTr }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;overflow:auto;padding:20px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap">
+          <h3 style="margin:0;font:600 17px/1.2 'Barlow Condensed',system-ui"><span class="zh">风险 · 催化剂 · 追踪提醒</span><span class="en">Risks · catalysts · alerts</span></h3>
+          <span style="display:{{ specDisp }};padding:1px 5px;background:rgba(29,31,32,.08);font:500 9px/1.5 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.55)">§10 · 流程7</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary" style="font-size:12px"><span class="zh">手动触发更新</span><span class="en">Run update</span></button>
+          <button class="btn btn-primary" style="font-size:12px"><span class="zh">新建观察规则</span><span class="en">New rule</span></button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="padding:5px 11px;border:1px solid #5980a6;color:#416180;font-size:12px"><span class="zh">风险 7</span><span class="en">Risks 7</span></span>
+          <span style="padding:5px 11px;border:1px solid rgba(29,31,32,.28);font-size:12px"><span class="zh">催化剂 4</span><span class="en">Catalysts 4</span></span>
+          <span style="padding:5px 11px;border:1px solid rgba(29,31,32,.28);font-size:12px"><span class="zh">待复核 3</span><span class="en">To review 3</span></span>
+          <span style="padding:5px 11px;border:1px solid rgba(29,31,32,.28);background:rgba(89,128,166,.12);font-size:12px"><span class="zh">未读 5</span><span class="en">Unread 5</span></span>
+          <div style="flex:1"></div>
+          <div style="display:flex;align-items:center;gap:7px;padding:5px 9px;border:1px solid rgba(29,31,32,.16);min-width:180px">
+            <span style="width:9px;height:9px;border:1px solid rgba(29,31,32,.45);border-radius:50%"></span>
+            <span style="font-size:12px;color:rgba(29,31,32,.45)"><span class="zh">搜索追踪项…</span><span class="en">Search tracked items…</span></span>
+          </div>
+          <div class="seg" style="font-size:11px">
+            <span class="seg-opt" style="padding:4px 9px;background:#5980a6;color:#f2f2f3"><span class="zh">全部</span><span class="en">All</span></span>
+            <span class="seg-opt" style="padding:4px 9px"><span class="zh">高质量</span><span class="en">High</span></span>
+            <span class="seg-opt" style="padding:4px 9px"><span class="zh">低质量</span><span class="en">Low</span></span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);gap:20px;align-items:start">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <article class="blueprint" style="padding:13px;display:flex;flex-direction:column;gap:9px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <div style="display:flex;align-items:center;gap:9px">
+                <span class="tag tag-outline" style="font-size:10px"><span class="zh">风险</span><span class="en">RISK</span></span>
+                <span style="font:600 15px/1.2 'Barlow Condensed',system-ui"><span class="zh">第十一批集采纳入主力品种</span><span class="en">Key SKU enters 11th VBP round</span></span>
+                <div style="flex:1"></div>
+                <span style="width:7px;height:7px;background:#5980a6;border-radius:50%"></span>
+                <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">08-16 09:12</span>
+              </div>
+              <div style="font-size:13px;color:rgba(29,31,32,.75)"><span class="zh">当前判断：影响程度 高 · 与 v3 相比由「观察」升级为「风险」。</span><span class="en">Current call: high impact · upgraded from watch to risk since v3.</span></div>
+              <div style="padding:9px 11px;border-left:2px solid rgba(89,128,166,.6);background:rgba(29,31,32,.03);font-size:12px;color:rgba(29,31,32,.65)">
+                <span class="zh">摘录：「……相关品种已列入拟纳入清单……」</span><span class="en">Excerpt: "…the SKU appears on the proposed inclusion list…"</span>
+                <a href="#" style="margin-left:6px">[1]</a>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px">
+                <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">确认</span><span class="en">Acknowledge</span></button>
+                <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">忽略</span><span class="en">Dismiss</span></button>
+                <button class="btn btn-ghost" style="padding:0;font-size:11px"><span class="zh">版本变化</span><span class="en">Version diff</span></button>
+                <div style="flex:1"></div>
+                <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.45)"><span class="zh">规则：政策关键词</span><span class="en">RULE: POLICY KEYWORDS</span></span>
+              </div>
+            </article>
+
+            <article class="blueprint" style="padding:13px;display:flex;flex-direction:column;gap:9px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <div style="display:flex;align-items:center;gap:9px">
+                <span class="tag tag-neutral" style="font-size:10px;border:1px solid rgba(29,31,32,.3)"><span class="zh">催化剂</span><span class="en">CAT</span></span>
+                <span style="font:600 15px/1.2 'Barlow Condensed',system-ui"><span class="zh">III 期数据读出（Q4）</span><span class="en">Phase III readout (Q4)</span></span>
+                <div style="flex:1"></div>
+                <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">08-14</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <div style="height:7px;background:rgba(29,31,32,.12);width:88%"></div>
+                <div style="height:7px;background:rgba(29,31,32,.1);width:62%"></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px">
+                <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">确认</span><span class="en">Acknowledge</span></button>
+                <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">忽略</span><span class="en">Dismiss</span></button>
+              </div>
+            </article>
+
+            <article style="padding:11px 13px;border:1px dashed rgba(29,31,32,.3);display:flex;align-items:center;gap:9px">
+              <span class="tag tag-neutral" style="font-size:10px"><span class="zh">低质量</span><span class="en">LOW</span></span>
+              <div style="flex:1;font-size:12px;color:rgba(29,31,32,.6)"><span class="zh">3 条历史记录来源不可用，进入治理流程</span><span class="en">3 history records have unusable sources — governance queue</span></div>
+              <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">归档</span><span class="en">Archive</span></button>
+              <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">重建</span><span class="en">Rebuild</span></button>
+              <button class="btn btn-secondary" style="padding:2px 8px;font-size:11px"><span class="zh">清除</span><span class="en">Purge</span></button>
+            </article>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <section class="blueprint" style="padding:13px;display:flex;flex-direction:column;gap:11px">
+              <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <div style="display:flex;align-items:center;gap:8px">
+                <h4 style="margin:0;font:600 14px/1.2 'Barlow Condensed',system-ui"><span class="zh">观察规则</span><span class="en">Watch rules</span></h4>
+                <div style="flex:1"></div>
+                <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)">4 <span class="zh">条</span><span class="en">RULES</span></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:9px;padding:9px;border:1px solid rgba(29,31,32,.16)">
+                <div style="flex:1;font-size:12px"><span class="zh">政策关键词：集采 / 医保谈判</span><span class="en">Policy keywords: VBP / NRDL</span><div style="font:500 9px/1.6 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">高影响 · 每日 · 事件触发</span><span class="en">HIGH · DAILY · EVENT</span></div></div>
+                <span style="width:26px;height:14px;border:1px solid #5980a6;background:#5980a6;position:relative"><i style="position:absolute;top:1px;right:1px;width:10px;height:10px;background:#f2f2f3"></i></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:9px;padding:9px;border:1px solid rgba(29,31,32,.16);opacity:.65">
+                <div style="flex:1;font-size:12px"><span class="zh">临床进展：III 期读出</span><span class="en">Clinical: Phase III readouts</span><div style="font:500 9px/1.6 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">中影响 · 每周 · 已停用</span><span class="en">MED · WEEKLY · DISABLED</span></div></div>
+                <span style="width:26px;height:14px;border:1px solid rgba(29,31,32,.4);position:relative"><i style="position:absolute;top:1px;left:1px;width:10px;height:10px;background:rgba(29,31,32,.35)"></i></span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;padding-top:9px;border-top:1px solid rgba(29,31,32,.12)">
+                <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">规则配置</span><span class="en">RULE CONFIG</span></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:12px">
+                  <div style="padding:5px 8px;border:1px solid rgba(29,31,32,.16)"><span class="zh">影响程度</span><span class="en">Impact</span></div>
+                  <div style="padding:5px 8px;border:1px solid rgba(29,31,32,.16)"><span class="zh">更新频率</span><span class="en">Frequency</span></div>
+                  <div style="padding:5px 8px;border:1px solid rgba(29,31,32,.16)"><span class="zh">关键词</span><span class="en">Keywords</span></div>
+                  <div style="padding:5px 8px;border:1px solid rgba(29,31,32,.16)"><span class="zh">事件条件</span><span class="en">Event</span></div>
+                </div>
+              </div>
+            </section>
+            <section style="padding:11px 13px;border:1px solid rgba(29,31,32,.16);display:flex;flex-direction:column;gap:7px">
+              <div style="font:500 10px/1 ui-monospace,Menlo,monospace;color:rgba(29,31,32,.5)"><span class="zh">任务状态</span><span class="en">TASK STATUS</span></div>
+              <div style="display:flex;align-items:center;gap:9px;font-size:12px">
+                <span style="flex:1"><span class="zh">追踪更新 · 运行中</span><span class="en">Tracking update · running</span></span>
+                <span style="width:100px;height:5px;background:rgba(29,31,32,.12)"><i style="display:block;width:44%;height:5px;background:#5980a6"></i></span>
+              </div>
+              <div style="font-size:12px;color:rgba(29,31,32,.6)"><span class="zh">上次完成 08-16 09:12 · 超时可重试</span><span class="en">Last run 08-16 09:12 · retry on timeout</span></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <footer style="display:flex;align-items:center;gap:14px;padding:8px 20px;border-top:1px solid rgba(29,31,32,.16);font:500 9px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:rgba(29,31,32,.45)">
+      <span class="zh">线框稿 · 不含视觉细节</span><span class="en">WIREFRAME · STRUCTURE ONLY</span>
+      <div style="flex:1"></div>
+      <span class="zh">异常态：重试 · 重连 · 克隆 · 换模型 · 安全退出（§15）</span><span class="en">RECOVERY: RETRY · RECONNECT · CLONE · SWITCH MODEL · SAFE EXIT (§15)</span>
+    </footer>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;zh&quot;,&quot;en&quot;],&quot;default&quot;:&quot;zh&quot;,&quot;tsType&quot;:&quot;'zh'|'en'&quot;},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ws&quot;,&quot;se&quot;,&quot;mo&quot;,&quot;va&quot;,&quot;tr&quot;],&quot;default&quot;:&quot;ws&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showSpecTags&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { screen: null, lang: null };
+
+  get screen() { return this.state.screen ?? this.props.startScreen ?? "ws"; }
+  get lang() { return this.state.lang ?? this.props.lang ?? "zh"; }
+
+  go(s) { return () => this.setState({ screen: s }); }
+
+  renderVals() {
+    const s = this.screen, zh = this.lang === "zh";
+    const panels = {
+      ws: { t: zh ? "项目" : "Projects", rows: [["恒瑞医药", "128"], ["贵州茅台", "64"], ["宁德时代", "203"]] },
+      se: { t: zh ? "会话" : "Sessions", rows: [[zh ? "集采影响 · 深度" : "VBP impact · deep", zh ? "生成中" : "LIVE"], [zh ? "管线估值" : "Pipeline value", "08-14"], [zh ? "海外授权复盘" : "Out-licensing", "08-09"]] },
+      mo: { t: "Memo", rows: [[zh ? "投资备忘录 v4" : "Investment memo v4", "08-16"], [zh ? "投资备忘录 v3" : "Investment memo v3", "08-02"], [zh ? "投资备忘录 v2" : "Investment memo v2", "07-18"]] },
+      va: { t: zh ? "估值模型" : "Models", rows: [["DCF_v3", zh ? "当前" : "CURRENT"], ["DCF_v2", "07-20"], ["Comps_v1", "06-30"]] },
+      tr: { t: zh ? "追踪" : "Tracking", rows: [[zh ? "风险" : "Risks", "7"], [zh ? "催化剂" : "Catalysts", "4"], [zh ? "待复核" : "To review", "3"]] }
+    };
+    const p = panels[s] || panels.ws;
+    const tags = { ws: zh ? "工作台" : "DESK", se: zh ? "研究会话" : "SESSION", mo: "MEMO", va: zh ? "估值" : "VALUATION", tr: zh ? "追踪" : "TRACKING" };
+    return {
+      lang: this.lang,
+      langBtn: zh ? "EN" : "中",
+      toggleLang: () => this.setState({ lang: zh ? "en" : "zh" }),
+      specDisp: (this.props.showSpecTags ?? true) ? "inline-block" : "none",
+      isWs: s === "ws", isSe: s === "se", isMo: s === "mo", isVa: s === "va", isTr: s === "tr",
+      onWs: s === "ws" ? 1 : 0, onSe: s === "se" ? 1 : 0, onMo: s === "mo" ? 1 : 0, onVa: s === "va" ? 1 : 0, onTr: s === "tr" ? 1 : 0,
+      goWs: this.go("ws"), goSe: this.go("se"), goMo: this.go("mo"), goVa: this.go("va"), goTr: this.go("tr"),
+      screenTag: tags[s],
+      panelTitle: p.t,
+      panelRow1: p.rows[0][0], panelRow1Meta: p.rows[0][1],
+      panelRow2: p.rows[1][0], panelRow2Meta: p.rows[1][1],
+      panelRow3: p.rows[2][0], panelRow3Meta: p.rows[2][1]
+    };
+  }
+}
+</script>
+</body>
+</html>

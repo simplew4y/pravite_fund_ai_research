@@ -1,19 +1,8 @@
 // Regression test for the "click sub-agent → rail tab jumps to Files" bug.
 //
-// When the user clicks a sub-agent row in the right rail, the navigation
-// would briefly resolve AppShell's ``rootSessionId`` to the new child id
-// (because ``activeSession`` lags one render while its snapshot loads).
-// During that flicker ``useChildSessions(child_id)`` returns empty, so
-// ``showSubagentsTab`` flipped false, the tab disappeared, and the
-// tab-validity effect yanked the user off Agents onto Files.
-//
-// The fix makes ``rootSessionId`` sticky: AppShell remembers the last
-// resolved root, and navigating into a *known member of that root's
-// cached tree* (per ``cachedTreeContains``) holds the root (and thus
-// the child list, and the Agents tab) steady until the target's
-// snapshot and root walk resolve. This test exercises that path — the
-// child id IS a known child of the root being viewed, so the rail must
-// stay on Agents.
+// The current shell hides the right rail while a newly selected session's
+// labels are unresolved. Once the child snapshot arrives, the cached root tree
+// must restore the Agents tab as selected instead of falling back to Files.
 //
 // This test renders AppShell with the REAL SubagentsPanel (not the
 // mock used by AppShell.test.tsx) so we can drive a real ``<Link>``
@@ -139,7 +128,7 @@ beforeEach(() => {
 });
 
 describe("click sub-agent in rail (real SubagentsPanel)", () => {
-  it("keeps the right-rail tab on Subagents (does NOT shift to Files)", async () => {
+  it("restores the Agents tab after child metadata resolves without shifting to Files", async () => {
     // Setup: parent has one child sub-agent. User starts on parent
     // with the Agents tab selected; URL has ?file=foo.txt (stale from
     // a previous file-viewer interaction).
@@ -176,6 +165,7 @@ describe("click sub-agent in rail (real SubagentsPanel)", () => {
       // returns empty + loading.
       return { children: [], isLoading: true, error: null };
     });
+    let childSnapshotReady = false;
     vi.mocked(useSession).mockImplementation((id) => {
       if (id === "conv_root") {
         return {
@@ -203,6 +193,26 @@ describe("click sub-agent in rail (real SubagentsPanel)", () => {
       // ``rootSessionId = activeSession?.parentSessionId ?? conversationId``
       // therefore briefly resolves to ``conv_child`` itself.
       if (id === "conv_child") {
+        if (childSnapshotReady) {
+          return {
+            session: {
+              id: "conv_child",
+              agentId: "ag",
+              agentName: null,
+              runnerId: null,
+              status: "idle",
+              createdAt: 0,
+              title: null,
+              labels: {},
+              items: [],
+              pendingElicitations: [],
+              permissionLevel: 4,
+              parentSessionId: "conv_root",
+            },
+            isLoading: false,
+            error: null,
+          } as never;
+        }
         return { session: null, isLoading: true, error: null } as never;
       }
       return { session: null, isLoading: false, error: null };
@@ -225,7 +235,7 @@ describe("click sub-agent in rail (real SubagentsPanel)", () => {
         pending_elicitations_count: 0,
       },
     ]);
-    render(
+    const renderShell = () => (
       <QueryClientProvider client={qc}>
         <TooltipProvider>
           <MemoryRouter initialEntries={["/c/conv_root?file=foo.txt"]}>
@@ -236,17 +246,15 @@ describe("click sub-agent in rail (real SubagentsPanel)", () => {
             </Routes>
           </MemoryRouter>
         </TooltipProvider>
-      </QueryClientProvider>,
+      </QueryClientProvider>
     );
+    const { rerender } = render(renderShell());
 
     // Switch to Agents tab. Radix tabs activate on the full
     // pointerdown→mousedown→mouseup→click sequence in jsdom; missing
     // any one of these leaves the tab in its prior state.
-    const agentsTab = screen
-      .getAllByRole("tablist")
-      .map((tablist) => within(tablist).queryByRole("tab", { name: /Agents/i }))
-      .find((tab): tab is HTMLElement => tab !== null);
-    if (!agentsTab) throw new Error("Agents tab was not rendered");
+    const workspace = screen.getByRole("complementary", { name: "Workspace" });
+    const agentsTab = within(workspace).getByRole("tab", { name: /Agents/i });
     fireEvent.pointerDown(agentsTab, { button: 0 });
     fireEvent.mouseDown(agentsTab, { button: 0 });
     fireEvent.mouseUp(agentsTab, { button: 0 });
@@ -264,10 +272,24 @@ describe("click sub-agent in rail (real SubagentsPanel)", () => {
     expect(childRows[0]).toHaveAttribute("href", "/c/conv_child");
     fireEvent.click(childRows[0]);
 
-    // After navigation: the same rail Agents tab we clicked must STILL be
-    // mounted and selected, not just any matching tab elsewhere in the shell.
-    expect(agentsTab.isConnected).toBe(true);
-    expect(agentsTab).toHaveAttribute("aria-selected", "true");
+    // While the child snapshot is unresolved, the shell intentionally withholds
+    // the rail rather than exposing controls based on unknown session labels.
+    expect(screen.queryByRole("complementary", { name: "Workspace" })).toBeNull();
+
+    childSnapshotReady = true;
+    rerender(renderShell());
+
+    // Route changes may replace the controlled Radix trigger node. Re-query the
+    // restored right rail and assert its accessible selection state.
+    const currentWorkspace = await screen.findByRole("complementary", { name: "Workspace" });
+    expect(within(currentWorkspace).getByRole("tab", { name: /Agents/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(currentWorkspace).getByRole("tab", { name: /Files/i })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
   });
 
   it("shows the Agents tab with count 1 while a childless session's initial fetch is loading", () => {

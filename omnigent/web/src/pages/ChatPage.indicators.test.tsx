@@ -197,7 +197,7 @@ describe("BubbleView dispatch", () => {
     const bubble = screen.getByTestId("message-bubble");
     expect(bubble).toHaveAttribute("data-role", "assistant");
     expect(bubble).toHaveTextContent("the answer is 42");
-    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "复制" })).toBeInTheDocument();
   });
 
   it("marks a cancelled assistant turn as Interrupted", () => {

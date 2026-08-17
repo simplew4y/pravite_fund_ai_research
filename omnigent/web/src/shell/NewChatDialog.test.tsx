@@ -29,7 +29,7 @@ import { useDirectorySessions } from "@/hooks/useDirectorySessions";
 import { useRunnerHealthRegistration } from "@/hooks/RunnerHealthProvider";
 import type { Conversation } from "@/hooks/useConversations";
 import { setOmnigentHostConfig } from "@/lib/host";
-import type { PrivateFundProject } from "@/lib/privateFundApi";
+import { activatePrivateFundProject, type PrivateFundProject } from "@/lib/privateFundApi";
 import { setPendingInitialPrompt, useChatStore } from "@/store/chatStore";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -48,6 +48,10 @@ const privateFundProjectsState = vi.hoisted(() => ({
 vi.mock("@/lib/identity", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/identity")>()),
   authenticatedFetch: vi.fn(),
+}));
+vi.mock("@/lib/privateFundApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/privateFundApi")>()),
+  activatePrivateFundProject: vi.fn(),
 }));
 vi.mock("@/hooks/useHosts", () => ({ useHosts: vi.fn() }));
 vi.mock("@/hooks/useAvailableAgents", () => ({ useAvailableAgents: vi.fn() }));
@@ -90,8 +94,6 @@ const useHostFilesystemMock = vi.mocked(useHostFilesystem);
 const useDirectorySessionsMock = vi.mocked(useDirectorySessions);
 const useRunnerHealthMock = vi.mocked(useRunnerHealthRegistration);
 const setPendingInitialPromptMock = vi.mocked(setPendingInitialPrompt);
-
-const RECENT_KEY = "omnigent:recent-workspaces";
 
 /**
  * Build a minimal Conversation for the directory-conflict helpers/warning.
@@ -552,15 +554,42 @@ function mockAgents(agents: AvailableAgent[]) {
   } as unknown as ReturnType<typeof useAvailableAgents>);
 }
 
-// Shared mock setup for the landing-screen tests: one online host (host_1,
-// auto-selected), two agents (Claude Code default + Codex), inert
-// directory-session / runner-health / filesystem stubs, and a persisted
-// recent workspace so the working-directory field seeds to a known path.
+function readyResearchProject(overrides: Partial<PrivateFundProject> = {}): PrivateFundProject {
+  return {
+    datasetId: "project_repo",
+    name: "Project Repo",
+    status: "ready",
+    datasetRoot: "/Users/corey/repo",
+    sourceDir: null,
+    uploadsDir: null,
+    companyName: "Project Repo",
+    companyTicker: null,
+    fileCount: 1,
+    uploadCount: 1,
+    documentCount: 1,
+    indexedDocumentCount: 1,
+    failedDocumentCount: 0,
+    chunkCount: 1,
+    indexCount: 1,
+    memoCount: 0,
+    indexReady: true,
+    latestJob: null,
+    tokenUsage: null,
+    ...overrides,
+  };
+}
+
+// Shared project-launcher setup: one indexed research project with a stable
+// workspace, one online host, two native agents, and inert filesystem/runner
+// hooks. Project activation is mocked independently from the session POST.
 function setupLandingMocks() {
-  privateFundProjectsState.projects = [];
+  privateFundProjectsState.projects = [readyResearchProject()];
   privateFundProjectsState.project = undefined;
   privateFundProjectsState.assets = undefined;
   authenticatedFetchMock.mockReset();
+  vi.mocked(activatePrivateFundProject).mockReset();
+  vi.mocked(activatePrivateFundProject).mockResolvedValue();
+  setPendingInitialPromptMock.mockReset();
   useHostsMock.mockReset();
   useAvailableAgentsMock.mockReset();
   useHostFilesystemMock.mockReset();
@@ -568,9 +597,6 @@ function setupLandingMocks() {
   useRunnerHealthMock.mockReset();
   setOmnigentHostConfig({});
   localStorage.clear();
-  // host_1's most-recent workspace seeds the field (so submit can enable
-  // without manual picks). Tests that exercise the home fallback clear this.
-  localStorage.setItem(RECENT_KEY, JSON.stringify({ host_1: ["/Users/corey/repo"] }));
   useDirectorySessionsMock.mockReturnValue({
     data: [],
   } as unknown as ReturnType<typeof useDirectorySessions>);
@@ -657,6 +683,10 @@ function closeMenu(): void {
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 }
 
+async function waitForResearchWorkspace(name = "repo"): Promise<void> {
+  await waitFor(() => expect(screen.getByText(`Workspace: ${name}`)).toBeInTheDocument());
+}
+
 describe("NewChatLandingScreen", () => {
   beforeEach(setupLandingMocks);
   afterEach(() => {
@@ -673,13 +703,13 @@ describe("NewChatLandingScreen", () => {
     expect(screen.getByTestId("new-chat-landing-input")).toBeTruthy();
   });
 
-  it("enables submit only once a message, host, agent and valid workspace are set", async () => {
+  it("enables submit only once a message, agent and indexed research project are set", async () => {
     renderLanding();
     const submit = screen.getByTestId("new-chat-landing-submit") as HTMLButtonElement;
-    // Host (auto-selected) + agent (default) + workspace (seeded from the
-    // recent) are all present, but with no message there's no task → disabled.
     await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
+      expect(screen.getByTestId("new-chat-landing-research-project-chip")).toHaveTextContent(
+        "Project Repo",
+      ),
     );
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
@@ -690,9 +720,7 @@ describe("NewChatLandingScreen", () => {
     fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
       target: { value: "inspect the repo" },
     });
-    // Real text + the other gates satisfied → enabled. If canSubmit regressed
-    // (e.g. dropped the workspace gate), the blank cases above would have
-    // enabled too.
+    // Real text + agent + indexed project enables the project-scoped launch.
     expect(submit.disabled).toBe(false);
   });
 
@@ -771,51 +799,49 @@ describe("NewChatLandingScreen", () => {
     expect(kiro.compareDocumentPosition(polly) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("seeds the working directory from the host's most-recent path", async () => {
+  it("seeds the working directory from the selected research project", async () => {
     renderLanding();
-    // host_1's recent ("/Users/corey/repo") seeds the field; the chip shows
-    // the basename. A regression in the seed effect leaves it "Working
-    // directory" and submit stuck disabled.
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
+    await waitFor(() => expect(screen.getByText("Workspace: repo")).toBeInTheDocument());
+    expect(screen.queryByText("/Users/corey/repo")).toBeNull();
   });
 
-  it("falls back to the host's home directory when there is no recent", async () => {
-    // No recents for this host → the field seeds from the home listing
-    // (parent of the first entry), so a first-ever session is still one click.
+  it("does not require a browser-visible absolute workspace for a public project", async () => {
     localStorage.clear();
-    useHostFilesystemMock.mockReturnValue({
-      data: { entries: [fsEntry("/home/corey/projects")], truncated: false },
-      isLoading: false,
-      error: null,
-      isPlaceholderData: false,
-    } as unknown as ReturnType<typeof useHostFilesystem>);
+    privateFundProjectsState.projects = [
+      readyResearchProject({ datasetRoot: null, sourceDir: null, uploadsDir: null }),
+    ];
     renderLanding();
-    // deriveHomeDir("/home/corey/projects") → "/home/corey" → chip basename.
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("corey"),
-    );
+    await waitFor(() => expect(screen.getByText("Workspace follows project")).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "analyze the company" },
+    });
+    expect(screen.getByTestId("new-chat-landing-submit")).not.toBeDisabled();
   });
 
-  it("opens the connect-host instructions from the host dropdown", () => {
+  it("does not expose host connection controls in the project launcher", () => {
     renderLanding();
-    // Radix dropdowns open on pointerdown (a bare click doesn't in jsdom).
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    fireEvent.click(screen.getByTestId("new-chat-landing-connect-host"));
-    // The modal mounts the connect instructions with the runnable command.
-    expect(screen.getByTestId("connect-host-dialog")).toBeTruthy();
-    expect(screen.getByTestId("connect-host-command")).toBeTruthy();
+    expect(screen.queryByTestId("new-chat-landing-host-chip")).toBeNull();
+    expect(screen.queryByTestId("new-chat-landing-connect-host")).toBeNull();
+    expect(screen.queryByTestId("connect-host-dialog")).toBeNull();
   });
 
-  it("offers connect-host even when no hosts are online (no dead end)", () => {
+  it("can launch an indexed project even when no hosts are exposed to the browser", async () => {
     mockHosts([]);
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "conv_new" }),
+    } as unknown as Response);
     renderLanding();
-    // The chip reads the empty state…
-    expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("No hosts");
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    // …and the connect item is still present, so a fresh user can unblock.
-    expect(screen.getByTestId("new-chat-landing-connect-host")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "analyze the company" },
+    });
+    const submit = screen.getByTestId("new-chat-landing-submit");
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    fireEvent.click(submit);
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
+    const body = JSON.parse((authenticatedFetchMock.mock.calls[0]?.[1]?.body as string) ?? "{}");
+    expect(body.host_id).toBeNull();
+    expect(body.labels).toMatchObject({ "private_fund.dataset_id": "project_repo" });
   });
 
   it("shows the Claude Code config knobs (model / effort / permission mode) in the picker submenu", () => {
@@ -958,461 +984,192 @@ describe("NewChatLandingScreen", () => {
     expect(labels["omnigent.wrapper"]).toBe("codex-native-ui");
   });
 
-  it("shows a conflict banner in the file browser for an occupied directory", async () => {
-    // A live session in the seeded workspace ("/Users/corey/repo") on the
-    // auto-selected host occupies the directory the picker opens at.
-    useDirectorySessionsMock.mockReturnValue({
-      data: [conv({ id: "s1", host_id: "host_1", workspace: "/Users/corey/repo" })],
-    } as unknown as ReturnType<typeof useDirectorySessions>);
-    useRunnerHealthMock.mockReturnValue(new Map([["s1", true]]));
+  it("keeps project-scoped launch controls free of host, filesystem and worktree pickers", async () => {
     renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
-    // The chip itself carries no warning — the guidance lives inside the
-    // browser, on the folder you'd actually commit to.
-    fireEvent.click(screen.getByTestId("new-chat-landing-workspace-chip"));
-    const banner = screen.getByTestId("workspace-picker-conflict");
-    // Singular copy proves the count (1) flowed through, not just that *some*
-    // banner rendered.
-    expect(banner.textContent).toContain("1 other agent is");
-  });
+    await waitForResearchWorkspace();
 
-  it("caps each footer chip label with truncate so a long label can't wrap the row", async () => {
-    renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
+    expect(screen.getByTestId("new-chat-landing-research-project-chip")).toHaveTextContent(
+      "Project Repo",
     );
-    // The host / working-directory / project / worktree chips each clamp their
-    // label to a fixed max width and `truncate` it, so a long value (a deep
-    // working-directory path, a long project or branch name) is ellipsized
-    // rather than growing the chip and pushing the tray onto a second row.
-    // Dropping `truncate` or the `max-w-*` cap would regress the single-row
-    // layout this guards.
-    const label = (testid: string) => screen.getByTestId(testid).querySelector("span.truncate");
-
-    expect(label("new-chat-landing-workspace-chip")?.className).toContain("max-w-40");
-    expect(label("new-chat-landing-host-chip")?.className).toContain("max-w-32");
-    expect(label("new-chat-landing-project-chip")?.className).toContain("max-w-32");
-    expect(label("new-chat-landing-branch-chip")?.className).toContain("max-w-32");
-  });
-
-  it("suppresses the conflict banner once a git branch is named", async () => {
-    useDirectorySessionsMock.mockReturnValue({
-      data: [conv({ id: "s1", host_id: "host_1", workspace: "/Users/corey/repo" })],
-    } as unknown as ReturnType<typeof useDirectorySessions>);
-    useRunnerHealthMock.mockReturnValue(new Map([["s1", true]]));
-    renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
-    // Name a git branch: that starts an isolated worktree, so the picked
-    // directory is no longer shared and the picker must not warn.
-    fireEvent.click(screen.getByTestId("new-chat-landing-branch-chip"));
-    fireEvent.change(screen.getByTestId("new-chat-landing-branch-input"), {
-      target: { value: "feature/x" },
-    });
-    fireEvent.click(screen.getByTestId("new-chat-landing-workspace-chip"));
-    expect(screen.queryByTestId("workspace-picker-conflict")).toBeNull();
-  });
-
-  it("shows no conflict banner when no live session shares the directory", async () => {
-    // Default setup: no other directory sessions → nothing to warn about.
-    renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
-    fireEvent.click(screen.getByTestId("new-chat-landing-workspace-chip"));
-    expect(screen.queryByTestId("workspace-picker-conflict")).toBeNull();
-  });
-
-  it("opens the file browser directly from the working-directory chip", async () => {
-    renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
-    // Clicking the chip shows the tree browser straight away — no intermediate
-    // path-field + folder-button step. The old WorkspacePathField (its
-    // `workspace-path-input`) and the browse toggle must be gone, and the
-    // WorkspacePicker present.
-    fireEvent.click(screen.getByTestId("new-chat-landing-workspace-chip"));
-    expect(screen.getByTestId("workspace-picker")).toBeTruthy();
-    expect(screen.queryByTestId("workspace-browse-toggle")).toBeNull();
-    expect(screen.queryByTestId("workspace-path-input")).toBeNull();
-  });
-
-  it("updates the working-directory value live as you browse, with no Select button", async () => {
-    // The picker lists a child folder under the seeded workspace.
-    useHostFilesystemMock.mockReturnValue({
-      data: { entries: [fsEntry("/Users/corey/repo/src")], truncated: false },
-      isLoading: false,
-      error: null,
-      isPlaceholderData: false,
-    } as unknown as ReturnType<typeof useHostFilesystem>);
-    renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
-    fireEvent.click(screen.getByTestId("new-chat-landing-workspace-chip"));
-    // No explicit commit button — selection is live (closes on click-out).
-    expect(screen.queryByTestId("workspace-picker-select")).toBeNull();
-    // Clicking a folder navigates into it and updates the chip immediately,
-    // without closing the popover.
-    fireEvent.click(screen.getByTestId("workspace-picker-entry-src"));
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("src"),
-    );
-    expect(screen.getByTestId("workspace-picker")).toBeTruthy();
-  });
-
-  it("hides the sandbox option when the server doesn't support managed sandboxes", () => {
-    // Default renderLanding: managed_sandboxes_enabled false (the fail-closed
-    // probe sentinel). The dropdown must not advertise a create path the
-    // server would reject with "managed hosts are not configured".
-    renderLanding();
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    // connect-host proves the menu actually opened — without it, a closed
-    // menu would make the absence assertion below pass vacuously.
-    expect(screen.getByTestId("new-chat-landing-connect-host")).toBeTruthy();
-    expect(screen.queryByTestId("new-chat-landing-sandbox-option")).toBeNull();
-  });
-
-  it("shows a disabled sandbox row with host-provided tooltip content when managed sandboxes are unavailable", async () => {
-    setOmnigentHostConfig({
-      docsLinks: { newSandbox: "Managed sandboxes are disabled in this workspace." },
-    });
-    renderLanding();
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    const disabledRow = screen.getByTestId("new-chat-landing-sandbox-option-disabled");
-    expect(disabledRow).toBeTruthy();
-    // Disabled helper row replaces the clickable sandbox option.
-    expect(screen.queryByTestId("new-chat-landing-sandbox-option")).toBeNull();
-    fireEvent.focus(screen.getByLabelText("Why New Sandbox is unavailable"));
-    await waitFor(() =>
-      expect(
-        screen.getAllByText("Managed sandboxes are disabled in this workspace.").length,
-      ).toBeGreaterThan(0),
-    );
-  });
-
-  it("defaults to New Sandbox when the server supports managed sandboxes", async () => {
-    // No clicks: the auto-select effect picks the FIRST menu option — the
-    // sandbox — even though an online host (machine-1) exists. If this
-    // regressed to host-first, the chip would read "machine-1".
-    renderLanding({ managed_sandboxes_enabled: true });
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("New Sandbox"),
-    );
-    // Sandbox mode chrome comes with the default: repository chip in,
-    // workspace/worktree chips out.
-    expect(screen.getByTestId("new-chat-landing-repo-chip")).toBeTruthy();
-    expect(screen.queryByTestId("new-chat-landing-workspace-chip")).toBeNull();
-  });
-
-  it("labels the sandbox option with the server's provider name", async () => {
-    // sandbox_provider drives the per-provider label. "modal" must read
-    // "Modal Sandbox" on both the chip and the dropdown option — if the
-    // label regressed to the generic "New Sandbox", the provider name
-    // never reached the UI.
-    renderLanding({ managed_sandboxes_enabled: true, sandbox_provider: "modal" });
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain(
-        "Modal Sandbox",
-      ),
-    );
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    expect(screen.getByTestId("new-chat-landing-sandbox-option").textContent).toContain(
-      "Modal Sandbox",
-    );
-  });
-
-  it("defaults to New Sandbox when no hosts are connected and sandboxes are enabled", async () => {
-    // The screenshot regression: zero hosts used to leave the chip stuck
-    // on "No hosts" even though the sandbox option was one click away.
-    mockHosts([]);
-    renderLanding({ managed_sandboxes_enabled: true });
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("New Sandbox"),
-    );
-    expect(screen.getByTestId("new-chat-landing-host-chip").textContent).not.toContain("No hosts");
-  });
-
-  it("switching between a host and the sandbox swaps the workspace chrome", async () => {
-    renderLanding({ managed_sandboxes_enabled: true });
-    // Sandbox is the default; switch to the host first so the test
-    // exercises both directions of the toggle.
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("New Sandbox"),
-    );
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    // The sandbox option is pinned FIRST in the menu, above the host list —
-    // DOCUMENT_POSITION_FOLLOWING means the host item comes after it.
-    const sandboxOption = screen.getByTestId("new-chat-landing-sandbox-option");
-    const hostItem = screen
-      .getAllByText("machine-1")
-      .find((el) => el.closest('[role="menuitem"]') !== null);
-    expect(hostItem).toBeTruthy();
-    expect(
-      sandboxOption.compareDocumentPosition(hostItem!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    // Picking the host restores the workspace flow (file-browser chip,
-    // worktree chip) — the sandbox default doesn't wedge the normal path.
-    fireEvent.click(hostItem!);
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("machine-1"),
-    );
-    expect(screen.getByTestId("new-chat-landing-workspace-chip")).toBeTruthy();
-    expect(screen.getByTestId("new-chat-landing-branch-chip")).toBeTruthy();
-    expect(screen.queryByTestId("new-chat-landing-repo-chip")).toBeNull();
-    // And back: selecting the sandbox clears the host pick and swaps the
-    // chips again. The auto-select effect must not override this either.
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    fireEvent.click(screen.getByTestId("new-chat-landing-sandbox-option"));
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("New Sandbox"),
-    );
+    expect(screen.getByTestId("new-chat-landing-research-mode")).toBeInTheDocument();
+    expect(screen.queryByTestId("new-chat-landing-host-chip")).toBeNull();
     expect(screen.queryByTestId("new-chat-landing-workspace-chip")).toBeNull();
     expect(screen.queryByTestId("new-chat-landing-branch-chip")).toBeNull();
+    expect(screen.queryByTestId("workspace-picker")).toBeNull();
   });
 
-  it("creates a managed session without host_id/workspace and no provisioning subtext", async () => {
-    // Controlled promise so the in-flight state is observable
-    // deterministically before the create resolves.
-    let resolveCreate!: (res: Response) => void;
-    authenticatedFetchMock.mockReturnValue(
-      new Promise<Response>((resolve) => {
-        resolveCreate = resolve;
-      }),
-    );
-    renderLanding({ managed_sandboxes_enabled: true });
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    fireEvent.click(screen.getByTestId("new-chat-landing-sandbox-option"));
-    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
-      target: { value: "audit the repo" },
-    });
-    fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
-    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
-    // The managed create is non-blocking server-side and the session
-    // page owns all launch progress — the landing page must NOT show
-    // sandbox-specific pending copy (a regression here re-introduces
-    // the "Provisioning sandbox…" subtext that delayed the perceived
-    // navigation), and no error either.
-    expect(screen.queryByTestId("new-chat-landing-provisioning")).toBeNull();
-    expect(screen.queryByTestId("new-chat-landing-error")).toBeNull();
-    // The payload is the managed shape: host_type only. host_id/workspace
-    // would be 422-rejected by the server schema, and git requires host_id.
-    const [url, init] = authenticatedFetchMock.mock.calls[0];
-    expect(url).toBe("/v1/sessions");
-    const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
-    expect(body.host_type).toBe("managed");
-    expect(body.agent_id).toBe("a1");
-    expect("host_id" in body).toBe(false);
-    expect("workspace" in body).toBe(false);
-    expect("git" in body).toBe(false);
-    resolveCreate({
-      ok: true,
-      json: async () => ({ id: "conv_new" }),
-    } as unknown as Response);
-    // The resolved create navigates without surfacing an error.
-    await waitFor(() => expect(screen.queryByTestId("new-chat-landing-error")).toBeNull());
-  });
-
-  it("files the new session under a project picked in the composer chip", async () => {
-    // Both the create POST and the follow-up label PATCH read .ok / .json.
-    authenticatedFetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: "conv_new" }),
-    } as unknown as Response);
-    const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+  it("keeps the selected project label constrained to one truncated footer chip", async () => {
     renderLanding();
+    await waitForResearchWorkspace();
 
-    // Open the project chip → "New project…" → type a name → commit.
-    fireEvent.click(screen.getByTestId("new-chat-landing-project-chip"));
-    fireEvent.click(screen.getByText("New project…"));
-    const nameInput = screen.getByPlaceholderText("Project name…");
-    fireEvent.change(nameInput, { target: { value: "docs" } });
-    fireEvent.keyDown(nameInput, { key: "Enter" });
-    // The chip reflects the pick.
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-project-chip").textContent).toContain("docs"),
-    );
-
-    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
-      target: { value: "write the docs" },
-    });
-    fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
-
-    // Create POST first, then a PATCH that sets the omni_project label on the
-    // freshly-created session id.
-    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(2));
-    const [createUrl] = authenticatedFetchMock.mock.calls[0];
-    expect(createUrl).toBe("/v1/sessions");
-    const [patchUrl, patchInit] = authenticatedFetchMock.mock.calls[1];
-    expect(patchUrl).toBe("/v1/sessions/conv_new");
-    expect((patchInit as RequestInit).method).toBe("PATCH");
-    const patchBody = JSON.parse((patchInit as RequestInit).body as string) as {
-      labels: Record<string, string>;
-    };
-    expect(patchBody.labels).toEqual({ omni_project: "docs" });
-
-    // The target folder fetches its own paginated list (useProjectSessions),
-    // so filing the new session must invalidate it — otherwise the row only
-    // appears after a manual refresh.
-    await waitFor(() =>
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["project-sessions"] }),
-    );
-    invalidateSpy.mockRestore();
-  });
-
-  it("pre-fills the project chip from the ?project= query param", async () => {
-    // The sidebar's per-project "new session" pencil lands here with the
-    // project pre-selected — the chip reflects it with no interaction.
-    authenticatedFetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: "conv_new" }),
-    } as unknown as Response);
-    renderLanding({}, "/?project=Sprint%2042");
-
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-project-chip").textContent).toContain(
-        "Sprint 42",
-      ),
-    );
-
-    // Creating a session files it under that pre-filled project.
-    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
-      target: { value: "kick off the sprint" },
-    });
-    fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
-
-    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(2));
-    const [patchUrl, patchInit] = authenticatedFetchMock.mock.calls[1];
-    expect(patchUrl).toBe("/v1/sessions/conv_new");
-    const patchBody = JSON.parse((patchInit as RequestInit).body as string) as {
-      labels: Record<string, string>;
-    };
-    expect(patchBody.labels).toEqual({ omni_project: "Sprint 42" });
+    const trigger = screen.getByTestId("new-chat-landing-research-project-chip");
+    const label = trigger.querySelector("span.truncate");
+    expect(label).toHaveClass("max-w-40", "truncate");
+    expect(label).toHaveTextContent("Project Repo");
   });
 
   it.each([
-    {
-      name: "not-configured OmnigentError",
-      status: 400,
-      body: { error: { message: "managed hosts are not configured on this server" } },
-      expected: "managed hosts are not configured on this server",
-    },
-    {
-      name: "online-poll timeout 502",
-      status: 502,
-      body: { detail: "managed host did not come online within 120s" },
-      expected: "managed host did not come online within 120s",
-    },
-  ])("surfaces the $name from a failed managed create", async ({ status, body, expected }) => {
-    authenticatedFetchMock.mockResolvedValue({
-      ok: false,
-      status,
-      json: async () => body,
-    } as unknown as Response);
-    renderLanding({ managed_sandboxes_enabled: true });
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    fireEvent.click(screen.getByTestId("new-chat-landing-sandbox-option"));
-    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
-      target: { value: "audit the repo" },
-    });
-    fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
-    // The server's message lands verbatim in the error line (via
-    // describeCreateError), and the pending copy is gone — the user sees
-    // why provisioning failed, not a silent reset.
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-error").textContent).toContain(expected),
-    );
-    expect(screen.queryByTestId("new-chat-landing-provisioning")).toBeNull();
+    { managed_sandboxes_enabled: false },
+    { managed_sandboxes_enabled: true, sandbox_provider: "modal" },
+  ])("does not expose managed-sandbox controls in project mode: %j", async (info) => {
+    renderLanding(info);
+    await waitForResearchWorkspace();
+
+    expect(screen.queryByTestId("new-chat-landing-sandbox-option")).toBeNull();
+    expect(screen.queryByTestId("new-chat-landing-repo-chip")).toBeNull();
+    expect(screen.getByTestId("new-chat-landing-research-project-chip")).toBeInTheDocument();
   });
 
-  it("sends the repository inputs as the managed workspace string", async () => {
+  it("keeps submit disabled until a research project is selected", () => {
+    privateFundProjectsState.projects = [];
+    renderLanding();
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "analyze the company" },
+    });
+
+    const submit = screen.getByTestId("new-chat-landing-submit");
+    expect(submit).toBeDisabled();
+    fireEvent.keyDown(screen.getByTestId("new-chat-landing-input"), { key: "Enter" });
+    expect(activatePrivateFundProject).not.toHaveBeenCalled();
+    expect(authenticatedFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps submit disabled while the selected project's index is not ready", async () => {
+    privateFundProjectsState.projects = [readyResearchProject({ indexReady: false })];
+    renderLanding();
+    await waitFor(() =>
+      expect(screen.getByTestId("new-chat-landing-research-project-chip")).toHaveTextContent(
+        "Project Repo",
+      ),
+    );
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "analyze the company" },
+    });
+
+    expect(screen.getByTestId("new-chat-landing-submit")).toBeDisabled();
+    expect(activatePrivateFundProject).not.toHaveBeenCalled();
+    expect(authenticatedFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("switches project scope and uses the selected dataset in the create request", async () => {
+    privateFundProjectsState.projects = [
+      readyResearchProject(),
+      readyResearchProject({
+        datasetId: "project_two",
+        name: "Project Two",
+        datasetRoot: "/srv/private-fund/project-two",
+      }),
+    ];
     authenticatedFetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ id: "conv_new" }),
     } as unknown as Response);
-    renderLanding({ managed_sandboxes_enabled: true });
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    fireEvent.click(screen.getByTestId("new-chat-landing-sandbox-option"));
-    // The repository chip replaces the file-browser workspace chip in
-    // sandbox mode.
-    fireEvent.click(screen.getByTestId("new-chat-landing-repo-chip"));
-    fireEvent.change(screen.getByTestId("new-chat-landing-repo-input"), {
-      target: { value: "https://github.com/org/myrepo" },
-    });
-    fireEvent.change(screen.getByTestId("new-chat-landing-repo-branch-input"), {
-      target: { value: "release-1.2" },
-    });
-    // The chip reflects the pick using the server's clone-dir naming.
-    expect(screen.getByTestId("new-chat-landing-repo-chip").textContent).toContain(
-      "myrepo#release-1.2",
-    );
+    renderLanding();
+    await waitForResearchWorkspace();
+
+    fireEvent.click(screen.getByTestId("new-chat-landing-research-project-chip"));
+    fireEvent.click(screen.getByText("Project Two", { selector: "span.block.truncate" }));
+    await waitFor(() => expect(screen.getByText("Workspace: project-two")).toBeInTheDocument());
+
     fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
-      target: { value: "audit the repo" },
+      target: { value: "compare recent results" },
     });
     fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
+
     await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
-    const [, init] = authenticatedFetchMock.mock.calls[0];
-    const body = JSON.parse((init as RequestInit).body as string) as Record<string, unknown>;
-    // One composed string — the Docker-build-context-style form the
-    // server parses and clones. host_id/git stay absent (422 otherwise).
-    expect(body.workspace).toBe("https://github.com/org/myrepo#release-1.2");
-    expect(body.host_type).toBe("managed");
-    expect("host_id" in body).toBe(false);
-    expect("git" in body).toBe(false);
-  });
-
-  it("shows host-provided git credentials tooltip content in the sandbox repo popover", async () => {
-    setOmnigentHostConfig({
-      docsLinks: { databricksGitCredentials: "Use Databricks Git credentials before cloning." },
+    expect(activatePrivateFundProject).toHaveBeenCalledWith("project_two");
+    const body = JSON.parse((authenticatedFetchMock.mock.calls[0]?.[1]?.body as string) ?? "{}");
+    expect(body.workspace).toBe("/srv/private-fund/project-two");
+    expect(body.labels).toMatchObject({
+      "private_fund.dataset_id": "project_two",
+      "private_fund.dataset_name": "Project Two",
     });
-    renderLanding({ managed_sandboxes_enabled: true });
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-host-chip").textContent).toContain("New Sandbox"),
-    );
-    fireEvent.click(screen.getByTestId("new-chat-landing-repo-chip"));
-    const helpButton = screen.getByLabelText("How to set up Databricks git credentials");
-    expect(helpButton).toBeTruthy();
-    fireEvent.focus(helpButton);
-    await waitFor(() =>
-      expect(
-        screen.getAllByText("Use Databricks Git credentials before cloning.").length,
-      ).toBeGreaterThan(0),
-    );
   });
 
-  it("blocks submit on an invalid repository URL or a dangling branch", () => {
-    renderLanding({ managed_sandboxes_enabled: true });
-    fireEvent.pointerDown(screen.getByTestId("new-chat-landing-host-chip"), { button: 0 });
-    fireEvent.click(screen.getByTestId("new-chat-landing-sandbox-option"));
+  it("activates the selected dataset before creating its session", async () => {
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "conv_new" }),
+    } as unknown as Response);
+    renderLanding();
+    await waitForResearchWorkspace();
     fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
-      target: { value: "do something" },
+      target: { value: "analyze the company" },
     });
-    const submit = screen.getByTestId("new-chat-landing-submit") as HTMLButtonElement;
-    // No repo at all is a valid sandbox create (empty workspace).
-    expect(submit.disabled).toBe(false);
-    fireEvent.click(screen.getByTestId("new-chat-landing-repo-chip"));
-    // A branch with no repository is dangling — nothing to clone it from.
-    fireEvent.change(screen.getByTestId("new-chat-landing-repo-branch-input"), {
-      target: { value: "main" },
+    fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
+
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
+    expect(activatePrivateFundProject).toHaveBeenCalledWith("project_repo");
+    expect(vi.mocked(activatePrivateFundProject).mock.invocationCallOrder[0]).toBeLessThan(
+      authenticatedFetchMock.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("stops before session creation when project activation fails", async () => {
+    vi.mocked(activatePrivateFundProject).mockRejectedValue(
+      new Error("research project activation failed"),
+    );
+    renderLanding();
+    await waitForResearchWorkspace();
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "analyze the company" },
     });
-    expect(submit.disabled).toBe(true);
-    // An unusable URL shape would 422 server-side; gate it inline.
-    fireEvent.change(screen.getByTestId("new-chat-landing-repo-input"), {
-      target: { value: "org/repo" },
+    fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("new-chat-landing-error")).toHaveTextContent(
+        "Couldn't reach the server. Check your connection and try again.",
+      ),
+    );
+    expect(activatePrivateFundProject).toHaveBeenCalledWith("project_repo");
+    expect(authenticatedFetchMock).not.toHaveBeenCalled();
+    expect(setPendingInitialPromptMock).not.toHaveBeenCalled();
+  });
+
+  it("includes project labels alongside native wrapper and safety labels", async () => {
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "conv_new" }),
+    } as unknown as Response);
+    renderLanding();
+    await waitForResearchWorkspace();
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "analyze the company" },
     });
-    expect(submit.disabled).toBe(true);
-    // Completing a valid URL re-enables submit.
-    fireEvent.change(screen.getByTestId("new-chat-landing-repo-input"), {
-      target: { value: "https://github.com/org/repo" },
+    fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
+
+    await waitFor(() => expect(authenticatedFetchMock).toHaveBeenCalledTimes(1));
+    const body = JSON.parse((authenticatedFetchMock.mock.calls[0]?.[1]?.body as string) ?? "{}");
+    expect(body.labels).toEqual({
+      "omnigent.ui": "terminal",
+      "omnigent.wrapper": "claude-code-native-ui",
+      "omnigent.claude_native.auto_approve": "1",
+      "private_fund.dataset_id": "project_repo",
+      "private_fund.dataset_name": "Project Repo",
     });
-    expect(submit.disabled).toBe(false);
+  });
+
+  it("surfaces a session-create error without handing off a first prompt", async () => {
+    authenticatedFetchMock.mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => ({ detail: "research host did not become ready" }),
+    } as unknown as Response);
+    renderLanding();
+    await waitForResearchWorkspace();
+    fireEvent.change(screen.getByTestId("new-chat-landing-input"), {
+      target: { value: "analyze the company" },
+    });
+    fireEvent.submit(screen.getByTestId("new-chat-landing-composer"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("new-chat-landing-error")).toHaveTextContent(
+        "research host did not become ready",
+      ),
+    );
+    expect(setPendingInitialPromptMock).not.toHaveBeenCalled();
   });
 });
-
 // The landing composer's "/" skills menu: bundled skills of the chosen
 // agent surface as suggestions before any session exists, so a skill can
 // be invoked from the very first message. Native terminal agents are
@@ -1793,12 +1550,12 @@ describe("NewChatLandingScreen private-fund research mode", () => {
 
     const suggestions = await screen.findByLabelText("研究问题建议");
     expect(suggestions).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "形成完整投资判断" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生成投资 Memo" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "形成完整投资判断" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成投资 Memo" }));
 
     expect(screen.getByTestId("new-chat-landing-input")).toHaveValue(
-      "综合财报、会议纪要和估值模型，形成阳光电源当前的核心投资逻辑、关键催化剂、主要风险和待验证问题。",
+      "基于当前资料生成阳光电源投资 Memo，覆盖投资逻辑、财务表现、估值、催化剂、风险和待验证问题。",
     );
     expect(document.activeElement).toBe(screen.getByTestId("new-chat-landing-input"));
     expect(screen.queryByLabelText("研究问题建议")).toBeNull();
@@ -1812,7 +1569,7 @@ describe("NewChatLandingScreen private-fund research mode", () => {
     };
     renderLanding({}, "/?private_fund_project=%E9%98%B3%E5%85%89%E7%94%B5%E6%BA%90");
 
-    expect(await screen.findByRole("button", { name: "制定研究框架" })).toBeInTheDocument();
+    expect(await screen.findAllByRole("button", { name: "制定研究框架" })).toHaveLength(2);
   });
 
   it("puts the selected research level and citation rules into the initial prompt", async () => {
@@ -1998,9 +1755,7 @@ describe("NewChatLandingScreen @-file-mention", () => {
 
   it("opens the menu listing workspace files when '@' is typed (native agent)", async () => {
     renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
+    await waitForResearchWorkspace();
     fireEvent.change(input(), { target: { value: "@", selectionStart: 1 } });
     // Host absolute paths are shown as workspace-relative rows (folders first).
     expect(screen.getByTitle("Open omnigent")).toBeInTheDocument();
@@ -2030,9 +1785,7 @@ describe("NewChatLandingScreen @-file-mention", () => {
       json: async () => ({ id: "conv_new" }),
     } as unknown as Response);
     renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
+    await waitForResearchWorkspace();
 
     fireEvent.change(input(), { target: { value: "@", selectionStart: 1 } });
     // Nested files are hidden until the folder is opened (drill-down).
@@ -2050,7 +1803,11 @@ describe("NewChatLandingScreen @-file-mention", () => {
     // the "/Users/corey/repo/…" absolute path the host filesystem returned.
     await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalled());
     const [, payload] = setPendingInitialPromptMock.mock.calls[0]!;
-    expect((payload as { text: string }).text).toBe("[Attached: omnigent/cli.py]\n\nexplain this");
+    const prompt = (payload as { text: string }).text;
+    expect(prompt).toMatch(/^\[Attached: omnigent\/cli\.py\]\n\n/);
+    expect(prompt).toContain("<!-- omnigent-private-fund-context:start -->");
+    expect(prompt).toContain("dataset_id: project_repo");
+    expect(prompt).toMatch(/explain this$/);
   });
 
   it("suppresses stale parent rows while a drilled directory is still loading", async () => {
@@ -2075,9 +1832,7 @@ describe("NewChatLandingScreen @-file-mention", () => {
     }) as unknown as typeof useHostFilesystem);
 
     renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
+    await waitForResearchWorkspace();
 
     fireEvent.change(input(), { target: { value: "@", selectionStart: 1 } });
     // Root listing renders its rows.
@@ -2097,9 +1852,7 @@ describe("NewChatLandingScreen @-file-mention", () => {
       json: async () => ({ id: "conv_new" }),
     } as unknown as Response);
     renderLanding();
-    await waitFor(() =>
-      expect(screen.getByTestId("new-chat-landing-workspace-chip").textContent).toContain("repo"),
-    );
+    await waitForResearchWorkspace();
 
     fireEvent.change(input(), { target: { value: "@", selectionStart: 1 } });
     // The folder row's "+" button attaches the directory as a unit.
@@ -2111,7 +1864,11 @@ describe("NewChatLandingScreen @-file-mention", () => {
 
     await waitFor(() => expect(setPendingInitialPromptMock).toHaveBeenCalled());
     const [, payload] = setPendingInitialPromptMock.mock.calls[0]!;
-    expect((payload as { text: string }).text).toBe("[Attached: omnigent/]\n\nreview it");
+    const prompt = (payload as { text: string }).text;
+    expect(prompt).toMatch(/^\[Attached: omnigent\/\]\n\n/);
+    expect(prompt).toContain("<!-- omnigent-private-fund-context:start -->");
+    expect(prompt).toContain("dataset_id: project_repo");
+    expect(prompt).toMatch(/review it$/);
   });
 
   it("removes a tagged chip when its ✕ is clicked", () => {

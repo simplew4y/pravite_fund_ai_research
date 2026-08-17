@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="_ds/industry-693bd6b7-ad9d-4475-b552-3d45ef4ba497/styles.css">
+<script src="_ds/industry-693bd6b7-ad9d-4475-b552-3d45ef4ba497/_ds_bundle.js"></script>
+<script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.min.js"></script>
+<style>
+  html, body { margin:0; padding:0; background:var(--color-bg); }
+  a { color:var(--color-accent-700); text-decoration:none; }
+  a:hover { color:var(--color-accent-800); }
+  [data-lang="en"] .zh { display:none; }
+  [data-lang="zh"] .en { display:none; }
+  [data-icon] { width:15px; height:15px; stroke-width:1.5; flex:none; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:color-mix(in srgb, var(--color-text) 18%, transparent); }
+  ::-webkit-scrollbar-track { background:transparent; }
+</style>
+</helmet>
+
+<div data-lang="{{ lang }}" style="display:grid;grid-template-columns:264px minmax(0,1fr) 396px;height:100vh;min-width:1360px;overflow:hidden;background:var(--color-bg);color:var(--color-text);font:400 13.5px/1.6 var(--font-body),'Noto Sans SC',sans-serif;text-wrap:pretty;-webkit-font-smoothing:antialiased">
+
+  <!-- 左：项目管理 -->
+  <aside style="display:flex;flex-direction:column;border-right:1px solid var(--color-divider);overflow:hidden;background:color-mix(in srgb, var(--color-text) 2%, transparent)">
+    <div style="display:flex;align-items:center;gap:10px;padding:var(--space-4) var(--space-4) var(--space-3)">
+      <span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid var(--color-text);font:600 11px/1 ui-monospace,Menlo,monospace">PI</span>
+      <span style="font:600 16px/1.1 var(--font-heading);letter-spacing:.03em"><span class="zh">投研工作台</span><span class="en">Research desk</span></span>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" style="width:26px;height:26px;padding:0" title="新建项目"><i data-lucide="plus" data-icon></i></button>
+    </div>
+
+    <div style="padding:0 var(--space-4) var(--space-3)">
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--color-divider);background:var(--color-bg)">
+        <i data-lucide="search" data-icon style="color:var(--color-neutral-600)"></i>
+        <input class="input" style="border:0;min-height:auto;padding:0;font-size:12.5px;background:transparent" placeholder="{{ searchProjPh }}">
+      </label>
+    </div>
+
+    <div style="flex:1;overflow:auto">
+      <div style="padding:0 var(--space-4) 6px;font:500 9px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:var(--color-neutral-600)"><span class="zh">在跟踪 · 3</span><span class="en">TRACKING · 3</span></div>
+
+      <button onClick="{{ pick0 }}" style="position:relative;display:block;width:100%;text-align:left;padding:var(--space-3) var(--space-4);background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:inherit;font:inherit" style-hover="background:color-mix(in srgb, var(--color-text) 5%, transparent)">
+        <i style="position:absolute;inset:0;background:var(--color-accent-100);border-left:2px solid var(--color-accent);opacity:{{ on0 }}"></i>
+        <div style="position:relative;display:flex;align-items:baseline;gap:8px">
+          <span style="font:600 15px/1.2 var(--font-heading)">恒瑞医药</span>
+          <span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">600276.SH</span>
+        </div>
+        <div style="position:relative;margin-top:3px;font-size:11.5px;color:var(--color-neutral-700)"><span class="zh">128 份资料 · 3 个会话 · Memo v4</span><span class="en">128 docs · 3 chats · memo v4</span></div>
+        <div style="position:relative;display:flex;align-items:center;gap:5px;margin-top:5px;font:500 9px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-accent-700)">
+          <i data-lucide="circle-check" data-icon style="width:11px;height:11px"></i><span class="zh">索引就绪</span><span class="en">INDEX READY</span>
+        </div>
+      </button>
+
+      <button onClick="{{ pick1 }}" style="position:relative;display:block;width:100%;text-align:left;padding:var(--space-3) var(--space-4);background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:inherit;font:inherit" style-hover="background:color-mix(in srgb, var(--color-text) 5%, transparent)">
+        <i style="position:absolute;inset:0;background:var(--color-accent-100);border-left:2px solid var(--color-accent);opacity:{{ on1 }}"></i>
+        <div style="position:relative;display:flex;align-items:baseline;gap:8px">
+          <span style="font:600 15px/1.2 var(--font-heading)">贵州茅台</span>
+          <span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">600519.SH</span>
+        </div>
+        <div style="position:relative;margin-top:3px;font-size:11.5px;color:var(--color-neutral-700)"><span class="zh">64 份资料 · 1 个会话</span><span class="en">64 docs · 1 chat</span></div>
+        <div style="position:relative;display:flex;align-items:center;gap:6px;margin-top:6px">
+          <span style="flex:1;height:3px;background:var(--color-neutral-300)"><i style="display:block;width:41%;height:3px;background:var(--color-accent)"></i></span>
+          <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">41%</span>
+        </div>
+      </button>
+
+      <button onClick="{{ pick2 }}" style="position:relative;display:block;width:100%;text-align:left;padding:var(--space-3) var(--space-4);background:none;border:0;border-left:2px solid transparent;cursor:pointer;color:inherit;font:inherit" style-hover="background:color-mix(in srgb, var(--color-text) 5%, transparent)">
+        <i style="position:absolute;inset:0;background:var(--color-accent-100);border-left:2px solid var(--color-accent);opacity:{{ on2 }}"></i>
+        <div style="position:relative;display:flex;align-items:baseline;gap:8px">
+          <span style="font:600 15px/1.2 var(--font-heading)">宁德时代</span>
+          <span style="font:500 10px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">300750.SZ</span>
+        </div>
+        <div style="position:relative;margin-top:3px;font-size:11.5px;color:var(--color-neutral-700)"><span class="zh">203 份资料 · 5 个会话 · Memo v7</span><span class="en">203 docs · 5 chats · memo v7</span></div>
+        <div style="position:relative;display:flex;align-items:center;gap:5px;margin-top:5px;font:500 9px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-accent-700)">
+          <i data-lucide="circle-check" data-icon style="width:11px;height:11px"></i><span class="zh">索引就绪</span><span class="en">INDEX READY</span>
+        </div>
+      </button>
+
+      <div style="padding:var(--space-4) var(--space-4) 6px;font:500 9px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.1em;color:var(--color-neutral-600)"><span class="zh">观察池 · 2</span><span class="en">WATCHLIST · 2</span></div>
+      <div style="padding:var(--space-2) var(--space-4);font-size:12.5px;color:var(--color-neutral-700)">迈瑞医疗 <span style="font:500 9px/1 ui-monospace,Menlo,monospace">300760.SZ</span></div>
+      <div style="padding:var(--space-2) var(--space-4);font-size:12.5px;color:var(--color-neutral-700)">药明康德 <span style="font:500 9px/1 ui-monospace,Menlo,monospace">603259.SH</span></div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-top:1px solid var(--color-divider)">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="pencil" data-icon style="width:12px;height:12px"></i><span class="zh">编辑</span><span class="en">Edit</span></button>
+        <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="archive" data-icon style="width:12px;height:12px"></i><span class="zh">归档</span><span class="en">Archive</span></button>
+        <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="trash-2" data-icon style="width:12px;height:12px"></i><span class="zh">删除</span><span class="en">Delete</span></button>
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--space-3);padding-top:var(--space-3);border-top:1px solid color-mix(in srgb, var(--color-text) 8%, transparent)">
+        <button class="btn btn-ghost" style="position:relative;gap:6px;padding:2px 4px;font-size:12px;color:var(--color-text)">
+          <i data-lucide="inbox" data-icon></i><span class="zh">收件箱</span><span class="en">Inbox</span>
+          <span style="min-width:16px;padding:0 4px;background:var(--color-accent);color:var(--color-bg);font:500 9px/16px ui-monospace,Menlo,monospace">5</span>
+        </button>
+        <div style="flex:1"></div>
+        <button class="btn btn-ghost" style="gap:6px;padding:2px 4px;font-size:12px;color:var(--color-text)"><i data-lucide="settings" data-icon></i><span class="zh">设置</span><span class="en">Settings</span></button>
+        <button onClick="{{ toggleLang }}" class="btn btn-secondary" style="padding:2px 8px;font:500 10px/1.6 ui-monospace,Menlo,monospace">{{ langBtn }}</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 中：上传 + 会话 -->
+  <main style="display:flex;flex-direction:column;overflow:hidden">
+    <header style="display:flex;align-items:center;gap:var(--space-4);padding:var(--space-4) var(--space-6);border-bottom:1px solid var(--color-divider)">
+      <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+        <h2 style="margin:0;font:600 21px/1.1 var(--font-heading);letter-spacing:.01em">{{ projName }}</h2>
+        <div style="font:500 10px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.07em;color:var(--color-neutral-600)">{{ projMeta }}</div>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" style="font-size:12.5px"><i data-lucide="layers" data-icon></i><span class="zh">研究资产库</span><span class="en">Assets</span></button>
+      <button class="btn btn-secondary" style="font-size:12.5px"><i data-lucide="users" data-icon></i><span class="zh">共享</span><span class="en">Share</span></button>
+      <button class="btn btn-primary blueprint" style="font-size:12.5px;padding:7px 14px">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <i data-lucide="sparkles" data-icon></i><span class="zh">新建研究</span><span class="en">New research</span>
+      </button>
+    </header>
+
+    <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:var(--space-6);padding:var(--space-6)">
+
+      <!-- 上传区 -->
+      <section class="blueprint" style="padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-4)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:var(--space-3)">
+          <h3 style="margin:0;font:600 15px/1.2 var(--font-heading);letter-spacing:.02em"><span class="zh">资料上传</span><span class="en">Upload</span></h3>
+          <span class="tag tag-neutral" style="font-size:10.5px"><span class="zh">自动识别公司并归档</span><span class="en">auto-filed by company</span></span>
+          <div style="flex:1"></div>
+          <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">今日新增 6 份</span><span class="en">6 ADDED TODAY</span></span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-4);padding:var(--space-8) var(--space-6);border:1px dashed color-mix(in srgb, var(--color-text) 32%, transparent);background:color-mix(in srgb, var(--color-accent) 3%, transparent);text-align:center">
+          <i data-lucide="upload-cloud" data-icon style="width:30px;height:30px;color:var(--color-accent-700)"></i>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font:600 19px/1.2 var(--font-heading)"><span class="zh">拖入年报、卖方研究或估值模型</span><span class="en">Drop filings, sell-side notes or models</span></span>
+            <span style="font-size:12.5px;color:var(--color-neutral-700)"><span class="zh">支持一次上传多家公司的混合资料</span><span class="en">Mixed uploads across companies are supported</span></span>
+          </div>
+          <button class="btn btn-primary" style="padding:11px 26px;font-size:15px"><i data-lucide="folder-open" data-icon style="width:17px;height:17px"></i><span class="zh">选择文件上传</span><span class="en">Choose files</span></button>
+          <span style="font:500 9.5px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.08em;color:var(--color-neutral-600)">PDF · XLSX · DOCX · PPTX · CSV · MD · TXT</span>
+        </div>
+      </section>
+
+      <!-- 会话气泡 -->
+      <section style="display:flex;flex-direction:column;gap:var(--space-3)">
+        <div style="display:flex;align-items:center;gap:var(--space-3)">
+          <h3 style="margin:0;font:600 15px/1.2 var(--font-heading);letter-spacing:.02em"><span class="zh">研究会话</span><span class="en">Research chats</span></h3>
+          <div style="flex:1"></div>
+          <button class="btn btn-ghost" style="padding:0 4px;font-size:11.5px"><span class="zh">全部会话</span><span class="en">All chats</span><i data-lucide="chevron-right" data-icon style="width:13px;height:13px"></i></button>
+        </div>
+        <div style="display:flex;gap:var(--space-3);overflow-x:auto;padding-bottom:var(--space-2)">
+          <button onClick="{{ openS1 }}" style="position:relative;flex:0 0 262px;text-align:left;padding:var(--space-4);background:none;border:1px solid var(--color-divider);cursor:pointer;color:inherit;font:inherit" style-hover="border-color:var(--color-accent)">
+            <i style="position:absolute;inset:0;background:var(--color-accent-100);border:1px solid var(--color-accent);opacity:{{ s1On }}"></i>
+            <div style="position:relative;display:flex;align-items:center;gap:6px;margin-bottom:7px">
+              <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent)"></span>
+              <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.07em;color:var(--color-accent-700)"><span class="zh">生成中 · 深度研究</span><span class="en">RUNNING · DEEP</span></span>
+            </div>
+            <div style="position:relative;font:600 15px/1.3 var(--font-heading)"><span class="zh">集采对 2026 年毛利率的影响</span><span class="en">VBP impact on 2026 gross margin</span></div>
+            <div style="position:relative;margin-top:6px;font-size:12px;color:var(--color-neutral-700);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><span class="zh">主力品种进入第十一批集采，测算毛利率下行 1.8–3.4pp…</span><span class="en">Key SKU enters the 11th VBP round; margin down 1.8–3.4pp…</span></div>
+            <div style="position:relative;display:flex;align-items:center;gap:10px;margin-top:9px;font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">
+              <span>14 <span class="zh">消息</span><span class="en">MSGS</span></span><span>6 <span class="zh">资料</span><span class="en">DOCS</span></span><span>3 <span class="zh">引用</span><span class="en">CITES</span></span>
+            </div>
+          </button>
+          <button onClick="{{ openS2 }}" style="position:relative;flex:0 0 262px;text-align:left;padding:var(--space-4);background:none;border:1px solid var(--color-divider);cursor:pointer;color:inherit;font:inherit" style-hover="border-color:var(--color-accent)">
+            <i style="position:absolute;inset:0;background:var(--color-accent-100);border:1px solid var(--color-accent);opacity:{{ s2On }}"></i>
+            <div style="position:relative;display:flex;align-items:center;gap:6px;margin-bottom:7px">
+              <i data-lucide="check" data-icon style="width:12px;height:12px;color:var(--color-neutral-600)"></i>
+              <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.07em;color:var(--color-neutral-600)"><span class="zh">已完成 · 08-14</span><span class="en">DONE · 08-14</span></span>
+            </div>
+            <div style="position:relative;font:600 15px/1.3 var(--font-heading)"><span class="zh">创新药管线估值拆分</span><span class="en">Pipeline valuation split</span></div>
+            <div style="position:relative;margin-top:6px;font-size:12px;color:var(--color-neutral-700);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><span class="zh">按适应症拆分 rNPV，海外授权贡献 23% 估值…</span><span class="en">rNPV by indication; out-licensing is 23% of value…</span></div>
+            <div style="position:relative;display:flex;align-items:center;gap:10px;margin-top:9px;font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">
+              <span>22 <span class="zh">消息</span><span class="en">MSGS</span></span><span>2 <span class="zh">资产</span><span class="en">ASSETS</span></span>
+            </div>
+          </button>
+          <button onClick="{{ openS3 }}" style="position:relative;flex:0 0 262px;text-align:left;padding:var(--space-4);background:none;border:1px solid var(--color-divider);cursor:pointer;color:inherit;font:inherit" style-hover="border-color:var(--color-accent)">
+            <i style="position:absolute;inset:0;background:var(--color-accent-100);border:1px solid var(--color-accent);opacity:{{ s3On }}"></i>
+            <div style="position:relative;display:flex;align-items:center;gap:6px;margin-bottom:7px">
+              <i data-lucide="shield-question" data-icon style="width:12px;height:12px;color:var(--color-accent-700)"></i>
+              <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.07em;color:var(--color-accent-700)"><span class="zh">待审批 1 · 08-09</span><span class="en">1 APPROVAL · 08-09</span></span>
+            </div>
+            <div style="position:relative;font:600 15px/1.3 var(--font-heading)"><span class="zh">海外授权收入复盘</span><span class="en">Out-licensing review</span></div>
+            <div style="position:relative;margin-top:6px;font-size:12px;color:var(--color-neutral-700);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden"><span class="zh">三笔 BD 首付款确认节奏与里程碑分布…</span><span class="en">Upfronts and milestone phasing across three BD deals…</span></div>
+            <div style="position:relative;display:flex;align-items:center;gap:10px;margin-top:9px;font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">
+              <span>9 <span class="zh">消息</span><span class="en">MSGS</span></span><span><span class="zh">共享 2 人</span><span class="en">SHARED ×2</span></span>
+            </div>
+          </button>
+          <button style="flex:0 0 168px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:var(--space-4);background:none;border:1px dashed color-mix(in srgb, var(--color-text) 30%, transparent);cursor:pointer;color:var(--color-neutral-700);font:inherit" style-hover="border-color:var(--color-accent)">
+            <i data-lucide="message-square-plus" data-icon style="width:20px;height:20px"></i>
+            <span style="font-size:12.5px"><span class="zh">新会话</span><span class="en">New chat</span></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 对话 -->
+      <sc-if value="{{ chatOpen }}" hint-placeholder-val="{{ true }}">
+        <section class="blueprint elev-sm" style="padding:0;display:flex;flex-direction:column;background:var(--color-bg)">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--color-divider)">
+            <span style="font:600 16px/1.2 var(--font-heading)">{{ chatTitle }}</span>
+            <span class="tag tag-accent" style="font-size:10.5px">{{ chatState }}</span>
+            <div style="flex:1"></div>
+            <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="square" data-icon style="width:12px;height:12px"></i><span class="zh">中断</span><span class="en">Stop</span></button>
+            <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="git-branch" data-icon style="width:12px;height:12px"></i><span class="zh">分叉</span><span class="en">Fork</span></button>
+            <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="share-2" data-icon style="width:12px;height:12px"></i><span class="zh">分享</span><span class="en">Share</span></button>
+            <button onClick="{{ closeChat }}" class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="chevron-up" data-icon style="width:12px;height:12px"></i><span class="zh">收起</span><span class="en">Collapse</span></button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:var(--space-6);padding:var(--space-6);max-height:520px;overflow:auto">
+            <div style="align-self:flex-end;max-width:66%;padding:var(--space-3) var(--space-4);border:1px solid color-mix(in srgb, var(--color-text) 26%, transparent);background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+              <div style="font:500 9.5px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.07em;color:var(--color-neutral-600);margin-bottom:5px"><span class="zh">我 · 14:02</span><span class="en">ME · 14:02</span></div>
+              <div style="font-size:13.5px"><span class="zh">第十一批集采对 2026 年毛利率的影响有多大？给出测算区间和证据。</span><span class="en">How much does the 11th VBP round hit 2026 gross margin? Give a range with evidence.</span></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:var(--space-3)">
+              <div style="display:flex;align-items:center;gap:8px;font:500 9.5px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.07em;color:var(--color-neutral-600)">
+                <i data-lucide="bot" data-icon style="width:13px;height:13px"></i>RESEARCHER-01 · CLAUDE · 14:02
+              </div>
+
+              <details style="border:1px solid var(--color-divider);padding:9px 11px">
+                <summary style="cursor:pointer;font:500 10px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-neutral-700)"><span class="zh">推理过程 · 6 步 · 12.4s</span><span class="en">REASONING · 6 STEPS · 12.4s</span></summary>
+                <div style="padding-top:9px;font-size:12.5px;color:var(--color-neutral-700);display:flex;flex-direction:column;gap:5px">
+                  <div><span class="zh">1 · 定位主力品种与 2025 年收入结构</span><span class="en">1 · Locate key SKUs and 2025 revenue mix</span></div>
+                  <div><span class="zh">2 · 检索第十一批拟纳入清单与历史降幅</span><span class="en">2 · Retrieve the 11th-round list and historical price cuts</span></div>
+                  <div><span class="zh">3 · 以 2019–2024 中标降幅分布做区间假设</span><span class="en">3 · Build the range from 2019–2024 award-cut distribution</span></div>
+                  <div style="color:var(--color-neutral-600)"><span class="zh">…展开查看全部</span><span class="en">…expand for all steps</span></div>
+                </div>
+              </details>
+
+              <div style="border:1px solid var(--color-divider)">
+                <div style="display:flex;align-items:center;gap:8px;padding:7px 11px;border-bottom:1px solid color-mix(in srgb, var(--color-text) 9%, transparent);font:500 10px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-neutral-700)">
+                  <i data-lucide="terminal" data-icon style="width:12px;height:12px"></i>CORPUS.SEARCH
+                  <div style="flex:1"></div><span class="tag tag-neutral" style="font-size:10px">1.2s · 14 hits</span>
+                </div>
+                <div style="padding:9px 11px;font:400 11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--color-neutral-700)">query = "集采 中标降幅 毛利率 2026" · files = 5 · top_score = 0.83</div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-4);border:1px solid var(--color-divider)">
+                <p style="margin:0;font-size:13.5px">
+                  <span class="zh">主力品种（注射用紫杉醇、卡瑞利珠单抗组合）已列入第十一批拟纳入清单。参考 2019–2024 年同类品种中标均价降幅 42%–61%，并假设院内份额提升 6–9pp 部分对冲，测算 2026 年综合毛利率下行区间为</span><span class="en">Two key SKUs appear on the 11th-round proposed list. Using the 42%–61% award-price cuts observed in 2019–2024 and assuming 6–9pp of in-hospital share gain as partial offset, 2026 blended gross margin declines by</span>
+                  <strong> 1.8pp – 3.4pp</strong><span class="zh">，中枢 2.6pp。</span><span class="en">, midpoint 2.6pp.</span>
+                  <a href="#" style="padding:0 5px;border:1px solid var(--color-accent);font:500 10px/1.6 ui-monospace,Menlo,monospace">1</a>
+                  <a href="#" style="padding:0 5px;border:1px solid var(--color-accent);font:500 10px/1.6 ui-monospace,Menlo,monospace">2</a>
+                  <a href="#" style="padding:0 5px;border:1px solid var(--color-accent);font:500 10px/1.6 ui-monospace,Menlo,monospace">3</a>
+                </p>
+                <table class="table" style="font-size:12.5px;table-layout:fixed">
+                  <thead><tr>
+                    <th><span class="zh">情景</span><span class="en">Scenario</span></th>
+                    <th><span class="zh">中标降幅</span><span class="en">Price cut</span></th>
+                    <th><span class="zh">份额对冲</span><span class="en">Share offset</span></th>
+                    <th><span class="zh">毛利率变动</span><span class="en">GM delta</span></th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td><span class="zh">乐观</span><span class="en">Bull</span></td><td>42%</td><td>+9pp</td><td style="color:var(--color-accent-700)">−1.8pp</td></tr>
+                    <tr><td><span class="zh">中性</span><span class="en">Base</span></td><td>52%</td><td>+7pp</td><td style="color:var(--color-accent-700)">−2.6pp</td></tr>
+                    <tr><td><span class="zh">悲观</span><span class="en">Bear</span></td><td>61%</td><td>+6pp</td><td style="color:var(--color-accent-700)">−3.4pp</td></tr>
+                  </tbody>
+                </table>
+                <div style="display:flex;align-items:center;gap:8px;padding-top:var(--space-2);border-top:1px solid color-mix(in srgb, var(--color-text) 8%, transparent)">
+                  <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="copy" data-icon style="width:12px;height:12px"></i><span class="zh">复制</span><span class="en">Copy</span></button>
+                  <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="bookmark" data-icon style="width:12px;height:12px"></i><span class="zh">存为答案笔记</span><span class="en">Save note</span></button>
+                  <button class="btn btn-secondary" style="padding:3px 9px;font-size:11.5px"><i data-lucide="file-plus" data-icon style="width:12px;height:12px"></i><span class="zh">写入 Memo</span><span class="en">Into memo</span></button>
+                  <div style="flex:1"></div>
+                  <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">3 条引用可复核</span><span class="en">3 CITATIONS</span></span>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:flex-start;gap:var(--space-4);padding:var(--space-4);border:1px solid var(--color-accent);background:var(--color-accent-100)">
+                <i data-lucide="shield-question" data-icon style="width:18px;height:18px;color:var(--color-accent-800);margin-top:2px"></i>
+                <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+                  <div style="font:600 13px/1.2 var(--font-heading);letter-spacing:.04em;color:var(--color-accent-900)"><span class="zh">审批请求 · 写入项目资料</span><span class="en">APPROVAL · WRITE TO CORPUS</span></div>
+                  <div style="font-size:12.5px;color:var(--color-accent-800)"><span class="zh">Agent 请求把派生模型 DCF_v3_adj.xlsx（下调 2026 毛利率 2.6pp）写入当前项目资料库。</span><span class="en">Agent requests writing DCF_v3_adj.xlsx (2026 GM cut by 2.6pp) into this project's corpus.</span></div>
+                </div>
+                <button class="btn btn-secondary" style="padding:4px 11px;font-size:11.5px"><span class="zh">拒绝</span><span class="en">Reject</span></button>
+                <button class="btn btn-primary" style="padding:4px 11px;font-size:11.5px"><span class="zh">批准</span><span class="en">Approve</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-4);border-top:1px solid var(--color-divider)">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.07em;color:var(--color-neutral-600)"><span class="zh">本轮上下文</span><span class="en">CONTEXT</span></span>
+              <span class="tag tag-neutral" style="font-size:10.5px">2025 年报.pdf ×</span>
+              <span class="tag tag-neutral" style="font-size:10.5px">DCF_v3.xlsx ×</span>
+              <span class="tag tag-accent" style="font-size:10.5px"><span class="zh">资产：管线笔记 ×</span><span class="en">Asset: pipeline note ×</span></span>
+              <button class="btn btn-ghost" style="padding:0 4px;font-size:11.5px">+ <span class="zh">添加</span><span class="en">Add</span></button>
+              <div style="flex:1"></div>
+              <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">草稿已保存 14:07</span><span class="en">DRAFT SAVED 14:07</span></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3);border:1px solid var(--color-divider)">
+              <input class="input" style="flex:1;border:0;min-height:auto;padding:0;font-size:13px;background:transparent" placeholder="{{ askPh }}">
+              <button class="btn btn-secondary" style="width:32px;height:32px;padding:0"><i data-lucide="paperclip" data-icon></i></button>
+              <button class="btn btn-secondary" style="width:32px;height:32px;padding:0"><i data-lucide="mic" data-icon></i></button>
+              <button class="btn btn-secondary" style="width:32px;height:32px;padding:0"><i data-lucide="wand-2" data-icon></i></button>
+              <button class="btn btn-primary" style="padding:6px 14px;font-size:12.5px"><span class="zh">排队发送</span><span class="en">Queue</span></button>
+            </div>
+          </div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ chatClosed }}" hint-placeholder-val="{{ false }}">
+        <section style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:var(--space-8);border:1px dashed color-mix(in srgb, var(--color-text) 26%, transparent);color:var(--color-neutral-700)">
+          <i data-lucide="messages-square" data-icon style="width:22px;height:22px"></i>
+          <span style="font-size:12.5px"><span class="zh">选择上方任一会话展开对话，上传区与资料列表保持可见</span><span class="en">Open a chat above — upload and documents stay in place</span></span>
+        </section>
+      </sc-if>
+    </div>
+  </main>
+
+  <!-- 右：研究看板 -->
+  <aside style="display:flex;flex-direction:column;border-left:1px solid var(--color-divider);overflow:hidden">
+    <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-4) var(--space-4) var(--space-3);border-bottom:1px solid var(--color-divider)">
+      <h3 style="margin:0;font:600 16px/1.2 var(--font-heading);letter-spacing:.02em"><span class="zh">研究看板</span><span class="en">Research board</span></h3>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" style="width:26px;height:26px;padding:0"><i data-lucide="refresh-cw" data-icon></i></button>
+    </div>
+
+    <div style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:var(--space-4);padding:var(--space-4)">
+
+      <!-- 资料 -->
+      <section class="blueprint" style="padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 var(--font-heading);letter-spacing:.02em"><span class="zh">项目资料</span><span class="en">Documents</span></h4>
+          <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">128</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-ghost" style="padding:0 4px;font-size:11.5px"><i data-lucide="folder" data-icon style="width:12px;height:12px"></i><span class="zh">文件夹</span><span class="en">Folders</span></button>
+          <button class="btn btn-ghost" style="padding:0 4px;font-size:11.5px"><span class="zh">管理</span><span class="en">Manage</span></button>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--color-divider)">
+          <i data-lucide="search" data-icon style="width:13px;height:13px;color:var(--color-neutral-600)"></i>
+          <input class="input" style="border:0;min-height:auto;padding:0;font-size:12px;background:transparent" placeholder="{{ searchDocPh }}">
+        </label>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="display:flex;align-items:center;justify-content:center;width:13px;height:13px;border:1px solid var(--color-accent);background:var(--color-accent);color:var(--color-bg)"><i data-lucide="check" data-icon style="width:9px;height:9px"></i></span>
+            <i data-lucide="file-text" data-icon style="width:13px;height:13px;color:var(--color-neutral-600)"></i>
+            <span style="flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">2025 年年度报告.pdf</span>
+            <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-16</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="display:flex;align-items:center;justify-content:center;width:13px;height:13px;border:1px solid var(--color-accent);background:var(--color-accent);color:var(--color-bg)"><i data-lucide="check" data-icon style="width:9px;height:9px"></i></span>
+            <i data-lucide="table-2" data-icon style="width:13px;height:13px;color:var(--color-neutral-600)"></i>
+            <span style="flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">DCF_v3.xlsx</span>
+            <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-15</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="width:13px;height:13px;border:1px solid var(--color-neutral-500)"></span>
+            <i data-lucide="file-text" data-icon style="width:13px;height:13px;color:var(--color-neutral-600)"></i>
+            <span style="flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">调研纪要_0812.md</span>
+            <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-12</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="width:13px;height:13px;border:1px solid var(--color-neutral-500)"></span>
+            <i data-lucide="file-text" data-icon style="width:13px;height:13px;color:var(--color-neutral-600)"></i>
+            <span style="flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">创新药竞争格局.docx</span>
+            <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-10</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border:1px solid var(--color-divider)">
+            <span style="width:13px;height:13px;border:1px solid var(--color-neutral-500)"></span>
+            <i data-lucide="table-2" data-icon style="width:13px;height:13px;color:var(--color-neutral-600)"></i>
+            <span style="flex:1;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">季度财务明细.xlsx</span>
+            <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-08</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">已选 2 · 其余 123 条</span><span class="en">2 SELECTED · 123 MORE</span></span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary" style="padding:2px 8px;font-size:11.5px"><span class="zh">加入上下文</span><span class="en">To context</span></button>
+        </div>
+      </section>
+
+      <!-- Memo -->
+      <section class="blueprint" style="padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 var(--font-heading);letter-spacing:.02em"><span class="zh">投资备忘录</span><span class="en">Memo</span></h4>
+          <span class="tag tag-neutral" style="font-size:10.5px">v4 · 08-16</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-secondary" style="padding:2px 8px;font-size:11.5px"><span class="zh">修订</span><span class="en">Revise</span></button>
+        </div>
+        <p style="margin:0;font-size:12.5px;color:var(--color-neutral-800)"><span class="zh">维持增持。集采冲击集中在 2026 上半年，海外授权与创新药放量可对冲约 60% 的毛利率损失。</span><span class="en">Maintain overweight. The VBP hit lands mostly in H1 2026; out-licensing and new-product ramp offset ~60% of the margin loss.</span></p>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
+          <span style="padding:3px 9px;border:1px solid color-mix(in srgb, var(--color-text) 26%, transparent)">v2 · 07-18</span>
+          <i data-lucide="arrow-right" data-icon style="width:13px;height:13px;color:var(--color-neutral-600)"></i>
+          <span style="padding:3px 9px;border:1px solid var(--color-accent);color:var(--color-accent-700)">v4 · 08-16</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-ghost" style="padding:0 4px;font-size:11.5px"><span class="zh">比较</span><span class="en">Compare</span></button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+          <div style="padding:7px;border:1px solid var(--color-accent)"><div style="font:600 18px/1 var(--font-heading);color:var(--color-accent-700)">6</div><div style="font:500 8.5px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">新增</span><span class="en">ADDED</span></div></div>
+          <div style="padding:7px;border:1px solid color-mix(in srgb, var(--color-text) 24%, transparent)"><div style="font:600 18px/1 var(--font-heading)">9</div><div style="font:500 8.5px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">变化</span><span class="en">CHANGED</span></div></div>
+          <div style="padding:7px;border:1px dashed color-mix(in srgb, var(--color-text) 26%, transparent)"><div style="font:600 18px/1 var(--font-heading)">4</div><div style="font:500 8.5px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">未提及</span><span class="en">N/M</span></div></div>
+          <div style="padding:7px;border:1px solid color-mix(in srgb, var(--color-text) 24%, transparent);background:var(--color-accent-100)"><div style="font:600 18px/1 var(--font-heading)">3</div><div style="font:500 8.5px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">待复核</span><span class="en">REVIEW</span></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;padding-top:var(--space-2);border-top:1px solid color-mix(in srgb, var(--color-text) 8%, transparent)">
+          <div style="display:flex;gap:8px;font-size:12px">
+            <span class="tag tag-accent" style="height:19px;font-size:10px"><span class="zh">新增</span><span class="en">ADD</span></span>
+            <span style="flex:1"><span class="zh">海外授权成为第二增长曲线</span><span class="en">Out-licensing as a second growth curve</span></span>
+          </div>
+          <div style="display:flex;gap:8px;font-size:12px">
+            <span class="tag tag-neutral" style="height:19px;font-size:10px;border:1px solid color-mix(in srgb, var(--color-text) 28%, transparent)"><span class="zh">变化</span><span class="en">CHG</span></span>
+            <span style="flex:1"><span class="zh">2026 毛利率</span><span class="en">2026 GM</span> <span style="color:var(--color-neutral-600);text-decoration:line-through">84.1%</span> → <strong>82.3%</strong></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 估值 -->
+      <section class="blueprint" style="padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 var(--font-heading);letter-spacing:.02em"><span class="zh">估值跟踪</span><span class="en">Valuation</span></h4>
+          <span class="tag tag-neutral" style="font-size:10.5px">DCF_v3</span>
+          <div style="flex:1"></div>
+          <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">08-17 09:30</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px">
+          <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-neutral-600)"><span class="zh">现价</span><span class="en">PRICE</span></div><div style="font:600 20px/1.1 var(--font-heading)">48.62</div></div>
+          <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-neutral-600)"><span class="zh">模型隐含</span><span class="en">IMPLIED</span></div><div style="font:600 20px/1.1 var(--font-heading);color:var(--color-accent-700)">53.10</div></div>
+          <div><div style="font:500 9px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:var(--color-neutral-600)"><span class="zh">空间</span><span class="en">UPSIDE</span></div><div style="font:600 20px/1.1 var(--font-heading);color:var(--color-accent-700)">+9.2%</div></div>
+        </div>
+        <table class="table" style="font-size:12px;table-layout:fixed">
+          <thead><tr>
+            <th><span class="zh">指标</span><span class="en">Metric</span></th>
+            <th><span class="zh">模型</span><span class="en">Model</span></th>
+            <th><span class="zh">实际</span><span class="en">Actual</span></th>
+            <th><span class="zh">差异</span><span class="en">Gap</span></th>
+          </tr></thead>
+          <tbody>
+            <tr><td><span class="zh">营收</span><span class="en">Revenue</span></td><td>7,820</td><td>7,655</td><td style="color:var(--color-accent-700)">−2.1%</td></tr>
+            <tr><td><span class="zh">毛利率</span><span class="en">Gross margin</span></td><td>84.1%</td><td>82.3%</td><td style="color:var(--color-accent-700)">−1.8pp</td></tr>
+            <tr><td><span class="zh">研发费用率</span><span class="en">R&amp;D ratio</span></td><td>21.5%</td><td style="color:var(--color-neutral-500)">—</td><td style="color:var(--color-neutral-500)"><span class="zh">数据缺失</span><span class="en">missing</span></td></tr>
+            <tr><td>WACC</td><td>8.6%</td><td>8.6%</td><td style="color:var(--color-neutral-600)">0.0</td></tr>
+          </tbody>
+        </table>
+        <div style="display:flex;align-items:center;gap:9px;padding:9px;border:1px solid var(--color-accent);background:var(--color-accent-100)">
+          <i data-lucide="git-compare" data-icon style="width:15px;height:15px;color:var(--color-accent-800)"></i>
+          <div style="flex:1;font-size:11.5px;color:var(--color-accent-800)"><span class="zh">派生模型 DCF_v3_adj 待确认入库</span><span class="en">DCF_v3_adj awaiting confirmation</span></div>
+          <button class="btn btn-primary" style="padding:2px 9px;font-size:11.5px"><span class="zh">确认</span><span class="en">Confirm</span></button>
+        </div>
+      </section>
+
+      <!-- 风险 / 催化剂 -->
+      <section class="blueprint" style="padding:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div style="display:flex;align-items:center;gap:8px">
+          <h4 style="margin:0;font:600 14px/1.2 var(--font-heading);letter-spacing:.02em"><span class="zh">风险与催化剂</span><span class="en">Risks &amp; catalysts</span></h4>
+          <div style="flex:1"></div>
+          <span style="font:500 9.5px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">7 风险 · 4 催化 · 5 未读</span><span class="en">7 · 4 · 5 UNREAD</span></span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px;padding:9px;border:1px solid var(--color-divider)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="tag tag-outline" style="font-size:10px"><span class="zh">风险 · 高</span><span class="en">RISK · HIGH</span></span>
+            <span style="flex:1;font:600 13.5px/1.3 var(--font-heading)"><span class="zh">主力品种进入第十一批集采</span><span class="en">Key SKU enters the 11th VBP round</span></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent)"></span>
+          </div>
+          <div style="padding:7px 9px;border-left:2px solid var(--color-accent-400);background:color-mix(in srgb, var(--color-text) 3%, transparent);font-size:11.5px;color:var(--color-neutral-800)">
+            <span class="zh">「……相关品种已列入拟纳入清单，拟于 Q4 开标……」</span><span class="en">"…the SKU is on the proposed list, bidding expected in Q4…"</span> <a href="#">[1]</a>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="btn btn-secondary" style="padding:2px 8px;font-size:11.5px"><span class="zh">确认</span><span class="en">Acknowledge</span></button>
+            <button class="btn btn-secondary" style="padding:2px 8px;font-size:11.5px"><span class="zh">忽略</span><span class="en">Dismiss</span></button>
+            <div style="flex:1"></div>
+            <span style="font:500 9px/1 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)"><span class="zh">规则：政策关键词</span><span class="en">RULE: POLICY</span></span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--color-divider)">
+          <span class="tag tag-neutral" style="font-size:10px"><span class="zh">催化剂</span><span class="en">CAT</span></span>
+          <span style="flex:1;font-size:12.5px"><span class="zh">HER2 ADC III 期数据读出（Q4）</span><span class="en">HER2 ADC Phase III readout (Q4)</span></span>
+          <i data-lucide="chevron-right" data-icon style="width:13px;height:13px;color:var(--color-neutral-600)"></i>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font:500 9.5px/1.4 ui-monospace,Menlo,monospace;color:var(--color-neutral-600)">
+          <span class="zh">4 条观察规则 · 更新中</span><span class="en">4 WATCH RULES · UPDATING</span>
+          <div style="flex:1"></div>
+          <span style="width:54px;height:4px;background:var(--color-neutral-300)"><i style="display:block;width:44%;height:4px;background:var(--color-accent)"></i></span>
+        </div>
+      </section>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;lang&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;zh&quot;,&quot;en&quot;],&quot;default&quot;:&quot;zh&quot;,&quot;tsType&quot;:&quot;'zh'|'en'&quot;},&quot;openChatByDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { proj: null, chat: undefined, lang: null };
+
+  get proj() { return this.state.proj ?? 0; }
+  get chat() { return this.state.chat === undefined ? ((this.props.openChatByDefault ?? true) ? 1 : 0) : this.state.chat; }
+  get lang() { return this.state.lang ?? this.props.lang ?? "zh"; }
+
+  icons() { try { window.lucide && window.lucide.createIcons(); } catch (e) {} }
+  componentDidMount() { this.icons(); setTimeout(() => this.icons(), 400); setTimeout(() => this.icons(), 1500); }
+  componentDidUpdate() { this.icons(); }
+
+  renderVals() {
+    const zh = this.lang === "zh", p = this.proj, c = this.chat;
+    const projects = [
+      { n: "恒瑞医药 · 600276.SH", m: zh ? "128 份资料 · 索引就绪 · 41 项研究资产 · AGENT 就绪" : "128 DOCS · INDEXED · 41 ASSETS · AGENT READY" },
+      { n: "贵州茅台 · 600519.SH", m: zh ? "64 份资料 · 索引中 41% · 12 项研究资产" : "64 DOCS · INDEXING 41% · 12 ASSETS" },
+      { n: "宁德时代 · 300750.SZ", m: zh ? "203 份资料 · 索引就绪 · 68 项研究资产" : "203 DOCS · INDEXED · 68 ASSETS" }
+    ];
+    const chats = {
+      1: { t: zh ? "集采对 2026 年毛利率的影响" : "VBP impact on 2026 gross margin", s: zh ? "生成中 · 深度研究" : "Running · deep" },
+      2: { t: zh ? "创新药管线估值拆分" : "Pipeline valuation split", s: zh ? "已完成" : "Done" },
+      3: { t: zh ? "海外授权收入复盘" : "Out-licensing review", s: zh ? "待审批 1" : "1 approval" }
+    };
+    const ch = chats[c] || chats[1];
+    return {
+      lang: this.lang,
+      langBtn: zh ? "EN" : "中",
+      toggleLang: () => this.setState({ lang: zh ? "en" : "zh" }),
+      searchProjPh: zh ? "搜索项目 / 公司 / 代码" : "Search project or ticker",
+      searchDocPh: zh ? "搜索资料…" : "Search documents…",
+      askPh: zh ? "继续追问…（生成中将排队发送）" : "Ask a follow-up… (queued while generating)",
+      projName: projects[p].n, projMeta: projects[p].m,
+      on0: p === 0 ? 1 : 0, on1: p === 1 ? 1 : 0, on2: p === 2 ? 1 : 0,
+      pick0: () => this.setState({ proj: 0 }), pick1: () => this.setState({ proj: 1 }), pick2: () => this.setState({ proj: 2 }),
+      s1On: c === 1 ? 1 : 0, s2On: c === 2 ? 1 : 0, s3On: c === 3 ? 1 : 0,
+      openS1: () => this.setState({ chat: 1 }), openS2: () => this.setState({ chat: 2 }), openS3: () => this.setState({ chat: 3 }),
+      closeChat: () => this.setState({ chat: 0 }),
+      chatOpen: c !== 0, chatClosed: c === 0,
+      chatTitle: ch.t, chatState: ch.s
+    };
+  }
+}
+</script>
+</body>
+</html>

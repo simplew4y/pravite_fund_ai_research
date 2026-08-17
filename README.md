@@ -1,353 +1,180 @@
 # Private Fund AI Research
 
-> 📝 2026-07-13：更新为资料项目驱动的私募投研工作台、证据核验与 FinRobot 对齐报告链路。
+Private Fund AI Research 是一套证据驱动的私募投研工作台。当前默认运行时是传统 Web 架构：现有 React UI 调用 TypeScript API/BFF，后台由独立 Job Worker 和 Obsidian Worker 处理持久任务；只有 Agent 会话需要模型协调时，API 才按需启动 Pi Worker。
 
-本仓库是一套本地私募投研 demo：把 Omnigent 网页会话、Claude Code Haha、LiteLLM、DashScope、本地 PDF evidence、可点击溯源和 Memo PDF 生成串成一个可部署系统。
+项目保留现有前端 UI、交互和 HTTP/SSE 契约。服务端负责会话、证据、研究任务、产物、模型调用、权限和投影，不依赖一个常驻的大型 Agent Harness 作为应用控制面。
 
-当前目标是先跑通最小闭环：
-
-```text
-本地 PDF
--> 证据抽取
--> 单聊天框问答
--> citation / trace
--> 右侧 PDF 原文复核
--> Memo PDF 生成
-```
-
-它不是自动投资决策系统，也不是完整生产级资料库；它定位是“私募投研资料证据化与研究辅助 demo”。
-
-## 系统架构
+## 默认架构
 
 ```text
-Browser / Omnigent Web UI
+Browser / existing React UI
         |
+        | HTTP + SSE
         v
-Omnigent Server / Runner
-        |
-        v
-Claude Native Executor
-        |
-        v
-tmux terminal running Claude Code TUI
-        |
-        v
-cc-haha/bin/claude-haha
-        |
-        v
-Anthropic-compatible API request
-        |
-        v
-LiteLLM proxy on 127.0.0.1:4000
-        |
-        v
-DashScope qwen3-max
-        |
-        v
-Claude Code transcript / hooks / MCP
-        |
-        v
-Omnigent transcript forwarder
-        |
-        v
-Browser chat + right-side PDF source panel
+TypeScript API / BFF :6768
+        |-- session, auth, research and artifact services
+        |-- model gateway and tool boundary
+        |-- request-scoped source-preview compute
+        `-- Pi Agent Worker (started only for an active Agent session)
+
+Durable Job Worker
+        `-- request-scoped Python compute sidecar
+
+Obsidian Worker
+        `-- durable outbox projection into the managed Vault area
 ```
 
-核心文档：
+默认常驻服务只有三项：
 
-| 文档 | 内容 |
-|---|---|
-| [📝 LLM 压力测试与质量回归手册](docs/llm_stress_testing.md) | 一键执行并发阶梯、指令遵循、真实证据溯源、请求隔离、工具准确性并生成本地分析包 |
-| [📝 系统模块机制与新手手册](docs/private_fund_system_modules_and_beginner_guide_20260720.md) | 从模块地图、内部机制到首次启动、完整研究流程、截图、故障排查和安全边界的统一使用指南 |
-| [📝 私募投研 AI 工作台需求文档 V0.1](docs/private_fund_ai_research_prd_v0.1.md) | 基于当前项目整理的产品定位、用户场景、功能需求、优先级、实现状态、验收标准与待评审问题 |
-| [Omnigent + Claude Code Haha 系统架构](docs/omnigent_cc_haha_system_architecture_20260706.md) | Omnigent、cc-haha、LiteLLM、DashScope、本地 PDF QA、Memo PDF、来源点击面板的完整运行链路 |
-| [Omnigent 本地服务运行手册](docs/omnigent_runtime_services.md) | LiteLLM、Server、Host 的统一 tmux 启停、状态检查和故障恢复 |
-| [私募研究工作流实现](docs/private_fund_research_workflow.md) | 真实研究节点、依赖、版本、假设、失效传播和长期报告快照 |
-| [私募 PDF Research Demo 代码架构](docs/private_fund_code_architecture_20260706.md) | `src/pdf_research_demo`、FinSagent 接入、脚本、测试和 Omnigent 补丁的代码结构 |
-| [Omnigent 私募研究集成补丁](patches/omnigent_private_fund_integration_20260706.patch) | 对 `omnigent` submodule 应用的私募研究改动 |
+| 服务 | 入口 | 生命周期 | 职责 |
+|---|---|---|---|
+| TypeScript API | `apps/api` | 常驻 | HTTP/SSE、会话与业务服务、按需 Agent/预览计算进程的 owner |
+| Job Worker | `apps/job-worker` | 常驻 | 持久任务消费、租约、恢复和计算任务调度 |
+| Obsidian Worker | `apps/obsidian-worker` | 常驻 | 将 outbox 中的事实幂等投影到受管 Vault 区域 |
+| Pi Agent Worker | `apps/agent-worker` | 按 Session 需要启动 | 执行 Agent 协调；由 API 管理启动、取消、drain 和退出 |
+
+机器可读的权威拓扑位于 `scripts/ts-services.manifest.json`。Pi Worker 不应作为第四个常驻服务手工启动。
+
+## 快速启动
+
+### 环境要求
+
+- Node.js `>= 22.19.0`
+- npm
+- Python 3；文档解析或计算功能建议使用 `python/compute-worker/.venv`
+
+安装并构建：
+
+```bash
+npm install
+npm run build
+```
+
+本地单用户开发至少需要在仓库根目录的 `.env` 中设置：
+
+```dotenv
+PRIVATE_FUND_AUTH_MODE=development
+PRIVATE_FUND_API_HOST=127.0.0.1
+PRIVATE_FUND_API_PORT=6768
+PRIVATE_FUND_DATA_ROOT=output/ts-platform
+```
+
+不要提交 `.env`、API Key、Token 或其他凭据。模型网关、云账号和部署环境使用的其他变量以 `.env.example` 与各应用的配置 schema 为准。
+
+从仓库根目录启动完整的常驻服务拓扑：
+
+```bash
+npm start
+```
+
+确认所有服务的 PID ownership 与 readiness：
+
+```bash
+npm run services:status
+```
+
+默认 API 地址是 `http://localhost:6768`，健康检查为：
+
+```text
+http://localhost:6768/health
+```
+
+常用运维命令：
+
+```bash
+npm run services:logs
+npm run services:restart
+npm run services:stop
+```
+
+运行状态和日志默认保存在 `tmp/ts-services/`；该目录是本地运行状态，不应提交。
+
+## 前端本地开发
+
+先在仓库根目录运行 `npm start`，再启动现有 Vite 前端：
+
+```bash
+cd omnigent/web
+npm install
+npm run dev
+```
+
+Vite 使用 `PRIVATE_FUND_API_URL` 选择 TypeScript API，默认值为 `http://localhost:6768`。只有连接其他开发实例时才需要覆盖：
+
+```bash
+PRIVATE_FUND_API_URL=http://localhost:9000 npm run dev
+```
+
+前端开发、构建与验证的详细说明见 [`omnigent/web/README.md`](omnigent/web/README.md)。本次架构迁移不改变现有 UI 的布局、组件结构或交互语义。
+
+## 分服务开发
+
+需要单独调试服务时，在不同终端运行：
+
+```bash
+npm run dev:api
+npm run dev:job-worker
+npm run dev:obsidian-worker
+```
+
+这些命令适用于开发调试；日常整栈启动仍以 `npm start` 为准。Agent 请求到达时，API 会根据 Session 生命周期按需管理 Pi Worker，无需额外执行启动命令。
 
 ## 代码组成
 
 | 路径 | 说明 |
 |---|---|
-| `src/pdf_research_demo/` | PDF-only evidence、QA、Memo、citation trace、PDF renderer、FastAPI workbench |
-| `scripts/run_pdf_research_demo.py` | 命令行一键跑 PDF QA + Memo PDF |
-| `scripts/run_pdf_research_web_app.py` | 独立 PDF Evidence Workbench |
-| `scripts/start_litellm_dashscope.sh` | 启动 LiteLLM，将 Claude / Anthropic 模型名映射到 DashScope qwen3-max |
-| `scripts/manage_omnigent_services.sh` | 在同一个 tmux session 中统一管理 LiteLLM、Omnigent Server 和 Host |
-| `scripts/run_omnigent_cc_haha.sh` | 启动完整 Omnigent + Claude Code Haha 链路 |
-| `scripts/setup_full_system.sh` | 新机器部署脚本：初始化 submodule、应用 Omnigent patch、安装依赖 |
-| `FinSagent/deploy/` | FinSagent Research Chat fallback 接入 |
-| `omnigent/` | submodule，Omnigent 主体；setup 时应用私募研究补丁 |
-| `cc-haha/` | submodule，Claude Code Haha 运行时 |
-| `test/memo_generation/` | PDF QA、Memo、Web API、trace 测试 |
+| `apps/api/` | TypeScript API/BFF、会话操作、HTTP/SSE 和进程 owner |
+| `apps/job-worker/` | 持久任务与计算调度 Worker |
+| `apps/obsidian-worker/` | Obsidian outbox 投影 Worker |
+| `apps/agent-worker/` | 按需 Pi Agent 进程入口 |
+| `packages/contracts/` | 跨应用的版本化契约 |
+| `packages/core/` | 生命周期、能力和公共运行时基础 |
+| `packages/agent-runtime/` | AgentRuntime 与 Pi 适配 |
+| `packages/model-runtime/` | 模型网关与流式规范化 |
+| `packages/job-queue/` | 持久任务、租约和 fencing |
+| `packages/research-store/` | 私募研究事实与查询存储 |
+| `packages/session-projections/` | 会话投影与读取模型 |
+| `packages/obsidian-projector/` | Vault managed-region 投影逻辑 |
+| `python/compute-worker/` | 被 Node owner 按请求启动的计算 sidecar |
+| `omnigent/web/` | 保持现有 UI 的 React + TypeScript 前端 |
+| `scripts/manage-ts-services.mjs` | 默认服务启动、状态、日志、停止和重启控制器 |
 
-## 新机器部署
+## 数据与进程所有权
 
-### 1. 准备依赖
+- API、Job Worker 和 Obsidian Worker 共享明确配置的 control database，但各自只处理所属操作和 lease。
+- Pi Worker 只拥有当前 Agent Session 的运行时状态，不拥有业务事实或服务启动权。
+- Python 计算进程由 API 或 Job Worker 按请求创建；调用结束、取消或超时后必须由 owner 回收。
+- Obsidian 是业务事实的投影目标，不是业务数据库的替代品；Worker 只写受管区域并保留用户内容。
+- 浏览器只调用 TypeScript API，不直接持有模型 Provider 凭据或选择后端执行器。
 
-需要：
+## 验证
 
-```text
-git
-python3
-uv
-bun
-tmux
-curl
-Poppler: pdftotext / pdftoppm
-```
-
-macOS 可参考：
+根工作区：
 
 ```bash
-brew install git uv bun tmux poppler
+npm run typecheck
+npm test
+npm run test:compute
+npm run verify:pi-dependencies
 ```
 
-### 2. Clone 仓库和 submodule
+前端：
 
 ```bash
-git clone --recurse-submodules \
-  -b codex/private-fund-system-architecture-20260706 \
-  https://github.com/simplew4y/pravite_fund_ai_research.git
-
-cd pravite_fund_ai_research
+npm --prefix omnigent/web run type-check
+npm --prefix omnigent/web run test
+npm --prefix omnigent/web run format:check
 ```
 
-如果已经 clone 但没有 submodule：
+服务拓扑专项验证：
 
 ```bash
-git submodule update --init --recursive omnigent cc-haha
-```
-
-### 3. 初始化完整系统
-
-```bash
-scripts/setup_full_system.sh
-```
-
-这个脚本会：
-
-- 拉取 `omnigent` 和 `cc-haha` submodule。
-- 给 `omnigent` 应用私募研究补丁。
-- 给 `cc-haha` 执行 `bun install`。
-- 给 `omnigent` 执行 `uv sync`。
-- 检查 `tmux`、`uv`、`bun`、`pdftotext`、`pdftoppm` 等依赖。
-
-私募投研目录入库的 Excel 解析依赖 `openpyxl`，由 `omnigent/pyproject.toml`
-管理；执行 `omnigent` 下的 `uv sync` 后会安装到 Omnigent 运行环境。
-
-### 4. 配置模型
-
-不要把真实 key 提交到仓库。部署机器上用环境变量：
-
-```bash
-export DASHSCOPE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-export DASHSCOPE_API_KEY="<your-key>"
-```
-
-也可以用本地配置文件：
-
-```text
-FinSagent/config/production.yaml
-```
-
-需要包含：
-
-```yaml
-llm_model_name: qwen3-max
-llm_base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-llm_api_key: <your-key>
-```
-
-### 5. 启动长期运行服务
-
-```bash
-scripts/manage_omnigent_services.sh start
-```
-
-该命令在 `omnigent-stack` tmux session 中依次启动并检查 LiteLLM、Omnigent Server 和 Omnigent Host。日常维护使用：
-
-```bash
-scripts/manage_omnigent_services.sh status
-scripts/manage_omnigent_services.sh restart
-scripts/manage_omnigent_services.sh logs
-```
-
-### 6. 启动 Omnigent + Claude Code Haha 交互链路
-
-```bash
-scripts/run_omnigent_cc_haha.sh
-```
-
-启动后脚本会：
-
-1. 检查或启动 LiteLLM proxy：`http://127.0.0.1:4000`。
-2. 把 Anthropic-compatible 环境变量指向 LiteLLM。
-3. 用 `cc-haha/bin/claude-haha` 作为 Claude Code command。
-4. 启动 `omnigent claude`。
-5. 追加 `omnigent/CLAUDE.md` 私募研究系统提示词。
-
-## 本地 PDF QA 和 Memo
-
-不启动 Omnigent，也可以直接跑最小 PDF demo：
-
-```bash
-python scripts/run_pdf_research_demo.py \
-  --pdf tesla_extracted/20260129_10-K_0001628280-26-003952.pdf \
-  --company "Tesla, Inc." \
-  --ticker TSLA \
-  --question "基于本地 Tesla PDF，概括 Tesla 当前的核心投资逻辑"
-```
-
-独立 Web workbench：
-
-```bash
-python scripts/run_pdf_research_web_app.py --host 127.0.0.1 --port 8765
-```
-
-FinSagent Research Chat fallback：
-
-```bash
-cd FinSagent/deploy
-FINSAGENT_SKIP_CHAT_INIT=1 python -m uvicorn app:app --host 127.0.0.1 --port 8000
-```
-
-## Evidence 链路
-
-当前最小实现不构建 chunk index，而是直接将 PDF 页面文本拆成 page / paragraph evidence：
-
-```text
-PDF file
--> Document
--> DocumentVersion
--> EvidenceLocation(file, page, paragraph)
--> Evidence
--> Citation
--> QA answer / Memo section
--> trace_citation()
-```
-
-这样可以先验证投研体验：
-
-- 每个核心结论都有 citation。
-- citation 可以回到 PDF 文件、版本、页码和段落。
-- Memo section 也能回到同一套 evidence。
-
-未来正式版本会把这套内存 evidence store 升级为 Project DB / Personal Memory / Evidence Repository。
-
-## Omnigent 私募补丁
-
-`omnigent/` 是 submodule，私募研究相关改动通过 patch 保存：
-
-```text
-patches/omnigent_private_fund_integration_20260706.patch
-```
-
-补丁内容包括：
-
-- `omnigent/CLAUDE.md` 私募研究系统提示词。
-- 📝 内置 Claude Native bundle 中的 `private-fund-memo`、`private-fund-node`、`private-fund-report`、`private-fund-report-update`、`private-fund-knowledge-base`、`private-fund-valuation-metrics` 六个投研 Skills（源码位于 `omnigent/omnigent/resources/private_fund_skills/`）。
-- Claude Code 启动公告页 `Press Enter to continue` 自动处理。
-- `/v1/private-fund/*` 后端 API。
-- 回答中 `[p.113]` / `10-K p.113, para.1` 自动 linkify。
-- 右侧 `Sources` PDF 渲染与高亮面板。
-
-手动应用：
-
-```bash
-git -C omnigent apply ../patches/omnigent_private_fund_integration_20260706.patch
-```
-
-检查是否已经应用：
-
-```bash
-git -C omnigent apply --reverse --check ../patches/omnigent_private_fund_integration_20260706.patch
-```
-
-## 📝 LLM 压测与质量回归
-
-快速验证当前模型链路：
-
-```bash
-./scripts/run_llm_stress_test.sh --suite smoke
-```
-
-正式执行并发、内容质量、真实证据溯源和工具调用测试：
-
-```bash
-./scripts/run_llm_stress_test.sh \
-  --suite full \
-  --target proxy \
-  --concurrency 1,2,4,8,16 \
-  --requests-per-level 20
-```
-
-全部内容保存在 `output/llm_stress_runs/<run_id>/`，其中
-`analysis_bundle.zip` 可直接交给 Codex 做容量与失败分析。详情见
-[📝 LLM 压力测试与质量回归手册](docs/llm_stress_testing.md)。
-
-## 测试
-
-推荐验证：
-
-```bash
-python -m pytest \
-  test/memo_generation/test_pdf_research_demo.py \
-  test/memo_generation/test_pdf_research_web_app.py \
-  -q
-
-python -m py_compile \
-  src/pdf_research_demo/*.py \
-  scripts/run_pdf_research_demo.py \
-  scripts/run_pdf_research_web_app.py \
-  FinSagent/deploy/app.py \
-  FinSagent/deploy/session_routes.py
-
-node --check FinSagent/deploy/frontend/chat.js
-node --check FinSagent/deploy/frontend/session_sidebar.js
-node --check FinSagent/deploy/frontend/ui.js
-```
-
-Omnigent 前端测试在 submodule 中执行：
-
-```bash
-cd omnigent
-npm test -- BlockRenderer WorkspacePanel
-npm run type-check
-npm run build
-```
-
-## 不进入仓库的内容
-
-这些内容属于部署机器本地状态，不应该提交：
-
-```text
-真实 API key
-tesla_extracted/     本地 PDF 资料
-tesla.zip            本地资料压缩包
-output/              生成的 PDF、PNG、HTML
-node_modules/        依赖目录
-__pycache__/         Python 缓存
-FinSagent/deploy/.memory/
+npm run test:service-topology
 ```
 
 ## 当前边界
 
-已跑通：
-
-- Omnigent + cc-haha + LiteLLM + DashScope 调用链。
-- 本地 PDF QA。
-- citation_id 和 trace_citation。
-- Memo PDF 生成。
-- FinSagent Research Chat fallback。
-- Omnigent 单聊天框触发私募研究。
-- 点击来源打开右侧 PDF source panel。
-- 📝 服务端 Memo Citation Gate：结构化 claims、证据 ID 白名单校验、服务端引用渲染、一次定向修复、失败后 `待复核` 与本地审计文件。
-
-尚未完成：
-
-- 正式 Project DB / Analyst Space SQLite repository。
-- 多文件、多格式 chunk / index pipeline。
-- Excel、PPT、Word 等格式的统一 Evidence adapter。
-- QA / Memo 全量写入 Personal Memory。
+- 项目用于研究辅助与证据核验，不提供自动投资决策。
+- 现有前端 UI 是兼容基线；后端替换不授权视觉、布局或交互重设计。
+- Agent 能力通过小而明确的运行时接口接入；应用启动、业务事务、任务队列和投影仍由传统服务负责。
+- 本地生成的数据、日志、数据库、Vault 内容、模型输出和测试报告不得作为源码提交，除非它们是经过脱敏并明确批准的 fixture。
