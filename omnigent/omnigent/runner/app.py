@@ -18431,6 +18431,7 @@ async def _resolve_harness_config(
 # in-process) harnesses. Used to apply a per-session ``/model`` override at
 # highest precedence — see :func:`_build_spawn_env_from_spec`.
 _HARNESS_MODEL_ENV_KEY: dict[str, str] = {
+    "cc-haha": "HARNESS_CC_HAHA_MODEL",
     "claude-sdk": "HARNESS_CLAUDE_SDK_MODEL",
     "codex": "HARNESS_CODEX_MODEL",
     "pi": "HARNESS_PI_MODEL",
@@ -18480,6 +18481,7 @@ def _build_spawn_env_from_spec(
     try:
         from omnigent.runtime.workflow import (
             _build_antigravity_spawn_env,
+            _build_cc_haha_spawn_env,
             _build_claude_sdk_spawn_env,
             _build_codex_spawn_env,
             _build_copilot_spawn_env,
@@ -18491,7 +18493,9 @@ def _build_spawn_env_from_spec(
             _build_qwen_spawn_env,
         )
 
-        if harness == "claude-sdk":
+        if harness == "cc-haha":
+            env = _build_cc_haha_spawn_env(spec, cwd=cwd, workdir=workdir)
+        elif harness == "claude-sdk":
             env = _build_claude_sdk_spawn_env(spec, workdir=workdir)
         elif harness == "codex":
             env = _build_codex_spawn_env(spec, workdir=workdir)

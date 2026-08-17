@@ -179,18 +179,32 @@ server (see below), Connect, and you're in.
 
 ## Build a distributable
 
+The zero-dependency Apple Silicon workbench is built from the repository root
+on an arm64 Mac:
+
+```bash
+bash scripts/desktop/build_macos_package.sh
+```
+
+This builds the web UI, downloads the pinned CPython runtime, installs the
+private-fund dependencies, compiles cc-haha, and produces ad-hoc-signed DMG and
+ZIP artifacts. Set `SKIP_MAC_PACKAGE_SMOKE=1` only when a GUI launch is not
+available. The same script is used by the manually triggered
+`Build macOS Apple Silicon` GitHub Actions workflow.
+
 From `web/electron/`:
 
 ```bash
 npm run build             # current platform
 npm run build:mac         # .dmg + .zip (signed if an identity is available, not notarized)
+npm run build:mac:internal # ad-hoc Apple Silicon package using the assembled runtime
 npm run build:mac:release # .dmg + .zip, signed + notarized (requires credentials, see below)
 npm run build:linux       # AppImage + .deb
 npm run build:win         # NSIS installer
 ```
 
-Output lands in `electron/dist/` (the DMG is named
-`Omnigent-<version>-<arch>.dmg`).
+Output lands in `electron/dist/`. The internal build also writes
+`SHA256SUMS` and `BUILD_INFO.txt`.
 
 ## macOS code signing & notarization
 

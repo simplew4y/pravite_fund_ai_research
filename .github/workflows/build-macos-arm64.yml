@@ -1,0 +1,71 @@
+name: Build macOS Apple Silicon
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_package_smoke:
+        description: Skip launching the packaged app and checking local health
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'macos-build-*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS arm64 internal build
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      DESKTOP_MAC_SIGN_MODE: adhoc
+      SKIP_MAC_PACKAGE_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_package_smoke && '1' || '0' }}
+      DESKTOP_CACHE_DIR: ${{ github.workspace }}/.desktop-build-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.22.1'
+          cache: npm
+          cache-dependency-path: |
+            omnigent/web/package-lock.json
+            omnigent/web/electron/package-lock.json
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.10'
+
+      - name: Cache native runtime downloads
+        uses: actions/cache@v6
+        with:
+          path: |
+            .desktop-build-cache
+            ~/.bun/install/cache
+            ~/Library/Caches/pip
+          key: macos-arm64-runtime-v1-${{ hashFiles('scripts/desktop/requirements-desktop.txt', 'cc-haha/bun.lock', 'cc-haha/adapters/bun.lock') }}
+          restore-keys: |
+            macos-arm64-runtime-v1-
+
+      - name: Build application
+        run: bash scripts/desktop/build_macos_package.sh
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: PrivateFundWorkbench-macos-arm64-${{ github.run_number }}
+          path: |
+            omnigent/web/electron/dist/*.dmg
+            omnigent/web/electron/dist/*.zip
+            omnigent/web/electron/dist/SHA256SUMS
+            omnigent/web/electron/dist/BUILD_INFO.txt
+            omnigent/web/electron/dist/macos-package-smoke.log
+          if-no-files-found: error
+          retention-days: 14

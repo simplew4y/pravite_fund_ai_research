@@ -179,6 +179,16 @@ describe("isValidWorkspace", () => {
     expect(isValidWorkspace("./myapp")).toBe(false);
     expect(isValidWorkspace("../myapp")).toBe(false);
   });
+
+  it("accepts Windows absolute paths", () => {
+    expect(isValidWorkspace("C:\\Users\\me\\project")).toBe(true);
+    expect(isValidWorkspace("c:/Users/me/project")).toBe(true);
+    expect(isValidWorkspace("D:\\data")).toBe(true);
+  });
+
+  it("accepts Windows UNC paths", () => {
+    expect(isValidWorkspace("\\\\server\\share\\repo")).toBe(true);
+  });
 });
 
 // Path normalization underpins the directory-conflict match: a freshly

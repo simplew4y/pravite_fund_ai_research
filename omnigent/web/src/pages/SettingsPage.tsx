@@ -182,8 +182,16 @@ function llmResultMessage(result: LlmConnectionTestResult, t: TFunction): string
 
 function LlmProviderSection() {
   const { t } = useTranslation();
-  const { cloudAccounts, config, modelService, applyStatus, loading, refresh, setSource } =
-    useLlmConfiguration();
+  const {
+    cloudAccounts,
+    serverScoped,
+    config,
+    modelService,
+    applyStatus,
+    loading,
+    refresh,
+    setSource,
+  } = useLlmConfiguration();
   const [form, setForm] = useState<LlmProviderInput>({
     preset: "dashscope",
     baseUrl: LLM_PRESETS.dashscope.baseUrl,
@@ -221,7 +229,7 @@ function LlmProviderSection() {
   useEffect(() => {
     let active = true;
     const refreshActivity = async () => {
-      const next = await getLlmApplyStatus();
+      const next = await getLlmApplyStatus(serverScoped);
       if (active) setActivity(next);
     };
     void refreshActivity();
@@ -230,18 +238,18 @@ function LlmProviderSection() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [serverScoped]);
 
   const runTest = async () => {
     setBusy("test");
-    const next = await testLlmConfig(form);
+    const next = await testLlmConfig(form, serverScoped);
     setResult(next);
     setBusy(null);
   };
 
   const save = async () => {
     setBusy("save");
-    const next = await saveLlmConfig(form);
+    const next = await saveLlmConfig(form, serverScoped);
     setBusy(null);
     setResult(next);
     if (!next.ok) return;

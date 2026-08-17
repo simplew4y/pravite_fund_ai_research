@@ -53,6 +53,7 @@ function readPromptDismissed(userId: string): boolean {
 interface LlmConfigContextValue {
   enabled: boolean;
   cloudAccounts: boolean;
+  serverScoped: boolean;
   config: LlmProviderConfig | null;
   modelService: ModelServiceState | null;
   applyStatus: LlmApplyStatus;
@@ -65,6 +66,7 @@ interface LlmConfigContextValue {
 const LlmConfigContext = createContext<LlmConfigContextValue>({
   enabled: false,
   cloudAccounts: false,
+  serverScoped: false,
   config: null,
   modelService: null,
   applyStatus: { busy: false, applying: false },
@@ -78,6 +80,7 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const serverInfo = useServerInfo();
   const cloudAccounts = serverInfo !== "loading" && serverInfo.cloud_accounts_enabled === true;
+  const serverScoped = serverInfo !== "loading" && serverInfo.accounts_enabled;
   const enabled =
     cloudAccounts ||
     supportsDesktopLlmConfiguration() ||
@@ -138,7 +141,7 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
       }
       return;
     }
-    const next = await getLlmConfig();
+    const next = await getLlmConfig(serverScoped);
     setConfig(next);
     setModelService(null);
     setLoading(false);
@@ -150,7 +153,14 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
     ) {
       setPromptOpen(true);
     }
-  }, [cloudAccounts, enabled, location.pathname, maybeOpenAutomaticPrompt, rememberState]);
+  }, [
+    cloudAccounts,
+    enabled,
+    location.pathname,
+    maybeOpenAutomaticPrompt,
+    rememberState,
+    serverScoped,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -158,10 +168,10 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!enabled || cloudAccounts) return;
-    void getLlmApplyStatus().then(setApplyStatus);
-    const unsubscribe = onLlmApplyStatusChanged(setApplyStatus);
+    void getLlmApplyStatus(serverScoped).then(setApplyStatus);
+    const unsubscribe = onLlmApplyStatusChanged(setApplyStatus, serverScoped);
     return unsubscribe;
-  }, [cloudAccounts, enabled]);
+  }, [cloudAccounts, enabled, serverScoped]);
 
   const requireConfiguration = useCallback(async () => {
     if (!enabled) return true;
@@ -232,6 +242,7 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
     () => ({
       enabled,
       cloudAccounts,
+      serverScoped,
       config,
       modelService,
       applyStatus,
@@ -249,6 +260,7 @@ export function LlmConfigProvider({ children }: { children: ReactNode }) {
       modelService,
       refresh,
       requireConfiguration,
+      serverScoped,
       setSource,
     ],
   );

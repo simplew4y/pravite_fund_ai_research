@@ -118,6 +118,7 @@ vi.mock("@/lib/LlmConfigContext", () => ({
   useLlmConfiguration: () => ({
     enabled: true,
     cloudAccounts: mocks.cloudAccounts,
+    serverScoped: mocks.accountsEnabled,
     config: mocks.llmConfig,
     modelService: mocks.cloudAccounts
       ? {
@@ -152,7 +153,7 @@ vi.mock("@/lib/LlmConfigContext", () => ({
   }),
 }));
 vi.mock("@/lib/llmConfigApi", () => ({
-  getLlmApplyStatus: () => Promise.resolve({ busy: false, applying: false }),
+  getLlmApplyStatus: vi.fn(() => Promise.resolve({ busy: false, applying: false })),
   testLlmConfig: mocks.testLlm,
   saveLlmConfig: mocks.saveLlm,
 }));
@@ -472,6 +473,7 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(mocks.testLlm).toHaveBeenCalledWith(
         expect.objectContaining({ model: "qwen3-max", apiKey: "" }),
+        true,
       ),
     );
 
@@ -479,6 +481,7 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(mocks.saveLlm).toHaveBeenCalledWith(
         expect.objectContaining({ model: "qwen3-max", apiKey: "" }),
+        true,
       ),
     );
     expect(mocks.refreshLlm).toHaveBeenCalled();

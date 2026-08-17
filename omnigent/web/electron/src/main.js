@@ -25,6 +25,7 @@ const {
   screen,
   session,
   shell,
+  safeStorage,
   systemPreferences,
 } = require("electron");
 const fs = require("node:fs");
@@ -35,9 +36,16 @@ const { normalizeUrl, expandDatabricksWorkspaceUrl } = require("./url");
 const { registerWorkspaceChromeHide } = require("./workspace-chrome");
 const omnigentCli = require("./omnigent_cli");
 const serverManager = require("./server_manager");
+const desktopMode = require("./desktop_mode");
+const processSupervisor = require("./process_supervisor");
+const llmSettings = require("./llm_settings");
+const llmApply = require("./llm_apply");
 
 /** Absolute path to the bundled setup page (the "connect to server" form). */
 const SETUP_PAGE = path.join(__dirname, "..", "setup", "index.html");
+
+/** Absolute path to the zero-config boot splash (bundled desktop mode). */
+const BOOT_PAGE = path.join(__dirname, "..", "boot", "index.html");
 
 /** The setup page's file:// URL, for verifying IPC sender frames. */
 const SETUP_PAGE_URL = pathToFileURL(SETUP_PAGE);
@@ -140,7 +148,12 @@ const LNA_PERMISSIONS = new Set(["local-network-access", "loopback-network"]);
  * app at launch. Details in signing/entitlements.mac.plist.
  * @type {string | null}
  */
-const WEBAUTHN_KEYCHAIN_ACCESS_GROUP = "8RMX4WU6F8.ai.omnigent.desktop";
+const packageMetadata = require("../package.json");
+const WEBAUTHN_KEYCHAIN_ACCESS_GROUP =
+  process.env.OMNIGENT_WEBAUTHN_KEYCHAIN_ACCESS_GROUP ||
+  (packageMetadata.omnigentInternalAdhocBuild
+    ? null
+    : "8RMX4WU6F8.ai.omnigent.desktop");
 
 /**
  * Enable the macOS WebAuthn platform authenticator so passkey
@@ -430,6 +443,7 @@ function applyDockIcon() {
  * @type {Map<BrowserWindow, WindowState>}
  */
 const windows = new Map();
+let llmApplying = false;
 
 /**
  * Recompute the app-wide dock/taskbar badge: take each distinct pinned
@@ -584,6 +598,25 @@ function broadcastHostStatus() {
   }
 }
 
+function broadcastLlmApplyStatus(detail = null) {
+  const status = { applying: llmApplying, busy: llmApplying, detail };
+  for (const [win, state] of windows) {
+    if (win.isDestroyed() || !state.origin || !state.serverUrl) continue;
+    try {
+      win.webContents.send("omnigent:llm-apply-status-changed", status);
+    } catch {
+      // The window may close between the guard and send.
+    }
+  }
+}
+
+async function getLlmApplyStatus(ignoreApplyLock = false) {
+  if (llmApplying && !ignoreApplyLock) {
+    return { applying: true, busy: true, detail: "正在应用模型配置。" };
+  }
+  return llmApply.readSessionActivity(fetch, desktopMode.stackEndpoints().serverUrl);
+}
+
 /**
  * The window an OS-menu / app-level action should target: the currently
  * focused shell window, falling back to any open one (or null when none).
@@ -620,6 +653,17 @@ function loadSettings() {
 function saveSettings(settings) {
   fs.mkdirSync(app.getPath("userData"), { recursive: true });
   fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2), "utf8");
+}
+
+function publicLlmConfig(settings) {
+  const view = llmSettings.publicConfig(settings);
+  const runtime = llmSettings.runtimeConfig(settings, safeStorage);
+  return {
+    ...view,
+    hasApiKey: Boolean(runtime.apiKey),
+    maskedApiKey: llmSettings.maskApiKey(runtime.apiKey),
+    configured: runtime.configured,
+  };
 }
 
 /**
@@ -851,7 +895,7 @@ function createWindow(targetUrl, opts = {}) {
     // Tall enough that the bundled setup page (logo, Start-locally, divider,
     // URL field, Connect, and a few recents) fits without overflowing.
     minHeight: 600,
-    title: "Omnigent",
+    title: desktopMode.isBundledMode() ? "私募研究工作台" : "Omnigent",
     backgroundColor: "#0b0b0c",
     // macOS: hide the native title bar but keep the traffic lights, inset
     // into the content. The web layer provides the drag surface + clearance
@@ -874,7 +918,11 @@ function createWindow(targetUrl, opts = {}) {
   });
   const explicit =
     typeof targetUrl === "string" && /^https?:\/\//i.test(targetUrl) ? targetUrl : undefined;
-  const saved = loadSettings().server_url;
+  // Bundled zero-config: never ask for a server URL; always boot the local stack.
+  const saved = desktopMode.isBundledMode()
+    ? desktopMode.stackEndpoints().serverUrl + "/"
+    : loadSettings().server_url;
+  const forceBootSplash = desktopMode.isBundledMode() && !explicit && !opts.skipBoot;
   // An explicit target (New Window cloning a sibling) always wins. Otherwise
   // ephemeral windows start on the setup page so the user can enter the
   // alternate server, and normal windows fall back to the saved server.
@@ -893,7 +941,17 @@ function createWindow(targetUrl, opts = {}) {
     ephemeral,
     badgeCount: 0,
   });
-  if (destination) {
+  if (forceBootSplash) {
+    // Show splash first; boot IPC starts the stack then navigates to the SPA.
+    windows.set(win, {
+      origin: null,
+      serverUrl: null,
+      ephemeral,
+      badgeCount: 0,
+      bootPending: true,
+    });
+    void win.loadFile(BOOT_PAGE);
+  } else if (destination) {
     void win.loadURL(destination);
   } else {
     // ?ephemeral=1 only changes the setup page's copy (the window's
@@ -1541,6 +1599,16 @@ function isPinnedOriginSender(event) {
   return originOf(event.sender.getURL()) === pinned;
 }
 
+function isBundledLocalSender(event) {
+  if (!desktopMode.isBundledMode() || !isPinnedOriginSender(event)) return false;
+  try {
+    const hostname = new URL(event.sender.getURL()).hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 function registerIpc() {
   // Setup page → persist URL and navigate the SENDING window to it. We target
   // the window that owns the setup page (via its webContents) rather than a
@@ -1883,6 +1951,81 @@ function registerIpc() {
     return clearCliPath();
   });
 
+  ipcMain.handle("omnigent:llm-get-config", (event) => {
+    if (!isBundledLocalSender(event)) return null;
+    return publicLlmConfig(loadSettings());
+  });
+
+  ipcMain.handle("omnigent:llm-get-apply-status", async (event) => {
+    if (!isBundledLocalSender(event)) {
+      return { applying: false, busy: true, detail: "Model settings are only available in the local desktop app." };
+    }
+    return getLlmApplyStatus();
+  });
+
+  ipcMain.handle("omnigent:llm-test-config", async (event, input) => {
+    if (!isBundledLocalSender(event)) {
+      return { ok: false, error: "permission", detail: "Model settings are only available in the local desktop app." };
+    }
+    try {
+      const candidate = llmSettings.candidateConfig(loadSettings(), input, safeStorage);
+      if (!candidate.apiKey) {
+        return { ok: false, error: "authentication", detail: "API Key is required." };
+      }
+      return await processSupervisor.testLlmConfig(candidate);
+    } catch (error) {
+      return { ok: false, error: "validation", detail: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle("omnigent:llm-save-config", async (event, input) => {
+    if (!isBundledLocalSender(event)) {
+      return { ok: false, error: "permission", detail: "Model settings are only available in the local desktop app." };
+    }
+    if (llmApplying) {
+      return { ok: false, error: "busy", detail: "模型配置正在应用，请稍候。" };
+    }
+    llmApplying = true;
+    broadcastLlmApplyStatus("正在检查当前生成状态。");
+    try {
+      const current = loadSettings();
+      const next = llmSettings.saveConfig(current, input, safeStorage);
+      const activity = await getLlmApplyStatus(true);
+      if (activity.busy) {
+        return { ok: false, error: "busy", detail: activity.detail || "当前有回答正在生成。" };
+      }
+      broadcastLlmApplyStatus("正在应用模型配置。");
+      const nextRuntime = llmSettings.runtimeConfig(next, safeStorage);
+      const currentRuntime = llmSettings.runtimeConfig(current, safeStorage);
+      const switched = await processSupervisor.reloadLiteLlm(
+        nextRuntime,
+        currentRuntime,
+      );
+      if (!switched.ok) {
+        return { ok: false, error: "apply", detail: switched.error || "模型服务切换失败。" };
+      }
+      try {
+        saveSettings(next);
+      } catch (error) {
+        const restored = await processSupervisor.reloadLiteLlm(currentRuntime, nextRuntime);
+        const suffix = restored.ok ? "已恢复原配置。" : "原配置恢复失败，请重新启动应用。";
+        return {
+          ok: false,
+          error: "apply",
+          detail: `模型配置无法保存，${suffix} ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+      return { ok: true, config: publicLlmConfig(next) };
+    } catch (error) {
+      return { ok: false, error: "validation", detail: error instanceof Error ? error.message : String(error) };
+    } finally {
+      if (llmApplying) {
+        llmApplying = false;
+        broadcastLlmApplyStatus(null);
+      }
+    }
+  });
+
   // SPA → start / stop / restart this machine's host daemon for the window's
   // own server (the host selection menu's "connect this machine" action).
   ipcMain.handle("omnigent:host-control", async (event, action) => {
@@ -1927,6 +2070,44 @@ function registerIpc() {
   // Push a status ping when a host child connects or exits on its own (no
   // polling) — the server-management module owns the subprocess and reports
   // lifecycle changes here.
+
+  // Bundled boot splash → start local stack, then navigate to the SPA.
+  ipcMain.handle("omnigent:boot-start-stack", async (event) => {
+    const senderUrl = event.sender.getURL() || "";
+    if (!senderUrl.startsWith("file:") || !senderUrl.includes("/boot/")) {
+      // Also allow boot/index.html path variants (Windows file URLs).
+      if (!senderUrl.includes("boot") || !senderUrl.endsWith("index.html")) {
+        console.warn("[omnigent] boot-start-stack from untrusted sender dropped");
+        return { ok: false, error: "boot-start-stack is only available from the boot page" };
+      }
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    processSupervisor.onStatus((msg) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("omnigent:boot-status", msg);
+      }
+    });
+    const result = await processSupervisor.ensureStackRunning(
+      llmSettings.runtimeConfig(loadSettings(), safeStorage),
+    );
+    if (result.ok && result.serverUrl && win && !win.isDestroyed()) {
+      const url = result.serverUrl.endsWith("/") ? result.serverUrl : result.serverUrl + "/";
+      setWindowServerUrl(win, url);
+      const state = windows.get(win);
+      if (state) {
+        state.origin = originOf(url);
+        state.bootPending = false;
+      }
+      // Persist so thin-mode tools still see a saved URL if user toggles.
+      const settings = loadSettings();
+      settings.server_url = url;
+      rememberRecentServer(settings, url);
+      saveSettings(settings);
+      void win.loadURL(url);
+    }
+    return result;
+  });
+
   serverManager.onChange(broadcastHostStatus);
 }
 
@@ -1935,7 +2116,7 @@ function registerIpc() {
 // ---------------------------------------------------------------------------
 
 // Name drives the macOS app menu title and the notification source name.
-app.setName("Omnigent");
+app.setName(desktopMode.isBundledMode() ? "私募研究工作台" : "Omnigent");
 
 // Single-instance: focus the existing window instead of opening a second.
 const gotLock = app.requestSingleInstanceLock();
@@ -1990,12 +2171,12 @@ if (!gotLock) {
     event.preventDefault();
     if (quitCleanupStarted) return;
     quitCleanupStarted = true;
-    serverManager
-      .shutdown(resolvedCliPath())
-      .catch(() => {})
-      .finally(() => {
-        quitCleanupDone = true;
-        app.quit();
-      });
+    Promise.all([
+      serverManager.shutdown(resolvedCliPath()).catch(() => {}),
+      processSupervisor.shutdownStack().catch(() => {}),
+    ]).finally(() => {
+      quitCleanupDone = true;
+      app.quit();
+    });
   });
 }

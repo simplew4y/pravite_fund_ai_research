@@ -19,6 +19,7 @@ import time
 from collections.abc import AsyncIterator, Callable, Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI
@@ -53,6 +54,15 @@ def _server_url_from_env() -> str:
             f"{_RUNNER_SERVER_URL_ENV_VAR} is required for the runner WebSocket tunnel"
         )
     return server_url.strip()
+
+
+def _trust_env_for_server_url(server_url: str) -> bool:
+    """Allow proxy discovery only for non-loopback Omnigent servers."""
+    try:
+        hostname = urlparse(server_url).hostname
+    except ValueError:
+        return True
+    return hostname not in {"127.0.0.1", "localhost", "::1"}
 
 
 def _runner_config_path() -> Path:
@@ -724,6 +734,10 @@ def create_app(
     server_client = httpx.AsyncClient(
         base_url=server_url,
         auth=_RunnerDatabricksAuth(auth_token_factory),
+        # Windows exposes its system proxy through urllib even when no
+        # HTTP_PROXY environment variable exists. Local desktop callbacks
+        # must never be sent through that proxy.
+        trust_env=_trust_env_for_server_url(server_url),
         # Announce the runner as a first-party non-browser client via the
         # sentinel Origin. The server's require_trusted_origin CSRF guard on
         # the multipart routes (POST /v1/sessions bundle create, file upload

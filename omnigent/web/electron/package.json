@@ -1,28 +1,32 @@
 {
   "name": "omnigent-desktop-electron",
-  "productName": "Omnigent",
-  "version": "0.3.0",
-  "description": "Omnigent desktop shell (Electron edition) — a thin native wrapper around the server-served web UI.",
+  "productName": "PrivateFundWorkbench",
+  "version": "0.2.2",
+  "description": "Private Fund Research Workbench desktop (Electron, zero-config bundled stack).",
   "private": true,
   "main": "src/main.js",
   "author": "Databricks, Inc.",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "test": "node --test",
+    "test": "node --test test/*.test.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
+    "build:mac:internal": "electron-builder --config electron-builder.mac-internal.js --mac --arm64 --publish never",
     "build:mac:release": "electron-builder --mac -c.mac.notarize=true",
     "build:linux": "electron-builder --linux",
-    "build:win": "electron-builder --win"
+    "build:win": "electron-builder --win",
+    "build:win:pf": "electron-builder --win --x64",
+    "assemble:runtime": "bash ../../../scripts/desktop/assemble_runtime.sh",
+    "assemble:mac": "bash ../../../scripts/desktop/assemble_mac_native.sh"
   },
   "devDependencies": {
     "electron": "^42.3.2",
     "electron-builder": "^26.0.0"
   },
   "build": {
-    "appId": "ai.omnigent.desktop",
-    "productName": "Omnigent",
+    "appId": "ai.privatefund.workbench",
+    "productName": "PrivateFundWorkbench",
     "directories": {
       "output": "dist"
     },
@@ -31,12 +35,20 @@
       "src/**/*",
       "setup/**/*",
       "find/**/*",
-      "icons/**/*"
+      "icons/**/*",
+      "boot/**/*"
     ],
     "extraResources": [
       {
         "from": "../platform-assets",
         "to": "platform-assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/runtime",
+        "to": "runtime",
         "filter": [
           "**/*"
         ]
@@ -94,8 +106,17 @@
       "icon": "icons/icon.ico",
       "target": [
         "nsis"
-      ]
-    }
+      ],
+      "executableName": "PrivateFundWorkbench",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "PrivateFundWorkbench-Setup-${version}-${arch}.${ext}",
+      "shortcutName": "PrivateFundWorkbench"
+    },
+    "forceCodeSigning": false
   },
   "dependencies": {
     "js-yaml": "^4.2.0"

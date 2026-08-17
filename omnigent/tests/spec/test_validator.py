@@ -392,6 +392,18 @@ def test_omnigent_executor_accepts_valid_harness() -> None:
     assert result.valid, f"Expected valid spec, got errors: {result.errors}"
 
 
+def test_omnigent_executor_accepts_cc_haha_harness() -> None:
+    spec = _minimal_spec(
+        llm=LLMConfig(model="qwen3-max"),
+        executor=ExecutorSpec(
+            type="omnigent",
+            config={"harness": "cc-haha"},
+        ),
+    )
+    result = validate(spec)
+    assert result.valid, f"Expected valid spec, got errors: {result.errors}"
+
+
 def test_omnigent_executor_accepts_antigravity_native_harness() -> None:
     """
     ``omnigent`` executor with ``config.harness == "antigravity-native"``

@@ -2365,8 +2365,24 @@ def _build_session_response(
     # solely on the stored label — the pill then stays correct even if the
     # stored value is missing or stale. Idempotent: a no-op when already present.
     labels = labels_with_closed_status(conv.labels, conv.title)
-    if agent_name in (_CLAUDE_NATIVE_MODEL, _CODEX_NATIVE_MODEL):
+    resolved_harness = _resolve_harness(conv)
+    from omnigent.harness_aliases import is_native_harness
+
+    if is_native_harness(resolved_harness) or (
+        resolved_harness is None and agent_name in (_CLAUDE_NATIVE_MODEL, _CODEX_NATIVE_MODEL)
+    ):
         labels = {**labels, _CLAUDE_NATIVE_UI_LABEL_KEY: _CLAUDE_NATIVE_UI_LABEL_VALUE}
+    elif resolved_harness is not None:
+        # A concrete non-native harness wins over stale wrapper labels. This
+        # matters for packaged cc-haha sessions whose compatibility agent is
+        # still named ``claude-native-ui`` but runs without a native terminal.
+        labels = dict(labels)
+        if labels.get(_CLAUDE_NATIVE_UI_LABEL_KEY) == _CLAUDE_NATIVE_UI_LABEL_VALUE:
+            labels.pop(_CLAUDE_NATIVE_UI_LABEL_KEY, None)
+        wrapper = labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
+        if native_coding_agent_for_wrapper_label(wrapper) is not None:
+            labels.pop(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY, None)
+            labels.pop("omnigent.claude_native.auto_approve", None)
     return SessionResponse(
         id=conv.id,
         agent_id=conv.agent_id,
@@ -5810,9 +5826,11 @@ async def _validate_session_workspace(
             "workspace required when host_id is set",
             code=ErrorCode.INVALID_INPUT,
         )
-    if not workspace.startswith("/"):
+    from omnigent.server.routes._workspace_validation import is_absolute_workspace_path
+
+    if not is_absolute_workspace_path(workspace):
         raise OmnigentError(
-            "workspace must be an absolute path starting with /",
+            "workspace must be an absolute path (POSIX /path or Windows drive/UNC path)",
             code=ErrorCode.INVALID_INPUT,
         )
     if agent_cache is None:
@@ -6897,6 +6915,11 @@ def _is_native_terminal_session(conv: Conversation) -> bool:
     :param conv: Conversation row for the target session.
     :returns: ``True`` for wrappers backed by a native terminal harness.
     """
+    from omnigent.harness_aliases import is_native_harness
+
+    resolved_harness = _resolve_harness(conv)
+    if resolved_harness is not None:
+        return is_native_harness(resolved_harness)
     wrapper = conv.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
     return native_coding_agent_for_wrapper_label(wrapper) is not None
 
@@ -18467,13 +18490,8 @@ def create_sessions_router(
                 if runner_result is None:
                     detail = "could not reach the Host runner to inject /compact"
                 elif runner_result.status_code != 204:
-                    detail = (
-                        f"runner returned HTTP {runner_result.status_code}"
-                        + (
-                            f": {runner_result.body[:240]}"
-                            if runner_result.body
-                            else ""
-                        )
+                    detail = f"runner returned HTTP {runner_result.status_code}" + (
+                        f": {runner_result.body[:240]}" if runner_result.body else ""
                     )
                 else:
                     detail = (

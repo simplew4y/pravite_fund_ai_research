@@ -104,6 +104,20 @@ contextBridge.exposeInMainWorld("omnigentDesktop", {
    * setup page, so a connected server can't repoint the CLI at an arbitrary one.
    */
   resetCliPath: () => ipcRenderer.invoke("omnigent:cli-reset-path"),
+  /** Read model settings without ever returning the stored API key. */
+  getLlmConfig: () => ipcRenderer.invoke("omnigent:llm-get-config"),
+  /** Test a candidate model configuration through the bundled LiteLLM runtime. */
+  testLlmConfig: (config) => ipcRenderer.invoke("omnigent:llm-test-config", config),
+  /** Persist model settings; API keys are encrypted in the main process. */
+  saveLlmConfig: (config) => ipcRenderer.invoke("omnigent:llm-save-config", config),
+  /** Report whether model settings can be applied without interrupting work. */
+  getLlmApplyStatus: () => ipcRenderer.invoke("omnigent:llm-get-apply-status"),
+  /** Subscribe to the brief model-gateway apply window. */
+  onLlmApplyStatusChanged: (callback) => {
+    const handler = (_event, status) => callback(status);
+    ipcRenderer.on("omnigent:llm-apply-status-changed", handler);
+    return () => ipcRenderer.removeListener("omnigent:llm-apply-status-changed", handler);
+  },
 });
 
 // Setup-page bridge: persist + navigate to a server URL, and read the saved
@@ -136,4 +150,17 @@ contextBridge.exposeInMainWorld("omnigentSetup", {
    * caller then connects to `url` via setServerUrl.
    */
   startLocalServer: () => ipcRenderer.invoke("omnigent:start-local-server"),
+});
+
+// Boot splash (bundled zero-config mode only). Starts the local stack and
+// streams status lines while the main process brings services up.
+contextBridge.exposeInMainWorld("omnigentDesktopBoot", {
+  startStack: () => ipcRenderer.invoke("omnigent:boot-start-stack"),
+  onStatus: (callback) => {
+    const listener = (_event, msg) => {
+      if (typeof msg === "string") callback(msg);
+    };
+    ipcRenderer.on("omnigent:boot-status", listener);
+    return () => ipcRenderer.removeListener("omnigent:boot-status", listener);
+  },
 });

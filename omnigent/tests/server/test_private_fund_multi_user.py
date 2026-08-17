@@ -67,6 +67,21 @@ def test_namespaces_and_background_context_are_isolated(
     assert current_tenant() is None
 
 
+def test_tenant_root_can_be_redirected_to_desktop_user_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    account_db: tuple[str, SqlAlchemyAccountStore],
+) -> None:
+    _db_url, store = account_db
+    desktop_root = tmp_path / "app-data" / "users"
+    monkeypatch.setenv("PRIVATE_FUND_USER_DATA_ROOT", str(desktop_root))
+
+    tenant = build_tenant_context("alice@example.com", store)
+
+    assert tenant.user_root.parent == desktop_root.resolve()
+    assert tenant.dataset_root == tenant.user_root / "private_fund_datasets"
+
+
 def test_user_model_keys_are_encrypted_and_gateway_forces_saved_model(
     monkeypatch: pytest.MonkeyPatch,
     account_db: tuple[str, SqlAlchemyAccountStore],

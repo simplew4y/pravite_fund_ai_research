@@ -96,7 +96,9 @@ describe("settingsNavGroups", () => {
         .flatMap((g) => g.items)
         .map((i) => i.id);
     expect(ids(false)).not.toContain("cli");
+    expect(ids(false)).not.toContain("llm");
     expect(ids(true)).toContain("cli");
+    expect(ids(true)).not.toContain("llm");
   });
 
   it("shows model service independently of the Electron-only CLI section", () => {

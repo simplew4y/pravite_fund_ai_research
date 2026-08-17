@@ -1,0 +1,62 @@
+# Native desktop runtime for the private-fund workbench (Windows and macOS).
+# Windows installs into embeddable CPython via Wine; macOS uses a bundled
+# python-build-standalone distribution.
+# Keep this list lean; do NOT pull full FinSagent/vllm/eval stacks.
+
+# --- HTTP / server ---
+fastapi>=0.100,<1
+uvicorn[standard]>=0.30,<1
+starlette>=1.0.1,<2
+httpx>=0.27,<1
+websockets>=15.0.1,<16
+anyio>=4.0,<5
+pydantic>=2.0,<3
+pydantic-settings>=2.0,<3
+
+# --- Omnigent core runtime ---
+pyyaml>=6.0,<7
+openai>=1.0,<3
+rich>=13.9.4,<14
+prompt_toolkit>=3.0,<4
+mcp>=1.0,<2
+psutil>=5.9,<8
+keyring>=24,<26
+tomlkit>=0.12,<1
+alembic>=1.0,<2
+cachetools>=5.0,<7
+click>=8.0,<8.2
+sqlalchemy>=2.0,<3
+tiktoken>=0.7,<1
+PyJWT[crypto]>=2.8,<3
+argon2-cffi>=23.1,<24
+packaging>=23,<26
+ftfy>=6.0
+python-multipart>=0.0.9
+aiofiles>=23.0
+orjson>=3.9
+backoff>=2.2.1,<3
+pexpect>=4.9,<5; platform_system != "Windows"
+pyte>=0.8,<1; platform_system != "Windows"
+
+# --- Model / harness (private-fund path) ---
+litellm[proxy]==1.91.4
+openai-agents==0.18.3
+# cc-haha is shipped as a compiled sidecar; no Claude Agent SDK is required.
+
+# --- Private fund PDF / tables / charts ---
+pymupdf>=1.24,<2
+numpy>=1.26,<3
+pandas>=2.2,<3
+matplotlib>=3.8,<4
+# Default A/H-share market-data provider used by valuation tracking.
+akshare>=1.18.40,<2
+openpyxl>=3.1
+xlrd>=2.0
+Pillow>=10.0
+
+# --- Observability (omnigent optional but imported) ---
+opentelemetry-api>=1.20
+opentelemetry-sdk>=1.20
+opentelemetry-exporter-otlp-proto-http>=1.20
+opentelemetry-instrumentation-fastapi>=0.40b0
+opentelemetry-instrumentation-httpx>=0.40b0

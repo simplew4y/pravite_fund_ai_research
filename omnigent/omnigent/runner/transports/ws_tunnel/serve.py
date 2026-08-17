@@ -580,6 +580,7 @@ async def _send_hello(
                 runner_version=runner_version,
                 frame_protocol_version=1,
                 harnesses=[
+                    "cc-haha",
                     "claude-native",
                     "claude-sdk",
                     "codex",

@@ -1060,6 +1060,10 @@ def test_build_runner_env_allowlists_host_env_and_strips_secrets() -> None:
         "OMNIGENT_CLAUDE_SDK_NO_SANDBOX": "1",
         "KUBECONFIG": "/home/alice/.kube/config",
         "CLAUDE_CODE_SKIP_BEDROCK_AUTH": "1",
+        "CLAUDE_CONFIG_DIR": "/home/alice/.omnigent/cc-haha",
+        "PYTHONPYCACHEPREFIX": "/home/alice/.omnigent/pycache/python312",
+        "HARNESS_CC_HAHA_PATH": "/opt/omnigent/bin/claude-haha",
+        "HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE": "/opt/omnigent/CLAUDE.md",
     }
 
     env = _build_runner_env(
@@ -1099,6 +1103,12 @@ def test_build_runner_env_allowlists_host_env_and_strips_secrets() -> None:
     # CLAUDE_CODE_SKIP_BEDROCK_AUTH disables AWS SigV4 auth for LiteLLM
     # proxies — a non-secret boolean, same rationale as CLAUDE_CODE_USE_BEDROCK.
     assert env["CLAUDE_CODE_SKIP_BEDROCK_AUTH"] == "1"
+    # The desktop cc-haha process must remain isolated from ~/.claude, whose
+    # settings may point ANTHROPIC_BASE_URL at an unrelated local gateway.
+    assert env["CLAUDE_CONFIG_DIR"] == "/home/alice/.omnigent/cc-haha"
+    assert env["PYTHONPYCACHEPREFIX"] == "/home/alice/.omnigent/pycache/python312"
+    assert env["HARNESS_CC_HAHA_PATH"] == "/opt/omnigent/bin/claude-haha"
+    assert env["HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE"] == "/opt/omnigent/CLAUDE.md"
     # Non-harness secrets are stripped — the point of the allowlist.
     assert "DATABRICKS_TOKEN" not in env
     assert "AWS_SECRET_ACCESS_KEY" not in env

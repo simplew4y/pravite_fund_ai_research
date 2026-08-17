@@ -12,6 +12,39 @@ from omnigent.server.routes import private_fund_pdf
 from omnigent.tools.builtins.private_fund_dataset import _DatasetStore
 
 
+def test_dataset_store_finds_desktop_registry_from_omnigent_data_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = tmp_path / "data"
+    workspace = data_dir / "private_fund_datasets"
+    dataset_root = workspace / "demo"
+    dataset_root.mkdir(parents=True)
+    (workspace / "datasets.sqlite3").touch()
+    monkeypatch.delenv("PRIVATE_FUND_DATASET_WORKSPACE", raising=False)
+    monkeypatch.setenv("OMNIGENT_DATA_DIR", str(data_dir))
+
+    store = _DatasetStore(dataset_root)
+
+    assert store.workspace_root == workspace.resolve()
+
+
+def test_dataset_store_finds_registry_above_selected_dataset_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "private_fund_datasets"
+    dataset_root = workspace / "demo"
+    dataset_root.mkdir(parents=True)
+    (workspace / "datasets.sqlite3").touch()
+    monkeypatch.delenv("PRIVATE_FUND_DATASET_WORKSPACE", raising=False)
+    monkeypatch.delenv("OMNIGENT_DATA_DIR", raising=False)
+
+    store = _DatasetStore(dataset_root)
+
+    assert store.workspace_root == workspace.resolve()
+
+
 def test_same_name_upload_replaces_logical_source_instead_of_forking_filename(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

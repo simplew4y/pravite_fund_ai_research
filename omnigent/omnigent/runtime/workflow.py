@@ -1252,6 +1252,38 @@ def _build_claude_sdk_spawn_env(
     return env
 
 
+def _build_cc_haha_spawn_env(
+    spec: AgentSpec,
+    *,
+    cwd: Path | None = None,
+    workdir: Path | None = None,
+) -> dict[str, str]:
+    """Build per-conversation settings for the headless cc-haha harness."""
+    env: dict[str, str] = {}
+    model = _resolve_spec_model(spec)
+    if model is not None:
+        env["HARNESS_CC_HAHA_MODEL"] = model
+    if cwd is not None:
+        env["HARNESS_CC_HAHA_CWD"] = str(cwd)
+    if workdir is not None:
+        env["HARNESS_CC_HAHA_BUNDLE_DIR"] = str(workdir)
+
+    permission_mode = spec.executor.config.get("permission_mode")
+    if permission_mode is not None:
+        env["HARNESS_CC_HAHA_PERMISSION_MODE"] = str(permission_mode)
+
+    explicit_prompt = os.environ.get("PRIVATE_FUND_SYSTEM_PROMPT_FILE", "").strip()
+    if explicit_prompt:
+        env["HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE"] = explicit_prompt
+    else:
+        project_root = os.environ.get("PRIVATE_FUND_PROJECT_ROOT", "").strip()
+        if project_root:
+            candidate = Path(project_root) / "omnigent" / "CLAUDE.md"
+            if candidate.is_file():
+                env["HARNESS_CC_HAHA_SYSTEM_PROMPT_FILE"] = str(candidate)
+    return env
+
+
 def _build_codex_spawn_env(
     spec: AgentSpec,
     *,

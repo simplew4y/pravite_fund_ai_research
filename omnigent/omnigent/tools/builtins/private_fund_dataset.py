@@ -1323,10 +1323,24 @@ class _DatasetStore:
             self.workspace_root = bound_workspace.parent
         else:
             workspace_override = os.environ.get("PRIVATE_FUND_DATASET_WORKSPACE")
-            self.workspace_root = (
-                Path(workspace_override).expanduser().resolve()
-                if workspace_override
-                else self.project_root / "output" / "private_fund_datasets"
+            candidates: list[Path] = []
+            if workspace_override:
+                candidates.append(Path(workspace_override).expanduser())
+            data_dir = os.environ.get("OMNIGENT_DATA_DIR")
+            if data_dir:
+                candidates.append(Path(data_dir).expanduser() / "private_fund_datasets")
+            if bound_workspace is not None:
+                candidates.extend(
+                    [bound_workspace, bound_workspace.parent, bound_workspace.parent.parent]
+                )
+            candidates.append(self.project_root / "output" / "private_fund_datasets")
+            self.workspace_root = next(
+                (
+                    candidate.resolve()
+                    for candidate in candidates
+                    if (candidate / "datasets.sqlite3").is_file()
+                ),
+                candidates[0].resolve(),
             )
 
     def _connect(self, path: Path) -> sqlite3.Connection:

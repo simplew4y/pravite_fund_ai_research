@@ -196,7 +196,14 @@ export function nativeCodingAgentForAvailableAgent(
   agent: Pick<AvailableAgent, "name" | "harness"> | null | undefined,
 ): NativeCodingAgentSpec | undefined {
   if (agent == null) return undefined;
-  return nativeCodingAgentForHarness(agent.harness) ?? nativeCodingAgentForAgentName(agent.name);
+  // A declared harness is authoritative. Some packaged agents retain a
+  // legacy native-looking name while using an in-process/headless harness.
+  // Falling back to the name in that case incorrectly stamps terminal labels
+  // and routes the session into tmux/PTY startup on Windows.
+  if (agent.harness != null && agent.harness !== "") {
+    return nativeCodingAgentForHarness(agent.harness);
+  }
+  return nativeCodingAgentForAgentName(agent.name);
 }
 
 export function isNativeCodingAgent(

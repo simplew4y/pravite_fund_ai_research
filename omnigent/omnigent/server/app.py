@@ -581,11 +581,18 @@ def _build_claude_native_bundle() -> bytes:
         spec_path = _materialize_claude_agent_spec(Path(tmpdir))
         raw = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
         native_executor = raw["executor"]
+        raw["prompt"] = (
+            "Use cc-haha's native agent loop and the bundled private-fund skills. "
+            "For project research, call the Omnigent MCP tools before answering."
+        )
         raw["spec_version"] = 1
         raw["executor"] = {
             "type": "omnigent",
             "context_window": native_executor["context_window"],
-            "config": {"harness": native_executor["harness"]},
+            "config": {
+                "harness": "cc-haha",
+                "permission_mode": "bypassPermissions",
+            },
         }
         raw["tools"] = {
             "builtins": [
