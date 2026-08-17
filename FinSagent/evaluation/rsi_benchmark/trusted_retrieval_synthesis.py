@@ -41,6 +41,7 @@ def prepare_synthesis_rows(
         selected = _canonicalize_candidate_selection(output.get("selected_chunks") or [], allowed)
         rows.append({
             "case_id": case_id,
+            "seed": int(output.get("seed", capture.get("seed", 0))),
             "question": questions[case_id],
             "selected_chunks": selected,
             "candidate_id": output.get("candidate_id", ""),
@@ -60,6 +61,8 @@ async def synthesize_rows(rows: list[dict[str, Any]], config: dict[str, Any]) ->
         generated.append({
             "qid": row["case_id"],
             "case_id": row["case_id"],
+            "seed": row["seed"],
+            "arm": "candidate",
             "candidate_id": row["candidate_id"],
             "answer": answer,
         })

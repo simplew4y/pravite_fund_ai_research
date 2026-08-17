@@ -17,7 +17,7 @@ class TrustedRetrievalSynthesisTest(unittest.TestCase):
         questions.write_text(json.dumps({"case_id": "c1", "question": "q"}) + "\n")
         outputs = root / "outputs.jsonl"
         outputs.write_text(json.dumps({
-            "case_id": "c1", "candidate_id": "cand", "selected_chunks": selected,
+            "case_id": "c1", "seed": 29, "candidate_id": "cand", "selected_chunks": selected,
         }) + "\n")
         return captures, questions, outputs, chunk
 
@@ -29,6 +29,7 @@ class TrustedRetrievalSynthesisTest(unittest.TestCase):
             )
             rows = prepare_synthesis_rows(captures, questions, outputs)
             self.assertEqual(rows[0]["selected_chunks"], [chunk])
+            self.assertEqual(rows[0]["seed"], 29)
 
     def test_rejects_forged_candidate_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
