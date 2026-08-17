@@ -3,6 +3,7 @@
 import base64
 import datetime as dt
 import math
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
@@ -218,6 +219,47 @@ def _extract_pdf(
     return records_path.name, [artifact], metrics
 
 
+def _column_index(letters: str) -> int:
+    index = 0
+    for character in letters:
+        index = index * 26 + (ord(character.upper()) - ord("A") + 1)
+    return index
+
+
+def _sheet_bounds(sheet: Any) -> Tuple[int, int]:
+    """Resolve a worksheet's true extent.
+
+    Writers routinely emit stale ``dimension`` elements — some declare a full
+    16384-column grid, others declare 1x1 for a sheet that holds 67 rows. Ask
+    openpyxl to recompute from the stored rows and keep whichever bound is
+    larger so downstream projection never sees a cell outside the extent.
+    """
+    declared_row = int(getattr(sheet, "max_row", 0) or 0)
+    declared_column = int(getattr(sheet, "max_column", 0) or 0)
+    calculate = getattr(sheet, "calculate_dimension", None)
+    dimension = None
+    if callable(calculate):
+        try:
+            dimension = calculate(force=True)
+        except TypeError:
+            try:
+                dimension = calculate()
+            except Exception:
+                dimension = None
+        except Exception:
+            dimension = None
+    if isinstance(dimension, str):
+        match = re.search(
+            r"([A-Za-z]+)(\d+)\s*:\s*([A-Za-z]+)(\d+)", dimension
+        )
+        if match is not None:
+            return (
+                max(declared_row, int(match.group(4))),
+                max(declared_column, _column_index(match.group(3))),
+            )
+    return declared_row, declared_column
+
+
 def _cell_position(cell: Any, row_index: int, column_index: int) -> Tuple[str, int, int]:
     """Resolve a cell's coordinate/row/column.
 
@@ -260,10 +302,19 @@ def _json_value(value: Any) -> Any:
 
 def _workbook_options(
     options: Mapping[str, Any],
-) -> Tuple[bool, int, Optional[List[str]]]:
+) -> Tuple[bool, int, int, Optional[List[str]]]:
     include_empty = _bool_option(options, "includeEmptyCells", False)
     max_cells = _positive_int_option(
         options, "maxCells", 1_000_000, 10_000_000
+    )
+    # Read-only sheets iterate the declared dimension, so sparse real-world
+    # models scan far more cells than they emit. Budget scanning separately so
+    # a wide-but-empty grid cannot exhaust the emitted-cell allowance.
+    max_scanned_cells = _positive_int_option(
+        options,
+        "maxScannedCells",
+        min(max_cells * 20, 100_000_000),
+        100_000_000,
     )
     selected = options.get("sheets")
     if selected is None:
@@ -279,7 +330,7 @@ def _workbook_options(
                 "invalid_options",
             )
         sheet_names = list(dict.fromkeys(selected))
-    return include_empty, max_cells, sheet_names
+    return include_empty, max_cells, max_scanned_cells, sheet_names
 
 
 def _extract_workbook(
@@ -292,7 +343,7 @@ def _extract_workbook(
         )
 
     openpyxl = _load_openpyxl()
-    include_empty, max_cells, selected_sheets = _workbook_options(options)
+    include_empty, max_cells, max_scanned_cells, selected_sheets = _workbook_options(options)
     include_cached = _bool_option(options, "includeCachedValues", True)
     keep_vba = input_path.suffix.lower() in (".xlsm", ".xltm")
 
@@ -353,12 +404,19 @@ def _extract_workbook(
                     if cached_workbook is not None
                     else None
                 )
+                for scanned_sheet in (formula_sheet, cached_sheet):
+                    reset_dimensions = getattr(
+                        scanned_sheet, "reset_dimensions", None
+                    )
+                    if callable(reset_dimensions):
+                        reset_dimensions()
                 sheet_count += 1
+                sheet_max_row, sheet_max_column = _sheet_bounds(formula_sheet)
                 yield {
                     "recordType": "worksheet",
                     "sheet": sheet_name,
-                    "maxRow": int(formula_sheet.max_row or 0),
-                    "maxColumn": int(formula_sheet.max_column or 0),
+                    "maxRow": sheet_max_row,
+                    "maxColumn": sheet_max_column,
                 }
                 cached_rows = (
                     iter(cached_sheet.iter_rows())
@@ -371,23 +429,41 @@ def _extract_workbook(
                         if cached_rows is not None
                         else ()
                     )
-                    cached_by_coordinate = {
-                        _cell_position(candidate, row_index, candidate_index)[0]: candidate
-                        for candidate_index, candidate in enumerate(cached_row, 1)
-                    }
-                    for column_index, cell in enumerate(row, 1):
-                        coordinate, cell_row, cell_column = _cell_position(
-                            cell, row_index, column_index
+                    cached_by_coordinate = {}
+                    for candidate in cached_row:
+                        candidate_coordinate = getattr(
+                            candidate, "coordinate", None
                         )
+                        if isinstance(candidate_coordinate, str):
+                            cached_by_coordinate[candidate_coordinate] = candidate
+                    # Blank padding cells carry no row number; borrow it from a
+                    # populated sibling so positions stay absolute.
+                    row_number = next(
+                        (
+                            int(sibling.row)
+                            for sibling in row
+                            if getattr(sibling, "row", None)
+                        ),
+                        row_index,
+                    )
+                    for column_index, cell in enumerate(row, 1):
                         visited_cell_count += 1
-                        if visited_cell_count > max_cells:
+                        if visited_cell_count > max_scanned_cells:
                             raise ComputeOperationError(
-                                "Workbook exceeds options.maxCells",
+                                "Workbook exceeds options.maxScannedCells",
                                 "document_limit_exceeded",
                             )
                         value = cell.value
                         if value is None and not include_empty:
                             continue
+                        if cell_count >= max_cells:
+                            raise ComputeOperationError(
+                                "Workbook exceeds options.maxCells",
+                                "document_limit_exceeded",
+                            )
+                        coordinate, cell_row, cell_column = _cell_position(
+                            cell, row_number, column_index
+                        )
                         is_formula = bool(
                             getattr(cell, "data_type", None) == "f"
                             or (
