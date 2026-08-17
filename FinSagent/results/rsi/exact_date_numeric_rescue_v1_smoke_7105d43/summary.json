@@ -1,0 +1,59 @@
+{
+  "schema_version": "rsi-candidate-smoke-summary/v1",
+  "candidate_id": "cand-exact-date-numeric-rescue-v1",
+  "candidate_base_commit": "4daa5758aa61a5f10636d5d36f6058ec61800208",
+  "evaluator_commit": "7105d43",
+  "status": "retrieval_mechanism_verified_answer_quality_pending",
+  "failure_cluster": "rerank_evidence_retention_exact_date",
+  "security": {
+    "candidate_network": "denied_by_seccomp",
+    "candidate_filesystem": "landlock_allow_list",
+    "candidate_received_hidden_ground_truth": false,
+    "candidate_received_production_credentials": false,
+    "candidate_output_canonicalized_against_capture": true,
+    "forged_chunk_test": "passed",
+    "private_output_mode": "0600"
+  },
+  "target_smoke": {
+    "company": "NVIDIA",
+    "case_id": "prod-fresh_internal-fsb300_nvidia_dev_017",
+    "baseline_pre_rerank_count": 52,
+    "baseline_final_count": 9,
+    "candidate_final_count": 10,
+    "rescue_applied": true,
+    "rescued_candidate_indices": [6],
+    "deterministic_anchor_check": "passed",
+    "latency_ms": 5.163013935089111
+  },
+  "protected_noop_smokes": [
+    {
+      "company": "Lotus",
+      "case_id": "prod-targeted-fsb300_lotus_dev_040",
+      "baseline_final_count": 30,
+      "candidate_final_count": 30,
+      "exact_equality": true
+    },
+    {
+      "company": "Zeekr",
+      "case_id": "prod-fresh_internal-fsb300_zeekr_dev_023",
+      "baseline_final_count": 20,
+      "candidate_final_count": 20,
+      "exact_equality": true
+    }
+  ],
+  "tests": {
+    "rsi_evaluator_tests_passed": 26,
+    "rsi_evaluator_tests_failed": 0,
+    "candidate_patch_apply_check": "passed",
+    "candidate_patch_whitespace_check": "passed"
+  },
+  "pending_gate": {
+    "name": "trusted_answer_synthesis_and_strict_private_judge",
+    "state": "not_run_requires_explicit_endpoint_authorization",
+    "reason": "Existing authorization covers private ground truth and model answers sent to the judge endpoint, but does not explicitly cover private questions and retrieved filing evidence sent to a generation endpoint."
+  },
+  "promotion": {
+    "decision": "hold",
+    "reason": "Retrieval mechanism is verified on one target and two protected no-op cases; final answer quality and broader protected-set calibration remain unverified."
+  }
+}
