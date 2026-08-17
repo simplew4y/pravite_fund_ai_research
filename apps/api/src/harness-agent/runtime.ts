@@ -22,7 +22,7 @@ import {
   type ChatToolDefinition,
 } from "./model-client.js";
 
-const MAX_STEPS = 8;
+const MAX_STEPS = 16;
 const MAX_TOOL_RESULT_CHARS = 24_000;
 const MAX_HISTORY_EVENTS = 4_000;
 
@@ -51,6 +51,7 @@ const DEFAULT_SYSTEM_PROMPT = [
   "evidence.search 是对资料原文的字面检索：年报与估值模型常为英文或数字，中文检索无结果时",
   "必须改用英文或行业术语重试（如 收入→Revenue/Sales、毛利率→Gross margin、净利润→Net income），",
   "并可用资料标题中的公司名、表名或指标名作为关键词；连续无结果再说明资料库缺少该信息。",
+  "工具调用之间不要重复叙述已经说过的计划，直接推进；最后一步给出完整结论。",
   "回答使用与用户一致的语言，结构清晰，量化结论给出区间与假设。",
 ].join("\n");
 
@@ -377,11 +378,18 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
       const model = this.#modelFor(session);
       let turnText = "";
 
-      for (
-        let step = 0;
-        step < (this.#options.maxSteps ?? MAX_STEPS);
-        step += 1
-      ) {
+      const maxSteps = this.#options.maxSteps ?? MAX_STEPS;
+      for (let step = 0; step < maxSteps; step += 1) {
+        // Spend the last step answering: withholding the tools forces prose
+        // instead of the turn ending mid-investigation.
+        const finalStep = step === maxSteps - 1;
+        if (finalStep) {
+          messages.push({
+            role: "user",
+            content:
+              "工具调用已达上限。请立即基于以上已获得的证据给出完整结论，并引用来源；不要再请求工具。",
+          });
+        }
         const steering = this.#steering.get(sessionId) ?? [];
         this.#steering.delete(sessionId);
         for (const extra of steering) {
@@ -392,7 +400,12 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
         let toolCalls: readonly ChatToolCall[] = [];
         for await (const event of streamChatCompletion(
           endpoint,
-          { model, messages, tools, signal },
+          {
+            model,
+            messages,
+            signal,
+            ...(finalStep ? {} : { tools }),
+          },
           this.#options.fetchImplementation,
         )) {
           if (event.type === "delta") {
@@ -406,11 +419,14 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
           }
         }
 
-        if (toolCalls.length === 0) {
+        if (toolCalls.length === 0 || finalStep) {
+          // The durable answer is the final step's text: intermediate
+          // narration already streamed as deltas, and folding it into the
+          // completed message would replay it into every later turn.
           this.#emit(sessionId, operationId, "message.assistant.completed", {
             message: {
               role: "assistant",
-              content: [{ type: "text", text: turnText }],
+              content: [{ type: "text", text: stepText || turnText }],
             },
           });
           this.#emit(sessionId, operationId, "session.status", {
@@ -486,7 +502,7 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
         }
       }
 
-      // Step budget exhausted: close the turn with what we have.
+      // Unreachable while the final step answers, kept as a safety net.
       this.#emit(sessionId, operationId, "message.assistant.completed", {
         message: {
           role: "assistant",

@@ -239,6 +239,11 @@ export function ChatView({ session }: { session: Session }) {
 
       <div className="chat-footer">
         <ContextChips sessionId={session.id} />
+        {transcript.streamDegraded ? (
+          <p className="text-muted" style={{ fontSize: 12 }}>
+            {t("chat.reconnecting")}
+          </p>
+        ) : null}
         {transcript.error ? (
           <p className="error-text">{transcript.error}</p>
         ) : null}

@@ -26,7 +26,10 @@ export function useSessionStream(sessionId: string | null): Transcript {
           if (abort.signal.aborted) return;
           if (events.length > 0) {
             after = events[events.length - 1]!.sequence;
-            setTranscript((state) => reduceAll(state, events));
+            setTranscript((state) => ({
+              ...reduceAll(state, events),
+              streamDegraded: false,
+            }));
             cursor.current = after;
           }
           if (events.length < 1000) break;
@@ -40,6 +43,12 @@ export function useSessionStream(sessionId: string | null): Transcript {
         onEvent: (event) => {
           cursor.current = Math.max(cursor.current, event.sequence);
           setTranscript((state) => reduceTranscript(state, event));
+        },
+        onError: () => {
+          // The reader reconnects on its own; say so instead of freezing mute.
+          setTranscript((state) =>
+            state.streamDegraded ? state : { ...state, streamDegraded: true },
+          );
         },
       });
     })();

@@ -320,6 +320,10 @@ declare const dict: {
         readonly zh: "失败";
         readonly en: "FAILED";
     };
+    readonly "chat.reconnecting": {
+        readonly zh: "连接中断，正在重连…";
+        readonly en: "Stream lost — reconnecting…";
+    };
     readonly "chat.compact": {
         readonly zh: "压缩上下文";
         readonly en: "Compact";
@@ -363,6 +367,10 @@ declare const dict: {
     readonly "board.selected": {
         readonly zh: "已选";
         readonly en: "selected";
+    };
+    readonly "docs.indexing": {
+        readonly zh: "索引中";
+        readonly en: "Indexing";
     };
     readonly "docs.search": {
         readonly zh: "搜索资料…";

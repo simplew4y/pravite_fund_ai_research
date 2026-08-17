@@ -118,6 +118,9 @@ function DocumentsPanel({ projectId }: { projectId: string }) {
           />
           <FileText size={15} color="#71717a" style={{ flex: "none" }} />
           <span className="title">{document.title}</span>
+          {document.currentVersionNo === 0 ? (
+            <span className="tag tag-neutral">{t("docs.indexing")}</span>
+          ) : null}
           <span className="date">{document.updatedAt.slice(5, 10)}</span>
         </label>
       ))}
@@ -170,6 +173,7 @@ function MemoPanel({ projectId }: { projectId: string }) {
     resetCompare();
   }, [projectId, resetCompare]);
 
+  if (info.isError) return <p className="error-text">{t("common.error")}</p>;
   if (info.data && !info.data.insights_store) {
     return <p className="text-muted">{t("memo.unavailable")}</p>;
   }
@@ -249,6 +253,7 @@ function ValuationPanel({ projectId }: { projectId: string }) {
     },
   });
 
+  if (info.isError) return <p className="error-text">{t("common.error")}</p>;
   if (info.data && !info.data.insights_store) {
     return <p className="text-muted">{t("memo.unavailable")}</p>;
   }
@@ -306,6 +311,7 @@ function RisksPanel({ projectId }: { projectId: string }) {
     onSuccess: () => void client.invalidateQueries({ queryKey: ["tracking", projectId] }),
   });
 
+  if (info.isError) return <p className="error-text">{t("common.error")}</p>;
   if (info.data && !info.data.insights_store) {
     return <p className="text-muted">{t("memo.unavailable")}</p>;
   }

@@ -18,6 +18,8 @@ export interface Transcript {
     lastSequence: number;
     /** Last terminal failure for the session, surfaced in the composer. */
     error: string | null;
+    /** True while the event stream is reconnecting. */
+    streamDegraded: boolean;
 }
 export declare const emptyTranscript: Transcript;
 /**

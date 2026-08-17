@@ -21,6 +21,8 @@ export interface Transcript {
   lastSequence: number;
   /** Last terminal failure for the session, surfaced in the composer. */
   error: string | null;
+  /** True while the event stream is reconnecting. */
+  streamDegraded: boolean;
 }
 
 export const emptyTranscript: Transcript = {
@@ -28,6 +30,7 @@ export const emptyTranscript: Transcript = {
   running: false,
   lastSequence: 0,
   error: null,
+  streamDegraded: false,
 };
 
 function extractText(message: unknown): string {
@@ -163,7 +166,14 @@ export function reduceTranscript(state: Transcript, event: SessionEvent): Transc
       break;
   }
 
-  return { messages, running, error, lastSequence: event.sequence };
+  return {
+    ...state,
+    messages,
+    running,
+    error,
+    streamDegraded: false,
+    lastSequence: event.sequence,
+  };
 }
 
 export function reduceAll(state: Transcript, events: SessionEvent[]): Transcript {
