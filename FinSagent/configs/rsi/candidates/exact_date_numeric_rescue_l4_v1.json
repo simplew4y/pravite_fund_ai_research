@@ -1,0 +1,25 @@
+{
+  "schema_version": "rsi-cycle-manifest/v1",
+  "cycle_id": "exact_date_numeric_rescue_l4_round_1",
+  "repo_root": "/root/autodl-tmp/dir_lzx/releases/pravite_fund_ai_research_20260803_main",
+  "baseline_ref": "RSI-bench",
+  "workspace_root": "/root/autodl-tmp/dir_lzx/rsi_candidate_worktrees_20260818",
+  "patch_file": "exact_date_numeric_rescue_l4_v1.patch",
+  "seeds": [11, 29, 47],
+  "target": {
+    "kind": "full_agent_source_aligned",
+    "feature_flag": "exact_date_numeric_rescue_enabled"
+  },
+  "candidate": {
+    "candidate_id": "cand-exact-date-numeric-rescue-l4-v1",
+    "cluster_id": "fc-rerank-evidence-retention-exact-date",
+    "mutation_level": "L4",
+    "hypothesis": "Calling the verified exact-date selector after the existing rescue hook retains dropped filing evidence in the full-agent context without changing unrelated queries.",
+    "expected_mechanism": "When explicitly enabled, prepend at most one captured text chunk satisfying exact date, supported metric alias, and numeric anchors; on errors preserve baseline selection.",
+    "target_paths": ["src/core/RAG.py"],
+    "target_capabilities": ["retrieval", "temporal_reasoning", "scope_control", "agent_workflow"],
+    "target_failure_types": ["evidence_retention_failure", "period_mismatch"],
+    "patch_payload": {"strategy": "wire_verified_selector_after_existing_rescue", "approval": "user_approved_2026-08-18"},
+    "requires_human_approval": true
+  }
+}

@@ -1,0 +1,33 @@
+--- a/FinSagent/src/core/RAG.py
++++ b/FinSagent/src/core/RAG.py
+@@ -24,6 +24,7 @@
+ from utils.profiler import profiler
+ from utils.prompt_budget import truncate_text
+ from utils.retrieval_scope import filter_chunks_to_scope
++from rsi.candidate_skills.exact_date_numeric_rescue_v1 import select_exact_date_numeric_evidence
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -271,6 +272,22 @@
+             selected_chunks,
+             query,
+         )
++        if self._config_bool("exact_date_numeric_rescue_enabled", False):
++            try:
++                exact_rescue = select_exact_date_numeric_evidence(query, chunks, selected_chunks)
++                selected_chunks = exact_rescue["selected_chunks"]
++                if exact_rescue["rescue_applied"]:
++                    logger.info(
++                        "Exact-date numeric rescue added candidate indices %s for query=%r",
++                        exact_rescue["rescued_candidate_indices"],
++                        query,
++                    )
++            except Exception as exc:
++                logger.warning(
++                    "Exact-date numeric rescue failed; preserving baseline selection: %s",
++                    exc,
++                    exc_info=True,
++                )
+         selected_chunks = filter_chunks_to_scope(selected_chunks, allowed_ids)
+         table_chunks = filter_chunks_to_scope(table_chunks, allowed_ids)
+         # 表格不参与排序，直接追加供 LLM 参考
