@@ -1,9 +1,4 @@
-/* App-level layout on top of the Industry DS tokens (see industry.css). */
-
-:root {
-  --font-heading: "Barlow Condensed", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-body: "Barlow", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
-}
+/* App-level layout on the HeroUI theme (heroui.css). Grid per the v4 mock. */
 
 html,
 body,
@@ -15,50 +10,72 @@ body {
   margin: 0;
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: var(--font-body);
 }
 
 .mono-label {
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  font: 500 11px/1.4 var(--font-body);
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .app-frame {
   display: grid;
-  grid-template-columns: 232px minmax(420px, 1fr) minmax(300px, 380px);
-  gap: var(--space-3);
+  grid-template-columns: 252px minmax(420px, 1fr) minmax(300px, 372px);
   height: 100%;
-  padding: var(--space-3);
-  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--color-bg);
 }
 
 .app-rail,
-.app-center,
 .app-board {
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   overflow-y: auto;
+  padding: var(--space-3) var(--space-2);
+}
+
+.app-center {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-divider);
+  border-right: 1px solid var(--color-divider);
 }
 
 .rail-brand {
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  font-size: 20px;
-  letter-spacing: 0.06em;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1);
+  gap: 10px;
+  padding: 0 4px;
+  font: 600 16px/1.2 var(--font-body);
+  letter-spacing: -0.01em;
+}
+
+.rail-brand .brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 12px;
+  background: var(--color-accent);
+  color: #fff;
+  font: 600 12px/1 var(--font-body);
+  flex: none;
 }
 
 .rail-project {
-  padding: var(--space-2);
+  position: relative;
+  display: block;
+  padding: 11px 12px;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 0;
+  border-radius: var(--radius-card);
   background: none;
   width: 100%;
   text-align: left;
@@ -67,20 +84,26 @@ body {
 }
 
 .rail-project:hover {
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  background: var(--color-fill);
 }
 
 .rail-project[aria-current="true"] {
-  border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  background: var(--color-accent-tint);
 }
 
 .rail-project .name {
-  font-family: var(--font-heading);
-  font-size: 16px;
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: var(--space-1);
+  font: 600 14.5px/1.3 var(--font-body);
+}
+
+/* Project rows sit directly in the rail — no card chrome. */
+.app-rail .blueprint {
+  background: none;
+  box-shadow: none;
+  border-radius: var(--radius-card);
 }
 
 .rail-footer {
@@ -88,17 +111,18 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  align-items: flex-start;
 }
 
 .panel {
-  background: var(--color-bg);
-  padding: var(--space-2);
+  background: var(--color-surface);
+  padding: 14px;
+  border-radius: var(--radius-card);
 }
 
 .panel-title {
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  font-size: 15px;
+  font: 600 14px/1.2 var(--font-body);
+  letter-spacing: -0.01em;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -108,57 +132,101 @@ body {
 
 .center-header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
+  align-items: center;
+  gap: 8px;
+  padding: 13px 22px;
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-surface);
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
 
 .center-header h1 {
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
-  font-size: 26px;
+  font: 600 19px/1.3 var(--font-body);
+  letter-spacing: -0.015em;
   margin: 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.center-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 16px 22px 20px;
+  background: var(--color-bg);
 }
 
 .upload-zone {
-  border: 1px dashed color-mix(in srgb, var(--color-text) 35%, transparent);
-  padding: var(--space-3);
+  border: 1.5px dashed #d4d4d8;
+  border-radius: var(--radius-card);
+  padding: 18px;
   text-align: center;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   align-items: center;
+  background: var(--color-surface);
 }
 
 .upload-zone.dragging {
   border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  background: var(--color-accent-tint);
 }
 
+/* Session history: horizontal pill chips per the v4 mock. */
 .chat-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-2);
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 1px 1px 3px;
 }
 
-.chat-card {
+.chat-chip {
+  position: relative;
+  flex: 0 0 auto;
+  max-width: 220px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--color-fill);
+  color: var(--color-text-secondary);
+  font: 500 12.5px/1 var(--font-body);
   cursor: pointer;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  background: var(--color-bg);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
-.chat-card:hover {
-  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+.chat-chip:hover {
+  background: var(--color-fill-hover);
+}
+
+.chat-chip[aria-current="true"] {
+  background: rgba(0, 111, 238, 0.14);
+  color: var(--color-accent-hover);
+}
+
+.chat-chip .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-view {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  min-height: 0;
+  min-height: 420px;
   flex: 1;
+  padding: 20px;
 }
 
 .chat-scroll {
@@ -171,15 +239,25 @@ body {
 }
 
 .msg {
-  padding: var(--space-2);
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+  max-width: 85%;
 }
 
 .msg-user {
-  border-left: 2px solid var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  align-self: flex-end;
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.msg-user .mono-label {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .msg-assistant {
+  align-self: stretch;
+  max-width: none;
+  background: var(--color-bg);
   border: 1px solid var(--color-divider);
 }
 
@@ -187,38 +265,61 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--font-body);
-  margin: var(--space-1) 0 0;
+  margin: 6px 0 0;
   font-size: 14px;
+  line-height: 1.55;
 }
 
 .tool-line {
-  font-size: 12px;
-  color: var(--color-accent-700);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 12px/1 var(--font-body);
+  color: var(--color-text-secondary);
+  background: var(--color-fill);
+  border-radius: 9999px;
+  padding: 6px 12px;
+  margin: 6px 6px 0 0;
   overflow-wrap: anywhere;
 }
 
 .composer {
   display: flex;
-  gap: var(--space-1);
-  align-items: flex-end;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--radius-card);
+  background: var(--color-fill);
 }
 
 .composer textarea {
   flex: 1;
-  resize: vertical;
-  min-height: 44px;
-  max-height: 200px;
+  resize: none;
+  min-height: 24px;
+  max-height: 160px;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+  color: var(--color-text);
+  outline: none;
+  padding: 6px 0;
+}
+
+.composer .btn {
+  height: 34px;
 }
 
 .doc-row {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--color-divider);
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
   font-size: 13px;
+}
+
+.doc-row:hover {
+  background: var(--color-fill);
 }
 
 .doc-row .title {
@@ -228,28 +329,33 @@ body {
   white-space: nowrap;
 }
 
-.board-tabs {
+/* Research board: stacked white cards, not tabs. */
+.board-section {
   display: flex;
-  gap: 2px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
 }
 
-.board-tabs button {
-  flex: 1;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 6px 4px;
-  background: none;
-  border: 1px solid var(--color-divider);
-  cursor: pointer;
-  color: inherit;
-  font-family: var(--font-body);
+.board-section > h4 {
+  margin: 0;
+  font: 600 14px/1.2 var(--font-body);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.board-tabs button[aria-selected="true"] {
-  background: var(--color-accent);
-  color: var(--color-bg);
-  border-color: var(--color-accent);
+.board-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 4px;
+  font: 600 15px/1.2 var(--font-body);
+  letter-spacing: -0.01em;
 }
 
 .login-screen {
@@ -259,30 +365,33 @@ body {
 }
 
 .login-box {
-  width: 320px;
+  width: 340px;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4);
-  background: var(--color-bg);
+  padding: 24px;
 }
 
 .error-text {
-  color: #a2453c;
+  color: var(--color-danger);
   font-size: 13px;
 }
 
 .center-placeholder {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   flex: 1;
-  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  color: var(--color-text-muted);
   font-size: 14px;
+  text-align: center;
 }
 
 @media (max-width: 1100px) {
   .app-frame {
-    grid-template-columns: 200px 1fr;
+    grid-template-columns: 220px 1fr;
   }
 
   .app-board {

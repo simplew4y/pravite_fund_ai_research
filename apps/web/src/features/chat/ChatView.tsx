@@ -95,18 +95,18 @@ export function ChatView({ session }: { session: Session }) {
               title={t("chat.stop")}
               onClick={() => void interruptSession(session.id)}
             >
-              <Square size={14} strokeWidth={1.5} />
+              <Square size={14} />
             </button>
           ) : null}
           <button className="btn btn-icon btn-ghost" title={t("chat.fork")} onClick={() => void fork()}>
-            <GitFork size={14} strokeWidth={1.5} />
+            <GitFork size={14} />
           </button>
           <button
             className="btn btn-icon btn-ghost"
             title={t("chat.collapse")}
             onClick={() => expandSession(null)}
           >
-            <ChevronsDownUp size={14} strokeWidth={1.5} />
+            <ChevronsDownUp size={14} />
           </button>
         </span>
       </div>
@@ -133,7 +133,7 @@ export function ChatView({ session }: { session: Session }) {
           }}
         />
         <button className="btn btn-primary" type="submit" disabled={sending || !draft.trim()}>
-          <Send size={14} strokeWidth={1.5} />
+          <Send size={14} />
           {transcript.running ? t("chat.queue") : t("chat.send")}
         </button>
       </form>

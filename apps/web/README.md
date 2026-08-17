@@ -1,8 +1,8 @@
 # @private-fund/web
 
-私募投研 AI 工作台的新前端（Industry 设计系统 + v3 高保真三栏布局），只对接 `apps/api`。
+私募投研 AI 工作台的新前端（HeroUI 风格（v4 稿）三栏布局），只对接 `apps/api`。
 
-- 设计基准：`docs/design/表单范围和视觉方向/`（Industry DS tokens vendor 到 `src/styles/industry.css`；布局按 `私募投研 AI 工作台 v3 高保真.dc.html`）。
+- 设计基准：`docs/design/表单范围和视觉方向/`（视觉按 `私募投研 AI 工作台 v4 HeroUI.dc.html`，tokens 提取到 `src/styles/heroui.css`）。
 - 栈：Vite + React 19 + TS，纯 CSS（无 Tailwind），TanStack Query + zustand，自研 zh/en 词典。
 - 类型与校验：`@private-fund/contracts` 的 zod schema；insights 域（tracking/valuation 概览）暂未入 contracts，客户端做宽松解析（`src/api/insights.ts`）。
 

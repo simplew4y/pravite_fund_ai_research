@@ -168,6 +168,10 @@ declare const dict: {
         readonly zh: "消息";
         readonly en: "MSGS";
     };
+    readonly "workbench.askCorpus": {
+        readonly zh: "向当前项目的资料提问";
+        readonly en: "Ask this project's corpus";
+    };
     readonly "workbench.chat.empty": {
         readonly zh: "选择上方任一会话展开对话，上传区与资料列表保持可见";
         readonly en: "Open a chat above — upload and documents stay in place";

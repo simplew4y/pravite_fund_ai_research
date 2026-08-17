@@ -81,10 +81,10 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
       >
         <h2 className="dialog-title" style={{ display: "flex", justifyContent: "space-between" }}>
           <span>
-            <Inbox size={16} strokeWidth={1.5} /> {t("inbox.title")}
+            <Inbox size={16} /> {t("inbox.title")}
           </span>
           <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label={t("common.close")}>
-            <X size={14} strokeWidth={1.5} />
+            <X size={14} />
           </button>
         </h2>
 
@@ -93,7 +93,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
         >
-          <UploadCloud size={14} strokeWidth={1.5} />{" "}
+          <UploadCloud size={14} />{" "}
           {uploading ? t("workbench.upload.uploading") : t("workbench.upload.choose")}
         </button>
         <input

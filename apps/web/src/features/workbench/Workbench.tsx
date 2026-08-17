@@ -1,5 +1,5 @@
 import { useRef, useState, type DragEvent } from "react";
-import { Plus, UploadCloud } from "lucide-react";
+import { Plus, Sparkles, UploadCloud } from "lucide-react";
 
 import { uploadProjectDocuments, type Session } from "../../api/client";
 import {
@@ -53,7 +53,7 @@ function UploadZone({ projectId }: { projectId: string }) {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
       >
-        <UploadCloud size={22} strokeWidth={1.5} />
+        <UploadCloud size={22} />
         <strong>{t("workbench.upload.hint")}</strong>
         <MonoLabel>{t("workbench.upload.types")}</MonoLabel>
         <button
@@ -81,20 +81,21 @@ function UploadZone({ projectId }: { projectId: string }) {
   );
 }
 
-function ChatCard({ session, onOpen }: { session: Session; onOpen: () => void }) {
+function ChatChip({
+  session,
+  active,
+  onOpen,
+}: {
+  session: Session;
+  active: boolean;
+  onOpen: () => void;
+}) {
   const { t } = useT();
   return (
-    <Blueprint className="chat-card">
-      <button className="rail-project" onClick={onOpen}>
-        <span className="card-kicker">
-          {session.status === "running" ? t("chat.running") : session.status.toUpperCase()}
-        </span>
-        <span className="card-title">{session.title || session.id}</span>
-        <span className="card-meta">
-          {session.lastSequence} {t("workbench.msgs")} · {session.updatedAt.slice(5, 10)}
-        </span>
-      </button>
-    </Blueprint>
+    <button className="chat-chip" aria-current={active} onClick={onOpen}>
+      {session.status === "running" ? <span className="tag tag-accent">{t("chat.running")}</span> : null}
+      <span className="title">{session.title || session.id}</span>
+    </button>
   );
 }
 
@@ -124,30 +125,47 @@ export function Workbench({ projectId }: { projectId: string }) {
           {documents.data?.total ?? "–"} {t("rail.docs")} · {sessions.data?.length ?? "–"}{" "}
           {t("rail.chats")}
         </MonoLabel>
+        <span style={{ flex: 1 }} />
+        <button
+          className="btn btn-icon btn-primary"
+          title={t("workbench.newChat")}
+          aria-label={t("workbench.newChat")}
+          onClick={newChat}
+          disabled={createSession.isPending}
+        >
+          <Plus size={16} />
+        </button>
       </div>
 
-      <UploadZone projectId={projectId} />
+      <div className="center-body">
+        <section aria-label={t("workbench.chats")}>
+          {sessions.isPending ? <p className="text-muted">{t("common.loading")}</p> : null}
+          <div className="chat-cards">
+            {sessions.data?.map((session) => (
+              <ChatChip
+                key={session.id}
+                session={session}
+                active={session.id === expandedSessionId}
+                onOpen={() => expandSession(session.id)}
+              />
+            ))}
+          </div>
+        </section>
 
-      <section aria-label={t("workbench.chats")}>
-        <div className="panel-title">
-          <span>{t("workbench.chats")}</span>
-          <button className="btn btn-secondary" onClick={newChat} disabled={createSession.isPending}>
-            <Plus size={14} strokeWidth={1.5} /> {t("workbench.newChat")}
-          </button>
-        </div>
-        {sessions.isPending ? <p className="text-muted">{t("common.loading")}</p> : null}
-        <div className="chat-cards">
-          {sessions.data?.map((session) => (
-            <ChatCard key={session.id} session={session} onOpen={() => expandSession(session.id)} />
-          ))}
-        </div>
-      </section>
-
-      {expanded ? (
-        <ChatView session={expanded} />
-      ) : (
-        <div className="center-placeholder">{t("workbench.chat.empty")}</div>
-      )}
+        {expanded ? (
+          <ChatView session={expanded} />
+        ) : (
+          <>
+            <UploadZone projectId={projectId} />
+            <Blueprint className="chat-view elev-sm">
+              <div className="center-placeholder">
+                <Sparkles size={26} color="#a1a1aa" />
+                <span>{t("workbench.askCorpus")}</span>
+              </div>
+            </Blueprint>
+          </>
+        )}
+      </div>
     </main>
   );
 }

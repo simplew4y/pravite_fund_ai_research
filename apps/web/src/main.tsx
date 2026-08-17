@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import App from "./App";
-import "./styles/industry.css";
+import "./styles/heroui.css";
 import "./styles/app.css";
 
 createRoot(document.getElementById("root")!).render(

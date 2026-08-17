@@ -17,7 +17,7 @@ import { useProjectDocuments, useServerInfo } from "../../api/queries";
 import { Blueprint } from "../../components/Blueprint";
 import { MonoLabel } from "../../components/MonoLabel";
 import { useT } from "../../i18n/useT";
-import { useUiStore, type BoardTab } from "../../store/ui";
+import { useUiStore } from "../../store/ui";
 
 function text(record: Record<string, unknown>, ...keys: string[]): string {
   for (const key of keys) {
@@ -108,7 +108,7 @@ function DocumentsPanel({ projectId }: { projectId: string }) {
             }}
             disabled={remove.isPending}
           >
-            <Trash2 size={14} strokeWidth={1.5} />
+            <Trash2 size={14} />
           </button>
         </div>
       ) : null}
@@ -165,7 +165,7 @@ function MemoPanel({ projectId }: { projectId: string }) {
               href={memoDownloadUrl(projectId, id)}
               title={t("common.download")}
             >
-              <Download size={14} strokeWidth={1.5} />
+              <Download size={14} />
             </a>
           </div>
         );
@@ -206,7 +206,7 @@ function ValuationPanel({ projectId }: { projectId: string }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <MonoLabel>{t("board.valuation")}</MonoLabel>
         <button className="btn btn-secondary" onClick={() => run.mutate()} disabled={run.isPending}>
-          <RefreshCw size={14} strokeWidth={1.5} /> {t("valuation.run")}
+          <RefreshCw size={14} /> {t("valuation.run")}
         </button>
       </div>
       {valuation.data.series.length === 0 ? (
@@ -284,38 +284,28 @@ function RisksPanel({ projectId }: { projectId: string }) {
   );
 }
 
-const TABS: { id: BoardTab; labelKey: "board.documents" | "board.memo" | "board.valuation" | "board.risks" }[] = [
-  { id: "documents", labelKey: "board.documents" },
-  { id: "memo", labelKey: "board.memo" },
-  { id: "valuation", labelKey: "board.valuation" },
-  { id: "risks", labelKey: "board.risks" },
-];
-
 export function ResearchBoard({ projectId }: { projectId: string }) {
   const { t } = useT();
-  const { boardTab, setBoardTab } = useUiStore();
 
   return (
     <aside className="app-board">
-      <MonoLabel>{t("board.title")}</MonoLabel>
-      <div className="board-tabs" role="tablist">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            role="tab"
-            aria-selected={boardTab === tab.id}
-            onClick={() => setBoardTab(tab.id)}
-          >
-            {t(tab.labelKey)}
-          </button>
-        ))}
-      </div>
-      <Blueprint className="panel" style={{ flex: 1, overflowY: "auto" }}>
-        {boardTab === "documents" ? <DocumentsPanel projectId={projectId} /> : null}
-        {boardTab === "memo" ? <MemoPanel projectId={projectId} /> : null}
-        {boardTab === "valuation" ? <ValuationPanel projectId={projectId} /> : null}
-        {boardTab === "risks" ? <RisksPanel projectId={projectId} /> : null}
-      </Blueprint>
+      <div className="board-title">{t("board.title")}</div>
+      <section className="board-section" aria-label={t("board.documents")}>
+        <h4>{t("board.documents")}</h4>
+        <DocumentsPanel projectId={projectId} />
+      </section>
+      <section className="board-section" aria-label={t("board.memo")}>
+        <h4>{t("board.memo")}</h4>
+        <MemoPanel projectId={projectId} />
+      </section>
+      <section className="board-section" aria-label={t("board.valuation")}>
+        <h4>{t("board.valuation")}</h4>
+        <ValuationPanel projectId={projectId} />
+      </section>
+      <section className="board-section" aria-label={t("board.risks")}>
+        <h4>{t("board.risks")}</h4>
+        <RisksPanel projectId={projectId} />
+      </section>
     </aside>
   );
 }

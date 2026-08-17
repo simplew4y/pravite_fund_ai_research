@@ -108,19 +108,26 @@ export function ProjectRail() {
   return (
     <nav className="app-rail" aria-label={t("app.title")}>
       <div className="rail-brand">
-        <span>
-          {t("app.brand")} · {t("app.title")}
-        </span>
+        <span className="brand-mark">{t("app.brand")}</span>
+        <span>{t("app.title")}</span>
+        <span style={{ flex: 1 }} />
         <button
-          className="btn btn-icon btn-ghost"
+          className="btn btn-icon btn-secondary"
           onClick={toggleLang}
           aria-label="切换语言 / Switch language"
         >
-          <Languages size={16} strokeWidth={1.5} />
+          <Languages size={16} />
+        </button>
+        <button
+          className="btn btn-icon btn-secondary"
+          onClick={() => setCreating(true)}
+          aria-label={t("rail.newProject")}
+        >
+          <Plus size={16} />
         </button>
       </div>
 
-      <MonoLabel>
+      <MonoLabel style={{ padding: "0 4px" }}>
         {t("rail.tracking")} · {projects.data?.length ?? 0}
       </MonoLabel>
 
@@ -159,26 +166,23 @@ export function ProjectRail() {
         </p>
       ) : null}
 
-      <button className="btn btn-secondary" onClick={() => setCreating(true)}>
-        <Plus size={16} strokeWidth={1.5} /> {t("rail.newProject")}
-      </button>
       {selectedProjectId ? (
         <button
           className="btn btn-ghost"
           onClick={() => remove(selectedProjectId)}
           disabled={removeProject.isPending}
         >
-          <Trash2 size={14} strokeWidth={1.5} /> {t("project.delete")}
+          <Trash2 size={14} /> {t("project.delete")}
         </button>
       ) : null}
 
       <div className="rail-footer">
         <button className="btn btn-ghost" onClick={() => setInboxOpen(true)}>
-          <Inbox size={14} strokeWidth={1.5} /> {t("rail.inbox")}
+          <Inbox size={14} /> {t("rail.inbox")}
           {inboxCount > 0 ? <span className="tag tag-accent">{inboxCount}</span> : null}
         </button>
         <MonoLabel>
-          <Settings size={12} strokeWidth={1.5} style={{ verticalAlign: "-2px" }} />{" "}
+          <Settings size={12} style={{ verticalAlign: "-2px" }} />{" "}
           {t("rail.settings")}
         </MonoLabel>
       </div>

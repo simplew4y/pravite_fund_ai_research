@@ -67,7 +67,7 @@ describe("ResearchBoard", () => {
       },
     });
     renderWithQuery(<ResearchBoard projectId="p-1" />);
-    await userEvent.click(await screen.findByRole("tab", { name: "投资备忘录" }));
-    expect(await screen.findByText("Memo 服务未启用")).toBeInTheDocument();
+    const notices = await screen.findAllByText("Memo 服务未启用");
+    expect(notices.length).toBeGreaterThan(0);
   });
 });

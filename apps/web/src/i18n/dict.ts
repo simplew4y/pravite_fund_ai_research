@@ -43,6 +43,7 @@ const dict = {
   "workbench.chats": { zh: "研究会话", en: "Research chats" },
   "workbench.newChat": { zh: "新会话", en: "New chat" },
   "workbench.msgs": { zh: "消息", en: "MSGS" },
+  "workbench.askCorpus": { zh: "向当前项目的资料提问", en: "Ask this project's corpus" },
   "workbench.chat.empty": { zh: "选择上方任一会话展开对话，上传区与资料列表保持可见", en: "Open a chat above — upload and documents stay in place" },
   "chat.stop": { zh: "中断", en: "Stop" },
   "chat.fork": { zh: "分叉", en: "Fork" },
