@@ -1,0 +1,31 @@
+{
+  "schema_version": "rsi-source-alignment-audit/v1",
+  "case_id": "prod-targeted-fsb300_lotus_dev_040",
+  "company": "lotus",
+  "wrong_collection_run": {
+    "collection": "test_real_data",
+    "retrieved_count": 9,
+    "source_company_aligned": false,
+    "refusal_like": true,
+    "legacy_judge_verdict": "FAILURE"
+  },
+  "legacy_collection_with_incompatible_dci_gate": {
+    "collection": "lotus",
+    "retrieved_count": 0,
+    "cause": "production DCI scope was still bound to test_real_data and denied all historical-collection documents"
+  },
+  "source_aligned_run": {
+    "collection": "lotus",
+    "pre_rerank_count": 54,
+    "retrieved_count": 30,
+    "source_company_aligned": true,
+    "refusal_like": false,
+    "strict_judge_status": "valid",
+    "strict_judge_verdict": "INCORRECT",
+    "key_point_coverage": 0.4,
+    "primary_error": "factual_error",
+    "critical_error_count": 3
+  },
+  "conclusion": "source alignment fixes cross-company retrieval and false refusal, but the answer still mixes full-year facts with the requested partial-year reference periods",
+  "private_content_embedded": false
+}

@@ -1,5 +1,7 @@
 # RSI full-agent calibration (2026-08-17)
 
+> Superseded for model-comparison purposes on 2026-08-18. The run used the `test_real_data` Excel-model collection while the frozen cases were grounded in company filing snapshots. Preserve the observations for audit, but classify the run as `evaluator_problem/source_mismatch`, not as a model baseline.
+
 ## Run
 
 - Frozen evaluator: `period_source_full_agent_v2_2`
@@ -26,9 +28,9 @@ The dominant baseline error subtype was D2 (9/18). Human inspection of the first
 
 ## Decision
 
-`needs_more_evidence`; not production eligible.
+`evaluator_problem`; invalid for model comparison and not production eligible.
 
-The full-agent sample did not activate the candidate mechanism and produced no pass-rate gain. The earlier isolated Skill replay remains useful mechanism evidence, but it is insufficient for production promotion without full-agent trigger coverage, protected-suite stability, and a larger frozen-suite run.
+The full-agent sample did not activate the candidate mechanism and produced no pass-rate gain. More importantly, the target ran against a non-source-aligned collection. The earlier isolated Skill replay remains useful mechanism evidence, but this 6x3 run must not be used as production promotion evidence.
 
 ## Next calibration changes
 

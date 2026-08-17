@@ -7,6 +7,8 @@
   "case_count": 6,
   "seed_count": 3,
   "paired_observation_count": 18,
+  "source_alignment_status": "invalid_wrong_collection",
+  "valid_for_model_comparison": false,
   "baseline": {
     "pass_count": 3,
     "pass_rate": 0.1666666667,
@@ -28,9 +30,11 @@
     "independent_judge_verdict_disagreements_on_identical_answers": 2
   },
   "baseline_failure_subtypes": {"D2": 9, "B2": 1, "NONE": 6, "B1": 1, "D1": 1},
-  "decision": "needs_more_evidence",
+  "decision": "evaluator_problem",
   "production_eligible": false,
   "decision_reasons": [
+    "The frozen cases were sourced from company filing snapshots, but this run used the test_real_data Excel-model collection.",
+    "Observed retrieval and answer failures cannot be attributed to the model until company-specific source collections are used.",
     "The candidate mechanism was not activated in any of the 18 full-agent observations.",
     "No fail-to-pass improvement was observed.",
     "Two verdict changes were judge noise because the paired answer text was identical.",
