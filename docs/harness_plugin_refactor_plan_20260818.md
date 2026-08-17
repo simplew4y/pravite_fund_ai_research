@@ -163,4 +163,6 @@ Agent   plugin-model-gateway   ctx.llm：Provider adapter 注册 + commit-before
 
 验证：`verify:all` 全绿（3531 tests）；api 99 tests（含 30+ 集成套件与回放等价 Gate）；全域 E2E 冒烟（项目/上传/资料/会话/事件流/tracking/valuation/workflow/收件箱）+ SIGTERM 干净退出；三个受管服务经 `manage-ts-services` 正常启停，健康信号不变；omnigent/web 与 apps/web 双前端契约无感。
 
-尚未切换（按计划为浸泡期后动作，非本轮范围）：journal 权威切换（仍 Shadow，legacy `session_events` 为权威）；ModelGateway 生产接管（Pi worker 仍持 Provider 连接，待 agent loop 迁移）。
+| 5 Pi 退役 | `71b5a9f` | ✅ 自持 agent loop（in-process，harness 语义）：上下文由事件流 `deriveMessages()` 重建、模型走 OpenAI 兼容流式客户端（cloud=网关 pfm 令牌 / dev=PRIVATE_FUND_AGENT_*）、工具经统一流水线、steering/interrupt/compact 原语齐全；`apps/agent-worker`、`packages/agent-runtime`、Pi 依赖校验全部删除 |
+
+尚未切换（浸泡期后动作）：journal 权威切换（仍 Shadow，legacy `session_events` 为权威——现在它同时是 agent loop 的上下文来源，切换后 deriveMessages 改读 journal 即可）。
