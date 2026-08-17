@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from skills_runtime.executor import SkillExecutor
+from skills_runtime.combo_router import ComboSelection, SkillComboRouter
 from skills_runtime.loader import SkillLoader
 from skills_runtime.models import PhaseExecution, SkillContext
 from skills_runtime.registry import RuntimeSkillRegistry
@@ -23,12 +24,14 @@ class SkillRuntime:
         *,
         enabled: bool,
         mode: str,
+        combo_router: SkillComboRouter | None = None,
         load_errors: list[str] | None = None,
     ) -> None:
         self.registry = registry
         self.executor = executor
         self.enabled = bool(enabled)
         self.mode = mode
+        self.combo_router = combo_router
         self.load_errors = list(load_errors or [])
 
     @classmethod
@@ -62,11 +65,31 @@ class SkillRuntime:
             ),
             allow_python=bool((skill_cfg.get("security") or {}).get("allow_python_skills", False)),
         )
+        combo_router = None
+        combo_cfg = skill_cfg.get("combo_routing") if isinstance(skill_cfg.get("combo_routing"), dict) else {}
+        if bool(combo_cfg.get("enabled", False)):
+            configured_path = Path(str(combo_cfg.get("path") or "./skills/combos.yaml")).expanduser()
+            combo_path = (
+                configured_path
+                if configured_path.is_absolute()
+                else (default_root_path.parent / configured_path).resolve()
+            )
+            enabled_skill_ids = {
+                skill.manifest.skill_id for skill in registry.all() if registry.is_enabled(skill)
+            }
+            combo_router = SkillComboRouter.from_file(
+                combo_path,
+                available_skill_ids=enabled_skill_ids,
+                max_skills_per_combo=int(
+                    combo_cfg.get("max_skills_per_combo", executor.max_skills_per_request)
+                ),
+            )
         runtime = cls(
             registry,
             executor,
             enabled=bool(skill_cfg.get("runtime_enabled", False)),
             mode=mode,
+            combo_router=combo_router,
             load_errors=loader.errors,
         )
         logger.info("Skill runtime initialized: %s", runtime.status())
@@ -81,11 +104,37 @@ class SkillRuntime:
     ) -> PhaseExecution:
         if not self.enabled:
             return PhaseExecution(context=context, results=[], selected_skill_ids=[])
-        return await self.executor.execute_phase(
+        selection: ComboSelection | None = None
+        if explicit_skill_ids is None and self.combo_router is not None:
+            selection = self.resolve_combo(context)
+            explicit_skill_ids = list(selection.skill_ids) if selection is not None else []
+        execution = await self.executor.execute_phase(
             phase,
             context,
             explicit_skill_ids=explicit_skill_ids,
         )
+        if selection is not None:
+            combo_trace = selection.to_dict()
+            for result in execution.results:
+                result.trace["skill_combo"] = combo_trace
+        return execution
+
+    def resolve_combo(self, context: SkillContext) -> ComboSelection | None:
+        if self.combo_router is None:
+            return None
+        if context.skill_combo.get("combo_id"):
+            return ComboSelection.from_dict(context.skill_combo)
+        selection = self.combo_router.select(context)
+        context.skill_combo = selection.to_dict() if selection is not None else {}
+        if selection is not None:
+            logger.info(
+                "Skill combo selected: request_id=%s agent=%s combo_id=%s reasons=%s",
+                context.request_id,
+                context.agent,
+                selection.combo_id,
+                list(selection.reason_codes),
+            )
+        return selection
 
     def catalog(self, *, public_only: bool = False) -> list[dict]:
         return self.registry.catalog(public_only=public_only)
@@ -95,5 +144,9 @@ class SkillRuntime:
             "runtime_enabled": self.enabled,
             "execution_mode": self.mode,
             "registry": self.registry.summary(),
+            "combo_routing": {
+                "enabled": self.combo_router is not None,
+                "combos": len(self.combo_router.catalog()) if self.combo_router else 0,
+            },
             "load_errors": list(self.load_errors),
         }

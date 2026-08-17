@@ -908,9 +908,22 @@ async def list_runtime_skills():
             "runtime_enabled": status["runtime_enabled"],
             "execution_mode": status["execution_mode"],
             "registry": status["registry"],
+            "combo_routing": status.get("combo_routing", {"enabled": False, "combos": 0}),
         },
         "skills": runtime.catalog(public_only=True),
     }
+
+
+@app.get("/skill-combos")
+async def list_runtime_skill_combos():
+    """Return production combo metadata without exposing private skill instructions."""
+    if chat_service is None:
+        raise HTTPException(status_code=503, detail="Chat service not initialized")
+    runtime = getattr(chat_service, "skill_runtime", None)
+    combo_router = getattr(runtime, "combo_router", None) if runtime is not None else None
+    if combo_router is None:
+        return {"enabled": False, "combos": []}
+    return {"enabled": True, "combos": combo_router.catalog()}
 
 
 @app.get("/skills/{skill_id}")

@@ -138,6 +138,10 @@ skills:
     - anthropic_initiating_coverage
     - anthropic_ic_memo
   deny: []
+  combo_routing:
+    enabled: true
+    path: ./skills/combos.yaml
+    max_skills_per_combo: 8
   execution:
     max_skills_per_request: 8
     default_timeout_seconds: 5

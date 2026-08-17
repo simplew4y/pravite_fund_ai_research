@@ -202,6 +202,7 @@ class SkillContext:
     variables: dict[str, Any] = field(default_factory=dict)
     prompt_instructions: list[dict[str, str]] = field(default_factory=list)
     prior_skill_results: list["SkillResult"] = field(default_factory=list)
+    skill_combo: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
