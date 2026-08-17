@@ -25,6 +25,7 @@ def main() -> None:
     parser.add_argument("--rerank-topk", type=int, default=5)
     parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--enable-exact-rescue", action="store_true")
+    parser.add_argument("--candidate-id", default="")
     args = parser.parse_args()
 
     repo = args.repo.resolve()
@@ -72,7 +73,7 @@ def main() -> None:
                 handle.write(json.dumps({
                     "schema_version": "rsi-retrieval-stack-output/v1",
                     "arm": "candidate" if args.enable_exact_rescue else "baseline",
-                    "candidate_id": "cand-exact-date-numeric-rescue-l4-v1" if args.enable_exact_rescue else None,
+                    "candidate_id": args.candidate_id if args.enable_exact_rescue else None,
                     "case_id": row["case_id"], "seed": seed, "answer": "",
                     "retrieved_chunks": result["final_chunks"],
                     "pre_rerank_candidates": result["pre_rerank_chunks"],
