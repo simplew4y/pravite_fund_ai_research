@@ -1079,6 +1079,7 @@ class ChatService:
                 "pre_rerank_candidates": final_state.get("merged_pre_rerank_candidates", []),
                 "pre_rerank_candidate_count": len(final_state.get("merged_pre_rerank_candidates", [])),
                 "agent_outputs": final_state.get("agent_outputs", {}),
+                "skill_traces": final_state.get("skill_traces", []),
                 "chat_history": chat_history,
                 "preliminary_time": round(preliminary_time, 3),
                 "comprehensive_time": round(comprehensive_time, 3),
@@ -1104,6 +1105,7 @@ class ChatService:
                 "pre_rerank_candidates": [],
                 "pre_rerank_candidate_count": 0,
                 "agent_outputs": {},
+                "skill_traces": [],
                 "chat_history": "",
                 "error": str(e),
             }
@@ -1180,6 +1182,7 @@ class ChatService:
                 "pre_rerank_candidates": pre_rerank_candidates,
                 "pre_rerank_candidate_count": len(pre_rerank_candidates),
                 "agent_outputs": final_state.get("agent_outputs", {}),
+                "skill_traces": final_state.get("skill_traces", []),
                 "time_to_first_response": final_state.get("time_to_first_response", 0.0),
                 "total_time": total_time,
             }
@@ -1196,6 +1199,7 @@ class ChatService:
                 "pre_rerank_candidates": [],
                 "pre_rerank_candidate_count": 0,
                 "agent_outputs": {},
+                "skill_traces": [],
                 "error": str(e),
             }
         finally:

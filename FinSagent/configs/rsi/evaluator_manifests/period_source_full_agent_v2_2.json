@@ -1,0 +1,25 @@
+{
+  "schema_version": "rsi-production-evaluator-public-manifest/v1",
+  "suite_id": "period_source_full_agent_v2_2",
+  "status": "frozen_evaluator_private",
+  "counts": {"targeted": 20, "negative_noop": 20, "fresh_internal": 30},
+  "companies": {"lotus": 20, "nvidia": 20, "zeekr": 30},
+  "source_snapshots": {
+    "train_sha256": "b0d488d1f2a6a23f25999c22744dd997609ff1bab39408cc7b93a041097a8db8",
+    "test_sha256": "574edd75281d03e8ca4a11a2bebcb8c8b29b121ec2c8af466d0438dd4984e88c"
+  },
+  "private_cases_sha256": "9cd091685c802632f56a01f5ae8919ec829770421cf0f6c6bbcfc56405e8d41c",
+  "target_questions_sha256": "393d76bfaa2b7d2ec04869ec7671ffeaecf537a7ee92a62135879ef1e0b37e7f",
+  "hidden_content_committed": false,
+  "admission": {
+    "normalized_question_duplicates": 0,
+    "missing_ground_truth": 0,
+    "missing_key_points": 0,
+    "missing_evidence_refs": 0,
+    "explicit_company_scope": true
+  },
+  "supersedes": [
+    {"suite_id": "period_source_full_agent_v2", "reason": "rejected: filing-date-only table questions polluted temporal coverage"},
+    {"suite_id": "period_source_full_agent_v2_1", "reason": "superseded: eight records lacked explicit normalized company metadata"}
+  ]
+}

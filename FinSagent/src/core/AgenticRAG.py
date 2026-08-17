@@ -26,6 +26,7 @@ from utils.table_answer_repair import load_reconstructed_table_chunks, repair_ta
 from utils.profile_fact_repair import repair_profile_answer
 from utils.answer_coverage_repair import repair_answer_coverage
 from utils.period_source_conflict_repair import repair_period_source_conflict
+from skillops.runtime_trace import build_skill_trace
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ class MASState(TypedDict, total=False):
     off_topic: bool
     preliminary_draft: str
     final_answer: str
+    skill_traces: List[Dict[str, Any]]
 
     # Loop control
     iteration: int
@@ -435,6 +437,7 @@ def _apply_skill_repairs(
     retrieved_chunks: List[Dict[str, Any]],
     pre_rerank_candidates: List[Dict[str, Any]],
     config: Dict[str, Any],
+    trace_sink: List[Dict[str, Any]] | None = None,
 ) -> str:
     """
     Apply deterministic skill repairs to the final answer in sequence.
@@ -454,8 +457,36 @@ def _apply_skill_repairs(
 
     repaired = answer
 
+    def record_trace(
+        skill_id: str,
+        input_answer: str,
+        result: Dict[str, Any] | None,
+        chunks: List[Dict[str, Any]],
+        started_at: float,
+        error: Exception | None = None,
+    ) -> None:
+        if trace_sink is None:
+            return
+        output_answer = input_answer
+        if error is None and result and result.get("repair_applied"):
+            output_answer = result.get("answer", input_answer)
+        trace_sink.append(
+            build_skill_trace(
+                skill_id=skill_id,
+                skill_version="1.0.0",
+                input_answer=input_answer,
+                output_answer=output_answer,
+                result=result,
+                evidence_chunks=chunks,
+                latency_ms=(time.perf_counter() - started_at) * 1000,
+                error=error,
+            )
+        )
+
     # 1. Table answer repair
     if config.get("skill_repair_table_enabled", True):
+        skill_input = repaired
+        started_at = time.perf_counter()
         try:
             table_dir = config.get("reconstructed_table_dir", "")
             fallback_chunks = _get_fallback_table_chunks(table_dir) if table_dir else []
@@ -471,13 +502,17 @@ def _apply_skill_repairs(
                     result.get("repair_reason", ""),
                 )
                 repaired = result["answer"]
+            record_trace("table_answer_repair", skill_input, result, retrieved_chunks, started_at)
         except Exception as e:
+            record_trace("table_answer_repair", skill_input, None, retrieved_chunks, started_at, e)
             logger.warning("[SkillRepair] table_answer_repair failed: %s", e, exc_info=True)
 
     # 2. Profile fact repair
     if config.get("skill_repair_profile_enabled", True):
+        skill_input = repaired
+        started_at = time.perf_counter()
+        all_chunks = list(retrieved_chunks) + list(pre_rerank_candidates)
         try:
-            all_chunks = list(retrieved_chunks) + list(pre_rerank_candidates)
             result = repair_profile_answer(
                 question,
                 repaired,
@@ -492,11 +527,15 @@ def _apply_skill_repairs(
                     result.get("repair_reason", ""),
                 )
                 repaired = result["answer"]
+            record_trace("profile_fact_repair", skill_input, result, all_chunks, started_at)
         except Exception as e:
+            record_trace("profile_fact_repair", skill_input, None, all_chunks, started_at, e)
             logger.warning("[SkillRepair] profile_fact_repair failed: %s", e, exc_info=True)
 
     # 3. Answer coverage repair
     if config.get("skill_repair_coverage_enabled", True):
+        skill_input = repaired
+        started_at = time.perf_counter()
         try:
             result = repair_answer_coverage(question, repaired)
             if result.get("repair_applied"):
@@ -505,11 +544,15 @@ def _apply_skill_repairs(
                     result.get("repair_reason", ""),
                 )
                 repaired = result["answer"]
+            record_trace("answer_coverage_repair", skill_input, result, [], started_at)
         except Exception as e:
+            record_trace("answer_coverage_repair", skill_input, None, [], started_at, e)
             logger.warning("[SkillRepair] answer_coverage_repair failed: %s", e, exc_info=True)
 
     # 4. Period / source conflict repair
     if config.get("skill_repair_period_conflict_enabled", True):
+        skill_input = repaired
+        started_at = time.perf_counter()
         try:
             result = repair_period_source_conflict(question, repaired, retrieved_chunks)
             if result.get("repair_applied"):
@@ -518,7 +561,9 @@ def _apply_skill_repairs(
                     result.get("repair_reason", ""),
                 )
                 repaired = result["answer"]
+            record_trace("period_source_conflict_repair", skill_input, result, retrieved_chunks, started_at)
         except Exception as e:
+            record_trace("period_source_conflict_repair", skill_input, None, retrieved_chunks, started_at, e)
             logger.warning("[SkillRepair] period_source_conflict_repair failed: %s", e, exc_info=True)
 
     return repaired
@@ -570,6 +615,7 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
     # Apply deterministic post-repairs if enabled in config (all default to True).
     # Each repair is independently gated; failures fall back to the original answer.
     cfg = state.get("config") or {}
+    skill_traces: List[Dict[str, Any]] = []
     if final_answer and any(
         cfg.get(k, True)
         for k in (
@@ -588,6 +634,7 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
             retrieved_chunks=all_retrieved,
             pre_rerank_candidates=list(merged_pre_rerank_candidates),
             config=cfg,
+            trace_sink=skill_traces,
         )
     # ────────────────────────────────────────────────────────────────────────
 
@@ -603,6 +650,7 @@ async def synthesis_node(state: MASState) -> Dict[str, Any]:
         "merged_evidence": merged_evidence,
         "merged_pre_rerank_candidates": merged_pre_rerank_candidates,
         "final_answer": final_answer,
+        "skill_traces": skill_traces,
         "time_to_first_response": ttft,
     }
 
