@@ -1,0 +1,26 @@
+{
+  "schema_version": "rsi-cycle-manifest/v1",
+  "cycle_id": "exact_date_numeric_rescue_round_1",
+  "repo_root": "/root/autodl-tmp/dir_lzx/releases/pravite_fund_ai_research_20260803_main",
+  "baseline_ref": "RSI-bench",
+  "workspace_root": "/root/autodl-tmp/dir_lzx/rsi_candidate_worktrees_20260818",
+  "patch_file": "exact_date_numeric_rescue_v1.patch",
+  "seeds": [11, 29, 47],
+  "target": {
+    "kind": "captured_retrieval_replay",
+    "module_path": "src/rsi/candidate_skills/exact_date_numeric_rescue_v1.py",
+    "function_name": "select_exact_date_numeric_evidence"
+  },
+  "candidate": {
+    "candidate_id": "cand-exact-date-numeric-rescue-v1",
+    "cluster_id": "fc-rerank-evidence-retention-exact-date",
+    "mutation_level": "L2",
+    "hypothesis": "Requiring a cross-format exact-date match plus a supported metric alias and a non-date number can rescue dropped filing evidence without broad retrieval noise.",
+    "expected_mechanism": "Prepend at most one pre-rerank chunk only when all deterministic anchors match; otherwise preserve the selected set byte-for-byte.",
+    "target_paths": ["src/rsi/candidate_skills/exact_date_numeric_rescue_v1.py"],
+    "target_capabilities": ["retrieval", "temporal_reasoning", "scope_control"],
+    "target_failure_types": ["evidence_retention_failure", "period_mismatch"],
+    "patch_payload": {"strategy": "exact_date_metric_numeric_anchor"},
+    "requires_human_approval": false
+  }
+}
