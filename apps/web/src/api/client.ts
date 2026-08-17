@@ -151,6 +151,21 @@ export function deleteDocuments(
   });
 }
 
+import { sessionResourcePageSchema, type SessionResource } from "@private-fund/contracts";
+
+export function listSessionResources(sessionId: string): Promise<SessionResource[]> {
+  return requestJson(`/v1/sessions/${sessionId}/resources`, sessionResourcePageSchema).then(
+    (page) => page.items,
+  );
+}
+
+export async function deleteSessionResource(
+  sessionId: string,
+  resourceId: string,
+): Promise<void> {
+  await request(`/v1/sessions/${sessionId}/resources/${resourceId}`, { method: "DELETE" });
+}
+
 export function fetchSessionEventsPage(
   sessionId: string,
   after = 0,

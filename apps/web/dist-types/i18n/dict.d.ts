@@ -24,6 +24,14 @@ declare const dict: {
         readonly zh: "新建项目";
         readonly en: "New project";
     };
+    readonly "rail.search": {
+        readonly zh: "搜索项目 / 代码";
+        readonly en: "Search project / ticker";
+    };
+    readonly "rail.ready": {
+        readonly zh: "索引就绪";
+        readonly en: "Index ready";
+    };
     readonly "rail.noProjects": {
         readonly zh: "还没有项目，先创建一个";
         readonly en: "No projects yet — create one";
@@ -172,6 +180,18 @@ declare const dict: {
         readonly zh: "向当前项目的资料提问";
         readonly en: "Ask this project's corpus";
     };
+    readonly "workbench.suggest.vbp": {
+        readonly zh: "集采影响测算";
+        readonly en: "VBP impact";
+    };
+    readonly "workbench.suggest.pipeline": {
+        readonly zh: "管线估值拆分";
+        readonly en: "Pipeline value";
+    };
+    readonly "workbench.suggest.quarter": {
+        readonly zh: "季度业绩归因";
+        readonly en: "Quarter attribution";
+    };
     readonly "workbench.chat.empty": {
         readonly zh: "选择上方任一会话展开对话，上传区与资料列表保持可见";
         readonly en: "Open a chat above — upload and documents stay in place";
@@ -211,6 +231,22 @@ declare const dict: {
     readonly "chat.composer.placeholder": {
         readonly zh: "继续追问…";
         readonly en: "Ask a follow-up…";
+    };
+    readonly "chat.composer.queued": {
+        readonly zh: "继续追问…（生成中，将排队）";
+        readonly en: "Ask a follow-up… (queued while generating)";
+    };
+    readonly "chat.attach": {
+        readonly zh: "附件（即将支持）";
+        readonly en: "Attach (coming soon)";
+    };
+    readonly "chat.voice": {
+        readonly zh: "语音输入（即将支持）";
+        readonly en: "Voice (coming soon)";
+    };
+    readonly "chat.skills": {
+        readonly zh: "技能（即将支持）";
+        readonly en: "Skills (coming soon)";
     };
     readonly "chat.send": {
         readonly zh: "发送";

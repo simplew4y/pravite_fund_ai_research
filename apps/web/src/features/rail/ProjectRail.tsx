@@ -1,12 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { Inbox, Languages, Plus, Settings, Trash2 } from "lucide-react";
+import { Check, Inbox, Plus, Search, Settings, Trash2 } from "lucide-react";
 
 import {
   useCreateProject,
   useDeleteProject,
   useProjects,
 } from "../../api/queries";
-import { Blueprint } from "../../components/Blueprint";
 import { MonoLabel } from "../../components/MonoLabel";
 import { useT } from "../../i18n/useT";
 import { useUiStore } from "../../store/ui";
@@ -88,13 +87,22 @@ function CreateProjectDialog({ onClose }: { onClose: () => void }) {
 }
 
 export function ProjectRail() {
-  const { t } = useT();
+  const { t, lang } = useT();
   const projects = useProjects();
   const removeProject = useDeleteProject();
   const { selectedProjectId, selectProject, toggleLang } = useUiStore();
   const [creating, setCreating] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const inboxCount = useInboxCount();
+
+  const visible = projects.data?.filter(
+    (project) =>
+      !search ||
+      project.name.toLowerCase().includes(search.toLowerCase()) ||
+      (project.ticker ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (project.companyName ?? "").toLowerCase().includes(search.toLowerCase()),
+  );
 
   function remove(projectId: string) {
     if (!window.confirm(t("project.delete.confirm"))) return;
@@ -113,23 +121,23 @@ export function ProjectRail() {
         <span style={{ flex: 1 }} />
         <button
           className="btn btn-icon btn-secondary"
-          onClick={toggleLang}
-          aria-label="切换语言 / Switch language"
-        >
-          <Languages size={16} />
-        </button>
-        <button
-          className="btn btn-icon btn-secondary"
+          style={{ width: 32, height: 32 }}
           onClick={() => setCreating(true)}
           aria-label={t("rail.newProject")}
+          title={t("rail.newProject")}
         >
           <Plus size={16} />
         </button>
       </div>
 
-      <MonoLabel style={{ padding: "0 4px" }}>
-        {t("rail.tracking")} · {projects.data?.length ?? 0}
-      </MonoLabel>
+      <label className="rail-search">
+        <Search size={15} color="#71717a" />
+        <input
+          placeholder={t("rail.search")}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+      </label>
 
       {projects.isPending ? <p className="text-muted">{t("common.loading")}</p> : null}
       {projects.isError ? (
@@ -141,50 +149,64 @@ export function ProjectRail() {
         </p>
       ) : null}
 
-      {projects.data?.map((project) => (
-        <Blueprint key={project.id}>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+        {visible?.map((project) => (
           <button
+            key={project.id}
             className="rail-project"
             aria-current={project.id === selectedProjectId}
             onClick={() => selectProject(project.id)}
           >
-            <span className="name">
-              {project.name}
-              {project.ticker ? <MonoLabel>{project.ticker}</MonoLabel> : null}
-            </span>
-            {project.companyName ? (
-              <span className="text-muted" style={{ fontSize: 12 }}>
-                {project.companyName}
+            <span style={{ display: "block", paddingRight: 26 }}>
+              <span style={{ display: "block", font: "600 14.5px/1.3 var(--font-body)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {project.name}
               </span>
-            ) : null}
+              <MonoLabel>{project.ticker ?? project.companyName ?? ""}</MonoLabel>
+            </span>
+            <span className="status-dot" title={t("rail.ready")}>
+              <Check size={11} />
+            </span>
           </button>
-        </Blueprint>
-      ))}
-      {projects.data?.length === 0 ? (
-        <p className="text-muted" style={{ fontSize: 13 }}>
-          {t("rail.noProjects")}
-        </p>
-      ) : null}
-
-      {selectedProjectId ? (
-        <button
-          className="btn btn-ghost"
-          onClick={() => remove(selectedProjectId)}
-          disabled={removeProject.isPending}
-        >
-          <Trash2 size={14} /> {t("project.delete")}
-        </button>
-      ) : null}
+        ))}
+        {visible?.length === 0 ? (
+          <p className="text-muted" style={{ fontSize: 13, padding: "0 4px" }}>
+            {t("rail.noProjects")}
+          </p>
+        ) : null}
+      </div>
 
       <div className="rail-footer">
-        <button className="btn btn-ghost" onClick={() => setInboxOpen(true)}>
-          <Inbox size={14} /> {t("rail.inbox")}
-          {inboxCount > 0 ? <span className="tag tag-accent">{inboxCount}</span> : null}
+        <button
+          className="btn btn-quiet danger"
+          title={t("project.delete")}
+          aria-label={t("project.delete")}
+          onClick={() => selectedProjectId && remove(selectedProjectId)}
+          disabled={!selectedProjectId || removeProject.isPending}
+        >
+          <Trash2 size={15} />
         </button>
-        <MonoLabel>
-          <Settings size={12} style={{ verticalAlign: "-2px" }} />{" "}
-          {t("rail.settings")}
-        </MonoLabel>
+        <span style={{ flex: 1 }} />
+        <button
+          className="btn btn-quiet"
+          style={{ position: "relative" }}
+          title={t("rail.inbox")}
+          aria-label={t("rail.inbox")}
+          onClick={() => setInboxOpen(true)}
+        >
+          <Inbox size={16} />
+          {inboxCount > 0 ? <span className="badge-dot" /> : null}
+        </button>
+        <button className="btn btn-quiet" title={t("rail.settings")} aria-label={t("rail.settings")}>
+          <Settings size={16} />
+        </button>
+        <button
+          className="btn btn-quiet"
+          style={{ width: "auto", minWidth: 40, padding: "0 9px", font: "600 12px/1 var(--font-body)" }}
+          title="语言 / Language"
+          onClick={toggleLang}
+        >
+          {lang === "zh" ? "EN" : "中"}
+        </button>
       </div>
 
       {creating ? <CreateProjectDialog onClose={() => setCreating(false)} /> : null}

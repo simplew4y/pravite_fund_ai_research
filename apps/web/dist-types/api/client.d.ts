@@ -50,6 +50,9 @@ export declare function uploadProjectDocuments(projectId: string, files: File[])
     uploads: unknown[];
 }>;
 export declare function deleteDocuments(projectId: string, documentIds: string[]): Promise<unknown>;
+import { type SessionResource } from "@private-fund/contracts";
+export declare function listSessionResources(sessionId: string): Promise<SessionResource[]>;
+export declare function deleteSessionResource(sessionId: string, resourceId: string): Promise<void>;
 export declare function fetchSessionEventsPage(sessionId: string, after?: number, limit?: number): Promise<SessionEvent[]>;
 export declare function forkSession(sessionId: string, title?: string): Promise<Session>;
 //# sourceMappingURL=client.d.ts.map

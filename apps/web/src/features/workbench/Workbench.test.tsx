@@ -59,7 +59,7 @@ describe("Workbench", () => {
       "GET /v1/sessions/s-2/events": { events: [] },
     });
     renderWithQuery(<Workbench projectId="p-1" />);
-    await userEvent.click(await screen.findByRole("button", { name: /新会话/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "新会话" }));
     expect(
       calls.some((call) => call.method === "POST" && call.path === "/v1/sessions"),
     ).toBe(true);

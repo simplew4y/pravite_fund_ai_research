@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, RefreshCw, Trash2 } from "lucide-react";
+import { Download, FileText, RefreshCw, Trash2 } from "lucide-react";
 
 import { deleteDocuments } from "../../api/client";
 import {
@@ -76,14 +76,18 @@ function DocumentsPanel({ projectId }: { projectId: string }) {
       />
       {documents.isPending ? <p className="text-muted">{t("common.loading")}</p> : null}
       {rows?.map((document) => (
-        <label key={document.id} className="doc-row">
+        <label
+          key={document.id}
+          className={selected.has(document.id) ? "doc-row selected" : "doc-row"}
+        >
           <input
             type="checkbox"
             checked={selected.has(document.id)}
             onChange={() => toggle(document.id)}
           />
+          <FileText size={15} color="#71717a" style={{ flex: "none" }} />
           <span className="title">{document.title}</span>
-          <MonoLabel>{document.updatedAt.slice(5, 10)}</MonoLabel>
+          <span className="date">{document.updatedAt.slice(5, 10)}</span>
         </label>
       ))}
       {rows?.length === 0 ? <p className="text-muted">{t("common.empty")}</p> : null}

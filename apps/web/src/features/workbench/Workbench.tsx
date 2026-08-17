@@ -1,7 +1,7 @@
 import { useRef, useState, type DragEvent } from "react";
-import { Plus, Sparkles, UploadCloud } from "lucide-react";
+import { Plus, Send, Sparkles, Upload, UploadCloud } from "lucide-react";
 
-import { uploadProjectDocuments, type Session } from "../../api/client";
+import { sendMessage, uploadProjectDocuments, type Session } from "../../api/client";
 import {
   useCreateSession,
   useProjectDocuments,
@@ -106,6 +106,35 @@ export function Workbench({ projectId }: { projectId: string }) {
   const sessions = useProjectSessions(projectId);
   const createSession = useCreateSession();
   const { expandedSessionId, expandSession } = useUiStore();
+  const client = useQueryClient();
+  const headerUploadRef = useRef<HTMLInputElement>(null);
+  const [newDraft, setNewDraft] = useState("");
+  const [starting, setStarting] = useState(false);
+
+  async function startResearch(content: string) {
+    if (starting) return;
+    setStarting(true);
+    try {
+      const session = await createSession.mutateAsync({
+        projectId,
+        title: content.slice(0, 60),
+      });
+      await sendMessage(session.id, {
+        content,
+        clientMessageId: `msg-${crypto.randomUUID()}`,
+      });
+      setNewDraft("");
+      expandSession(session.id);
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function headerUpload(files: File[]) {
+    if (files.length === 0) return;
+    await uploadProjectDocuments(projectId, files);
+    await client.invalidateQueries({ queryKey: ["documents", projectId] });
+  }
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
   const expanded = sessions.data?.find((candidate) => candidate.id === expandedSessionId);
@@ -127,6 +156,15 @@ export function Workbench({ projectId }: { projectId: string }) {
         </MonoLabel>
         <span style={{ flex: 1 }} />
         <button
+          className="btn btn-quiet"
+          style={{ width: 36, height: 36 }}
+          title={t("workbench.upload")}
+          aria-label={t("workbench.upload")}
+          onClick={() => headerUploadRef.current?.click()}
+        >
+          <Upload size={16} />
+        </button>
+        <button
           className="btn btn-icon btn-primary"
           title={t("workbench.newChat")}
           aria-label={t("workbench.newChat")}
@@ -135,6 +173,17 @@ export function Workbench({ projectId }: { projectId: string }) {
         >
           <Plus size={16} />
         </button>
+        <input
+          ref={headerUploadRef}
+          type="file"
+          hidden
+          multiple
+          accept={ACCEPT}
+          onChange={(event) => {
+            void headerUpload([...(event.target.files ?? [])]);
+            event.target.value = "";
+          }}
+        />
       </div>
 
       <div className="center-body">
@@ -149,6 +198,15 @@ export function Workbench({ projectId }: { projectId: string }) {
                 onOpen={() => expandSession(session.id)}
               />
             ))}
+            <button
+              className="chat-chip chip-add"
+              title={t("workbench.newChat")}
+              aria-label={`${t("workbench.newChat")}+`}
+              onClick={newChat}
+              disabled={createSession.isPending}
+            >
+              <Plus size={14} />
+            </button>
           </div>
         </section>
 
@@ -157,10 +215,50 @@ export function Workbench({ projectId }: { projectId: string }) {
         ) : (
           <>
             <UploadZone projectId={projectId} />
-            <Blueprint className="chat-view elev-sm">
-              <div className="center-placeholder">
+            <Blueprint className="chat-view">
+              <div className="center-placeholder" style={{ padding: 20 }}>
                 <Sparkles size={26} color="#a1a1aa" />
                 <span>{t("workbench.askCorpus")}</span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 520 }}>
+                  {(["workbench.suggest.vbp", "workbench.suggest.pipeline", "workbench.suggest.quarter"] as const).map(
+                    (key) => (
+                      <button key={key} className="suggestion-chip" onClick={() => void startResearch(t(key))}>
+                        {t(key)}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
+              <div className="chat-footer" style={{ borderTop: 0 }}>
+                <form
+                  className="composer"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (newDraft.trim()) void startResearch(newDraft.trim());
+                  }}
+                >
+                  <textarea
+                    placeholder={t("workbench.askCorpus")}
+                    rows={1}
+                    value={newDraft}
+                    onChange={(event) => setNewDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        if (newDraft.trim()) void startResearch(newDraft.trim());
+                      }
+                    }}
+                  />
+                  <button
+                    className="btn btn-primary btn-send"
+                    type="submit"
+                    title={t("chat.send")}
+                    aria-label={t("chat.send")}
+                    disabled={!newDraft.trim() || starting}
+                  >
+                    <Send size={15} />
+                  </button>
+                </form>
               </div>
             </Blueprint>
           </>
