@@ -906,8 +906,41 @@ def _excel_source_url(
     return f"{_EXCEL_SOURCE_HASH}?{urlencode(params)}"
 
 
+def _artifact_public_reference(path: Path) -> tuple[str, str, str]:
+    """Return dataset id, project-relative path and a user-root-relative label."""
+    resolved = path.expanduser().resolve()
+    parts = resolved.parts
+    try:
+        marker = parts.index("private_fund_datasets")
+        dataset_id = parts[marker + 1]
+        relative_parts = parts[marker + 2 :]
+    except (ValueError, IndexError) as exc:
+        artifact_markers = [
+            index for index, part in enumerate(parts) if part in {"memos", "reports"}
+        ]
+        if not artifact_markers or artifact_markers[0] < 1:
+            raise ValueError("artifact path is outside a private-fund dataset") from exc
+        artifact_marker = artifact_markers[0]
+        dataset_id = parts[artifact_marker - 1]
+        relative_parts = parts[artifact_marker:]
+    if not relative_parts or relative_parts[0] not in {"memos", "reports"}:
+        raise ValueError("artifact path is outside the supported artifact directories")
+    relative_path = Path(*relative_parts).as_posix()
+    display_path = Path("private_fund_datasets", dataset_id, *relative_parts).as_posix()
+    return dataset_id, relative_path, display_path
+
+
+def _memo_artifact_display_path(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    return _artifact_public_reference(path)[2]
+
+
 def _memo_artifact_url(path: Path) -> str:
-    return "/v1/private-fund/dataset/memo/file?" + urlencode({"path": str(path)})
+    dataset_id, relative_path, _display_path = _artifact_public_reference(path)
+    return "/v1/private-fund/dataset/memo/file?" + urlencode(
+        {"dataset_id": dataset_id, "path": relative_path}
+    )
 
 
 def _plain_source_label(item: dict[str, Any]) -> str:
@@ -2287,6 +2320,19 @@ class _DatasetStore:
             payload["html_url"] = _memo_artifact_url(Path(manifest["html_path"]))
         if manifest.get("pdf_path"):
             payload["pdf_url"] = _memo_artifact_url(Path(manifest["pdf_path"]))
+        public_manifest: dict[str, Any] = {}
+        for key in ("markdown_path", "html_path", "pdf_path", "package_path"):
+            if manifest.get(key):
+                public_manifest[key] = _memo_artifact_display_path(Path(manifest[key]))
+        chart_paths = manifest.get("chart_paths")
+        if isinstance(chart_paths, list):
+            public_manifest["chart_paths"] = [
+                display_path
+                for raw_path in chart_paths
+                if raw_path
+                and (display_path := _memo_artifact_display_path(Path(str(raw_path))))
+            ]
+        payload["artifact_manifest"] = public_manifest
         return payload
 
     def memo(
@@ -2338,10 +2384,10 @@ class _DatasetStore:
                         "company_ticker": info["company_ticker"],
                     },
                     "topic": existing["topic"],
-                    "memo_markdown_path": str(markdown_path),
-                    "memo_html_path": str(html_path) if html_path else None,
+                    "memo_markdown_path": _memo_artifact_display_path(markdown_path),
+                    "memo_html_path": _memo_artifact_display_path(html_path),
                     "memo_html_url": _memo_artifact_url(html_path) if html_path else None,
-                    "memo_pdf_path": str(pdf_path) if pdf_path else None,
+                    "memo_pdf_path": _memo_artifact_display_path(pdf_path),
                     "memo_pdf_url": _memo_artifact_url(pdf_path) if pdf_path else None,
                     "memo_series_id": existing["series_id"],
                     "memo_version_id": existing["memo_version_id"],
@@ -2524,10 +2570,10 @@ class _DatasetStore:
                 "company_ticker": info["company_ticker"],
             },
             "topic": topic,
-            "memo_markdown_path": str(markdown_path),
-            "memo_html_path": str(html_path),
+            "memo_markdown_path": _memo_artifact_display_path(markdown_path),
+            "memo_html_path": _memo_artifact_display_path(html_path),
             "memo_html_url": _memo_artifact_url(html_path),
-            "memo_pdf_path": str(pdf_path),
+            "memo_pdf_path": _memo_artifact_display_path(pdf_path),
             "memo_pdf_url": _memo_artifact_url(pdf_path),
             "memo_series_id": memo_version["series_id"],
             "memo_version_id": memo_version["memo_version_id"],
@@ -2535,7 +2581,9 @@ class _DatasetStore:
             "revision_of_version_id": memo_version["revision_of_version_id"],
             "tracking_job": memo_version.get("tracking_job"),
             "citation_gate": citation_gate,
-            "citation_gate_audit_path": (str(citation_gate_path) if supplied_markdown else None),
+            "citation_gate_audit_path": (
+                _memo_artifact_display_path(citation_gate_path) if supplied_markdown else None
+            ),
             "sections": section_payloads,
             "inputs": {
                 "instructions": instructions,

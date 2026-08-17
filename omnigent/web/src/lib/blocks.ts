@@ -106,6 +106,10 @@ export interface UserMessageBlock {
   ctx: BlockContext;
   /** Same shape as `MessageItem.content` from the items API. */
   content: MessageContentBlock[];
+  /** Managed private-fund generation action represented by this user message. */
+  generationKind?: PrivateFundGenerationKind;
+  /** Research-note presentation selected when the generation action was sent. */
+  generationFormat?: PrivateFundGenerationFormat;
   /**
    * Stable React key for the rendered bubble, set ONLY when this block
    * was promoted from an optimistic `pendingUserMessages` entry on
@@ -116,6 +120,53 @@ export interface UserMessageBlock {
    * Absent on blocks hydrated from history (`items`), which mount fresh.
    */
   stableKey?: string;
+}
+
+export type PrivateFundGenerationKind = "research_note" | "memo";
+export type PrivateFundGenerationFormat = "plain_text" | "table" | "chart";
+
+export function privateFundGenerationKindFromSkillName(
+  name: string,
+): PrivateFundGenerationKind | undefined {
+  return name === "private-fund-memo" ? "memo" : undefined;
+}
+
+export function privateFundGenerationKindFromMessageContent(
+  content: MessageContentBlock[],
+): PrivateFundGenerationKind | undefined {
+  const text = content
+    .filter(
+      (block): block is Extract<MessageContentBlock, { type: "input_text" }> =>
+        block.type === "input_text",
+    )
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+  if (/^\/private-fund-memo(?:\s|$)/u.test(text)) return "memo";
+  if (
+    text.endsWith("生成研究笔记") ||
+    (text.includes("private_fund_research_node_save") && text.includes("dataset_id:"))
+  ) {
+    return "research_note";
+  }
+  return undefined;
+}
+
+export function privateFundGenerationFormatFromMessageContent(
+  content: MessageContentBlock[],
+): PrivateFundGenerationFormat | undefined {
+  const text = content
+    .filter(
+      (block): block is Extract<MessageContentBlock, { type: "input_text" }> =>
+        block.type === "input_text",
+    )
+    .map((block) => block.text)
+    .join("\n");
+  const label = text.match(/(?:^|\n)本次节点输出形式:\s*(文本|表格|图表)\s*(?:\n|$)/u)?.[1];
+  if (label === "文本") return "plain_text";
+  if (label === "表格") return "table";
+  if (label === "图表") return "chart";
+  return undefined;
 }
 
 // ── Tool calls ───────────────────────────────────────────
@@ -169,6 +220,8 @@ export interface SlashCommandBlock {
   name: string;
   /** Raw `<command-args>` text; empty when invoked with no args. */
   arguments: string;
+  /** Optional user-facing copy for managed skill invocations. */
+  displayText?: string;
   /** `<local-command-stdout>` text, or null when absent. */
   output: string | null;
 }
@@ -181,8 +234,8 @@ export interface SlashCommandBlock {
  * block funnels re-materialize it as a user bubble next to the
  * Skill indicator.
  */
-export function slashCommandEchoText(name: string, args: string): string {
-  return args ? `/${name} ${args}` : `/${name}`;
+export function slashCommandEchoText(name: string, args: string, displayText?: string): string {
+  return displayText?.trim() || (args ? `/${name} ${args}` : `/${name}`);
 }
 
 /**

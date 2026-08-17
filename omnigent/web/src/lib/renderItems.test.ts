@@ -57,6 +57,8 @@ describe("buildBubbles — bubble grouping", () => {
         type: "user_message",
         ctx: ctx({ itemId: "u1", responseId: "resp_1" }),
         content: [{ type: "input_text", text: "Hello" }],
+        generationKind: "research_note",
+        generationFormat: "table",
       },
       {
         type: "text_done",
@@ -69,6 +71,8 @@ describe("buildBubbles — bubble grouping", () => {
     expect(bubbles.length).toBe(2);
     expect(bubbles[0]!.kind).toBe("user");
     expect((bubbles[0] as Extract<Bubble, { kind: "user" }>).itemId).toBe("u1");
+    expect((bubbles[0] as Extract<Bubble, { kind: "user" }>).generationKind).toBe("research_note");
+    expect((bubbles[0] as Extract<Bubble, { kind: "user" }>).generationFormat).toBe("table");
     expect(bubbles[1]!.kind).toBe("assistant");
     const asst = bubbles[1] as Extract<Bubble, { kind: "assistant" }>;
     expect(asst.responseId).toBe("resp_1");

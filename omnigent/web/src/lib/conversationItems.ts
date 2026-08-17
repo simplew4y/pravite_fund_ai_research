@@ -33,6 +33,8 @@ export interface MessageItem extends BaseItem {
   is_meta?: boolean;
   /** Assistant-only marker for durable partial text from an interrupted turn. */
   interrupted?: boolean;
+  /** Optional user-facing copy for a managed action's internal prompt. */
+  display_text?: string;
 }
 
 export interface FunctionCallItem extends BaseItem {
@@ -115,6 +117,8 @@ export interface SlashCommandItem extends BaseItem {
   arguments: string;
   /** `<local-command-stdout>` text; absent when no stdout (server strips via exclude_none). */
   output?: string;
+  /** Optional user-facing copy; arguments remain execution-only. */
+  display_text?: string;
   /** Harness/agent name — server alias for the `agent` field. */
   model?: string;
 }

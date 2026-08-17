@@ -44,13 +44,17 @@
 
 import type { InfiniteData, QueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
-import type {
-  AnyBlock,
-  ElicitationBlock,
-  ErrorBlock,
-  MessageContentBlock,
-  TextDone,
-  UserMessageBlock,
+import {
+  privateFundGenerationKindFromMessageContent,
+  type AnyBlock,
+  type ElicitationBlock,
+  type ErrorBlock,
+  type MessageContentBlock,
+  privateFundGenerationFormatFromMessageContent,
+  type PrivateFundGenerationFormat,
+  type PrivateFundGenerationKind,
+  type TextDone,
+  type UserMessageBlock,
 } from "@/lib/blocks";
 import { BlockStream } from "@/lib/blockStream";
 import { isInternalSkillInjectionContent, itemsToBlocks } from "@/lib/itemsToBlocks";
@@ -99,6 +103,12 @@ import { getCurrentAuthorId } from "@/lib/identity";
 import { isNativeWrapper } from "@/lib/nativeCodingAgents";
 
 export interface SendOptions {
+  /** User-facing text for managed actions whose execution prompt is internal. */
+  displayText?: string;
+  /** Private-fund generation action shown as a compact tag on the user bubble. */
+  generationKind?: PrivateFundGenerationKind;
+  /** Presentation selected for a generated research note. */
+  generationFormat?: PrivateFundGenerationFormat;
   /**
    * Fires synchronously after `createSession` returns for a brand-new
    * session (before the first message is posted). Callers use this
@@ -127,6 +137,8 @@ export interface SendOptions {
 export interface PendingUserMessage {
   tempId: string;
   content: MessageContentBlock[];
+  generationKind?: PrivateFundGenerationKind;
+  generationFormat?: PrivateFundGenerationFormat;
   /** Author email for this pending message. Set at send time for fresh sends; set from the snapshot's created_by for replayed entries (which may differ from the current viewer). Used as fallback when session.input.consumed arrives without created_by (native-terminal path). */
   author?: string;
   /**
@@ -823,15 +835,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ? { type: "input_image" as const, file_id: `pending:${filename}`, filename }
         : { type: "input_file" as const, file_id: `pending:${filename}`, filename };
     });
+    const visibleText = opts?.displayText?.trim() || text;
     const content: MessageContentBlock[] = [
       ...pendingFileBlocks,
-      ...(text.trim() ? [{ type: "input_text" as const, text }] : []),
+      ...(visibleText.trim() ? [{ type: "input_text" as const, text: visibleText }] : []),
     ];
     const selfAuthor = getCurrentAuthorId();
     set((s) => ({
       pendingUserMessages: [
         ...s.pendingUserMessages,
-        { tempId, content, ...(selfAuthor !== null ? { author: selfAuthor } : {}) },
+        {
+          tempId,
+          content,
+          ...(opts?.generationKind ? { generationKind: opts.generationKind } : {}),
+          ...(opts?.generationFormat ? { generationFormat: opts.generationFormat } : {}),
+          ...(selfAuthor !== null ? { author: selfAuthor } : {}),
+        },
       ],
     }));
 
@@ -891,9 +910,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // drops input_image blocks), so the consumed handler falls back
       // to the pending file blocks — they must already carry real ids.
       if (fileBlocks.length > 0) {
+        const visibleServerContent: MessageContentBlock[] = opts?.displayText?.trim()
+          ? [...fileBlocks, { type: "input_text" as const, text: opts.displayText.trim() }]
+          : serverContent;
         set((s) => ({
           pendingUserMessages: s.pendingUserMessages.map((p) =>
-            p.tempId === tempId ? { ...p, content: serverContent } : p,
+            p.tempId === tempId ? { ...p, content: visibleServerContent } : p,
           ),
         }));
       }
@@ -903,6 +925,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         data: {
           role: "user",
           content: serverContent,
+          ...(opts?.displayText?.trim() ? { display_text: opts.displayText.trim() } : {}),
         },
       });
       // Policy denied the input — the server returned immediately
@@ -1026,7 +1049,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // optimistic bubble swaps for the committed one in the same flush.
     pendingSeq += 1;
     const tempId = `pend_${pendingSeq}`;
-    const commandText = args ? `/${name} ${args}` : `/${name}`;
+    const commandText = opts?.displayText?.trim() || (args ? `/${name} ${args}` : `/${name}`);
     const selfAuthor = getCurrentAuthorId();
     set((s) => ({
       pendingUserMessages: [
@@ -1034,6 +1057,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         {
           tempId,
           content: [{ type: "input_text" as const, text: commandText }],
+          ...(opts?.generationKind ? { generationKind: opts.generationKind } : {}),
+          ...(opts?.generationFormat ? { generationFormat: opts.generationFormat } : {}),
           ...(selfAuthor !== null ? { author: selfAuthor } : {}),
         },
       ],
@@ -1061,7 +1086,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // message, and forwards the meta to the runner.
       const postResult = await postEvent(sessionId, {
         type: "slash_command",
-        data: { kind: "skill", name, arguments: args },
+        data: {
+          kind: "skill",
+          name,
+          arguments: args,
+          ...(opts?.displayText?.trim() ? { display_text: opts.displayText.trim() } : {}),
+        },
       });
       if (postResult.denied) {
         // Denied commands publish no receipt, so nothing will pop the
@@ -3248,7 +3278,49 @@ function userContentFromEvent(event: SessionInputConsumedEvent): MessageContentB
       "type" in b &&
       (b.type === "input_text" || b.type === "input_image" || b.type === "input_file"),
   );
-  return isInternalSkillInjectionContent(content) ? null : content;
+  if (isInternalSkillInjectionContent(content)) return null;
+  const displayText = event.data.display_text;
+  if (typeof displayText !== "string" || !displayText.trim()) return content;
+  return [
+    ...content.filter((block) => block.type === "input_image" || block.type === "input_file"),
+    { type: "input_text", text: displayText.trim() },
+  ];
+}
+
+function generationKindFromEvent(
+  event: SessionInputConsumedEvent,
+): PrivateFundGenerationKind | undefined {
+  if (typeof event.data.display_text !== "string" || !event.data.display_text.trim()) {
+    return undefined;
+  }
+  const raw = event.data.content;
+  if (!Array.isArray(raw)) return undefined;
+  const content = raw.filter(
+    (block): block is MessageContentBlock =>
+      typeof block === "object" &&
+      block !== null &&
+      "type" in block &&
+      (block.type === "input_text" || block.type === "input_image" || block.type === "input_file"),
+  );
+  return privateFundGenerationKindFromMessageContent(content);
+}
+
+function generationFormatFromEvent(
+  event: SessionInputConsumedEvent,
+): PrivateFundGenerationFormat | undefined {
+  if (typeof event.data.display_text !== "string" || !event.data.display_text.trim()) {
+    return undefined;
+  }
+  const raw = event.data.content;
+  if (!Array.isArray(raw)) return undefined;
+  const content = raw.filter(
+    (block): block is MessageContentBlock =>
+      typeof block === "object" &&
+      block !== null &&
+      "type" in block &&
+      (block.type === "input_text" || block.type === "input_image" || block.type === "input_file"),
+  );
+  return privateFundGenerationFormatFromMessageContent(content);
 }
 
 function isInternalSkillInjectionEvent(event: SessionInputConsumedEvent): boolean {
@@ -3307,6 +3379,8 @@ function committedUserBlock(
   content: MessageContentBlock[],
   stableKey?: string,
   createdBy?: string,
+  generationKind?: PrivateFundGenerationKind,
+  generationFormat?: PrivateFundGenerationFormat,
 ): UserMessageBlock {
   return {
     type: "user_message",
@@ -3323,6 +3397,8 @@ function committedUserBlock(
     },
     content,
     stableKey,
+    ...(generationKind ? { generationKind } : {}),
+    ...(generationFormat ? { generationFormat } : {}),
   };
 }
 
@@ -3814,6 +3890,8 @@ export function handleSessionEvent(event: StreamEvent): void {
                   content,
                   matched.tempId,
                   event.createdBy ?? matched.author,
+                  matched.generationKind ?? generationKindFromEvent(event),
+                  matched.generationFormat ?? generationFormatFromEvent(event),
                 ),
               ],
             };
@@ -3836,6 +3914,8 @@ export function handleSessionEvent(event: StreamEvent): void {
                 content,
                 head.tempId,
                 event.createdBy ?? head.author,
+                head.generationKind ?? generationKindFromEvent(event),
+                head.generationFormat ?? generationFormatFromEvent(event),
               ),
             ],
           };
@@ -3847,7 +3927,14 @@ export function handleSessionEvent(event: StreamEvent): void {
         return {
           blocks: [
             ...s.blocks,
-            committedUserBlock(event.itemId, content, undefined, event.createdBy),
+            committedUserBlock(
+              event.itemId,
+              content,
+              undefined,
+              event.createdBy,
+              generationKindFromEvent(event),
+              generationFormatFromEvent(event),
+            ),
           ],
         };
       });

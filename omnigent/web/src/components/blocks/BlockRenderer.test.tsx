@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RenderItem } from "@/lib/renderItems";
 import { FileViewerContext } from "@/shell/FileViewerContext";
 import { prepareAssistantHtmlPreviewDoc, splitAssistantHtml } from "./AssistantHtmlPreview";
-import { BlockRenderer } from "./BlockRenderer";
+import { BlockRenderer, linkifyPrivateFundArtifactPaths } from "./BlockRenderer";
 
 afterEach(cleanup);
 
@@ -20,6 +20,52 @@ const FILE_VIEWER_NOOP = {
   workspaceRoot: null,
   workspaceHome: null,
 };
+
+describe("private-fund artifact links", () => {
+  it("converts legacy absolute memo paths to tenant-safe relative links", () => {
+    const markdown = [
+      "输出文件：",
+      "- Markdown：`/home/code/app/output/users/user-secret/private_fund_datasets/300274/memos/memo-v2.md`",
+      "- HTML：`/home/code/app/output/users/user-secret/private_fund_datasets/300274/memos/memo-v2.html`",
+      "- PDF：`/home/code/app/output/users/user-secret/private_fund_datasets/300274/memos/memo-v2.pdf`",
+    ].join("\n");
+
+    const result = linkifyPrivateFundArtifactPaths(markdown);
+
+    expect(result).not.toContain("/home/code/app/output/users/user-secret");
+    expect(result).toContain("[memo-v2.md]");
+    expect(result).toContain("dataset_id=300274");
+    expect(result).toContain("path=memos%2Fmemo-v2.pdf");
+  });
+
+  it("does not link paths outside generated memo and report directories", () => {
+    const source = "`/home/app/private_fund_datasets/300274/raw/source.pdf`";
+    expect(linkifyPrivateFundArtifactPaths(source)).toBe(source);
+  });
+
+  it("renders generated artifact paths as compact preview controls", async () => {
+    renderMessage(
+      "PDF：`/home/app/output/users/secret/private_fund_datasets/300274/memos/memo-v2.pdf`",
+      {
+        openFile: vi.fn(),
+        isChangedPath: () => false,
+        conversationId: "conv_1",
+      },
+    );
+
+    const trigger = await screen.findByRole("button", { name: /memo-v2\.pdf/u });
+    expect(trigger).toHaveTextContent("memo-v2.pdf");
+    expect(trigger.querySelector("svg")).toBeNull();
+    expect(screen.queryByText("private_fund_datasets/300274/memos/memo-v2.pdf")).toBeNull();
+
+    fireEvent.click(trigger);
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="popover-content"]')).not.toBeNull();
+    });
+    expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull();
+    expect(screen.getAllByText("memo-v2.pdf").length).toBeGreaterThanOrEqual(2);
+  });
+});
 
 describe("BlockRenderer dispatch", () => {
   it("collapses the post-compaction plan while keeping the final answer visible", () => {

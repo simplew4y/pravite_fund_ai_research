@@ -51,6 +51,23 @@ function renderBubble(bubble: Bubble) {
 }
 
 describe("UserBubble markdown rendering", () => {
+  it("renders generation metadata outside the message surface with the selected format", () => {
+    const { container } = renderBubble(
+      userBubble("Compare the operating metrics", {
+        generationKind: "research_note",
+        generationFormat: "table",
+      }),
+    );
+
+    const metadata = container.querySelector('[data-generation-kind="research_note"]');
+    expect(metadata).toHaveTextContent("研究笔记");
+    expect(metadata).toHaveTextContent("表格");
+    expect(metadata?.className).toContain("!bg-transparent");
+    expect(metadata?.className).toContain("!border-0");
+    expect(metadata?.closest(".rounded-2xl")).toBeNull();
+    expect(metadata?.parentElement).toHaveAttribute("data-testid", "message-bubble");
+  });
+
   it("renders **bold** markdown as a strong node, not literal asterisks", () => {
     renderBubble(userBubble("hello **world**"));
     // Streamdown emits bold as an element tagged data-streamdown="strong"

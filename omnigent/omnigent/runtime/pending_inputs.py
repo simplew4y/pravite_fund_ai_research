@@ -119,6 +119,7 @@ class DrainedInput:
     pending_id: str
     content: list[dict[str, Any]]
     created_by: str | None = None
+    display_text: str | None = None
 
 
 @dataclass
@@ -154,6 +155,7 @@ class _Entry:
     pending_id: str
     content: list[dict[str, Any]]
     created_by: str | None = None
+    display_text: str | None = None
     # Lambda (not ``_now`` directly) so a monkeypatched ``_now`` is
     # resolved at construction time rather than bound at class def.
     created_at: float = field(default_factory=lambda: _now())
@@ -193,6 +195,7 @@ def record(
     conversation_id: str,
     content: list[dict[str, Any]],
     created_by: str | None = None,
+    display_text: str | None = None,
 ) -> str:
     """
     Record an un-consumed web-composer user message.
@@ -214,7 +217,12 @@ def record(
     :returns: The index-assigned pending id, e.g. ``"pending_a1b2c3"``.
     """
     pending_id = f"pending_{uuid.uuid4().hex}"
-    entry = _Entry(pending_id=pending_id, content=content, created_by=created_by)
+    entry = _Entry(
+        pending_id=pending_id,
+        content=content,
+        created_by=created_by,
+        display_text=display_text,
+    )
     with _lock:
         _evict_stale_locked(conversation_id, entry.created_at)
         _pending.setdefault(conversation_id, {})[pending_id] = entry
@@ -281,6 +289,7 @@ def resolve_oldest(conversation_id: str) -> DrainedInput | None:
             pending_id=entry.pending_id,
             content=copy.deepcopy(entry.content),
             created_by=entry.created_by,
+            display_text=entry.display_text,
         )
 
 
@@ -362,7 +371,7 @@ def snapshot_for(conversation_id: str) -> list[dict[str, Any]]:
         return [
             {
                 "pending_id": entry.pending_id,
-                "content": copy.deepcopy(entry.content),
+                "content": _display_content(entry),
                 **({"created_by": entry.created_by} if entry.created_by is not None else {}),
             }
             for entry in entries.values()
@@ -375,7 +384,22 @@ def _drained_input(entry: _Entry) -> DrainedInput:
         pending_id=entry.pending_id,
         content=copy.deepcopy(entry.content),
         created_by=entry.created_by,
+        display_text=entry.display_text,
     )
+
+
+def _display_content(entry: _Entry) -> list[dict[str, Any]]:
+    """Return pending content with execution text replaced by UI copy."""
+    content = copy.deepcopy(entry.content)
+    if not entry.display_text:
+        return content
+    visible = [
+        block
+        for block in content
+        if isinstance(block, dict) and block.get("type") in ("input_image", "input_file")
+    ]
+    visible.append({"type": "input_text", "text": entry.display_text})
+    return visible
 
 
 def _content_text(content: list[dict[str, Any]]) -> str:

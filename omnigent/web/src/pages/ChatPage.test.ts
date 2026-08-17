@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
 import type { RenderItem } from "@/lib/renderItems";
 import type { ToolExecution } from "@/lib/blocks";
 import type { Bubble } from "@/lib/renderItems";
+import type { SessionStatus } from "@/lib/types";
 import { BUILTIN_SLASH_COMMANDS, isSlashCommandText } from "@/components/SlashCommandMenu";
 import { isSessionSharedWithOthers } from "@/lib/permissionsApi";
 import {
@@ -12,6 +14,7 @@ import {
   collectPendingElicitations,
   computeIsWorking,
   computeShowsWorking,
+  computeTurnWorking,
   containsMarkdownTable,
   dispatchInitialPrompt,
   hasPrivateFundConversationContext,
@@ -26,6 +29,7 @@ import {
   splitSlashCommand,
   stripPendingElicitations,
   subAgentComposerLabel,
+  useStableTurnWorking,
 } from "./ChatPage";
 
 describe("hasPrivateFundConversationContext", () => {
@@ -171,6 +175,7 @@ interface ActiveTurnComposerStateInput {
   isWorking: boolean;
   value?: string;
   fileCount?: number;
+  hasGenerationIntent?: boolean;
   disabled?: boolean;
   permissionLevel?: number | null;
 }
@@ -182,15 +187,20 @@ function activeTurnComposerState({
   isWorking,
   value = "",
   fileCount = 0,
+  hasGenerationIntent = false,
   disabled = false,
   permissionLevel = null,
 }: ActiveTurnComposerStateInput) {
   const isReadOnly = permissionLevel === 1;
   const hasDraft = value.trim().length > 0 || fileCount > 0;
-  const showInterruptButton = isWorking && !hasDraft;
-  const submitDisabled = showInterruptButton ? isReadOnly : !hasDraft || disabled || isReadOnly;
+  const hasSubmittableDraft = hasDraft || hasGenerationIntent;
+  const showInterruptButton = isWorking && !hasSubmittableDraft;
+  const submitDisabled = showInterruptButton
+    ? isReadOnly
+    : !hasSubmittableDraft || disabled || isReadOnly;
   return {
     hasDraft,
+    hasSubmittableDraft,
     showInterruptButton,
     submitDisabled,
     ariaLabel: showInterruptButton ? "Interrupt" : "Send",
@@ -201,6 +211,7 @@ describe("Composer active-turn controls", () => {
   it("shows an enabled interrupt button while working with an empty draft", () => {
     expect(activeTurnComposerState({ isWorking: true })).toEqual({
       hasDraft: false,
+      hasSubmittableDraft: false,
       showInterruptButton: true,
       submitDisabled: false,
       ariaLabel: "Interrupt",
@@ -219,6 +230,16 @@ describe("Composer active-turn controls", () => {
   it("keeps send mode available for file-only follow-ups while working", () => {
     expect(activeTurnComposerState({ isWorking: true, fileCount: 1 })).toMatchObject({
       hasDraft: true,
+      showInterruptButton: false,
+      submitDisabled: false,
+      ariaLabel: "Send",
+    });
+  });
+
+  it("allows an empty generation request when note or Memo mode is armed", () => {
+    expect(activeTurnComposerState({ isWorking: false, hasGenerationIntent: true })).toMatchObject({
+      hasDraft: false,
+      hasSubmittableDraft: true,
       showInterruptButton: false,
       submitDisabled: false,
       ariaLabel: "Send",
@@ -618,6 +639,74 @@ describe("computeIsWorking", () => {
 
   it("failed → false", () => {
     expect(computeIsWorking("failed")).toBe(false);
+  });
+});
+
+describe("computeTurnWorking", () => {
+  it("becomes active immediately while a submitted turn awaits server running status", () => {
+    expect(computeTurnWorking("streaming", false)).toBe(true);
+  });
+
+  it("stays active while the settled server status is working", () => {
+    expect(computeTurnWorking("idle", true)).toBe(true);
+  });
+
+  it("settles only when both local and server activity have ended", () => {
+    expect(computeTurnWorking("idle", false)).toBe(false);
+  });
+});
+
+describe("useStableTurnWorking", () => {
+  it("holds working through a short idle gap and cancels the release when work resumes", () => {
+    vi.useFakeTimers();
+    try {
+      const { result, rerender } = renderHook(
+        ({ localStatus, sessionStatus }) =>
+          useStableTurnWorking(localStatus, sessionStatus, "conv_1", 800),
+        {
+          initialProps: {
+            localStatus: "streaming" as "idle" | "streaming",
+            sessionStatus: "running" as SessionStatus,
+          },
+        },
+      );
+
+      rerender({ localStatus: "idle", sessionStatus: "idle" });
+      expect(result.current).toBe(true);
+      act(() => vi.advanceTimersByTime(500));
+      rerender({ localStatus: "streaming", sessionStatus: "waiting" });
+      act(() => vi.advanceTimersByTime(800));
+      expect(result.current).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles after a sustained idle status and immediately on failure", () => {
+    vi.useFakeTimers();
+    try {
+      const { result, rerender } = renderHook(
+        ({ localStatus, sessionStatus }) =>
+          useStableTurnWorking(localStatus, sessionStatus, "conv_1", 800),
+        {
+          initialProps: {
+            localStatus: "streaming" as "idle" | "streaming",
+            sessionStatus: "running" as SessionStatus,
+          },
+        },
+      );
+
+      rerender({ localStatus: "idle", sessionStatus: "idle" });
+      act(() => vi.advanceTimersByTime(800));
+      expect(result.current).toBe(false);
+
+      rerender({ localStatus: "streaming", sessionStatus: "running" });
+      expect(result.current).toBe(true);
+      rerender({ localStatus: "idle", sessionStatus: "failed" });
+      expect(result.current).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

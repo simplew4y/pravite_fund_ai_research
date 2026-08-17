@@ -29,9 +29,11 @@ import {
   ImageIcon,
   Loader2Icon,
   MessageSquareIcon,
+  NotebookPenIcon,
   PaperclipIcon,
   ShrinkIcon,
   SquareIcon,
+  SparklesIcon,
   TerminalIcon,
   WifiOffIcon,
   XIcon,
@@ -427,6 +429,8 @@ export function buildPendingBubbles(
       // No server item id yet; tempId keeps React keys stable until promotion.
       itemId: p.tempId,
       content: p.content,
+      ...(p.generationKind ? { generationKind: p.generationKind } : {}),
+      ...(p.generationFormat ? { generationFormat: p.generationFormat } : {}),
       ...(author !== null ? { createdBy: author } : {}),
     };
   });
@@ -1002,8 +1006,12 @@ export function ChatPage() {
   // include child-session activity. `showsWorking` is display-only (tab title
   // + shimmer/pill) for the main chat and is suppressed mid-elicitation or
   // when the runner is known offline.
-  const isWorking = !hasPendingElicitation && computeIsWorking(sessionStatus);
-  const showsWorking = computeShowsWorking(sessionStatus, { hasPendingElicitation, runnerOnline });
+  // Some harnesses briefly finish one response before starting the next phase
+  // of the same user task. Settle the combined local + server lifecycle only
+  // after the gap, so Stop and answer actions do not flicker in lockstep.
+  const turnWorking = useStableTurnWorking(status, sessionStatus, urlConvId);
+  const isWorking = !hasPendingElicitation && turnWorking;
+  const showsWorking = turnWorking && !hasPendingElicitation && runnerOnline !== false;
 
   // A fork of a coding session carries the source id in this label (set by
   // fork_conversation). It is provenance — it persists after the clone is
@@ -1177,7 +1185,13 @@ export function ChatPage() {
   const isUnreachable =
     !sandboxLaunching && (liveness.kind === "host_offline" || liveness.kind === "local_stranded");
 
-  async function onSend(text: string, files?: File[]) {
+  async function onSend(
+    text: string,
+    files?: File[],
+    displayText?: string,
+    generationKind?: "research_note" | "memo",
+    generationFormat?: PresentationMode,
+  ) {
     if (!(await requireConfiguration())) return;
     if (!agentId) return;
     // An unbound coding clone (fork-source label) needs a directory before
@@ -1198,6 +1212,9 @@ export function ChatPage() {
       return;
     }
     void useChatStore.getState().send(text, agentId, files, {
+      displayText,
+      generationKind,
+      generationFormat,
       onConversationCreated: (newId) => {
         // Eager URL update: the moment the server tells us this
         // conversation's id, promote `/` → `/c/:newId`. Replace (not
@@ -1208,7 +1225,13 @@ export function ChatPage() {
     });
   }
 
-  async function onSendSlashCommand(name: string, args: string) {
+  async function onSendSlashCommand(
+    name: string,
+    args: string,
+    displayText?: string,
+    generationKind?: "research_note" | "memo",
+    generationFormat?: PresentationMode,
+  ) {
     if (!(await requireConfiguration())) return;
     if (!agentId) return;
     // Slash commands aren't replayed (an edge), but still route an unbound
@@ -1222,6 +1245,9 @@ export function ChatPage() {
       return;
     }
     void useChatStore.getState().sendSlashCommand(name, args, agentId, {
+      displayText,
+      generationKind,
+      generationFormat,
       onConversationCreated: (newId) => {
         navigate(`/c/${newId}`, { replace: true });
       },
@@ -1354,21 +1380,33 @@ export function ChatPage() {
           hasConversationContext={hasConversationContext}
           recentUserMessages={recentPrivateFundUserMessages}
           recentAssistantMessages={recentPrivateFundAssistantMessages}
-          onGenerateNode={(prompt) => {
+          onGenerateNode={(prompt, displayText, generationMode) => {
             const skillMatch = prompt.match(
               /^\/(private-fund-memo|private-fund-report)(?:\s+([\s\S]*))?$/,
             );
             if (!skillMatch) {
-              onSend(`${wrapPrivateFundPromptContext(prompt)}生成研究笔记`);
+              onSend(
+                `${wrapPrivateFundPromptContext(prompt)}生成研究笔记`,
+                undefined,
+                displayText,
+                "research_note",
+                generationMode === "memo" ? undefined : generationMode,
+              );
               return;
             }
             const skillName = skillMatch[1];
             const skillArgs = skillMatch[2]?.trim() ?? "";
+            const generationKind = skillName === "private-fund-memo" ? "memo" : undefined;
             const wrapper = capabilitySource.labels?.["omnigent.wrapper"];
             if (isNativeWrapperLabel(wrapper)) {
-              onSend(`/${skillName}${skillArgs ? ` ${skillArgs}` : ""}`);
+              onSend(
+                `/${skillName}${skillArgs ? ` ${skillArgs}` : ""}`,
+                undefined,
+                displayText,
+                generationKind,
+              );
             } else {
-              onSendSlashCommand(skillName, skillArgs);
+              onSendSlashCommand(skillName, skillArgs, displayText, generationKind);
             }
           }}
           sidebarOpen={privateFundShell?.sidebarOpen ?? true}
@@ -1970,7 +2008,7 @@ function MainAgentSurface({
                     key={bubbleKey(bubble)}
                     bubble={bubble}
                     privateFundDatasetId={privateFundDatasetId}
-                    conversationWorking={showsWorking}
+                    conversationWorking={isWorking}
                     trustedMemoSourceIds={trustedMemoSourceIds}
                     onAddTrustedMemoSource={onAddTrustedMemoSource}
                   />
@@ -3189,6 +3227,7 @@ export const BubbleView = memo(
 );
 
 function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
+  const { t } = useTranslation();
   const sessionId = useChatStore((s) => s.conversationId);
   // Author labels only matter once the session is shared with someone else.
   const isSessionShared = useContext(SessionSharedContext);
@@ -3229,7 +3268,7 @@ function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
       data-testid="message-bubble"
       data-role="user"
       data-user-message-id={bubble.itemId}
-      className="max-w-3xl"
+      className={cn("relative max-w-3xl", bubble.generationKind && "pb-4")}
     >
       {/* w-fit + ml-auto shrink-wrap the row so the author avatar sits
           immediately left of the right-aligned bubble (the bubble's own
@@ -3342,6 +3381,37 @@ function UserBubble({ bubble }: { bubble: Extract<Bubble, { kind: "user" }> }) {
           {text && <FilePathAwareMessageResponse breaks>{text}</FilePathAwareMessageResponse>}
         </MessageContent>
       </div>
+      {bubble.generationKind && (
+        <div
+          className="absolute bottom-0 right-1 flex h-3.5 items-center gap-0.5 whitespace-nowrap !rounded-none !border-0 !bg-transparent !p-0 !text-[10px] font-medium text-muted-foreground/80 !shadow-none !ring-0"
+          data-generation-kind={bubble.generationKind}
+        >
+          {bubble.generationKind === "memo" ? (
+            <NotebookPenIcon className="size-2.5 text-foreground/45" aria-hidden="true" />
+          ) : (
+            <SparklesIcon className="size-2.5 text-foreground/45" aria-hidden="true" />
+          )}
+          <span>
+            {bubble.generationKind === "memo"
+              ? t("privateFund.generationTagMemo", "Memo")
+              : t("privateFund.generationTagResearchNote", "Research note")}
+          </span>
+          {bubble.generationKind === "research_note" && bubble.generationFormat && (
+            <>
+              <span className="text-foreground/25" aria-hidden="true">
+                ·
+              </span>
+              <span>
+                {bubble.generationFormat === "plain_text"
+                  ? t("privateFund.text", "Text")
+                  : bubble.generationFormat === "table"
+                    ? t("privateFund.table", "Table")
+                    : t("privateFund.chart", "Chart")}
+              </span>
+            </>
+          )}
+        </div>
+      )}
     </Message>
   );
 }
@@ -3491,19 +3561,6 @@ function AssistantBubble({
                 <span>
                   {isTrustedMemoSource ? t("chat.answerNoteSaved") : t("chat.saveAnswerNote")}
                 </span>
-              </MessageAction>
-            )}
-            {workbenchActions && (
-              <MessageAction
-                tooltip={t("chat.manageAnswerNotesHint")}
-                label={t("chat.manageAnswerNotes")}
-                size="sm"
-                variant="ghost"
-                className="h-7 gap-1 px-2 text-xs"
-                onClick={workbenchActions.openAssetManagement}
-              >
-                <FolderIcon size={14} />
-                <span>{t("chat.manageAnswerNotes")}</span>
               </MessageAction>
             )}
           </MessageActions>
@@ -4644,7 +4701,9 @@ export function Composer({
 
   // Depends on mentionedItems (from the hook above), so it's computed here.
   const hasDraft = value.trim().length > 0 || files.length > 0 || mentionedItems.length > 0;
-  const showInterruptButton = isWorking && !hasDraft;
+  const hasGenerationIntent = Boolean(privateFundDatasetId && workbenchActions && composeIntent);
+  const hasSubmittableDraft = hasDraft || hasGenerationIntent;
+  const showInterruptButton = isWorking && !hasSubmittableDraft;
 
   useEffect(() => {
     useChatStore.getState().setActiveComposerAttachments(mentionedItems);
@@ -5648,7 +5707,7 @@ export function Composer({
               disabled={
                 showInterruptButton
                   ? isReadOnly
-                  : !hasDraft || disabled || isReadOnly || hasPendingElicitation
+                  : !hasSubmittableDraft || disabled || isReadOnly || hasPendingElicitation
               }
               title={showInterruptButton ? "Interrupt" : "Send"}
               aria-label={showInterruptButton ? "Interrupt" : "Send"}
@@ -5674,12 +5733,59 @@ export function Composer({
   );
 }
 
-// The "Working…" shimmer tracks the server-side session status 1:1 with the
-// status badge — no optimistic bridges. There is a brief gap after a send
-// before the server confirms `running` (exactly like the badge); that's the
-// intended behavior — the indicator reflects what the agent is actually doing.
 export function computeIsWorking(sessionStatus: SessionStatus): boolean {
   return sessionStatus === "running" || sessionStatus === "waiting";
+}
+
+/** Include a submitted local turn while server-side startup is pending. */
+export function computeTurnWorking(
+  localStatus: "idle" | "streaming",
+  stableSessionWorking: boolean,
+): boolean {
+  return localStatus === "streaming" || stableSessionWorking;
+}
+
+// Real cc-haha research runs can pause for roughly 2.7s while handing off
+// between internal responses. Keep the UI in one continuous turn across that
+// hand-off, then settle once the combined lifecycle stays idle for 3.5s.
+const WORKING_IDLE_SETTLE_MS = 3500;
+
+/**
+ * Keeps turn controls stable across short idle gaps emitted between harness
+ * phases. A real failure and a conversation switch still settle immediately.
+ */
+export function useStableTurnWorking(
+  localStatus: "idle" | "streaming",
+  sessionStatus: SessionStatus,
+  conversationId: string | null | undefined,
+  idleSettleMs = WORKING_IDLE_SETTLE_MS,
+): boolean {
+  const immediatelyWorking = computeTurnWorking(localStatus, computeIsWorking(sessionStatus));
+  const [heldWorking, setHeldWorking] = useState(immediatelyWorking);
+  const conversationRef = useRef(conversationId);
+
+  useLayoutEffect(() => {
+    if (conversationRef.current !== conversationId) {
+      conversationRef.current = conversationId;
+      setHeldWorking(immediatelyWorking);
+      return;
+    }
+
+    if (immediatelyWorking) {
+      setHeldWorking(true);
+      return;
+    }
+
+    if (sessionStatus === "failed") {
+      setHeldWorking(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setHeldWorking(false), idleSettleMs);
+    return () => window.clearTimeout(timer);
+  }, [conversationId, idleSettleMs, immediatelyWorking, localStatus, sessionStatus]);
+
+  return conversationRef.current === conversationId ? heldWorking : immediatelyWorking;
 }
 
 /**

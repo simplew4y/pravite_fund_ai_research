@@ -62,7 +62,7 @@ export function PrivateFundMemoContent({
   );
 
   const latestMemoUrl = project?.latestMemoPath
-    ? `/v1/private-fund/dataset/memo/file?path=${encodeURIComponent(project.latestMemoPath)}`
+    ? `/v1/private-fund/dataset/memo/file?dataset_id=${encodeURIComponent(datasetId)}&path=${encodeURIComponent(project.latestMemoPath)}`
     : null;
 
   const hasMemoArtifacts = localMemos.length > 0 || !!project?.latestMemoName || !!latestMemoUrl;

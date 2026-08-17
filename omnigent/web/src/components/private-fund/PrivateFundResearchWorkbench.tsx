@@ -8,8 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns2,
-  Download,
-  ExternalLink,
   FileStack,
   History,
   Loader2,
@@ -62,6 +60,10 @@ import { PrivateFundHistoryPanel } from "./PrivateFundHistoryPanel";
 import { PrivateFundTrackingPanel } from "./PrivateFundTrackingPanel";
 import { PrivateFundValuationTrackingPanel } from "./PrivateFundValuationTrackingPanel";
 import { FilePathAwareMessageResponse } from "@/components/blocks/BlockRenderer";
+import {
+  PrivateFundArtifactPreview,
+  type PrivateFundArtifactReference,
+} from "./PrivateFundArtifactPreview";
 import { hostFetch } from "@/lib/host";
 import { usePrivateFundWorkspaceStore } from "@/store/privateFundWorkspaceStore";
 import { useTranslation } from "react-i18next";
@@ -207,7 +209,7 @@ export type PrivateFundResearchWorkbenchProps = {
   recentUserMessages?: string[];
   recentAssistantMessages?: string[];
   /** Available after the first research question creates a conversation. */
-  onGenerateNode?: (prompt: string) => void;
+  onGenerateNode?: (prompt: string, displayText: string, mode: PrivateFundGenerationMode) => void;
   sidebarOpen?: boolean;
   onOpenSidebar?: () => void;
 };
@@ -253,6 +255,40 @@ function assetSourceCount(asset: PrivateFundAsset): number {
     asset.metadata.trusted_source_count,
   ].find((value) => typeof value === "number");
   return typeof metadataCount === "number" ? metadataCount : asset.evidenceCount;
+}
+
+function assetArtifactReferences(
+  asset: PrivateFundAsset,
+  datasetId: string,
+): PrivateFundArtifactReference[] {
+  const rawArtifacts = Array.isArray(asset.metadata.artifacts) ? asset.metadata.artifacts : [];
+  const artifacts = rawArtifacts.flatMap((raw): PrivateFundArtifactReference[] => {
+    if (!raw || typeof raw !== "object") return [];
+    const value = raw as Record<string, unknown>;
+    const path = typeof value.path === "string" ? value.path : "";
+    const format = typeof value.format === "string" ? value.format : "";
+    if (!path || !format || !/^(?:memos|reports)\//u.test(path)) return [];
+    if (path.split("/").some((part) => !part || part === "." || part === "..")) return [];
+    return [
+      {
+        datasetId,
+        path,
+        format,
+        displayPath: `private_fund_datasets/${datasetId}/${path}`,
+      },
+    ];
+  });
+  if (artifacts.length > 0) return artifacts;
+  const storedPath = asset.storedPath ?? "";
+  if (!/^(?:memos|reports)\//u.test(storedPath)) return [];
+  return [
+    {
+      datasetId,
+      path: storedPath,
+      format: asset.format,
+      displayPath: `private_fund_datasets/${datasetId}/${storedPath}`,
+    },
+  ];
 }
 
 type DocumentPreviewPayload = {
@@ -905,6 +941,11 @@ export function PrivateFundResearchWorkbench({
       if (instructionOverride !== undefined) {
         setPresentationInstruction(instructionOverride);
       }
+      const displayText =
+        instruction.trim() ||
+        (mode === "memo"
+          ? t("privateFund.generateMemo", "Generate Memo")
+          : t("privateFund.generateNote", "Generate research note"));
       onGenerateNode(
         buildGenerationPrompt(
           datasetId,
@@ -918,6 +959,8 @@ export function PrivateFundResearchWorkbench({
           mode,
           instruction,
         ),
+        displayText,
+        mode,
       );
       setNotice(
         mode === "memo"
@@ -1036,12 +1079,10 @@ export function PrivateFundResearchWorkbench({
     const node = asset.sourceKind.startsWith("research_node")
       ? workflow.nodes.find((candidate) => candidate.nodeId === asset.sourceId)
       : undefined;
-    const memoUrl =
-      (asset.assetType === "memo" || asset.assetType === "report") &&
-      asset.storedPath &&
-      ["pdf", "html"].includes(asset.format.toLowerCase())
-        ? `/v1/private-fund/dataset/memo/file?path=${encodeURIComponent(asset.storedPath)}`
-        : null;
+    const generatedArtifacts =
+      asset.assetType === "memo" || asset.assetType === "report"
+        ? assetArtifactReferences(asset, datasetId)
+        : [];
     const documentUrl =
       asset.assetType === "document" && asset.format.toLowerCase() === "pdf"
         ? `/v1/private-fund/dataset/document/file?${new URLSearchParams({
@@ -1138,42 +1179,12 @@ export function PrivateFundResearchWorkbench({
               />
             </Suspense>
           </div>
-        ) : memoUrl && asset.format.toLowerCase() === "pdf" ? (
-          <iframe
-            className={cn(embeddedPreviewClass, !compact && "mt-4")}
-            src={memoUrl}
-            title={`${asset.title} PDF 预览`}
+        ) : generatedArtifacts.length > 0 ? (
+          <PrivateFundArtifactPreview
+            artifacts={generatedArtifacts}
+            className={cn(embeddedPreviewClass, "overflow-hidden", !compact && "mt-4")}
+            markdownFallback={asset.contentMarkdown}
           />
-        ) : memoUrl && asset.format.toLowerCase() === "html" ? (
-          <>
-            <div className={cn("flex justify-end gap-1", compact ? "mb-2" : "mb-2 mt-4")}>
-              <a
-                aria-label={`下载 ${asset.title}`}
-                className="flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
-                download
-                href={memoUrl}
-                title="下载"
-              >
-                <Download className="size-3.5" />
-              </a>
-              <a
-                aria-label={`打开原文件 ${asset.title}`}
-                className="flex size-8 items-center justify-center rounded-md text-[var(--pf-ink-secondary)] hover:bg-[var(--pf-panel-subtle)]"
-                href={memoUrl}
-                rel="noreferrer"
-                target="_blank"
-                title="打开原文件"
-              >
-                <ExternalLink className="size-3.5" />
-              </a>
-            </div>
-            <iframe
-              className={embeddedPreviewClass}
-              sandbox=""
-              src={memoUrl}
-              title={`${asset.title} HTML 预览`}
-            />
-          </>
         ) : documentUrl ? (
           <iframe
             className={cn(embeddedPreviewClass, !compact && "mt-4")}

@@ -23,6 +23,9 @@ import {
   type ToolGroup,
   type ToolResultBlock,
   type UserMessageBlock,
+  privateFundGenerationFormatFromMessageContent,
+  privateFundGenerationKindFromMessageContent,
+  privateFundGenerationKindFromSkillName,
   slashCommandEchoItemId,
   slashCommandEchoText,
 } from "./blocks";
@@ -160,6 +163,20 @@ function isCompactionSummaryMessage(item: MessageItem): boolean {
 }
 
 function userMessageToBlock(item: MessageItem): UserMessageBlock {
+  const content = item.content.filter(
+    (
+      c,
+    ): c is Extract<
+      MessageItem["content"][number],
+      { type: "input_text" | "input_image" | "input_file" }
+    > => c.type === "input_text" || c.type === "input_image" || c.type === "input_file",
+  );
+  const visibleContent = item.display_text?.trim()
+    ? [
+        ...content.filter((c) => c.type === "input_image" || c.type === "input_file"),
+        { type: "input_text" as const, text: item.display_text.trim() },
+      ]
+    : content;
   return {
     type: "user_message",
     ctx: ctxFor(item),
@@ -168,14 +185,13 @@ function userMessageToBlock(item: MessageItem): UserMessageBlock {
     // an interpretation. Cast restricts to the user-input subset
     // (input_text / input_image / input_file); output_text would only
     // appear on assistant messages and is excluded here.
-    content: item.content.filter(
-      (
-        c,
-      ): c is Extract<
-        MessageItem["content"][number],
-        { type: "input_text" | "input_image" | "input_file" }
-      > => c.type === "input_text" || c.type === "input_image" || c.type === "input_file",
-    ),
+    content: visibleContent,
+    ...(item.display_text?.trim()
+      ? { generationKind: privateFundGenerationKindFromMessageContent(content) }
+      : {}),
+    ...(item.display_text?.trim()
+      ? { generationFormat: privateFundGenerationFormatFromMessageContent(content) }
+      : {}),
   };
 }
 
@@ -274,7 +290,15 @@ function skillEchoBlock(item: SlashCommandItem): UserMessageBlock | null {
   return {
     type: "user_message",
     ctx: { ...ctxFor(item), itemId: slashCommandEchoItemId(item.id) },
-    content: [{ type: "input_text", text: slashCommandEchoText(item.name, item.arguments) }],
+    content: [
+      {
+        type: "input_text",
+        text: slashCommandEchoText(item.name, item.arguments, item.display_text),
+      },
+    ],
+    ...(privateFundGenerationKindFromSkillName(item.name)
+      ? { generationKind: privateFundGenerationKindFromSkillName(item.name) }
+      : {}),
   };
 }
 
@@ -288,6 +312,7 @@ function slashCommandToBlock(item: SlashCommandItem): SlashCommandBlock {
     kind: item.kind === "command" ? "command" : "skill",
     name: item.name,
     arguments: item.arguments,
+    ...(item.display_text?.trim() ? { displayText: item.display_text.trim() } : {}),
     output: typeof item.output === "string" ? item.output : null,
   };
 }

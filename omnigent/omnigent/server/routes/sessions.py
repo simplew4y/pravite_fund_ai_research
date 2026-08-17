@@ -4796,6 +4796,14 @@ async def _persist_external_conversation_item(
         if drained is not None:
             cleared_pending_id = drained.pending_id
             item = _merge_pending_file_blocks(item, drained.content)
+            if drained.display_text:
+                item = item.model_copy(
+                    update={
+                        "data": item.data.model_copy(
+                            update={"display_text": drained.display_text}
+                        )
+                    }
+                )
             # Apply the original sender's identity recorded at POST time.
             # The transcript forwarder is the single writer here and has no
             # auth context, so the persisted item would otherwise have
@@ -4839,7 +4847,11 @@ async def _persist_skipped_kiro_pending_input(
     user_item = NewConversationItem(
         type="message",
         response_id=turn_id,
-        data=MessageData(role="user", content=skipped.content),
+        data=MessageData(
+            role="user",
+            content=skipped.content,
+            display_text=skipped.display_text,
+        ),
         created_by=skipped.created_by,
     )
     error = ErrorData(
@@ -7974,7 +7986,16 @@ async def _upgrade_plaintext_skill_event(
         return body
     return SessionEventInput(
         type=_SLASH_COMMAND_TYPE,
-        data={"kind": "skill", "name": name, "arguments": arguments},
+        data={
+            "kind": "skill",
+            "name": name,
+            "arguments": arguments,
+            **(
+                {"display_text": body.data["display_text"]}
+                if isinstance(body.data.get("display_text"), str)
+                else {}
+            ),
+        },
     )
 
 
@@ -8126,6 +8147,12 @@ async def _dispatch_skill_slash_command_to_runner(
     import uuid
 
     skill_name, arguments = _parse_skill_slash_command(body)
+    raw_display_text = body.data.get("display_text")
+    display_text = (
+        raw_display_text.strip()
+        if isinstance(raw_display_text, str) and raw_display_text.strip()
+        else None
+    )
     meta_text = await _resolve_skill_meta_text_via_runner(
         session_id,
         skill_name,
@@ -8143,6 +8170,7 @@ async def _dispatch_skill_slash_command_to_runner(
             kind="skill",
             name=skill_name,
             arguments=arguments,
+            display_text=display_text,
         ),
         created_by=created_by,
     )
@@ -8168,7 +8196,9 @@ async def _dispatch_skill_slash_command_to_runner(
     # otherwise keep a NULL title and the sidebar falls back to the
     # conversation id. Titled from the typed command ("/debate kafka…"),
     # NOT the hidden meta item — that's the full SKILL.md instruction blob.
-    command_text = f"/{skill_name} {arguments}" if arguments else f"/{skill_name}"
+    command_text = display_text or (
+        f"/{skill_name} {arguments}" if arguments else f"/{skill_name}"
+    )
     await _seed_missing_title(
         conv,
         [{"type": "input_text", "text": command_text}],
@@ -8235,6 +8265,8 @@ def _title_content_from_item(item: NewConversationItem) -> list[dict[str, Any]]:
         return []
     if item.data.role != "user":
         return []
+    if item.data.display_text:
+        return [{"type": "input_text", "text": item.data.display_text}]
     return item.data.content
 
 
@@ -8511,6 +8543,8 @@ async def _forward_event_to_runner(
     # harness don't have access to the server's file store — the
     # LLM endpoint needs the actual content, not an internal ID.
     forwarded_data = dict(body.data)
+    # UI-only transcript metadata must never enter a harness request.
+    forwarded_data.pop("display_text", None)
     if (
         file_store is not None
         and artifact_store is not None
@@ -8792,8 +8826,18 @@ async def _dispatch_session_event_to_runner(
         # back on any failure/cancellation so a message the TUI never
         # received doesn't replay as a ghost.
         content = body.data.get("content")
+        raw_display_text = body.data.get("display_text")
         pending_id: str | None = (
-            pending_inputs.record(session_id, content, created_by=created_by)
+            pending_inputs.record(
+                session_id,
+                content,
+                created_by=created_by,
+                display_text=(
+                    raw_display_text.strip()
+                    if isinstance(raw_display_text, str) and raw_display_text.strip()
+                    else None
+                ),
+            )
             if isinstance(content, list) and content
             else None
         )

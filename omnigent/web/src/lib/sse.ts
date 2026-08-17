@@ -977,6 +977,9 @@ function parseOutputItem(data: Record<string, unknown>): StreamEvent | null {
       kind,
       name: String(rec.name ?? ""),
       arguments: String(rec.arguments ?? ""),
+      ...(typeof rec.display_text === "string" && rec.display_text.trim()
+        ? { displayText: rec.display_text.trim() }
+        : {}),
       output,
       agentName: String(rec.model ?? ""),
       // Present only on human-authored receipts (server exclude_none).

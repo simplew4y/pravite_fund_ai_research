@@ -34,6 +34,7 @@ import {
   type ToolGroup,
   type ToolResultBlock,
   type UserMessageBlock,
+  privateFundGenerationKindFromSkillName,
   slashCommandEchoItemId,
   slashCommandEchoText,
 } from "./blocks";
@@ -638,8 +639,14 @@ function* processEvent(state: ReducerState, event: StreamEvent): Generator<AnyBl
             ...(event.createdBy !== undefined ? { createdBy: event.createdBy } : {}),
           },
           content: [
-            { type: "input_text", text: slashCommandEchoText(event.name, event.arguments) },
+            {
+              type: "input_text",
+              text: slashCommandEchoText(event.name, event.arguments, event.displayText),
+            },
           ],
+          ...(privateFundGenerationKindFromSkillName(event.name)
+            ? { generationKind: privateFundGenerationKindFromSkillName(event.name) }
+            : {}),
         } satisfies UserMessageBlock;
       }
       yield {
@@ -648,6 +655,7 @@ function* processEvent(state: ReducerState, event: StreamEvent): Generator<AnyBl
         kind: event.kind,
         name: event.name,
         arguments: event.arguments,
+        ...(event.displayText ? { displayText: event.displayText } : {}),
         output: event.output,
       } satisfies SlashCommandBlock;
       return;
