@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--collection-name", required=True)
     parser.add_argument("--seeds", default="11,29,47")
     parser.add_argument("--rerank-topk", type=int, default=5)
+    parser.add_argument("--max-cases", type=int, default=0)
     parser.add_argument("--enable-exact-rescue", action="store_true")
     args = parser.parse_args()
 
@@ -56,6 +57,8 @@ def main() -> None:
     )
     rag = RAG(manager, reranker, None, args.rerank_topk, collection_name=args.collection_name)
     questions = [json.loads(line) for line in args.questions.read_text(encoding="utf-8").splitlines() if line.strip()]
+    if args.max_cases:
+        questions = questions[: args.max_cases]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
