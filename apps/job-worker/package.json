@@ -17,6 +17,7 @@
     "@private-fund/contracts": "0.1.0",
     "@private-fund/db": "0.1.0",
     "@private-fund/job-queue": "0.1.0",
+    "@private-fund/kernel": "0.1.0",
     "@private-fund/research-store": "0.1.0",
     "@private-fund/workflow-store": "0.1.0",
     "tsx": "4.20.6"

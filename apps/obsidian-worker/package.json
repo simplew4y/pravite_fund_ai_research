@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@private-fund/db": "0.1.0",
+    "@private-fund/kernel": "0.1.0",
     "@private-fund/obsidian-projector": "0.1.0",
     "@private-fund/research-store": "0.1.0",
     "@private-fund/workflow-store": "0.1.0",

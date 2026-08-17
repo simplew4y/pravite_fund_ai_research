@@ -1,13 +1,12 @@
 import { fileURLToPath } from "node:url";
 
 import { createKernel, type Kernel } from "@private-fund/kernel";
-import type { ControlDatabase } from "@private-fund/db";
+import { controlDbPlugin, type ControlDatabase } from "@private-fund/db";
 
 import type { createApiApp } from "./app.js";
 import { loadApiConfig, type ApiConfig } from "./config.js";
 import { agentRuntimePlugin } from "./kernel-plugins/agent-runtime.js";
 import { blobStorePlugin } from "./kernel-plugins/blob-store.js";
-import { controlDbPlugin } from "./kernel-plugins/db.js";
 import {
   insightsPlugin,
   projectsJobsPlugin,

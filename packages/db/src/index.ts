@@ -16,3 +16,4 @@ export * from "./users-repository.js";
 export {
   SessionEventsRepository as SessionEventRepository,
 } from "./session-events-repository.js";
+export * from "./kernel-plugin.js";

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@private-fund/contracts": "0.1.0",
-    "@private-fund/core": "0.1.0"
+    "@private-fund/core": "0.1.0",
+    "@private-fund/kernel": "0.1.0"
   }
 }

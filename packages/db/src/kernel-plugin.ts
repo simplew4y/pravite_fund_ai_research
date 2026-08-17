@@ -1,10 +1,9 @@
-import {
-  createControlRepositories,
-  openControlDatabase,
-  type ControlDatabase,
-  type ControlRepositories,
-} from "@private-fund/db";
 import { defineKernelPlugin, provide } from "@private-fund/kernel";
+
+import { openControlDatabase } from "./database.js";
+import { createControlRepositories } from "./repositories.js";
+import type { ControlDatabase } from "./database.js";
+import type { ControlRepositories } from "./repositories.js";
 
 export interface ControlDbService {
   readonly database: ControlDatabase;
@@ -17,7 +16,10 @@ declare module "@private-fund/kernel" {
   }
 }
 
-/** Control-plane SQLite database + repositories as a kernel service. */
+/**
+ * Control-plane SQLite database + repositories as a kernel service. Shared
+ * by every process profile (api, job-worker, obsidian-worker).
+ */
 export const controlDbPlugin = defineKernelPlugin<{ path: string }>({
   name: "control-db",
   provides: ["controlDb"],
