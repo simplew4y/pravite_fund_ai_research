@@ -1,0 +1,25 @@
+{
+  "schema_version": "rsi-cycle-manifest/v1",
+  "cycle_id": "exact_date_numeric_rescue_l4_round_2",
+  "repo_root": "/root/autodl-tmp/dir_lzx/releases/pravite_fund_ai_research_20260803_main",
+  "baseline_ref": "RSI-bench",
+  "workspace_root": "/root/autodl-tmp/dir_lzx/rsi_candidate_worktrees_20260818",
+  "patch_file": "exact_date_numeric_rescue_l4_v2.patch",
+  "seeds": [11, 29, 47],
+  "target": {
+    "kind": "full_agent_source_aligned",
+    "feature_flag": "exact_date_numeric_rescue_enabled"
+  },
+  "candidate": {
+    "candidate_id": "cand-exact-date-numeric-rescue-l4-v2",
+    "cluster_id": "fc-rerank-evidence-retention-exact-date",
+    "mutation_level": "L4",
+    "hypothesis": "Retaining the exact-anchor chunk and labeling its deterministic match in context makes downstream evidence use stable without embedding answer content in the prompt instruction.",
+    "expected_mechanism": "Call the verified selector after existing rescue and label only its match type as Evidence Priority; preserve baseline behavior when disabled or on error.",
+    "target_paths": ["src/core/RAG.py"],
+    "target_capabilities": ["retrieval", "temporal_reasoning", "evidence_use", "agent_workflow"],
+    "target_failure_types": ["evidence_retention_failure", "false_refusal"],
+    "patch_payload": {"strategy": "wire_selector_and_exact_anchor_priority", "parent_candidate": "cand-exact-date-numeric-rescue-l4-v1", "approval": "user_approved_2026-08-18"},
+    "requires_human_approval": true
+  }
+}

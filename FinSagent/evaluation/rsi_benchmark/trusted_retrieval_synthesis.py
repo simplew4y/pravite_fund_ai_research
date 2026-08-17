@@ -12,7 +12,7 @@ from typing import Any
 import yaml
 
 from core.SessionManager import SessionManager
-from core.naiverag_helper import _build_prompt, _call_final_answer, _format_context
+from core.naiverag_helper import _build_prompt, _call_final_answer
 from evaluation.rsi_benchmark.captured_retrieval_replay import (
     _canonicalize_candidate_selection,
     _read_jsonl,
@@ -49,10 +49,28 @@ def prepare_synthesis_rows(
     return rows
 
 
+def format_trusted_context(chunks: list[dict[str, Any]]) -> str:
+    separator = "\n" + "-" * 60 + "\n"
+    formatted: list[str] = []
+    for chunk in chunks:
+        metadata = chunk.get("metadata") or {}
+        priority = ""
+        if metadata.get("exact_anchor_rescue"):
+            priority = "Evidence Priority: exact query date and metric anchors matched; "
+        elif metadata.get("evidence_rescue"):
+            priority = "Evidence Priority: recent numeric candidate; "
+        formatted.append(
+            f"{priority}Date Published: {metadata.get('date_published', 'N/A')}; "
+            f"Chunk Source: {metadata.get('doc_id', metadata.get('source_file', 'N/A'))}; "
+            f"Chunk Content: {chunk.get('page_content', '')}"
+        )
+    return separator.join(formatted)
+
+
 async def synthesize_rows(rows: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[str, Any]]:
     generated: list[dict[str, Any]] = []
     for row in rows:
-        context = _format_context(row["selected_chunks"])
+        context = format_trusted_context(row["selected_chunks"])
         prompt = _build_prompt(row["question"], context)
         session = SessionManager(f"rsi-trusted-synthesis-{row['case_id']}", config)
         answer = await _call_final_answer(

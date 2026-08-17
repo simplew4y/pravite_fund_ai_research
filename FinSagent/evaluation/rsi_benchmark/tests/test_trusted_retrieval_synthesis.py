@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evaluation.rsi_benchmark.trusted_retrieval_synthesis import prepare_synthesis_rows
+from evaluation.rsi_benchmark.trusted_retrieval_synthesis import format_trusted_context, prepare_synthesis_rows
 
 
 class TrustedRetrievalSynthesisTest(unittest.TestCase):
@@ -39,6 +39,14 @@ class TrustedRetrievalSynthesisTest(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "not in the captured baseline evidence"):
                 prepare_synthesis_rows(captures, questions, outputs)
+
+    def test_exact_anchor_gets_priority_without_answer_injection(self):
+        context = format_trusted_context([{
+            "page_content": "captured filing text",
+            "metadata": {"doc_id": "d1", "exact_anchor_rescue": True},
+        }])
+        self.assertIn("exact query date and metric anchors matched", context)
+        self.assertIn("captured filing text", context)
 
 
 if __name__ == "__main__":
