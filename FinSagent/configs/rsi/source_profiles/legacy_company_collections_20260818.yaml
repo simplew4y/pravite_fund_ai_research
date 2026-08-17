@@ -1,0 +1,20 @@
+schema_version: rsi-source-profile/v1
+profile_id: legacy_company_collections_20260818
+read_only: true
+profiles:
+  lotus:
+    persist_directory: /root/autodl-tmp/RAG_Agent_data/lotus/20250701/database_lotus
+    collection_name: lotus
+    legacy_company_collection: true
+  nvidia:
+    persist_directory: /root/autodl-tmp/RAG_Agent_data/nvidia/20260425/5_database_nvidia
+    collection_name: nvidia
+    legacy_company_collection: true
+  zeekr:
+    persist_directory: /root/autodl-tmp/RAG_Agent_data/Zeekr/20250729/database_zeekr
+    collection_name: zeekr
+    legacy_company_collection: true
+admission:
+  require_explicit_company_in_private_case: true
+  target_export_fields: [case_id, question]
+  hidden_rubric_exported: false
