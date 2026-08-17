@@ -17,6 +17,20 @@ from evaluation.rsi_benchmark.captured_retrieval_replay import (
     _canonicalize_candidate_selection,
     _read_jsonl,
 )
+from rsi.candidate_skills.exact_date_numeric_rescue_v1 import select_exact_date_numeric_evidence
+
+
+def restore_verified_exact_annotations(
+    question: str, chunks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Recompute annotations from canonical source text; never trust candidate metadata."""
+    probe = select_exact_date_numeric_evidence(question, chunks, [])
+    if not probe.get("rescue_applied"):
+        return chunks
+    index = int(probe["rescued_candidate_indices"][0])
+    restored = list(chunks)
+    restored[index] = probe["selected_chunks"][0]
+    return restored
 
 
 def prepare_synthesis_rows(
@@ -39,6 +53,7 @@ def prepare_synthesis_rows(
         capture = captures[case_id]
         allowed = (capture.get("pre_rerank_candidates") or []) + (capture.get("retrieved_chunks") or [])
         selected = _canonicalize_candidate_selection(output.get("selected_chunks") or [], allowed)
+        selected = restore_verified_exact_annotations(questions[case_id], selected)
         rows.append({
             "case_id": case_id,
             "seed": int(output.get("seed", capture.get("seed", 0))),

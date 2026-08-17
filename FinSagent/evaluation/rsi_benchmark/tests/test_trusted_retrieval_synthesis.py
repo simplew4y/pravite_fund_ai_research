@@ -3,7 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evaluation.rsi_benchmark.trusted_retrieval_synthesis import format_trusted_context, prepare_synthesis_rows
+from evaluation.rsi_benchmark.trusted_retrieval_synthesis import (
+    format_trusted_context,
+    prepare_synthesis_rows,
+    restore_verified_exact_annotations,
+)
 
 
 class TrustedRetrievalSynthesisTest(unittest.TestCase):
@@ -53,6 +57,17 @@ class TrustedRetrievalSynthesisTest(unittest.TestCase):
         self.assertIn("Source Date Metadata (semantic type unverified): 2025-01-26", context)
         self.assertNotIn("Date Published: 2025-01-26", context)
         self.assertIn("captured filing text", context)
+
+    def test_recomputes_exact_annotation_from_canonical_text(self):
+        chunks = [{
+            "page_content": "As of February 21, 2025, 24.4 billion shares of common stock were outstanding.",
+            "metadata": {"doc_id": "d1", "date_published": "2025-01-26"},
+        }]
+        restored = restore_verified_exact_annotations(
+            "截至2025年2月21日，NVIDIA有多少普通股流通在外？", chunks,
+        )
+        self.assertTrue(restored[0]["metadata"]["exact_anchor_rescue"])
+        self.assertEqual(restored[0]["metadata"]["exact_anchor_dates"], ["2025-02-21"])
 
 
 if __name__ == "__main__":
