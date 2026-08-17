@@ -177,6 +177,31 @@ def test_tracking_title_is_analytical_and_localizes_event_type() -> None:
     assert unknown_event.title == "阳光电源：逆变器在欧美市场融资与准入"
 
 
+def test_tracking_title_preserves_generated_english_title() -> None:
+    candidate = private_fund_tracking._candidate_from_raw(
+        {
+            "item_type": "risk",
+            "title": "Energy storage margin pressure",
+            "content": "Higher lithium carbonate costs may reduce energy storage gross margin.",
+            "evidence_ids": ["chunk:risk-1"],
+            "entity": "Sungrow",
+            "event_type": "margin_pressure",
+            "subject": "energy storage gross margin",
+            "trigger": "higher lithium carbonate costs",
+            "transmission_path": "input costs reduce unit profitability",
+            "classification_reason": "the evidence identifies a direct margin impact",
+            "quality_status": "verified",
+            "confidence": 0.9,
+        },
+        valid_evidence_ids={"chunk:risk-1"},
+        default_date="2026-08-05",
+        locale="en-US",
+    )
+
+    assert candidate is not None
+    assert candidate.title == "Energy storage margin pressure"
+
+
 def _collection_db(tmp_path: Path) -> Path:
     path = tmp_path / "demo" / "meta" / "collection.sqlite3"
     path.parent.mkdir(parents=True)
@@ -483,6 +508,55 @@ def test_memo_artifacts_are_grouped_into_versions_and_comparable(tmp_path: Path)
     changes = {item["title"]: item["change_type"] for item in comparison["section_changes"]}
     assert changes["主要风险"] == "changed"
     assert changes["催化剂"] == "added"
+
+
+def test_memo_comparison_does_not_hide_small_numeric_changes(tmp_path: Path) -> None:
+    collection_db = _collection_db(tmp_path)
+    memo_dir = tmp_path / "demo" / "memos"
+    memo_dir.mkdir()
+    stable_context = "公司业务与竞争格局保持稳定。" * 120
+    first_md = memo_dir / "numeric_v1.md"
+    first_md.write_text(
+        f"# Demo\n\n## 盈利预测\n\n{stable_context}\n预计利润为 150 亿元。",
+        encoding="utf-8",
+    )
+    first = private_fund_tracking.register_memo_version(
+        collection_db,
+        "demo",
+        topic="盈利预测",
+        markdown_path=first_md,
+        section_evidence=[
+            {"section": "盈利预测", "evidence": [{"evidence_id": "chunk:profit-1"}]}
+        ],
+        enqueue=False,
+    )
+
+    second_md = memo_dir / "numeric_v2.md"
+    second_md.write_text(
+        f"# Demo\n\n## 盈利预测\n\n{stable_context}\n预计利润为 180 亿元。",
+        encoding="utf-8",
+    )
+    second = private_fund_tracking.register_memo_version(
+        collection_db,
+        "demo",
+        topic="盈利预测",
+        markdown_path=second_md,
+        revision_of=first["memo_version_id"],
+        section_evidence=[
+            {"section": "盈利预测", "evidence": [{"evidence_id": "chunk:profit-1"}]}
+        ],
+        enqueue=False,
+    )
+
+    comparison = private_fund_tracking.compare_memo_versions(
+        collection_db,
+        "demo",
+        first["memo_version_id"],
+        second["memo_version_id"],
+    )
+    change = comparison["section_changes"][0]
+    assert change["similarity"] >= 0.985
+    assert change["change_type"] == "changed"
 
 
 def test_memo_revision_rejects_unknown_parent_instead_of_creating_series(

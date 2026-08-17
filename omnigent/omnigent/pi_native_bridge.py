@@ -223,6 +223,7 @@ def write_extension_files(
     auth_headers: dict[str, str] | None = None,
     tools: list[dict[str, Any]] | None = None,
     system_prompt: str | None = None,
+    user_memory_dir: str | None = None,
 ) -> tuple[Path, Path]:
     """
     Write the Pi extension and config used by a native Pi terminal.
@@ -242,6 +243,8 @@ def write_extension_files(
         tools (Pi falls back to its own built-in tool surface only).
     :param system_prompt: Omnigent-owned instructions appended to Pi's current
         system prompt before each agent turn.
+    :param user_memory_dir: Server-validated private-fund user Memory directory
+        read by the extension before each agent turn.
     :returns: ``(extension_path, config_path)``.
     """
     bridge_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -254,6 +257,7 @@ def write_extension_files(
         "authHeaders": auth_headers or {},
         "tools": tools or [],
         "systemPrompt": system_prompt or "",
+        "userMemoryDir": user_memory_dir or "",
     }
     _atomic_json(config_path(bridge_dir), payload)
     _atomic_text(extension_path(bridge_dir), _extension_source())

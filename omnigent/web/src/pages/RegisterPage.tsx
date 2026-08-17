@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
@@ -8,6 +9,7 @@ import {
   sendRegistrationCode,
 } from "@/lib/accountsApi";
 import { Link, useSearchParams } from "@/lib/routing";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -46,6 +48,7 @@ function registrationError(
 }
 
 export function RegisterPage() {
+  const { t } = useTranslation();
   const info = useServerInfo();
   const [params] = useSearchParams();
   const invite = params.get("invite") ?? "";
@@ -80,7 +83,9 @@ export function RegisterPage() {
     setFieldErrors(mapped.field ? { [mapped.field]: mapped.message } : {});
     if (mapped.field) {
       window.requestAnimationFrame(() =>
-        document.getElementById(`register-${mapped.field === "nickName" ? "nick-name" : mapped.field}`)?.focus(),
+        document
+          .getElementById(`register-${mapped.field === "nickName" ? "nick-name" : mapped.field}`)
+          ?.focus(),
       );
     }
   }
@@ -142,8 +147,8 @@ export function RegisterPage() {
             nick_name: nickName.trim() || null,
           }
         : openRegistration
-        ? { email: identity.trim().toLowerCase(), password }
-        : { invite, username: identity.trim().toLowerCase(), password },
+          ? { email: identity.trim().toLowerCase(), password }
+          : { invite, username: identity.trim().toLowerCase(), password },
     );
     if (result.ok) {
       clearUserScopedBrowserState();
@@ -158,15 +163,25 @@ export function RegisterPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
+      <LanguageSelector compact className="fixed right-4 top-4 z-10" />
       <div className="w-full max-w-sm space-y-6">
         <header className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold">创建账户</h1>
+          <h1 className="text-2xl font-semibold">{t("auth.registerTitle")}</h1>
           <p className="text-sm text-muted-foreground">
             {cloudRegistration
-              ? "验证邮箱后创建你的私募投研工作区。"
+              ? t(
+                  "auth.registerCloudDescription",
+                  "Verify your email to create your research workspace.",
+                )
               : openRegistration
-                ? "使用邮箱开始你的私募投研工作区。"
-                : "接受邀请并创建账户。"}
+                ? t(
+                    "auth.registerOpenDescription",
+                    "Use your email to create your research workspace.",
+                  )
+                : t(
+                    "auth.registerInviteDescription",
+                    "Accept the invitation and create an account.",
+                  )}
           </p>
         </header>
 
@@ -182,7 +197,7 @@ export function RegisterPage() {
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="register-identity" className="text-sm font-medium">
-                {openRegistration ? "邮箱" : "用户名"}
+                {openRegistration ? t("auth.email") : "Username"}
               </label>
               <div className="flex gap-2">
                 <Input
@@ -211,10 +226,7 @@ export function RegisterPage() {
                     variant="outline"
                     className="shrink-0"
                     disabled={
-                      sendingCode ||
-                      submitting ||
-                      resendSeconds > 0 ||
-                      identity.trim().length === 0
+                      sendingCode || submitting || resendSeconds > 0 || identity.trim().length === 0
                     }
                     onClick={() => void onSendCode()}
                   >
@@ -223,8 +235,8 @@ export function RegisterPage() {
                       : resendSeconds > 0
                         ? `${resendSeconds}s`
                         : codeSent
-                          ? "重新发送"
-                          : "发送验证码"}
+                          ? t("auth.resendCode")
+                          : t("auth.sendCode")}
                   </Button>
                 )}
               </div>
@@ -238,7 +250,7 @@ export function RegisterPage() {
               <>
                 <div className="space-y-1.5">
                   <label htmlFor="register-code" className="text-sm font-medium">
-                    邮箱验证码
+                    {t("auth.verificationCode")}
                   </label>
                   <Input
                     id="register-code"
@@ -256,7 +268,7 @@ export function RegisterPage() {
                     disabled={submitting}
                     pattern="\d{6}"
                     maxLength={6}
-                    placeholder="6 位数字"
+                    placeholder={t("auth.sixDigitCode", "6-digit code")}
                     required
                   />
                   {fieldErrors.code && (
@@ -266,14 +278,16 @@ export function RegisterPage() {
                   )}
                   {codeSent && (
                     <p className="text-xs text-muted-foreground">
-                      验证码已发送，请检查收件箱和垃圾邮件。
+                      {t("auth.codeSent", "Code sent. Check your inbox and spam folder.")}
                     </p>
                   )}
                 </div>
                 <div className="space-y-1.5">
                   <label htmlFor="register-nick-name" className="text-sm font-medium">
-                    昵称
-                    <span className="ml-1 font-normal text-muted-foreground">选填</span>
+                    {t("auth.nickname")}
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      {t("auth.optional", "Optional")}
+                    </span>
                   </label>
                   <Input
                     id="register-nick-name"
@@ -300,7 +314,7 @@ export function RegisterPage() {
             )}
             <div className="space-y-1.5">
               <label htmlFor="register-password" className="text-sm font-medium">
-                密码
+                {t("auth.password")}
               </label>
               <Input
                 id="register-password"
@@ -326,7 +340,7 @@ export function RegisterPage() {
             </div>
             <div className="space-y-1.5">
               <label htmlFor="register-confirm" className="text-sm font-medium">
-                确认密码
+                {t("auth.confirmPassword")}
               </label>
               <Input
                 id="register-confirm"
@@ -369,14 +383,14 @@ export function RegisterPage() {
                 password.length < MIN_PASSWORD_LENGTH
               }
             >
-              {submitting ? "正在创建..." : "创建账户"}
+              {submitting ? t("auth.creating", "Creating…") : t("auth.registerTitle")}
             </Button>
           </form>
         )}
         <p className="text-center text-sm text-muted-foreground">
-          已有账户？{" "}
+          {t("auth.haveAccount", "Already have an account?")}{" "}
           <Link to="/login" className="font-medium text-foreground hover:underline">
-            登录
+            {t("auth.signIn")}
           </Link>
         </p>
       </div>

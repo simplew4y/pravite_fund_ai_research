@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import os
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -34,6 +35,14 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def user_data_root() -> Path:
+    """Return the configured root that owns all per-user workbench data."""
+    configured = os.environ.get("PRIVATE_FUND_USER_DATA_ROOT", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (project_root() / "output" / "users").resolve()
+
+
 def current_tenant() -> PrivateFundTenantContext | None:
     return _current_tenant.get()
 
@@ -52,7 +61,7 @@ def build_tenant_context_from_namespace(
     user_id: str,
     namespace: str,
 ) -> PrivateFundTenantContext:
-    user_root = (project_root() / "output" / "users" / namespace).resolve()
+    user_root = (user_data_root() / namespace).resolve()
     dataset_root = user_root / "private_fund_datasets"
     knowledge_base_root = user_root / "knowledge_base"
     cache_root = user_root / "cache"
@@ -92,6 +101,18 @@ def bind_tenant_job_payload(payload: dict[str, Any]) -> Iterator[None]:
     token = _current_tenant.set(tenant)
     try:
         yield
+    finally:
+        _current_tenant.reset(token)
+
+
+@contextmanager
+def bind_tenant_namespace(data_namespace: str) -> Iterator[PrivateFundTenantContext]:
+    """Bind a background worker to one validated user namespace."""
+    namespace = str(data_namespace)
+    tenant = build_tenant_context_from_namespace(f"worker:{namespace}", namespace)
+    token = _current_tenant.set(tenant)
+    try:
+        yield tenant
     finally:
         _current_tenant.reset(token)
 

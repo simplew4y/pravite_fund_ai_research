@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,8 +35,11 @@ import {
   clearUserScopedBrowserState,
   getMe,
   login as loginRequest,
+  updateAccountPreferences,
 } from "@/lib/accountsApi";
 import { useServerInfo } from "@/lib/CapabilitiesContext";
+import { LanguageSelector } from "@/components/LanguageSelector";
+import { applyAppLocale, normalizeAppLocale } from "@/i18n";
 
 const DEFAULT_RETURN_TO = "/";
 const LAST_USERNAME_KEY = "omnigent.lastLoginUsername";
@@ -58,6 +62,7 @@ function rememberUsername(value: string): void {
 }
 
 export function LoginPage() {
+  const { t, i18n } = useTranslation();
   const info = useServerInfo();
   const cloudAccounts = info !== "loading" && info.cloud_accounts_enabled;
   const openRegistration = info !== "loading" && info.registration_mode === "open";
@@ -119,8 +124,14 @@ export function LoginPage() {
       cloudAccounts ? { email: username, password } : { username, password },
     );
     if (result.ok) {
+      const selectedLocale = normalizeAppLocale(i18n.resolvedLanguage ?? i18n.language);
       clearUserScopedBrowserState();
       rememberUsername(username);
+      if (cloudAccounts) {
+        await updateAccountPreferences(selectedLocale);
+      } else if (result.user.preferred_locale) {
+        await applyAppLocale(result.user.preferred_locale);
+      }
       // Hard-navigate so identity.ts re-runs and every cached
       // query is rebuilt against the new session.
       window.location.href = returnTo;
@@ -140,16 +151,19 @@ export function LoginPage() {
         paddingBottom: "var(--omnigent-safe-bottom)",
       }}
     >
+      <div className="fixed left-4 top-4 z-10 text-sm font-semibold text-foreground">
+        {t("common.productName")}
+      </div>
+      <LanguageSelector compact className="fixed right-4 top-4 z-10" />
       <div className="w-full max-w-sm space-y-6">
-        <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">登录</h1>
-          <p className="text-sm text-muted-foreground">进入私募投研工作台</p>
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">{t("auth.signInTitle")}</h1>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="login-username" className="text-sm font-medium leading-none">
-              {cloudAccounts || openRegistration ? "邮箱" : "用户名"}
+              {cloudAccounts || openRegistration ? t("auth.email") : "Username"}
             </label>
             <Input
               id="login-username"
@@ -161,15 +175,17 @@ export function LoginPage() {
               disabled={submitting}
               required
             />
-            {!cloudAccounts && !openRegistration && <p className="text-xs text-muted-foreground">
-              On a fresh install your username is your machine login (the output of{" "}
-              <code className="font-mono">whoami</code>), unless an admin set a different one.
-            </p>}
+            {!cloudAccounts && !openRegistration && (
+              <p className="text-xs text-muted-foreground">
+                On a fresh install your username is your machine login (the output of{" "}
+                <code className="font-mono">whoami</code>), unless an admin set a different one.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
             <label htmlFor="login-password" className="text-sm font-medium leading-none">
-              密码
+              {t("auth.password")}
             </label>
             <Input
               id="login-password"
@@ -185,7 +201,7 @@ export function LoginPage() {
 
           {passwordStatus === "reset" || passwordStatus === "changed" ? (
             <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
-              密码已更新，请使用新密码登录。
+              {t("auth.passwordUpdated", "Password updated. Sign in with your new password.")}
             </div>
           ) : null}
 
@@ -204,7 +220,7 @@ export function LoginPage() {
             className="w-full"
             disabled={submitting || password.length === 0}
           >
-            {submitting ? "正在登录..." : "登录"}
+            {submitting ? t("auth.signingIn", "Signing in…") : t("auth.signIn")}
           </Button>
         </form>
 
@@ -212,30 +228,29 @@ export function LoginPage() {
           <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
             {openRegistration && (
               <span>
-                还没有账户？{" "}
+                {t("auth.noAccount")}{" "}
                 <Link to="/register" className="font-medium text-foreground hover:underline">
-                  注册
+                  {t("auth.register")}
                 </Link>
               </span>
             )}
             {!openRegistration ? <span /> : null}
             {cloudAccounts && (
-              <Link
-                to="/forgot-password"
-                className="font-medium text-foreground hover:underline"
-              >
-                忘记密码
+              <Link to="/forgot-password" className="font-medium text-foreground hover:underline">
+                {t("auth.forgotPassword")}
               </Link>
             )}
           </div>
-        ) : <p className="text-center text-xs text-muted-foreground">
-          On a fresh install the initial admin password was printed to the server's stderr and saved
-          to{" "}
-          <code className="rounded bg-muted px-1 py-0.5 font-mono">
-            ~/.omnigent/admin-credentials
-          </code>
-          .
-        </p>}
+        ) : (
+          <p className="text-center text-xs text-muted-foreground">
+            On a fresh install the initial admin password was printed to the server's stderr and
+            saved to{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono">
+              ~/.omnigent/admin-credentials
+            </code>
+            .
+          </p>
+        )}
       </div>
       <ProductVersionLabel className="fixed right-4 bottom-4 z-10 text-[11px]" />
     </div>

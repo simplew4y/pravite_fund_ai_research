@@ -60,6 +60,7 @@ const _MAX_RAW_ASK_ROUNDS = 50;
 // fail_closed_hook_output(PreToolUse) → deny.
 const _FAIL_CLOSED_REASON =
   "blocked: Omnigent policy server unreachable — failing closed (PHASE_TOOL_CALL)";
+const _MAX_USER_MEMORY_BYTES = 32 * 1024;
 
 function failClosedVerdict() {
   return { block: true, reason: _FAIL_CLOSED_REASON };
@@ -83,6 +84,30 @@ function readConfig() {
   } catch (_err) {
     return null;
   }
+}
+
+function readUserMemory(config) {
+  const root =
+    config && typeof config.userMemoryDir === "string"
+      ? config.userMemoryDir.trim()
+      : "";
+  if (!root) return "";
+  const parts = [];
+  for (const [filename, tag] of [
+    ["POLICY.md", "user-policy"],
+    ["MEMORY.md", "user-memory"],
+  ]) {
+    try {
+      const filePath = path.join(root, filename);
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile() || stat.size > _MAX_USER_MEMORY_BYTES) continue;
+      const content = fs.readFileSync(filePath, "utf8").trim();
+      if (content) parts.push(`<${tag}>\n${content}\n</${tag}>`);
+    } catch {
+      // Missing or malformed optional Memory must not block a Pi turn.
+    }
+  }
+  return parts.join("\n\n");
 }
 
 /**
@@ -1047,10 +1072,12 @@ module.exports = function (pi) {
   // event.systemPrompt preserves user/project instructions and other
   // extensions (including pi-memory).
   pi.on("before_agent_start", async (event) => {
-    const extra =
+    const baseExtra =
       config && typeof config.systemPrompt === "string"
         ? config.systemPrompt.trim()
         : "";
+    const memory = readUserMemory(config);
+    const extra = [baseExtra, memory].filter(Boolean).join("\n\n");
     if (!extra) return;
     const current =
       event && typeof event.systemPrompt === "string" ? event.systemPrompt : "";

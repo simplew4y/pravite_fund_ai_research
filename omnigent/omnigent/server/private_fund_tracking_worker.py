@@ -100,31 +100,34 @@ def run_cycle(workspace: Path, llm_client: Any | None, *, max_jobs_per_db: int =
     llm_available = llm_client is not None
     for data_namespace, dataset_id, collection_db in _collection_dbs(workspace):
         try:
-            dataset_llm_client = llm_client or _load_llm_client(data_namespace, dataset_id)
-            llm_available = llm_available or dataset_llm_client is not None
-            private_fund_tracking.recover_stale_jobs(collection_db, dataset_id)
-            # Reconcile the current document snapshot every cycle so imports that
-            # bypass the Omnigent HTTP pipeline still emit idempotent ingest jobs.
-            private_fund_tracking.enqueue_current_documents(collection_db, dataset_id)
-            # Extractor upgrades must also rebuild the current Memo baseline;
-            # enqueue_job remains idempotent for an unchanged extractor version.
-            private_fund_tracking.enqueue_current_memo_versions(collection_db, dataset_id)
-            private_fund_tracking.enqueue_scheduled_scan(collection_db, dataset_id)
-            for _ in range(max_jobs_per_db):
-                result = private_fund_tracking.process_next_job(
-                    collection_db,
-                    dataset_id,
-                    llm_client=dataset_llm_client,
-                )
-                if result is None:
-                    break
-                processed += 1
-                _LOGGER.info(
-                    "tracking job %s for %s finished with status=%s",
-                    result.get("job_id"),
-                    dataset_id,
-                    result.get("status"),
-                )
+            from omnigent.server.private_fund_tenant import bind_tenant_namespace
+
+            with bind_tenant_namespace(data_namespace):
+                dataset_llm_client = llm_client or _load_llm_client(data_namespace, dataset_id)
+                llm_available = llm_available or dataset_llm_client is not None
+                private_fund_tracking.recover_stale_jobs(collection_db, dataset_id)
+                # Reconcile the current document snapshot every cycle so imports that
+                # bypass the Omnigent HTTP pipeline still emit idempotent ingest jobs.
+                private_fund_tracking.enqueue_current_documents(collection_db, dataset_id)
+                # Extractor upgrades must also rebuild the current Memo baseline;
+                # enqueue_job remains idempotent for an unchanged extractor version.
+                private_fund_tracking.enqueue_current_memo_versions(collection_db, dataset_id)
+                private_fund_tracking.enqueue_scheduled_scan(collection_db, dataset_id)
+                for _ in range(max_jobs_per_db):
+                    result = private_fund_tracking.process_next_job(
+                        collection_db,
+                        dataset_id,
+                        llm_client=dataset_llm_client,
+                    )
+                    if result is None:
+                        break
+                    processed += 1
+                    _LOGGER.info(
+                        "tracking job %s for %s finished with status=%s",
+                        result.get("job_id"),
+                        dataset_id,
+                        result.get("status"),
+                    )
         except Exception as exc:
             _LOGGER.exception("tracking worker failed for dataset=%s", dataset_id)
             errors.append({"dataset_id": dataset_id, "error": str(exc)})

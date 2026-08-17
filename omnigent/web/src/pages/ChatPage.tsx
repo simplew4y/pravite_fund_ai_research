@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpIcon,
@@ -1430,6 +1431,7 @@ function SelectionPopup({
   containerRef: React.RefObject<HTMLElement | null>;
   onReply: (text: string) => void;
 }) {
+  const { t } = useTranslation();
   const workbenchActions = usePrivateFundWorkbenchActions();
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
   const selectedTextRef = useRef<string>("");
@@ -1515,7 +1517,7 @@ function SelectionPopup({
           }}
         >
           <CheckIcon className="size-3.5" />
-          保存为回答笔记
+          {t("chat.saveAnswerNote")}
         </Button>
       ) : null}
       <Button
@@ -1691,6 +1693,7 @@ function MainAgentSurface({
   trustedMemoSourceIds,
   onAddTrustedMemoSource,
 }: MainAgentSurfaceProps) {
+  const { t } = useTranslation();
   const terminalFirst = useTerminalFirst();
   const { data: installedSkills = [] } = useQuery({
     queryKey: ["skills", "installed"],
@@ -1946,13 +1949,15 @@ function MainAgentSurface({
                         privateFundDatasetId ? "text-lg" : "text-2xl",
                       )}
                     >
-                      {privateFundDatasetId ? "从当前节点开始提问" : "What should we work on?"}
+                      {privateFundDatasetId
+                        ? t("chat.startFromCurrentNode")
+                        : "What should we work on?"}
                     </h3>
                     <p className="text-muted-foreground text-base">
                       {agentsError
                         ? `Failed to load agents: ${agentsError instanceof Error ? agentsError.message : String(agentsError)}`
                         : privateFundDatasetId
-                          ? "让 AI 验证假设、比较情景，或生成新的研究成果。"
+                          ? t("chat.startFromCurrentNodeHint")
                           : "Send a message to get started."}
                     </p>
                   </div>
@@ -2859,6 +2864,7 @@ export function ConnectionIndicator({
  * there).
  */
 export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }) {
+  const { t } = useTranslation();
   const terminalFirst = useTerminalFirst();
   const sandboxStatus = useChatStore((s) => s.sandboxStatus);
   // `ready` never reaches the store (cleared) and `failed` renders the
@@ -2894,17 +2900,15 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
         <ConversationEmptyState data-testid="runner-startup-timeout" role="alert">
           <AlertTriangleIcon className="size-7 text-destructive" aria-hidden />
           <div className="space-y-1.5">
-            <h3 className="text-2xl font-medium tracking-[-0.02em]">启动时间过长</h3>
-            <p className="text-muted-foreground text-base">
-              运行服务暂时不可用，请检查服务状态后重试。
-            </p>
+            <h3 className="text-2xl font-medium tracking-[-0.02em]">{t("chat.startupSlow")}</h3>
+            <p className="text-muted-foreground text-base">{t("chat.runtimeUnavailable")}</p>
           </div>
           <button
             type="button"
             className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
             onClick={retry}
           >
-            刷新并重试
+            {t("chat.refreshRetry")}
           </button>
         </ConversationEmptyState>
       );
@@ -2914,9 +2918,9 @@ export function RunnerStartingIndicator({ variant }: { variant: "hero" | "row" }
         <MessageContent>
           <span className="flex items-center gap-2 text-destructive text-sm">
             <AlertTriangleIcon className="size-4 shrink-0" aria-hidden />
-            运行服务启动超时。
+            {t("chat.runtimeTimeout")}
             <button type="button" className="underline" onClick={retry}>
-              刷新并重试
+              {t("chat.refreshRetry")}
             </button>
           </span>
         </MessageContent>
@@ -3355,6 +3359,7 @@ function AssistantBubble({
   isTrustedMemoSource: boolean;
   onAddTrustedMemoSource: (responseId: string, content: string) => void;
 }) {
+  const { t } = useTranslation();
   // The walker only emits an assistant bubble when at least one
   // assistant-side block exists, so `items` is non-empty here in the
   // common case. The "Working…" shimmer for the empty-items / streaming
@@ -3434,7 +3439,7 @@ function AssistantBubble({
             )}
           >
             {!workbenchActions && (
-              <MessageAction tooltip="Copy" onClick={handleCopy}>
+              <MessageAction tooltip={t("chat.copy")} onClick={handleCopy}>
                 {isCopied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
               </MessageAction>
             )}
@@ -3453,14 +3458,14 @@ function AssistantBubble({
             )}
             {canAddTrustedMemoSource && (
               <MessageAction
-                tooltip={isTrustedMemoSource ? "已保存为回答笔记" : "保存为回答笔记"}
-                label={isTrustedMemoSource ? "已保存为回答笔记" : "保存为回答笔记"}
+                tooltip={isTrustedMemoSource ? t("chat.answerNoteSaved") : t("chat.saveAnswerNote")}
+                label={isTrustedMemoSource ? t("chat.answerNoteSaved") : t("chat.saveAnswerNote")}
                 size="sm"
                 variant={isTrustedMemoSource ? "secondary" : "ghost"}
                 className="h-7 gap-1 px-2 text-xs"
                 disabled={isTrustedMemoSource || answerNoteStatus === "saving"}
                 disabledReason={
-                  isTrustedMemoSource ? "该回答已经保存到回答笔记。" : "回答笔记正在保存，请稍候。"
+                  isTrustedMemoSource ? t("chat.answerNoteSavedDetail") : t("chat.answerNoteSaving")
                 }
                 onClick={() => {
                   void (async () => {
@@ -3476,44 +3481,46 @@ function AssistantBubble({
                     } catch (error) {
                       setAnswerNoteStatus("error");
                       setAnswerNoteError(
-                        error instanceof Error ? error.message : "保存回答笔记失败，请重试。",
+                        error instanceof Error ? error.message : t("chat.answerNoteFailed"),
                       );
                     }
                   })();
                 }}
               >
                 {isTrustedMemoSource ? <CheckIcon size={14} /> : <FileTextIcon size={14} />}
-                <span>{isTrustedMemoSource ? "已保存为回答笔记" : "保存为回答笔记"}</span>
+                <span>
+                  {isTrustedMemoSource ? t("chat.answerNoteSaved") : t("chat.saveAnswerNote")}
+                </span>
               </MessageAction>
             )}
             {workbenchActions && (
               <MessageAction
-                tooltip="进入笔记资产批量管理"
-                label="管理回答笔记"
+                tooltip={t("chat.manageAnswerNotesHint")}
+                label={t("chat.manageAnswerNotes")}
                 size="sm"
                 variant="ghost"
                 className="h-7 gap-1 px-2 text-xs"
                 onClick={workbenchActions.openAssetManagement}
               >
                 <FolderIcon size={14} />
-                <span>管理回答笔记</span>
+                <span>{t("chat.manageAnswerNotes")}</span>
               </MessageAction>
             )}
           </MessageActions>
         )}
         {answerNoteStatus === "saving" && (
           <p role="status" className="mt-1 text-xs text-muted-foreground">
-            正在保存回答笔记…
+            {t("chat.answerNoteSaving")}
           </p>
         )}
         {(answerNoteStatus === "saved" || isTrustedMemoSource) && (
           <p role="status" className="mt-1 text-xs text-success">
-            回答笔记已保存，可在笔记资产库中管理。
+            {t("chat.answerNoteSavedDetail")}
           </p>
         )}
         {answerNoteStatus === "error" && (
           <p role="alert" className="mt-1 text-xs text-destructive">
-            {answerNoteError || "保存回答笔记失败，请重试。"}
+            {answerNoteError || t("chat.answerNoteFailed")}
           </p>
         )}
       </Message>
@@ -3835,6 +3842,7 @@ function PrivateFundConversationTokenUsageIndicator({
   tokenUsage: ModelUsage | null;
   usageByModel: Record<string, ModelUsage> | null;
 }) {
+  const { t, i18n } = useTranslation();
   // The server's flat subtree counters are authoritative. Fall back to the
   // model map only for compatibility with an older server response.
   const totals = tokenUsage ?? summarizeModelTokenUsage(usageByModel);
@@ -3860,8 +3868,8 @@ function PrivateFundConversationTokenUsageIndicator({
     totals.totalTokens != null
       ? `${formatTokenCount(totals.totalTokens)} tokens`
       : hasContextUsage
-        ? `上下文 ${formatTokenCount(contextTokens)}`
-        : "等待用量";
+        ? `${t("chat.currentContext")} ${formatTokenCount(contextTokens)}`
+        : t("chat.waitingUsage");
 
   return (
     <Tooltip>
@@ -3889,24 +3897,25 @@ function PrivateFundConversationTokenUsageIndicator({
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-80 text-xs">
-        <p className="font-semibold text-foreground">上下文与 Token 用量</p>
+        <p className="font-semibold text-foreground">{t("chat.contextUsage")}</p>
         {totals.totalTokens != null ? (
           <p className="mt-1 tabular-nums text-muted-foreground">
-            累计 {totals.totalTokens.toLocaleString()} tokens
+            {t("chat.cumulative")} {totals.totalTokens.toLocaleString(i18n.language)} tokens
           </p>
         ) : !hasContextUsage ? (
-          <p className="mt-1 tabular-nums text-muted-foreground">完成首次模型调用后显示真实用量</p>
+          <p className="mt-1 tabular-nums text-muted-foreground">{t("chat.firstUsageHint")}</p>
         ) : null}
         {totals.totalTokens != null ? (
           <p className="mt-1 tabular-nums text-muted-foreground">
-            输入 {formatTokenCount(totals.inputTokens)} · 缓存 {formatTokenCount(cached)} · 输出{" "}
+            {t("chat.inputTokens")} {formatTokenCount(totals.inputTokens)} ·{" "}
+            {t("chat.cachedTokens")} {formatTokenCount(cached)} · {t("chat.outputTokens")}{" "}
             {formatTokenCount(totals.outputTokens)}
           </p>
         ) : null}
         {contextPct != null && contextWindow != null && contextTokens != null ? (
           <p className="mt-1 tabular-nums text-muted-foreground">
-            当前上下文 {contextTokens.toLocaleString()} / {contextWindow.toLocaleString()} ·{" "}
-            {contextPct}%
+            {t("chat.currentContext")} {contextTokens.toLocaleString(i18n.language)} /{" "}
+            {contextWindow.toLocaleString(i18n.language)} · {contextPct}%
           </p>
         ) : null}
         {models.length > 0 ? (
@@ -4037,6 +4046,7 @@ function ComposerStatusLine({
   privateFundResearchMode: PrivateFundResearchMode | null;
   onPrivateFundResearchModeChange: (mode: PrivateFundResearchMode) => void;
 }) {
+  const { t } = useTranslation();
   const { cloudAccounts, modelService } = useLlmConfiguration();
   const conversationId = useChatStore((s) => s.conversationId);
   const contextWindow = useChatStore((s) => s.contextWindow);
@@ -4153,10 +4163,12 @@ function ComposerStatusLine({
               "hidden max-w-48 truncate text-xs transition-colors hover:text-foreground sm:inline",
               modelService.ready ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300",
             )}
-            title={modelService.detail || "打开模型服务设置"}
+            title={modelService.detail || t("chat.openModelSettings")}
           >
-            {modelService.source === "platform" ? "平台模型" : "自定义"} ·{" "}
-            {modelService.reason === "insufficient_balance" ? "余额不足" : modelService.activeLabel}
+            {modelService.source === "platform" ? t("chat.platformModel") : t("chat.customModel")} ·{" "}
+            {modelService.reason === "insufficient_balance"
+              ? t("chat.insufficientBalance")
+              : modelService.activeLabel}
           </Link>
         )}
         {showPrivateFundTokenUsage && (
@@ -4250,14 +4262,18 @@ function SubagentComposerTray({ label }: { label: string }) {
 }
 
 function PrivateFundContextTray({ actions }: { actions: WorkbenchActionContextValue }) {
+  const { t } = useTranslation();
   if (actions.contextAssets.length === 0) {
     return null;
   }
   return (
-    <section aria-label="问题上下文" className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}>
+    <section
+      aria-label={t("chat.questionContext")}
+      className={cn("mx-auto mb-2 w-full", CHAT_COLUMN_WIDTH)}
+    >
       <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-2.5 py-2">
         <span className="mr-1 text-[11px] font-semibold text-[var(--pf-ink-secondary)]">
-          问题上下文
+          {t("chat.questionContext")}
         </span>
         {actions.contextAssets.map((asset) => (
           <button
@@ -4321,6 +4337,7 @@ export function Composer({
   privateFundPromptSuggestions,
   additionalSkills = [],
 }: ComposerProps) {
+  const { t } = useTranslation();
   const workbenchActions = usePrivateFundWorkbenchActions();
   const [composeIntent, setComposeIntent] = useState<PrivateFundComposeIntent>(null);
   const [composeNoteMode, setComposeNoteMode] = useState<PresentationMode>("plain_text");
@@ -5379,11 +5396,26 @@ export function Composer({
                             : reconnectHint
                               ? "Send a message to reconnect this session"
                               : composeIntent === "memo"
-                                ? "输入 Memo 主题或范围（可留空），发送即生成…"
+                                ? t(
+                                    "privateFund.memoPrompt",
+                                    "输入 Memo 主题或范围（可留空），发送即生成…",
+                                  )
                                 : composeIntent === "note"
-                                  ? `输入${composeNoteMode === "table" ? "表格" : composeNoteMode === "chart" ? "图表" : "文本"}笔记的补充要求（可留空），发送即生成…`
+                                  ? t("privateFund.notePrompt", {
+                                      defaultValue:
+                                        "输入{{format}}笔记的补充要求（可留空），发送即生成…",
+                                      format:
+                                        composeNoteMode === "table"
+                                          ? t("privateFund.table", "表格")
+                                          : composeNoteMode === "chart"
+                                            ? t("privateFund.chart", "图表")
+                                            : t("privateFund.text", "文本"),
+                                    })
                                   : privateFundDatasetId
-                                    ? "继续讨论这个节点，例如验证假设或对比情景…"
+                                    ? t(
+                                        "privateFund.continueNode",
+                                        "继续讨论这个节点，例如验证假设或对比情景…",
+                                      )
                                     : "Ask the agent anything…"
             }
             rows={1}
@@ -5497,14 +5529,14 @@ export function Composer({
                       disabled || isReadOnly || hasPendingElicitation || isWorking || !showCompact
                     }
                     onClick={compactConversation}
-                    aria-label="压缩上下文"
+                    aria-label={t("chat.compactContext")}
                     data-testid="private-fund-compact-button"
                   >
                     <ShrinkIcon className="size-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {showCompact ? "压缩上下文（/compact）" : "当前 Agent 不支持上下文压缩"}
+                  {showCompact ? t("chat.compactContext") : t("chat.compactUnsupported")}
                 </TooltipContent>
               </Tooltip>
             )}

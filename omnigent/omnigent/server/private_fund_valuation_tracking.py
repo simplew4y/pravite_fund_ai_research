@@ -44,6 +44,19 @@ _RETRY_DELAYS_SECONDS = (30, 120, 600)
 SECURITY_DIRECTORY_CACHE_TTL_HOURS = 24
 
 
+def _current_user_locale() -> str:
+    from omnigent.server.private_fund_locale import read_user_locale
+    from omnigent.server.private_fund_tenant import current_tenant
+
+    tenant = current_tenant()
+    if tenant is None:
+        return "zh-CN"
+    try:
+        return read_user_locale(tenant.data_namespace)
+    except ValueError:
+        return "zh-CN"
+
+
 _METRIC_PROFILES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "target_price",
@@ -2011,6 +2024,7 @@ def refresh_current_context_cards(
                     str(series_row["company_name"] or series_row["name"] or ""),
                     str(series_row["company_ticker"] or ""),
                 ),
+                locale=_current_user_locale(),
             )
             refreshed.append(
                 {

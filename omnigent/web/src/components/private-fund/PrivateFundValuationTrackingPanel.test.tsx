@@ -203,6 +203,7 @@ const overview: PrivateFundValuationTrackingOverview = {
       metricAnalysis: {
         marketData: {
           snapshotId: "snapshot-1",
+          provider: "akshare",
           status: "completed",
           asOf: "2026-07-20T05:30:00Z",
           errorMessage: "",

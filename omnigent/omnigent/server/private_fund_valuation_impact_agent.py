@@ -1793,7 +1793,10 @@ def extract_with_skill(
     sentiment_as_of: str | None = None,
     sentiment_lookback_days: int = DEFAULT_SENTIMENT_LOOKBACK_DAYS,
     sentiment_whitelist_hosts: list[str] | None = None,
+    locale: str = "zh-CN",
 ) -> dict[str, Any]:
+    from omnigent.server.private_fund_memory import read_current_user_memory
+
     ensure_impact_schema(conn)
     packet, evidence_sources, evidence_locations, evidence_meta, source_fingerprint = (
         build_evidence_packet(
@@ -1819,14 +1822,21 @@ def extract_with_skill(
     )
     excerpts = packet.get("evidence_excerpts") or []
     if not excerpts:
+        english = locale == "en-US"
         formatted = {
-            "analysis_summary": "当前项目没有满足精确证据定位要求的辅助资料片段。",
+            "analysis_summary": (
+                "No supporting excerpts satisfy the precise evidence-location requirements."
+                if english
+                else "当前项目没有满足精确证据定位要求的辅助资料片段。"
+            ),
             "impacts": [],
             "warnings": [
-                "未满足证据定位要求的资料已列入覆盖度摘要，需补充解析后才能生成可用影响卡。"
-            ]
-            if (packet.get("coverage_summary") or {}).get("needs_reparse_count")
-            else [],
+                (
+                    "Sources that failed evidence-location checks are listed in coverage; reparse them before generating usable impact cards."
+                    if english
+                    else "未满足证据定位要求的资料已列入覆盖度摘要，需补充解析后才能生成可用影响卡。"
+                )
+            ] if (packet.get("coverage_summary") or {}).get("needs_reparse_count") else [],
         }
         _insert_run(
             conn,
@@ -1856,6 +1866,7 @@ def extract_with_skill(
             "role": "system",
             "content": (
                 f"Apply the following skill exactly.\n\n{skill}\n\n"
+                f"{read_current_user_memory(fallback_locale=locale)}\n\n"
                 "Return one JSON object only, with no Markdown or prose. "
                 "The required root keys are analysis_summary, impacts, and warnings. "
                 "Minimal JSON example: "

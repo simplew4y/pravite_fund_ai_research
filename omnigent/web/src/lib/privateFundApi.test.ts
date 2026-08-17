@@ -722,7 +722,7 @@ describe("private-fund valuation tracking requests", () => {
         ],
       },
     });
-    expect("provider" in overview.series[0].metricAnalysis.marketData).toBe(false);
+    expect(overview.series[0].metricAnalysis.marketData.provider).toBe("akshare");
     expect(overview.metricAlerts[0]).toMatchObject({
       alertId: "val-gap-1",
       alertType: "model_actual_gap",

@@ -59,17 +59,17 @@ describe("PrivateFundCreateProjectDialog", () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.change(screen.getByLabelText("研究项目名称"), {
+    fireEvent.change(screen.getByLabelText("项目名称"), {
       target: { value: "阳光电源新项目" },
     });
     expect(screen.queryByLabelText("研究项目 Dataset ID")).toBeNull();
-    fireEvent.change(screen.getByLabelText("研究项目公司名称"), {
+    fireEvent.change(screen.getByLabelText("公司名称"), {
       target: { value: "阳光电源" },
     });
-    fireEvent.change(screen.getByLabelText("研究项目股票代码"), {
+    fireEvent.change(screen.getByLabelText("股票代码"), {
       target: { value: "300274" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "创建并进入工作台" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建并打开" }));
 
     await waitFor(() =>
       expect(createPrivateFundProject).toHaveBeenCalledWith({

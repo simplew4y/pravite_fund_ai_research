@@ -26,6 +26,15 @@ def cloud_store(
     monkeypatch: pytest.MonkeyPatch,
 ) -> SqlAlchemyAccountStore:
     monkeypatch.setenv("OMNIGENT_USER_SECRETS_KEY", secrets.token_hex(32))
+    user_root = tmp_path / "output" / "users"
+    monkeypatch.setattr(
+        "omnigent.server.private_fund_locale.user_data_root",
+        lambda: user_root,
+    )
+    monkeypatch.setattr(
+        "omnigent.server.private_fund_memory.user_data_root",
+        lambda: user_root,
+    )
     db_url = f"sqlite:///{tmp_path}/cloud-accounts.db"
     get_or_create_engine(db_url)
     return SqlAlchemyAccountStore(db_url)
@@ -56,6 +65,7 @@ def _user(*, is_admin: bool = True) -> dict[str, Any]:
         "is_admin": is_admin,
         "data_namespace": "450c7d39-96e0-4277-b6bf-c50a9c132b4d",
         "balance_cny": "12.500000",
+        "preferred_locale": "en-US",
         "last_login_at": None,
         "created_at": "2026-07-29T00:00:00+00:00",
     }
@@ -205,6 +215,7 @@ def test_cloud_registration_proxies_code_and_creates_shadow_session(
             "code": "012345",
             "password": "password123",
             "nick_name": "Researcher",
+            "preferred_locale": "en-US",
         }
         return httpx.Response(201, json=_token_payload())
 
@@ -221,6 +232,7 @@ def test_cloud_registration_proxies_code_and_creates_shadow_session(
                 "code": "012345",
                 "password": "password123",
                 "nick_name": " Researcher ",
+                "preferred_locale": "en-US",
             },
         )
 
@@ -235,6 +247,47 @@ def test_cloud_registration_proxies_code_and_creates_shadow_session(
     assert shadow is not None
     assert shadow.data_namespace == _user()["data_namespace"]
     assert len(calls) == 2
+
+
+def test_cloud_preferences_update_persists_locale_without_exposing_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+    cloud_config: CloudAccountsConfig,
+    cloud_store: SqlAlchemyAccountStore,
+    tmp_path: Path,
+) -> None:
+    def handler(method: str, url: str, kwargs: dict[str, Any]) -> httpx.Response:
+        if url.endswith("/api/v1/auth/login"):
+            return httpx.Response(200, json=_token_payload())
+        assert method == "PATCH"
+        assert url.endswith("/api/v1/me/preferences")
+        assert kwargs["headers"]["authorization"] == "Bearer cloud-access-secret"
+        assert kwargs["json"] == {"preferred_locale": "zh-CN"}
+        return httpx.Response(200, json={**_user(), "preferred_locale": "zh-CN"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", _fake_async_client(handler))
+    with TestClient(_app(cloud_config, cloud_store)) as client:
+        assert client.post(
+            "/auth/login",
+            json={"email": "researcher@example.com", "password": "password123"},
+        ).status_code == 200
+        updated = client.patch(
+            "/auth/users/me/preferences",
+            json={"preferred_locale": "zh-CN"},
+        )
+
+    assert updated.status_code == 200
+    assert updated.json()["preferred_locale"] == "zh-CN"
+    assert "cloud-access-secret" not in updated.text
+    assert "cloud-refresh-secret" not in updated.text
+    preferences = (
+        tmp_path
+        / "output"
+        / "users"
+        / _user()["data_namespace"]
+        / "settings"
+        / "preferences.json"
+    )
+    assert '"preferred_locale": "zh-CN"' in preferences.read_text(encoding="utf-8")
 
 
 def test_cloud_password_reset_proxies_only_required_fields_and_clears_cookies(

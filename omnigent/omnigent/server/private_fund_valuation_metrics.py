@@ -3313,6 +3313,7 @@ def refresh_valuation_impacts(
     llm_client: private_fund_valuation_impact_agent.ValuationImpactChatClient | None = None,
     document_ids: list[str] | None = None,
     sentiment_adapter: private_fund_valuation_impact_agent.SentimentEvidenceAdapter | None = None,
+    locale: str = "zh-CN",
 ) -> dict[str, Any]:
     """Generate source-backed valuation impacts or return the latest persisted run."""
 
@@ -3331,6 +3332,7 @@ def refresh_valuation_impacts(
         llm_client=llm_client,
         document_ids=document_ids,
         sentiment_adapter=sentiment_adapter,
+        locale=locale,
     )
 
 
