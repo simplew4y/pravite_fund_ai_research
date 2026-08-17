@@ -409,6 +409,31 @@ export class RepositorySessionResourcesService
     }
   }
 
+  public async deleteResource(
+    tenant: TenantContext,
+    sessionId: string,
+    resourceId: string,
+  ): Promise<DeleteSessionResourceResponse> {
+    const deleted = this.repositories.sessionResources.markDeletedForTenant(
+      tenant.dataNamespace,
+      sessionId,
+      resourceId,
+    );
+    if (deleted.deletedAt === null) {
+      throw new ConflictError(
+        "Deleted session resource has no deletion timestamp",
+        "session_resource_lifecycle_conflict",
+      );
+    }
+    return deleteSessionResourceResponseSchema.parse({
+      id: deleted.id,
+      object: "session.resource.deleted",
+      kind: deleted.kind,
+      deleted: true,
+      deletedAt: deleted.deletedAt,
+    });
+  }
+
   public async deleteAttachment(
     tenant: TenantContext,
     sessionId: string,

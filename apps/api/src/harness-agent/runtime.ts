@@ -27,20 +27,30 @@ const MAX_TOOL_RESULT_CHARS = 24_000;
 const MAX_HISTORY_EVENTS = 4_000;
 
 const TOOL_DESCRIPTIONS: Record<keyof typeof agentToolArgumentsSchemas, string> = {
-  "workspace.list": "List files in the project workspace directory.",
-  "workspace.read": "Read a text file from the project workspace.",
-  "workspace.search": "Search the project workspace files for a pattern.",
-  "workspace.write": "Write a text file into the project workspace.",
-  "evidence.search": "Search the project's indexed research corpus for evidence.",
-  "evidence.get": "Fetch one evidence record with its source locator.",
-  "job.enqueue": "Enqueue a durable background job (tracking scan, compute).",
-  "job.get": "Get the status and result of a background job.",
+  "workspace.list":
+    "列出项目工作区中的资源；返回的 resourceId 才能用于 workspace.read，切勿自行拼造。",
+  "workspace.read":
+    "按 resourceId 读取工作区文件内容；resourceId 必须来自 workspace.list 的返回值。",
+  "workspace.search": "在工作区文件内按关键词搜索。",
+  "workspace.write": "向项目工作区写入文本文件（会经过审批与审计）。",
+  "evidence.search":
+    "检索本项目已索引的资料证据，是回答投研问题的首选工具。" +
+    "evidenceTypes 为可选过滤器：chunk=文档文本块（PDF/Word），cell=表格单元格（Excel 模型），fact=结构化事实；" +
+    "不确定资料形态时务必省略该参数以检索全部类型——传错类型会得到 0 条命中。" +
+    "检索是对原文的字面匹配，中文无结果时改用英文或数字关键词重试。",
+  "evidence.get":
+    "按 evidenceId 取回证据原文与来源定位（文件、页码或单元格），用于引用。",
+  "job.enqueue": "排队后台任务（追踪扫描、文档计算等）。",
+  "job.get": "查询后台任务的状态与结果。",
 };
 
 const DEFAULT_SYSTEM_PROMPT = [
   "你是私募投研工作台的研究 Agent（Researcher-01）。",
   "职责：基于当前项目的资料库回答投研问题，证据优先，引用来源，不编造数据。",
   "可以调用工具检索证据（evidence.search / evidence.get）、读写工作区文件和排队后台任务。",
+  "evidence.search 是对资料原文的字面检索：年报与估值模型常为英文或数字，中文检索无结果时",
+  "必须改用英文或行业术语重试（如 收入→Revenue/Sales、毛利率→Gross margin、净利润→Net income），",
+  "并可用资料标题中的公司名、表名或指标名作为关键词；连续无结果再说明资料库缺少该信息。",
   "回答使用与用户一致的语言，结构清晰，量化结论给出区间与假设。",
 ].join("\n");
 

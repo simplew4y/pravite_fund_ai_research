@@ -354,6 +354,22 @@ export function registerSessionRoutes(ctx: RouteContext): void {
     },
   );
 
+  app.delete<{ Params: { sessionId: string; resourceId: string } }>(
+    "/v1/sessions/:sessionId/resources/:resourceId",
+    async (request, reply) => {
+      const tenant = await tenantFor(request, reply);
+      const sessionId = parseIdentifier(request.params.sessionId, "session id");
+      const resourceId = parseSessionResourceIdentifier(
+        request.params.resourceId,
+      );
+      return requireSessionResources().deleteResource(
+        tenant,
+        sessionId,
+        resourceId,
+      );
+    },
+  );
+
   app.post<{ Params: { sessionId: string } }>(
     "/v1/sessions/:sessionId/resources/research-assets",
     async (request, reply) => {

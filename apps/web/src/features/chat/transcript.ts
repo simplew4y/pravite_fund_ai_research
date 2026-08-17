@@ -4,6 +4,7 @@ export interface TranscriptToolCall {
   toolCallId: string;
   toolName: string;
   status: "running" | "completed" | "failed";
+  error?: string;
 }
 
 export interface TranscriptMessage {
@@ -18,12 +19,15 @@ export interface Transcript {
   messages: TranscriptMessage[];
   running: boolean;
   lastSequence: number;
+  /** Last terminal failure for the session, surfaced in the composer. */
+  error: string | null;
 }
 
 export const emptyTranscript: Transcript = {
   messages: [],
   running: false,
   lastSequence: 0,
+  error: null,
 };
 
 function extractText(message: unknown): string {
@@ -74,13 +78,17 @@ export function reduceTranscript(state: Transcript, event: SessionEvent): Transc
     tools: [...message.tools],
   }));
   let running = state.running;
+  let error = state.error;
   const payload = event.payload;
 
   switch (event.type) {
     case "message.user":
       messages.push({
         kind: "user",
-        text: extractText(payload.message),
+        // The control plane writes {content}; the agent loop writes {message}.
+        text:
+          extractText(payload.message) ||
+          (typeof payload.content === "string" ? payload.content : ""),
         thinking: "",
         tools: [],
         completed: true,
@@ -122,20 +130,40 @@ export function reduceTranscript(state: Transcript, event: SessionEvent): Transc
       const tool = target.tools.find(
         (candidate) => candidate.toolCallId === String(payload.toolCallId ?? ""),
       );
-      if (tool) tool.status = event.type === "tool.completed" ? "completed" : "failed";
+      if (tool) {
+        tool.status = event.type === "tool.completed" ? "completed" : "failed";
+        if (event.type === "tool.failed") {
+          const result = payload.result;
+          tool.error =
+            result !== null &&
+            typeof result === "object" &&
+            typeof (result as { error?: unknown }).error === "string"
+              ? (result as { error: string }).error
+              : "tool failed";
+        }
+      }
       break;
     }
     case "operation.completed":
-    case "operation.failed":
-    case "operation.interrupted":
     case "agent.run.ended":
       running = false;
+      error = null;
+      break;
+    case "operation.interrupted":
+      running = false;
+      break;
+    case "operation.failed":
+      running = false;
+      error =
+        typeof payload.error === "string" && payload.error
+          ? payload.error
+          : "Agent operation failed";
       break;
     default:
       break;
   }
 
-  return { messages, running, lastSequence: event.sequence };
+  return { messages, running, error, lastSequence: event.sequence };
 }
 
 export function reduceAll(state: Transcript, events: SessionEvent[]): Transcript {

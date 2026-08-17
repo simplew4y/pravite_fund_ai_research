@@ -741,7 +741,7 @@ export class RepositoryResearchService implements ResearchService {
   public async listDocuments(
     tenant: TenantContext,
     projectId: string,
-    options: { limit: number; offset: number },
+    options: { limit: number; offset: number; includeRemoved?: boolean },
   ) {
     return this.store(tenant, projectId).documents.list(options);
   }

@@ -70,6 +70,12 @@ export function RailSessionList({ projectId }: { projectId: string }) {
               {session.status === "running" ? (
                 <span className="tag tag-accent">{t("chat.running")}</span>
               ) : null}
+              {session.status === "interrupted" ? (
+                <span className="tag tag-neutral">{t("chat.interrupted")}</span>
+              ) : null}
+              {session.status === "failed" ? (
+                <span className="tag tag-outline">{t("chat.failed")}</span>
+              ) : null}
               {session.updatedAt.slice(5, 10)}
             </span>
           </button>

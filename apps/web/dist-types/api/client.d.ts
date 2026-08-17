@@ -60,6 +60,7 @@ export declare function fetchSession(sessionId: string): Promise<Session>;
 export declare function sendMessage(sessionId: string, input: SendMessageRequest): Promise<{
     operationId: string | null;
 }>;
+export declare function steerSession(sessionId: string, content: string): Promise<void>;
 export declare function interruptSession(sessionId: string): Promise<void>;
 export declare function uploadProjectDocuments(projectId: string, files: File[]): Promise<{
     uploads: unknown[];

@@ -62,4 +62,34 @@ describe("reduceTranscript", () => {
     ]);
     expect(state.messages[0]!.tools[0]).toMatchObject({ status: "failed" });
   });
+
+  it("renders user messages written by the control plane ({content})", () => {
+    // apps/api writes {content, clientMessageId}; the agent loop writes {message}.
+    const state = reduceAll(emptyTranscript, [
+      event("message.user", {
+        content: "集采影响？",
+        clientMessageId: "msg-1",
+      }),
+    ]);
+    expect(state.messages[0]).toMatchObject({ kind: "user", text: "集采影响？" });
+  });
+
+  it("surfaces turn failures and tool failure detail", () => {
+    const state = reduceAll(emptyTranscript, [
+      event("tool.started", { toolCallId: "t9", toolName: "evidence.search" }),
+      event("tool.failed", {
+        toolCallId: "t9",
+        toolName: "evidence.search",
+        result: { error: "index missing" },
+        isError: true,
+      }),
+      event("operation.failed", { error: "Model endpoint returned 402" }),
+    ]);
+    expect(state.messages[0]!.tools[0]).toMatchObject({
+      status: "failed",
+      error: "index missing",
+    });
+    expect(state.error).toBe("Model endpoint returned 402");
+    expect(state.running).toBe(false);
+  });
 });

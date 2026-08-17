@@ -4,7 +4,7 @@ import { Inbox, UploadCloud, X } from "lucide-react";
 import { globalUploadItemSchema, type GlobalUploadItem } from "@private-fund/contracts";
 import { z } from "zod";
 
-import { query, request, requestJson } from "../../api/http";
+import { ApiError, query, request, requestJson } from "../../api/http";
 import { useProjects } from "../../api/queries";
 import { MonoLabel } from "../../components/MonoLabel";
 import { useT } from "../../i18n/useT";
@@ -51,6 +51,7 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
   const projects = useProjects();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const items = useQuery({
     queryKey: ["uploads", "all"],
     queryFn: () => listUploadItems(),
@@ -60,25 +61,42 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
   const route = useMutation({
     mutationFn: (input: { itemId: string; projectId: string }) =>
       routeItem(input.itemId, input.projectId),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["uploads"] }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: ["uploads"] });
+      // Routing lands the file in a project corpus; refresh those views too.
+      void client.invalidateQueries({ queryKey: ["documents"] });
+    },
   });
 
   async function upload(files: File[]) {
     if (files.length === 0) return;
     setUploading(true);
+    setUploadError(null);
     try {
       await uploadGlobal(files);
       await client.invalidateQueries({ queryKey: ["uploads"] });
+    } catch (error) {
+      setUploadError(
+        error instanceof ApiError ? error.message : t("workbench.upload.failed"),
+      );
     } finally {
       setUploading(false);
     }
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
+    >
       <div
         className="dialog elev-lg"
         role="dialog"
+        aria-modal="true"
         aria-label={t("inbox.title")}
         style={{ width: 560, maxHeight: "80vh", overflowY: "auto" }}
         onClick={(event) => event.stopPropagation()}
@@ -100,11 +118,14 @@ export function InboxPanel({ onClose }: { onClose: () => void }) {
           <UploadCloud size={14} />{" "}
           {uploading ? t("workbench.upload.uploading") : t("workbench.upload.choose")}
         </button>
+        {uploadError ? <p className="error-text">{uploadError}</p> : null}
+        {route.isError ? <p className="error-text">{t("common.error")}</p> : null}
         <input
           ref={inputRef}
           type="file"
           hidden
           multiple
+          accept=".pdf,.xlsx,.xlsm,.docx,.pptx,.csv,.md,.markdown,.txt"
           onChange={(event) => {
             void upload([...(event.target.files ?? [])]);
             event.target.value = "";

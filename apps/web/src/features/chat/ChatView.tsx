@@ -20,8 +20,10 @@ import {
   interruptSession,
   listSessionResources,
   sendMessage,
+  steerSession,
   type Session,
 } from "../../api/client";
+import { ApiError } from "../../api/http";
 import { Blueprint } from "../../components/Blueprint";
 import { useT } from "../../i18n/useT";
 import { useUiStore } from "../../store/ui";
@@ -55,7 +57,10 @@ function AssistantMessage({ message }: { message: TranscriptMessage }) {
             <Terminal size={13} />
             {tool.toolName}
           </div>
-          <div className="tool-body">{tool.status}</div>
+          <div className="tool-body">
+            {tool.status}
+            {tool.error ? ` · ${tool.error}` : ""}
+          </div>
         </div>
       ))}
       {message.text ? (
@@ -88,18 +93,24 @@ function ContextChips({ sessionId }: { sessionId: string }) {
   });
   const remove = useMutation({
     mutationFn: (resourceId: string) => deleteSessionResource(sessionId, resourceId),
-    onSuccess: () =>
+    onSettled: () =>
       void client.invalidateQueries({ queryKey: ["session-resources", sessionId] }),
   });
 
   if (!resources.data?.length) return null;
   return (
     <div className="ctx-chips">
+      {remove.isError ? (
+        <span className="error-text">
+          {remove.error instanceof ApiError ? remove.error.message : t("common.error")}
+        </span>
+      ) : null}
       {resources.data.map((resource) => (
         <button
           key={resource.id}
           className={resource.kind === "research_asset" ? "ctx-chip asset" : "ctx-chip"}
           title={`${t("chat.context")} · ${resource.name}`}
+          disabled={remove.isPending}
           onClick={() => remove.mutate(resource.id)}
         >
           {resource.name}
@@ -117,12 +128,15 @@ export function ChatView({ session }: { session: Session }) {
   const transcript = useSessionStream(session.id);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pinnedToBottom = useRef(true);
 
+  // Follow new output only while the reader is already at the bottom, so
+  // scrolling up during generation is not yanked back every token.
   useEffect(() => {
     const node = scrollRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
+    if (node && pinnedToBottom.current) node.scrollTop = node.scrollHeight;
   }, [transcript.messages]);
 
   async function submit(event: FormEvent) {
@@ -130,18 +144,37 @@ export function ChatView({ session }: { session: Session }) {
     const content = draft.trim();
     if (!content || sending) return;
     setSending(true);
-    setSendError(false);
+    setSendError(null);
     try {
-      // clientMessageId lets the API queue the prompt when a turn is running.
-      await sendMessage(session.id, {
-        content,
-        clientMessageId: `msg-${crypto.randomUUID()}`,
-      });
+      if (transcript.running) {
+        // A turn is in flight: steer queues the follow-up into the next step.
+        await steerSession(session.id, content);
+      } else {
+        await sendMessage(session.id, {
+          content,
+          clientMessageId: `msg-${crypto.randomUUID()}`,
+        });
+      }
       setDraft("");
-    } catch {
-      setSendError(true);
+    } catch (error) {
+      setSendError(
+        error instanceof ApiError ? error.message : t("common.error"),
+      );
     } finally {
       setSending(false);
+    }
+  }
+
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function runAction(action: () => Promise<void>) {
+    setActionError(null);
+    try {
+      await action();
+    } catch (error) {
+      setActionError(
+        error instanceof ApiError ? error.message : t("common.error"),
+      );
     }
   }
 
@@ -160,12 +193,16 @@ export function ChatView({ session }: { session: Session }) {
           <button
             className="btn btn-quiet"
             title={t("chat.stop")}
-            onClick={() => void interruptSession(session.id)}
+            onClick={() => void runAction(() => interruptSession(session.id))}
           >
             <Square size={14} />
           </button>
         ) : null}
-        <button className="btn btn-quiet" title={t("chat.fork")} onClick={() => void fork()}>
+        <button
+          className="btn btn-quiet"
+          title={t("chat.fork")}
+          onClick={() => void runAction(fork)}
+        >
           <GitBranch size={14} />
         </button>
         <button
@@ -177,7 +214,15 @@ export function ChatView({ session }: { session: Session }) {
         </button>
       </div>
 
-      <div className="chat-scroll" ref={scrollRef}>
+      <div
+        className="chat-scroll"
+        ref={scrollRef}
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          pinnedToBottom.current =
+            node.scrollHeight - node.scrollTop - node.clientHeight < 48;
+        }}
+      >
         {transcript.messages.map((message, index) =>
           message.kind === "user" ? (
             <div key={index} className="msg-user">
@@ -194,7 +239,11 @@ export function ChatView({ session }: { session: Session }) {
 
       <div className="chat-footer">
         <ContextChips sessionId={session.id} />
-        {sendError ? <p className="error-text">{t("common.error")}</p> : null}
+        {transcript.error ? (
+          <p className="error-text">{transcript.error}</p>
+        ) : null}
+        {actionError ? <p className="error-text">{actionError}</p> : null}
+        {sendError ? <p className="error-text">{sendError}</p> : null}
         <form className="composer" onSubmit={(event) => void submit(event)}>
           <textarea
             placeholder={

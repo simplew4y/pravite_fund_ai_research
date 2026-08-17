@@ -443,6 +443,11 @@ export interface UploadSessionAttachmentInput {
 }
 
 export interface SessionResourcesService {
+  deleteResource(
+    tenant: TenantContext,
+    sessionId: string,
+    resourceId: string,
+  ): Promise<DeleteSessionResourceResponse>;
   listResources(
     tenant: TenantContext,
     sessionId: string,

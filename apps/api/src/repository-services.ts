@@ -761,6 +761,13 @@ export class RepositorySessionService implements SessionService {
   ): Promise<void> {
     const session = this.#requireInteractiveSession(tenant, sessionId);
     await this.#ensureAgentSession(tenant, session);
+    // Steering is a real user turn: persist it before forwarding so the
+    // transcript, replay and future context all contain the follow-up.
+    this.#appendAndPublish(tenant, {
+      sessionId: session.id,
+      type: "message.user",
+      payload: { content, steering: true },
+    });
     await this.#worker.steer(sessionId, content);
   }
 

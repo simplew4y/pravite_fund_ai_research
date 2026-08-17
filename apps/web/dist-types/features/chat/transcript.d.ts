@@ -3,6 +3,7 @@ export interface TranscriptToolCall {
     toolCallId: string;
     toolName: string;
     status: "running" | "completed" | "failed";
+    error?: string;
 }
 export interface TranscriptMessage {
     kind: "user" | "assistant";
@@ -15,6 +16,8 @@ export interface Transcript {
     messages: TranscriptMessage[];
     running: boolean;
     lastSequence: number;
+    /** Last terminal failure for the session, surfaced in the composer. */
+    error: string | null;
 }
 export declare const emptyTranscript: Transcript;
 /**

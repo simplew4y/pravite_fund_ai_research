@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Check, Inbox, Plus, Search, Settings, Trash2 } from "lucide-react";
+import { Inbox, Plus, Search, Settings, Trash2 } from "lucide-react";
 
 import {
   useCreateProject,
@@ -32,10 +32,18 @@ function CreateProjectDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
+    >
       <div
         className="dialog elev-lg"
         role="dialog"
+        aria-modal="true"
         aria-label={t("project.create.title")}
         onClick={(event) => event.stopPropagation()}
       >
@@ -46,6 +54,7 @@ function CreateProjectDialog({ onClose }: { onClose: () => void }) {
             <input
               id="project-name"
               className="input"
+              autoFocus
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
@@ -164,9 +173,7 @@ export function ProjectRail() {
               </span>
               <MonoLabel>{project.ticker ?? project.companyName ?? ""}</MonoLabel>
             </span>
-            <span className="status-dot" title={t("rail.ready")}>
-              <Check size={11} />
-            </span>
+
           </button>
         ))}
         {visible?.length === 0 ? (

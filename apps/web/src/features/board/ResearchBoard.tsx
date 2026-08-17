@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, FileText, RefreshCw, Trash2 } from "lucide-react";
 
@@ -16,8 +16,28 @@ import {
 import { useProjectDocuments, useServerInfo } from "../../api/queries";
 import { Blueprint } from "../../components/Blueprint";
 import { MonoLabel } from "../../components/MonoLabel";
+import type { DictKey } from "../../i18n/dict";
 import { useT } from "../../i18n/useT";
 import { useUiStore } from "../../store/ui";
+
+const ITEM_TYPE_TAG: Record<
+  string,
+  { key: DictKey; className: string }
+> = {
+  risk: { key: "risks.risk", className: "tag tag-outline" },
+  catalyst: { key: "risks.catalyst", className: "tag tag-accent" },
+  thesis: { key: "risks.thesis", className: "tag tag-neutral" },
+  assumption: { key: "risks.assumption", className: "tag tag-neutral" },
+  metric: { key: "risks.metric", className: "tag tag-neutral" },
+  question: { key: "risks.question", className: "tag tag-neutral" },
+};
+
+const ALERT_STATUS_LABEL: Record<string, DictKey> = {
+  new: "risks.status.new",
+  acknowledged: "risks.status.acknowledged",
+  dismissed: "risks.status.dismissed",
+  snoozed: "risks.status.snoozed",
+};
 
 function text(record: Record<string, unknown>, ...keys: string[]): string {
   for (const key of keys) {
@@ -35,6 +55,13 @@ function DocumentsPanel({ projectId }: { projectId: string }) {
   const expandedSessionId = useUiStore((state) => state.expandedSessionId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
+
+  // Selection is project-scoped: keeping it across a project switch would
+  // delete or attach documents that belong to another project.
+  useEffect(() => {
+    setSelected(new Set());
+    setFilter("");
+  }, [projectId]);
 
   const remove = useMutation({
     mutationFn: () => deleteDocuments(projectId, [...selected]),
@@ -75,6 +102,10 @@ function DocumentsPanel({ projectId }: { projectId: string }) {
         onChange={(event) => setFilter(event.target.value)}
       />
       {documents.isPending ? <p className="text-muted">{t("common.loading")}</p> : null}
+      {documents.isError ? <p className="error-text">{t("common.error")}</p> : null}
+      {remove.isError || addToContext.isError ? (
+        <p className="error-text">{t("common.error")}</p>
+      ) : null}
       {rows?.map((document) => (
         <label
           key={document.id}
@@ -133,6 +164,11 @@ function MemoPanel({ projectId }: { projectId: string }) {
     mutationFn: (input: { from: string; to: string }) =>
       compareMemoVersions(projectId, input.from, input.to),
   });
+  const resetCompare = compare.reset;
+  useEffect(() => {
+    setCompareFrom(null);
+    resetCompare();
+  }, [projectId, resetCompare]);
 
   if (info.data && !info.data.insights_store) {
     return <p className="text-muted">{t("memo.unavailable")}</p>;
@@ -146,7 +182,7 @@ function MemoPanel({ projectId }: { projectId: string }) {
       <MonoLabel>{t("memo.versions")}</MonoLabel>
       {versions.length === 0 ? <p className="text-muted">{t("common.empty")}</p> : null}
       {versions.map((version) => {
-        const id = text(version, "id", "versionId");
+        const id = text(version, "memoVersionId", "id", "versionId");
         return (
           <div key={id} className="doc-row">
             <span className="title">
@@ -154,6 +190,7 @@ function MemoPanel({ projectId }: { projectId: string }) {
             </span>
             <button
               className="btn btn-ghost"
+              disabled={id === ""}
               onClick={() => {
                 if (compareFrom === null) setCompareFrom(id);
                 else {
@@ -164,16 +201,21 @@ function MemoPanel({ projectId }: { projectId: string }) {
             >
               {compareFrom === null ? t("memo.compare") : `→ ${t("memo.compare")}`}
             </button>
-            <a
-              className="btn btn-icon btn-ghost"
-              href={memoDownloadUrl(projectId, id)}
-              title={t("common.download")}
-            >
-              <Download size={14} />
-            </a>
+            {id === "" ? null : (
+              <a
+                className="btn btn-icon btn-ghost"
+                href={memoDownloadUrl(projectId, id)}
+                target="_blank"
+                rel="noopener"
+                title={t("common.download")}
+              >
+                <Download size={14} />
+              </a>
+            )}
           </div>
         );
       })}
+      {compare.isError ? <p className="error-text">{t("common.error")}</p> : null}
       {compare.data ? (
         <Blueprint className="panel" style={{ marginTop: 8 }}>
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0 }}>
@@ -196,7 +238,15 @@ function ValuationPanel({ projectId }: { projectId: string }) {
   });
   const run = useMutation({
     mutationFn: () => runValuation(projectId),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["valuation", projectId] }),
+    // The refresh is a background job; poll briefly so the panel reflects it.
+    onSuccess: () => {
+      const stop = Date.now() + 60_000;
+      const tick = (): void => {
+        void client.invalidateQueries({ queryKey: ["valuation", projectId] });
+        if (Date.now() < stop) setTimeout(tick, 5_000);
+      };
+      setTimeout(tick, 3_000);
+    },
   });
 
   if (info.data && !info.data.insights_store) {
@@ -213,6 +263,12 @@ function ValuationPanel({ projectId }: { projectId: string }) {
           <RefreshCw size={14} /> {t("valuation.run")}
         </button>
       </div>
+      {run.isError ? <p className="error-text">{t("common.error")}</p> : null}
+      {run.isSuccess ? (
+        <p className="text-muted" style={{ fontSize: 12 }}>
+          {t("valuation.queued")}
+        </p>
+      ) : null}
       {valuation.data.series.length === 0 ? (
         <p className="text-muted">{t("common.empty")}</p>
       ) : null}
@@ -220,7 +276,10 @@ function ValuationPanel({ projectId }: { projectId: string }) {
         <div key={text(series, "id", "seriesId")} className="doc-row">
           <span className="title">{text(series, "name", "title", "id")}</span>
           <MonoLabel>
-            {text(series, "latestVersionNo", "versionCount") || t("common.missing")}
+            {typeof series.currentVersionNo === "number" &&
+            series.currentVersionNo > 0
+              ? `v${String(series.currentVersionNo)}`
+              : t("common.missing")}
           </MonoLabel>
         </div>
       ))}
@@ -260,30 +319,44 @@ function RisksPanel({ projectId }: { projectId: string }) {
       ) : null}
       {tracking.data.items.map((item) => {
         const type = text(item, "itemType", "type");
+        const tag = ITEM_TYPE_TAG[type] ?? {
+          key: "risks.item" as const,
+          className: "tag tag-neutral",
+        };
         return (
-          <div key={text(item, "id")} className="doc-row">
-            <span className={type === "risk" ? "tag tag-outline" : "tag tag-accent"}>
-              {type === "risk" ? t("risks.risk") : t("risks.catalyst")}
-            </span>
+          <div key={text(item, "itemId", "id")} className="doc-row">
+            <span className={tag.className}>{t(tag.key)}</span>
             <span className="title">{text(item, "title", "summary", "description")}</span>
           </div>
         );
       })}
-      {tracking.data.alerts.map((alert) => (
-        <div key={text(alert, "id")} className="doc-row">
-          <span className="tag tag-neutral">{text(alert, "status")}</span>
-          <span className="title">{text(alert, "title", "message", "summary")}</span>
-          {text(alert, "status") === "open" ? (
-            <button
-              className="btn btn-ghost"
-              onClick={() => acknowledge.mutate(text(alert, "id"))}
-              disabled={acknowledge.isPending}
-            >
-              {t("risks.acknowledge")}
-            </button>
-          ) : null}
-        </div>
-      ))}
+      {tracking.data.alerts.map((alert) => {
+        const alertId = text(alert, "alertId", "id");
+        const status = text(alert, "status");
+        const statusKey = ALERT_STATUS_LABEL[status];
+        // The backend domain is new | acknowledged | dismissed | snoozed;
+        // only new and snoozed can transition to acknowledged.
+        const canAcknowledge =
+          alertId !== "" && (status === "new" || status === "snoozed");
+        return (
+          <div key={alertId} className="doc-row">
+            <span className="tag tag-neutral">
+              {statusKey ? t(statusKey) : status}
+            </span>
+            <span className="title">{text(alert, "title", "message", "summary")}</span>
+            {canAcknowledge ? (
+              <button
+                className="btn btn-ghost"
+                onClick={() => acknowledge.mutate(alertId)}
+                disabled={acknowledge.isPending}
+              >
+                {t("risks.acknowledge")}
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+      {acknowledge.isError ? <p className="error-text">{t("common.error")}</p> : null}
     </div>
   );
 }

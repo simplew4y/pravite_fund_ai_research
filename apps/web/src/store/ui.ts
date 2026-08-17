@@ -13,6 +13,14 @@ function readStored(key: string): string | null {
   }
 }
 
+function syncDocumentLang(lang: Lang): void {
+  try {
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  } catch {
+    // non-DOM environment (tests/SSR)
+  }
+}
+
 function writeStored(key: string, value: string | null): void {
   try {
     if (value === null) window.localStorage.removeItem(key);
@@ -43,12 +51,14 @@ export const useUiStore = create<UiState>((set) => ({
   boardTab: "documents",
   setLang: (lang) => {
     writeStored(LANG_KEY, lang);
+    syncDocumentLang(lang);
     set({ lang });
   },
   toggleLang: () =>
     set((state) => {
       const lang = state.lang === "zh" ? "en" : "zh";
       writeStored(LANG_KEY, lang);
+      syncDocumentLang(lang);
       return { lang };
     }),
   selectProject: (selectedProjectId) => {

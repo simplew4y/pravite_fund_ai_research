@@ -17,6 +17,26 @@ import { ChatView } from "../chat/ChatView";
 import { useQueryClient } from "@tanstack/react-query";
 
 const ACCEPT = ".pdf,.xlsx,.xlsm,.docx,.pptx,.csv,.md,.markdown,.txt";
+const ACCEPTED_EXTENSIONS = new Set(
+  ACCEPT.split(",").map((extension) => extension.trim().toLowerCase()),
+);
+/** apps/api caps a project upload batch at four files. */
+const MAX_BATCH_FILES = 4;
+
+function partitionUploads(files: File[]): {
+  accepted: File[];
+  rejected: string[];
+} {
+  const accepted: File[] = [];
+  const rejected: string[] = [];
+  for (const file of files) {
+    const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    if (!ACCEPTED_EXTENSIONS.has(extension)) rejected.push(file.name);
+    else if (accepted.length >= MAX_BATCH_FILES) rejected.push(file.name);
+    else accepted.push(file);
+  }
+  return { accepted, rejected };
+}
 
 function UploadZone({ projectId }: { projectId: string }) {
   const { t } = useT();
@@ -28,11 +48,22 @@ function UploadZone({ projectId }: { projectId: string }) {
 
   async function upload(files: File[]) {
     if (files.length === 0) return;
+    const { accepted, rejected } = partitionUploads(files);
+    if (accepted.length === 0) {
+      setState("failed");
+      setError(`${t("workbench.upload.rejected")}: ${rejected.join("、")}`);
+      return;
+    }
     setState("uploading");
     setError(null);
     try {
-      await uploadProjectDocuments(projectId, files);
+      await uploadProjectDocuments(projectId, accepted);
       setState("done");
+      setError(
+        rejected.length > 0
+          ? `${t("workbench.upload.rejected")}: ${rejected.join("、")}`
+          : null,
+      );
       await client.invalidateQueries({ queryKey: ["documents", projectId] });
     } catch (uploadError) {
       setState("failed");
@@ -69,7 +100,12 @@ function UploadZone({ projectId }: { projectId: string }) {
         >
           {state === "uploading" ? t("workbench.upload.uploading") : t("workbench.upload.choose")}
         </button>
-        {state === "done" ? <MonoLabel>{t("workbench.upload.done")}</MonoLabel> : null}
+        {state === "done" ? (
+          <MonoLabel>
+            {t("workbench.upload.done")}
+            {error ? ` · ${error}` : ""}
+          </MonoLabel>
+        ) : null}
         {state === "failed" ? (
           <span className="error-text">
             {t("workbench.upload.failed")}
@@ -123,10 +159,31 @@ export function Workbench({ projectId }: { projectId: string }) {
     }
   }
 
+  const [headerUploadState, setHeaderUploadState] = useState<
+    "idle" | "uploading" | "failed"
+  >("idle");
+  const [headerUploadError, setHeaderUploadError] = useState<string | null>(null);
+
   async function headerUpload(files: File[]) {
     if (files.length === 0) return;
-    await uploadProjectDocuments(projectId, files);
-    await client.invalidateQueries({ queryKey: ["documents", projectId] });
+    const { accepted, rejected } = partitionUploads(files);
+    if (accepted.length === 0) {
+      setHeaderUploadState("failed");
+      setHeaderUploadError(`${t("workbench.upload.rejected")}: ${rejected.join("、")}`);
+      return;
+    }
+    setHeaderUploadState("uploading");
+    setHeaderUploadError(null);
+    try {
+      await uploadProjectDocuments(projectId, accepted);
+      setHeaderUploadState("idle");
+      await client.invalidateQueries({ queryKey: ["documents", projectId] });
+    } catch (error) {
+      setHeaderUploadState("failed");
+      setHeaderUploadError(
+        error instanceof ApiError ? error.message : t("workbench.upload.failed"),
+      );
+    }
   }
 
   const project = projects.data?.find((candidate) => candidate.id === projectId);
@@ -154,6 +211,7 @@ export function Workbench({ projectId }: { projectId: string }) {
           title={t("workbench.upload")}
           aria-label={t("workbench.upload")}
           onClick={() => headerUploadRef.current?.click()}
+          disabled={headerUploadState === "uploading"}
         >
           <Upload size={16} />
         </button>
@@ -178,6 +236,17 @@ export function Workbench({ projectId }: { projectId: string }) {
           }}
         />
       </div>
+
+      {headerUploadState !== "idle" ? (
+        <p
+          className={headerUploadState === "failed" ? "error-text" : "text-muted"}
+          style={{ padding: "0 22px", margin: "8px 0 0" }}
+        >
+          {headerUploadState === "uploading"
+            ? t("workbench.upload.uploading")
+            : headerUploadError}
+        </p>
+      ) : null}
 
       <div className="center-body">
         {expanded ? (

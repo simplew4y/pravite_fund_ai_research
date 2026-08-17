@@ -208,6 +208,10 @@ declare const dict: {
         readonly zh: "上传失败";
         readonly en: "Upload failed";
     };
+    readonly "workbench.upload.rejected": {
+        readonly zh: "已跳过（类型不支持或超出单批 4 个）";
+        readonly en: "Skipped (unsupported type or over the 4-file batch limit)";
+    };
     readonly "workbench.chats": {
         readonly zh: "研究会话";
         readonly en: "Research chats";
@@ -432,9 +436,45 @@ declare const dict: {
         readonly zh: "催化剂";
         readonly en: "Catalyst";
     };
-    readonly "risks.unread": {
+    readonly "risks.item": {
+        readonly zh: "研究条目";
+        readonly en: "Item";
+    };
+    readonly "risks.thesis": {
+        readonly zh: "论点";
+        readonly en: "Thesis";
+    };
+    readonly "risks.assumption": {
+        readonly zh: "假设";
+        readonly en: "Assumption";
+    };
+    readonly "risks.metric": {
+        readonly zh: "指标";
+        readonly en: "Metric";
+    };
+    readonly "risks.question": {
+        readonly zh: "待解问题";
+        readonly en: "Question";
+    };
+    readonly "risks.status.new": {
         readonly zh: "未读";
-        readonly en: "UNREAD";
+        readonly en: "New";
+    };
+    readonly "risks.status.acknowledged": {
+        readonly zh: "已确认";
+        readonly en: "Acknowledged";
+    };
+    readonly "risks.status.dismissed": {
+        readonly zh: "已忽略";
+        readonly en: "Dismissed";
+    };
+    readonly "risks.status.snoozed": {
+        readonly zh: "已延后";
+        readonly en: "Snoozed";
+    };
+    readonly "valuation.queued": {
+        readonly zh: "刷新任务已排队，稍后自动更新";
+        readonly en: "Refresh queued — updating shortly";
     };
     readonly "risks.acknowledge": {
         readonly zh: "确认";

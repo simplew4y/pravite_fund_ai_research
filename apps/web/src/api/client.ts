@@ -156,6 +156,16 @@ export function sendMessage(
   );
 }
 
+export async function steerSession(
+  sessionId: string,
+  content: string,
+): Promise<void> {
+  await request(`/v1/sessions/${sessionId}/steer`, {
+    method: "POST",
+    body: { content },
+  });
+}
+
 export async function interruptSession(sessionId: string): Promise<void> {
   await request(`/v1/sessions/${sessionId}/interrupt`, { method: "POST" });
 }

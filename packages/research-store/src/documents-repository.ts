@@ -456,10 +456,19 @@ export class DocumentsRepository {
   }
 
   public list(
-    options: PageOptions & { readonly status?: DocumentStatus } = {},
+    options: PageOptions & {
+      readonly status?: DocumentStatus;
+      /** Removed documents stay queryable for audit but are hidden by default. */
+      readonly includeRemoved?: boolean;
+    } = {},
   ): Page<DocumentRecord> {
     const { limit, offset } = pageValues(options);
-    const where = options.status === undefined ? "" : " WHERE status = ?";
+    const where =
+      options.status !== undefined
+        ? " WHERE status = ?"
+        : options.includeRemoved === true
+          ? ""
+          : " WHERE status <> 'removed'";
     const parameters =
       options.status === undefined ? [] : [options.status];
     const totalRow = this.database
