@@ -67,6 +67,12 @@ export interface HarnessAgentRuntimeOptions {
   readonly sessionEvents: SessionEventsRepository;
   /** Resolves the chat endpoint for a session (cloud gateway or dev env). */
   readonly resolveEndpoint: HarnessAgentEndpointResolver;
+  /**
+   * Per-session prompt assembly (harness system-prompt phase): returns the
+   * project facts and corpus inventory the model must see. Failures here are
+   * non-fatal — the base prompt is used instead.
+   */
+  readonly describeSession?: (session: SessionContext) => string;
   readonly systemPrompt?: string;
   readonly maxSteps?: number;
   readonly fetchImplementation?: typeof fetch;
@@ -306,10 +312,17 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
       after = batch[batch.length - 1]!.sequence;
       if (batch.length < 1_000 || events.length >= MAX_HISTORY_EVENTS) break;
     }
-    return deriveMessages(
-      events,
-      this.#options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
-    );
+    return deriveMessages(events, this.#systemPromptFor(session));
+  }
+
+  #systemPromptFor(session: SessionContext): string {
+    const base = this.#options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+    try {
+      const description = this.#options.describeSession?.(session);
+      return description ? `${base}\n\n${description}` : base;
+    } catch {
+      return base;
+    }
   }
 
   #emit(
