@@ -1,6 +1,6 @@
 ---
 name: private-fund-valuation-impacts
-description: Extract evidence-backed valuation-impact paths from research reports, meeting minutes, financial reports, announcements, and other supporting documents, then return fixed-shape JSON for valuation tracking. Use when supporting materials must be translated into upside, downside, or mixed effects on a current valuation model without changing model values.
+description: Extract evidence-backed valuation-impact paths from research reports, meeting minutes, financial reports, announcements, sentiment observations, and other supporting documents, then return fixed-shape JSON for valuation tracking. Use when supporting materials must be translated into upside, downside, or mixed effects on a current valuation model without changing model values.
 ---
 
 # 📝 Private Fund Valuation Impacts
@@ -11,7 +11,7 @@ Translate current supporting evidence into auditable valuation-impact cards. Do 
 
 1. Read [references/output-schema.json](references/output-schema.json).
 2. Review the supplied model context only to understand which valuation inputs exist.
-3. Review every supplied supporting-document excerpt and its `chunk:` evidence ID.
+3. Review every supplied supporting-document excerpt, sentiment observation, and its `chunk:` or `sentiment:` evidence ID.
 4. Select only distinct, decision-relevant impact paths. Prefer fewer supported cards over speculative coverage.
 5. Separate the factual `evidence_summary` from the inferred `valuation_impact`.
 6. Map each impact to one direction and one or more controlled `affected_inputs`.
@@ -28,8 +28,9 @@ Translate current supporting evidence into auditable valuation-impact cards. Do 
 
 ## Evidence Rules
 
-- Cite only supplied `chunk:` IDs. Include at least one evidence ID per card.
-- Never invent figures, dates, customers, orders, policies, source pages, or certainty.
+- Cite only supplied `chunk:` or `sentiment:` IDs. Include at least one evidence ID per card.
+- A sentiment-based card must cite at least two independent, precisely located `sentiment:` IDs. Keep one-source sentiment as an observation, not an upside, downside, or mixed impact card.
+- Never invent figures, dates, customers, orders, policies, source pages, URLs, quotes, or certainty.
 - Do not present an estimate, guidance, or management assertion as an achieved result.
 - Do not repeat the same evidence path under multiple titles.
 - Keep titles short, evidence summaries factual, valuation impacts explicit, and watch items testable.

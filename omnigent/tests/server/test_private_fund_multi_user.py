@@ -4,12 +4,13 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from omnigent.db.utils import get_or_create_engine
 from omnigent.server.accounts_store import SqlAlchemyAccountStore
 from omnigent.server.passwords import hash_password
+from omnigent.server import private_fund_tenant
 from omnigent.server.private_fund_tenant import (
     bind_tenant_job_payload,
     build_tenant_context,
@@ -24,6 +25,25 @@ from omnigent.server.user_llm_gateway import (
     issue_user_llm_token,
 )
 from omnigent.server.user_model_routing_store import UserModelRoutingStore
+
+
+def test_reserved_local_user_uses_single_user_workspace_without_account_store() -> None:
+    class LocalAuth:
+        @staticmethod
+        def get_user_id(_request: object) -> str:
+            return "local"
+
+    app = FastAPI()
+
+    @app.get("/tenant")
+    async def tenant(
+        _scope: object = Depends(
+            private_fund_tenant.tenant_scope_dependency(LocalAuth(), None)
+        ),
+    ) -> dict[str, bool]:
+        return {"tenant_bound": private_fund_tenant.current_tenant() is not None}
+
+    assert TestClient(app).get("/tenant").json() == {"tenant_bound": False}
 
 
 @pytest.fixture

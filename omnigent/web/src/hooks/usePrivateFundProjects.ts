@@ -183,7 +183,7 @@ export function usePrivateFundValuationTracking(datasetId: string | null | undef
         const createdAt = Date.parse(job.createdAt);
         return !Number.isFinite(createdAt) || now - createdAt < 10 * 60 * 1000;
       });
-      return hasRecentActiveJob ? 3000 : false;
+      return hasRecentActiveJob ? 3000 : 30_000;
     },
   });
 }

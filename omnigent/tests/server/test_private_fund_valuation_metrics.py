@@ -391,6 +391,62 @@ def _actual_values() -> dict[str, Any]:
     }
 
 
+
+def test_standard_five_metric_template_adapts_excel_cells(tmp_path: Path) -> None:
+    database = tmp_path / "collection.sqlite3"
+    _create_database(database)
+    headers = [
+        "\u6307\u6807\u540d\u79f0",
+        "\u6307\u6807\u4ee3\u7801",
+        "\u5355\u4f4d",
+        "\u8ba1\u7b97\u516c\u5f0f",
+        "2024Q4",
+    ]
+    metric_rows = [
+        ("Net profit YoY", "quarter_net_profit_yoy", "%", "formula", -0.2),
+        ("Gross margin QoQ", "quarter_gross_margin_qoq_delta", "percentage_point", "formula", 0.01),
+        ("Forward PE", "forward_pe", "x", "formula", 18.5),
+        ("20D turnover", "avg_turnover_amount_20d", "\u767e\u4e07\u5143", "formula", 3200.0),
+        ("Revenue growth QoQ", "quarter_revenue_growth_qoq", "percentage_point", "formula", 0.03),
+    ]
+    with sqlite3.connect(database) as conn:
+        conn.row_factory = sqlite3.Row
+        for column, value in enumerate(headers, start=1):
+            conn.execute(
+                """INSERT INTO excel_cells
+                   (cell_id, doc_id, sheet_name, cell_ref, display_value, raw_value,
+                    numeric_value, row_label, col_label, number_format)
+                   VALUES (?, 'model-v1', 'Model', ?, ?, ?, NULL, '', '', 'General')""",
+                (f"header-{column}", f"{chr(64 + column)}6", value, value),
+            )
+        for row_index, (name, code, unit, formula, value) in enumerate(metric_rows, start=7):
+            for column, cell_value in enumerate((name, code, unit, formula, value), start=1):
+                conn.execute(
+                    """INSERT INTO excel_cells
+                       (cell_id, doc_id, sheet_name, cell_ref, display_value, raw_value,
+                        numeric_value, row_label, col_label, number_format)
+                       VALUES (?, 'model-v1', 'Model', ?, ?, ?, ?, '', '', 'General')""",
+                    (
+                        f"metric-{row_index}-{column}",
+                        f"{chr(64 + column)}{row_index}",
+                        str(cell_value),
+                        str(cell_value),
+                        float(cell_value) if column == 5 else None,
+                    ),
+                )
+        facts = metrics._facts_for_document(conn, "model-v1")
+        explicit = metrics._explicit_five_metric_contract(facts)
+
+    assert set(explicit) == set(metrics.METRIC_KEYS)
+    assert explicit["forward_pe"]["period"] == "2024Q4"
+    assert explicit["forward_pe"]["value_numeric"] == pytest.approx(18.5)
+    assert explicit["avg_turnover_amount_20d"]["value_numeric"] == pytest.approx(
+        3_200_000_000.0
+    )
+    assert explicit["quarter_net_profit_yoy"]["formula"] == "formula"
+
+
+
 def test_extracts_exactly_five_metrics_and_compares_to_api_values(tmp_path: Path) -> None:
     database = tmp_path / "collection.sqlite3"
     _create_database(database)
@@ -616,6 +672,8 @@ def test_free_combo_is_the_free_default_provider(monkeypatch: pytest.MonkeyPatch
         "PRIVATE_FUND_MARKET_DATA_PROVIDER",
         "PRIVATE_FUND_MARKET_DATA_API_URL",
         "PRIVATE_FUND_CONSENSUS_API_URL",
+        "PRIVATE_FUND_IFIND_BASE_URL",
+        "PRIVATE_FUND_IFIND_ACCESS_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -625,47 +683,496 @@ def test_free_combo_is_the_free_default_provider(monkeypatch: pytest.MonkeyPatch
     assert [item.name for item in provider._providers_for_metrics("300274.SZ")] == [
         "akshare",
         "eastmoney_financial",
-        "eastmoney_market",
     ]
     assert [item.name for item in provider._providers_for_metrics("700.HK")] == [
         "tencent_hk",
-        "akshare",
+        "yahoo",
     ]
 
-def test_target_price_is_compared_with_valuation_and_latest_closes(tmp_path: Path) -> None:
-    database = tmp_path / "collection.sqlite3"
-    _create_database(database)
-    with sqlite3.connect(database) as conn:
-        conn.row_factory = sqlite3.Row
-        result = metrics.refresh_metric_comparison(
-            conn,
-            dataset_id="demo",
-            series=dict(conn.execute("SELECT * FROM valuation_model_series").fetchone()),
-            version=dict(conn.execute("SELECT * FROM valuation_model_versions").fetchone()),
-            provider=_FakePriceProvider(_actual_values()),
-        )
-        conn.commit()
-        payload = metrics.latest_metric_payload(
-            conn,
-            dataset_id="demo",
-            series_id="series-1",
-            model_version_id="version-1",
-        )
-        cached_bars = conn.execute("SELECT COUNT(*) FROM valuation_market_price_bars").fetchone()[
-            0
-        ]
 
-    price = payload["price_comparison"]
-    assert result["price_comparison"]["status"] == "completed"
-    assert price["target_price"] == pytest.approx(120.0)
-    assert price["valuation_date"] == "2026-07-20"
-    assert price["benchmark_trade_date"] == "2026-07-20"
-    assert price["benchmark_close"] == pytest.approx(82.0)
-    assert price["latest_close"] == pytest.approx(100.0)
-    assert price["implied_upside"] == pytest.approx(120.0 / 82.0 - 1.0)
-    assert price["latest_upside"] == pytest.approx(0.20)
-    assert price["target_source"] == "DCF!D20"
-    assert cached_bars == 3
+
+def test_hybrid_alias_selects_the_free_combo_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRIVATE_FUND_MARKET_DATA_PROVIDER", "hybrid")
+
+    provider = metrics.default_market_data_provider()
+
+    assert isinstance(provider, metrics.FreeComboMarketDataProvider)
+
+
+def test_default_market_data_provider_rejects_unknown_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRIVATE_FUND_MARKET_DATA_PROVIDER", "unexpected")
+
+    with pytest.raises(ValueError, match="Unsupported PRIVATE_FUND_MARKET_DATA_PROVIDER"):
+        metrics.default_market_data_provider()
+def test_ifind_rows_parses_official_tables_and_datatype_shape() -> None:
+    payload = {
+        "errorcode": 0,
+        "tables": [
+            {
+                "thscode": "9988.HK",
+                "time": ["2025-12-31", "2026-03-31"],
+                "table": {
+                    "np_atsopc_yoy": [15.0, 20.0],
+                    "gross_selling_rate": [56.0, 57.5],
+                    "or_yoy": [8.0, 10.0],
+                },
+            }
+        ],
+        "datatype": [
+            {"itemid": "np_atsopc_yoy", "type": "DT_DOUBLE"},
+            {"itemid": "gross_selling_rate", "type": "DT_DOUBLE"},
+            {"itemid": "or_yoy", "type": "DT_DOUBLE"},
+        ],
+    }
+
+    rows = metrics._ifind_rows(payload)
+
+    assert rows == [
+        {
+            "time": "2025-12-31",
+            "np_atsopc_yoy": 15.0,
+            "gross_selling_rate": 56.0,
+            "or_yoy": 8.0,
+        },
+        {
+            "time": "2026-03-31",
+            "np_atsopc_yoy": 20.0,
+            "gross_selling_rate": 57.5,
+            "or_yoy": 10.0,
+        },
+    ]
+
+
+@pytest.mark.parametrize(("ticker", "ifind_ticker"), [("300274.SZ", "300274.SZ"), ("700.HK", "0700.HK")])
+def test_ifind_official_provider_fetches_and_normalizes_all_five_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+    ticker: str,
+    ifind_ticker: str,
+) -> None:
+    calls: list[dict[str, Any]] = []
+    identity = metrics._security_identity(ticker)
+    financial_mapping, market_mapping = metrics._ifind_indicators(identity)
+    financial_indicators = list(financial_mapping.values())
+    market_indicators = list(market_mapping.values())
+    market_dates = [
+        (date(2026, 7, 1) + timedelta(days=index)).isoformat() for index in range(25)
+    ]
+
+    def fake_post(url: str, **kwargs: Any) -> _FakeHttpResponse:
+        calls.append({"url": url, **kwargs})
+        interval = kwargs["json"]["functionpara"]["Interval"]
+        if interval == "Q":
+            return _FakeHttpResponse(
+                {
+                    "errorcode": 0,
+                    "indicators": financial_indicators,
+                    "time": ["2026-03-31", "2026-06-30", "2026-09-30"],
+                    "data": {
+                        financial_mapping["net_profit_yoy"]: [10.0, 20.0, None],
+                        financial_mapping["gross_margin"]: [30.0, 33.0, None],
+                        **(
+                            {financial_mapping["gross_margin_fallback"]: [29.0, 32.0, None]}
+                            if "gross_margin_fallback" in financial_mapping
+                            else {}
+                        ),
+                        financial_mapping["revenue_yoy"]: [5.0, 8.0, None],
+                    },
+                }
+            )
+        return _FakeHttpResponse(
+            {
+                "errorcode": 0,
+                "indicators": market_indicators,
+                "time": market_dates,
+                "data": {
+                    market_indicators[0]: [15.0] * 24 + [17.5691],
+                    market_indicators[1]: [
+                        100_000_000.0 + index * 1_000_000.0 for index in range(25)
+                    ],
+                },
+            }
+        )
+
+    monkeypatch.setattr(metrics.httpx, "post", fake_post)
+    provider = metrics.IFindHttpMarketDataProvider(
+        "https://ifind.example/api/v1", "secret"
+    )
+
+    payload = provider.fetch_metrics(company_name="Demo Corp", ticker=ticker)
+
+    assert payload["status"] == "completed"
+    assert set(payload["metrics"]) == set(metrics.METRIC_KEYS)
+    assert payload["metrics"]["quarter_net_profit_yoy"]["value"] == pytest.approx(0.20)
+    assert payload["metrics"]["quarter_gross_margin_qoq_delta"]["value"] == pytest.approx(
+        0.03
+    )
+    assert payload["metrics"]["quarter_revenue_growth_qoq"]["value"] == pytest.approx(
+        0.03
+    )
+    assert payload["metrics"]["quarter_net_profit_yoy"]["period"] == "2026Q2"
+    assert [item["period"] for item in payload["metric_history"]] == [
+        "2026Q1",
+        "2026Q2",
+    ]
+    assert payload["metrics"]["forward_pe"]["value"] == pytest.approx(17.5691)
+    turnover = payload["metrics"]["avg_turnover_amount_20d"]
+    assert turnover["value"] == pytest.approx(114_500_000.0)
+    assert turnover["metadata"]["raw_unit"] == identity.currency
+    assert turnover["metadata"]["unit_assumption"] is True
+    assert len(calls) == 2
+    assert all(call["url"].endswith("/date_sequence") for call in calls)
+    assert all(call["headers"]["access_token"] == "secret" for call in calls)
+    assert all(call["json"]["codes"] == ifind_ticker for call in calls)
+    assert all("Authorization" not in call["headers"] for call in calls)
+    assert (
+        date.fromisoformat(calls[0]["json"]["enddate"])
+        - date.fromisoformat(calls[0]["json"]["startdate"])
+    ).days == 5 * 366
+    assert {
+        item["indicator"] for item in calls[0]["json"]["indipara"]
+    } == set(financial_indicators)
+    assert {
+        item["indicator"] for item in calls[1]["json"]["indipara"]
+    } == set(market_indicators)
+    if identity.market == "hk":
+        by_indicator = {
+            item["indicator"]: item["indiparams"]
+            for item in calls[1]["json"]["indipara"]
+        }
+        assert by_indicator["fore_pe_in_12m"] == [""]
+        assert by_indicator["amt"] == ["", "BB"]
+        assert turnover["metadata"]["raw_unit"] == "HKD"
+
+
+
+
+def test_ifind_hk_financials_fall_back_to_reported_gross_margin() -> None:
+    indicators = metrics.IFIND_HK_FINANCIAL_INDICATORS
+    rows = [
+        {
+            "time": "2025-12-31",
+            indicators["net_profit_yoy"]: 15.0,
+            indicators["gross_margin"]: None,
+            indicators["gross_margin_fallback"]: 56.0,
+            indicators["revenue_yoy"]: 8.0,
+        },
+        {
+            "time": "2026-03-31",
+            indicators["net_profit_yoy"]: 20.0,
+            indicators["gross_margin"]: None,
+            indicators["gross_margin_fallback"]: 57.5,
+            indicators["revenue_yoy"]: 10.0,
+        },
+    ]
+
+    latest, _history = metrics.IFindHttpMarketDataProvider._financial_metrics(
+        rows, indicators
+    )
+
+    assert latest["quarter_gross_margin_qoq_delta"]["value"] == pytest.approx(0.015)
+    assert (
+        latest["quarter_gross_margin_qoq_delta"]["metadata"]["indicator"]
+        == "gross_selling_rate"
+    )
+
+
+def test_ifind_period_market_query_uses_requested_as_of_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+    indicators = list(metrics.IFIND_MARKET_INDICATORS.values())
+    dates = [(date(2024, 6, 3) + timedelta(days=index)).isoformat() for index in range(26)]
+
+    def fake_post(_url: str, **kwargs: Any) -> _FakeHttpResponse:
+        captured.update(kwargs["json"])
+        return _FakeHttpResponse(
+            {
+                "errorcode": 0,
+                "indicators": indicators,
+                "time": dates,
+                "data": {
+                    indicators[0]: [18.0] * len(dates),
+                    indicators[1]: [100_000_000.0] * len(dates),
+                },
+            }
+        )
+
+    monkeypatch.setattr(metrics.httpx, "post", fake_post)
+    provider = metrics.IFindHttpMarketDataProvider(
+        "https://ifind.example/api/v1", "secret"
+    )
+
+    payload = provider.fetch_market_metrics_as_of(
+        ticker="300274.SZ", as_of=date(2024, 6, 30)
+    )
+
+    assert captured["enddate"] == "2024-06-30"
+    assert captured["startdate"] == "2024-05-01"
+    assert captured["functionpara"]["Interval"] == "D"
+    assert set(payload["metrics"]) == {"forward_pe", "avg_turnover_amount_20d"}
+
+
+def test_period_market_snapshot_compares_only_selected_quarter_model_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE valuation_model_series (
+            dataset_id TEXT, series_id TEXT, company_name TEXT, company_ticker TEXT
+        );
+        CREATE TABLE valuation_model_versions (
+            model_version_id TEXT, series_id TEXT, doc_id TEXT
+        );
+        INSERT INTO valuation_model_series
+        VALUES ('demo', 'series-1', 'Demo Corp', '300274.SZ');
+        INSERT INTO valuation_model_versions
+        VALUES ('version-1', 'series-1', 'doc-1');
+        """
+    )
+    monkeypatch.setattr(metrics, "ensure_metric_schema", lambda _conn: None)
+    model_values = [
+        {
+            "metric_key": "forward_pe",
+            "value_numeric": 20.0,
+            "unit": "multiple",
+            "period": "2024Q2",
+            "status": "available",
+            "method": "explicit_forward_pe",
+            "source": "Model!B2",
+            "evidence_ids": ["fact:pe"],
+            "quality_status": "candidate_complete",
+        },
+        {
+            "metric_key": "avg_turnover_amount_20d",
+            "value_numeric": 90_000_000.0,
+            "unit": "currency",
+            "period": "2024Q2",
+            "status": "available",
+            "method": "explicit_model_value",
+            "source": "Model!B3",
+            "evidence_ids": ["fact:turnover"],
+            "quality_status": "candidate_complete",
+        },
+    ]
+    monkeypatch.setattr(metrics, "extract_model_metrics", lambda *_args, **_kwargs: model_values)
+    monkeypatch.setattr(
+        metrics,
+        "_apply_manual_metric_overrides",
+        lambda *_args, **_kwargs: (model_values, []),
+    )
+
+    class PeriodProvider:
+        name = "ifind"
+
+        def fetch_market_metrics_as_of(
+            self, *, ticker: str, as_of: date
+        ) -> dict[str, Any]:
+            assert ticker == "300274.SZ"
+            assert as_of == date(2024, 6, 30)
+            return {
+                "provider": self.name,
+                "as_of": "2024-06-28",
+                "metrics": {
+                    "forward_pe": {
+                        "value": 18.0,
+                        "period": "2024-06-28",
+                        "source": "iFinD official date_sequence",
+                        "observed_at": "2024-06-28",
+                    },
+                    "avg_turnover_amount_20d": {
+                        "value": 100_000_000.0,
+                        "period": "20D@2024-06-28",
+                        "source": "iFinD official date_sequence",
+                        "observed_at": "2024-06-28",
+                    },
+                },
+            }
+
+    payload = metrics.period_market_snapshot(
+        conn,
+        dataset_id="demo",
+        series_id="series-1",
+        model_version_id="version-1",
+        period="2024Q2",
+        provider=metrics.FreeComboMarketDataProvider(ifind_provider=PeriodProvider()),
+    )
+
+    assert payload["period"] == "2024Q2"
+    assert "provider" not in payload
+    assert payload["as_of"] == "2024-06-30"
+    assert payload["model_available_count"] == 2
+    assert payload["actual_available_count"] == 2
+    assert payload["compared_count"] == 2
+    assert all(item["status"] == "compared" for item in payload["comparisons"])
+
+
+
+def test_hk_period_market_fallback_marks_yahoo_api_date() -> None:
+    class PeriodSource:
+        def __init__(self, name: str, values: dict[str, dict[str, Any]]) -> None:
+            self.name = name
+            self.values = values
+
+        def fetch_market_metrics_as_of(self, *, ticker: str, as_of: date) -> dict[str, Any]:
+            assert ticker == "700.HK"
+            assert as_of == date(2025, 12, 31)
+            return {"provider": self.name, "metrics": self.values}
+
+    ifind = PeriodSource("ifind", {})
+    tencent = PeriodSource(
+        "tencent_hk",
+        {
+            "avg_turnover_amount_20d": {
+                "value": 85_340_000.0,
+                "period": "20D@2025-12-31",
+                "source": "Tencent Finance public HK daily K-line",
+            }
+        },
+    )
+    yahoo = PeriodSource(
+        "yahoo",
+        {
+            "forward_pe": {
+                "value": 18.2,
+                "period": "API@2026-08-13",
+                "source": "Yahoo Finance forwardPE (current fallback)",
+                "status": "stale",
+                "metadata": {"stale_fallback": True, "as_of_supported": False},
+            }
+        },
+    )
+
+    payload = metrics.FreeComboMarketDataProvider(
+        ifind_provider=ifind,
+        tencent_hk_provider=tencent,
+        yahoo_provider=yahoo,
+    ).fetch_market_metrics_as_of(ticker="700.HK", as_of=date(2025, 12, 31))
+
+    assert payload["as_of"] == "2025-12-31"
+    assert payload["metrics"]["avg_turnover_amount_20d"]["source"].startswith("Tencent")
+    assert payload["metrics"]["forward_pe"]["period"] == "API@2026-08-13"
+    assert payload["metrics"]["forward_pe"]["metadata"]["as_of_supported"] is False
+def test_ifind_financial_failure_keeps_market_values_and_redacts_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = "top-secret"
+    indicators = list(metrics.IFIND_MARKET_INDICATORS.values())
+    dates = [(date(2026, 7, 1) + timedelta(days=index)).isoformat() for index in range(20)]
+
+    def fake_post(_url: str, **kwargs: Any) -> _FakeHttpResponse:
+        if kwargs["json"]["functionpara"]["Interval"] == "Q":
+            return _FakeHttpResponse(
+                {"errorcode": -1, "errmsg": f"expired credential {token}"}
+            )
+        return _FakeHttpResponse(
+            {
+                "errorcode": 0,
+                "tables": [
+                    {
+                        "time": dates,
+                        "table": {
+                            indicators[0]: [18.0] * 20,
+                            indicators[1]: [200_000_000.0] * 20,
+                        },
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr(metrics.httpx, "post", fake_post)
+    provider = metrics.IFindHttpMarketDataProvider(
+        "https://ifind.example/api/v1", token
+    )
+
+    payload = provider.fetch_metrics(company_name="Demo Corp", ticker="300274.SZ")
+
+    assert payload["status"] == "partial"
+    assert set(payload["metrics"]) == {"forward_pe", "avg_turnover_amount_20d"}
+    assert token not in payload["error"]
+    assert "[redacted]" in payload["error"]
+
+
+def test_ifind_refresh_token_fetches_and_reuses_access_token() -> None:
+    calls: list[dict[str, Any]] = []
+
+    class Client:
+        def post(self, url: str, **kwargs: Any) -> _FakeHttpResponse:
+            calls.append({"url": url, **kwargs})
+            if url.endswith("/get_access_token"):
+                return _FakeHttpResponse({"data": {"access_token": "fresh-access"}})
+            return _FakeHttpResponse({"errorcode": 0, "time": [], "data": {}})
+
+    provider = metrics.IFindHttpMarketDataProvider(
+        "https://ifind.example/api/v1",
+        "",
+        refresh_token="refresh-secret",
+        http_client=Client(),
+    )
+
+    provider._date_sequence({"codes": "300274.SZ"})
+    provider._date_sequence({"codes": "300274.SZ"})
+
+    assert [call["url"] for call in calls].count(
+        "https://ifind.example/api/v1/get_access_token"
+    ) == 1
+    assert calls[0]["headers"]["refresh_token"] == "refresh-secret"
+    assert all(
+        call["headers"]["access_token"] == "fresh-access"
+        for call in calls
+        if call["url"].endswith("/date_sequence")
+    )
+
+
+def test_ifind_refresh_token_alone_configures_priority_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PRIVATE_FUND_IFIND_ACCESS_TOKEN", raising=False)
+    monkeypatch.setenv("PRIVATE_FUND_IFIND_REFRESH_TOKEN", "refresh-secret")
+
+    provider = metrics.FreeComboMarketDataProvider()
+    first = provider._providers_for_metrics("300274.SZ")[0]
+
+    assert isinstance(first, metrics.IFindHttpMarketDataProvider)
+
+
+def test_ifind_environment_configures_official_priority_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRIVATE_FUND_IFIND_BASE_URL", "https://ifind.example/api/v1")
+    monkeypatch.setenv("PRIVATE_FUND_IFIND_ACCESS_TOKEN", "secret")
+
+    provider = metrics.FreeComboMarketDataProvider()
+    first = provider._providers_for_metrics("300274.SZ")[0]
+
+    assert isinstance(first, metrics.IFindHttpMarketDataProvider)
+    assert provider._providers_for_metrics("700.HK")[0] is first
+    assert first.name == "ifind"
+    assert first.base_url == "https://ifind.example/api/v1"
+
+
+def test_ifind_api_is_the_highest_priority_source() -> None:
+    actual = _actual_values()
+    provider = metrics.FreeComboMarketDataProvider(
+        ifind_provider=_WaterfallSource("ifind", actual),
+        akshare_provider=_WaterfallSource("akshare", {}),
+        eastmoney_financial_provider=_WaterfallSource("eastmoney_financial", {}),
+    )
+
+    payload = provider.fetch_metrics(company_name="Demo Corp", ticker="300274.SZ")
+
+    assert payload["status"] == "completed"
+    assert set(payload["metrics"]) == set(metrics.METRIC_KEYS)
+    assert payload["provider_attempts"][0]["provider"] == "ifind"
+    assert all(
+        attempt["status"] == "skipped"
+        for attempt in payload["provider_attempts"][1:]
+    )
 
 
 def test_agent_skill_formats_metrics_and_overrides_valuation_date(tmp_path: Path) -> None:
@@ -703,9 +1210,6 @@ def test_agent_skill_formats_metrics_and_overrides_valuation_date(tmp_path: Path
     assert agent_metrics["quarter_revenue_growth_qoq"]["method"] == (
         "agent_identified_server_calculated"
     )
-    assert payload["price_comparison"]["valuation_date"] == "2026-07-18"
-    assert payload["price_comparison"]["benchmark_trade_date"] == "2026-07-17"
-    assert payload["price_comparison"]["metadata"]["valuation_date_method"] == "agent_skill"
 
     with sqlite3.connect(database) as conn:
         conn.row_factory = sqlite3.Row
@@ -931,7 +1435,54 @@ def test_eastmoney_financial_provider_normalizes_quarterly_metrics() -> None:
     assert client.calls[0]["params"]["filter"] == '(SECUCODE="300274.SZ")'
 
 
-def test_free_combo_waterfall_merges_by_priority_and_keeps_diagnostics() -> None:
+def test_hk_waterfall_uses_ifind_tencent_then_yahoo_by_field() -> None:
+    class _HkSource:
+        def __init__(self, name: str, values: dict[str, Any]) -> None:
+            self.name = name
+            self.values = values
+
+        def fetch_metrics(self, *, company_name: str, ticker: str) -> dict[str, Any]:
+            assert company_name == "Demo Corp"
+            assert ticker == "700.HK"
+            return {"provider": self.name, "status": "completed", "metrics": self.values}
+
+    actual = _actual_values()
+    provider = metrics.FreeComboMarketDataProvider(
+        ifind_provider=_HkSource(
+            "ifind",
+            {
+                "quarter_net_profit_yoy": actual["quarter_net_profit_yoy"],
+                "quarter_gross_margin_qoq_delta": actual["quarter_gross_margin_qoq_delta"],
+            },
+        ),
+        tencent_hk_provider=_HkSource(
+            "tencent_hk", {"avg_turnover_amount_20d": actual["avg_turnover_amount_20d"]}
+        ),
+        yahoo_provider=_HkSource(
+            "yahoo",
+            {
+                "avg_turnover_amount_20d": {"value": 0.0},
+                "quarter_revenue_growth_qoq": actual["quarter_revenue_growth_qoq"],
+                "forward_pe": actual["forward_pe"],
+            },
+        ),
+    )
+
+    payload = provider.fetch_metrics(company_name="Demo Corp", ticker="700.HK")
+
+    assert set(payload["metrics"]) == set(metrics.METRIC_KEYS)
+    assert payload["metrics"]["avg_turnover_amount_20d"] == actual["avg_turnover_amount_20d"]
+    assert payload["metrics"]["forward_pe"] == actual["forward_pe"]
+    assert [attempt["provider"] for attempt in payload["provider_attempts"]] == [
+        "ifind",
+        "tencent_hk",
+        "yahoo",
+    ]
+
+def test_free_combo_waterfall_merges_by_priority_and_keeps_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PRIVATE_FUND_IFIND_ACCESS_TOKEN", raising=False)
     actual = _actual_values()
     provider = metrics.FreeComboMarketDataProvider(
         akshare_provider=_WaterfallSource(
@@ -943,11 +1494,10 @@ def test_free_combo_waterfall_merges_by_priority_and_keeps_diagnostics() -> None
         ),
         eastmoney_financial_provider=_WaterfallSource(
             "eastmoney_financial",
-            {"quarter_revenue_growth_qoq": actual["quarter_revenue_growth_qoq"]},
-        ),
-        eastmoney_market_provider=_WaterfallSource(
-            "eastmoney_market",
-            {"avg_turnover_amount_20d": actual["avg_turnover_amount_20d"]},
+            {
+                "quarter_revenue_growth_qoq": actual["quarter_revenue_growth_qoq"],
+                "avg_turnover_amount_20d": actual["avg_turnover_amount_20d"],
+            },
         ),
     )
 
@@ -966,7 +1516,6 @@ def test_free_combo_waterfall_merges_by_priority_and_keeps_diagnostics() -> None
     assert [attempt["provider"] for attempt in payload["provider_attempts"]] == [
         "akshare",
         "eastmoney_financial",
-        "eastmoney_market",
     ]
 
 def test_free_combo_times_out_one_source_and_continues_waterfall(monkeypatch) -> None:
@@ -976,11 +1525,11 @@ def test_free_combo_times_out_one_source_and_continues_waterfall(monkeypatch) ->
             return super().fetch_metrics(company_name=company_name, ticker=ticker)
 
     monkeypatch.setenv("PRIVATE_FUND_MARKET_SOURCE_TIMEOUT_SECONDS", "0.01")
+    monkeypatch.delenv("PRIVATE_FUND_IFIND_ACCESS_TOKEN", raising=False)
     provider = metrics.FreeComboMarketDataProvider(
         akshare_provider=_SlowSource("akshare", _actual_values()),
-        eastmoney_financial_provider=_WaterfallSource("eastmoney_financial", {}),
-        eastmoney_market_provider=_WaterfallSource(
-            "eastmoney_market",
+        eastmoney_financial_provider=_WaterfallSource(
+            "eastmoney_financial",
             {"avg_turnover_amount_20d": _actual_values()["avg_turnover_amount_20d"]},
         ),
     )
@@ -1006,7 +1555,6 @@ def test_free_combo_missing_ticker_is_partial_ready_without_alerts(tmp_path: Pat
             provider=metrics.FreeComboMarketDataProvider(
                 akshare_provider=_WaterfallSource("akshare", {}),
                 eastmoney_financial_provider=_WaterfallSource("eastmoney_financial", {}),
-                eastmoney_market_provider=_WaterfallSource("eastmoney_market", {}),
             ),
         )
         conn.commit()
@@ -1016,12 +1564,14 @@ def test_free_combo_missing_ticker_is_partial_ready_without_alerts(tmp_path: Pat
     assert tracking.list_metric_alerts(database, "demo") == []
 
 
-def test_free_combo_uses_independent_consensus_for_forward_pe() -> None:
+def test_free_combo_uses_independent_consensus_for_forward_pe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PRIVATE_FUND_IFIND_ACCESS_TOKEN", raising=False)
     actual = _actual_values()
     provider = metrics.FreeComboMarketDataProvider(
         akshare_provider=_WaterfallSource("akshare", {}),
         eastmoney_financial_provider=_WaterfallSource("eastmoney_financial", {}),
-        eastmoney_market_provider=_WaterfallSource("eastmoney_market", {}),
         consensus_provider=_WaterfallSource(
             "consensus_api",
             {"forward_pe": actual["forward_pe"]},
@@ -1065,7 +1615,9 @@ def test_missing_actual_value_is_explicit_and_never_alerts(tmp_path: Path) -> No
     assert all(alert["title"] != "Forward PE" for alert in alerts)
 
 
-def test_metric_timeline_defaults_to_latest_comparable_period(tmp_path: Path) -> None:
+def test_metric_timeline_defaults_to_latest_comparable_period(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     database = tmp_path / "collection.sqlite3"
     _create_database(database)
     current = {
@@ -1101,6 +1653,17 @@ def test_metric_timeline_defaults_to_latest_comparable_period(tmp_path: Path) ->
             provider=HistoricalProvider(),
         )
         conn.commit()
+        quarterly_calls = 0
+        original_quarterly_values = metrics._quarterly_values
+
+        def counting_quarterly_values(
+            facts: list[dict[str, Any]], kind: str
+        ) -> dict[tuple[int, int], dict[str, Any]]:
+            nonlocal quarterly_calls
+            quarterly_calls += 1
+            return original_quarterly_values(facts, kind)
+
+        monkeypatch.setattr(metrics, "_quarterly_values", counting_quarterly_values)
         payload = metrics.latest_metric_payload(
             conn,
             dataset_id="demo",
@@ -1108,6 +1671,7 @@ def test_metric_timeline_defaults_to_latest_comparable_period(tmp_path: Path) ->
             model_version_id="version-1",
         )
 
+    assert quarterly_calls == 5
     timeline = payload["metric_timeline"]
     assert timeline["default_period"] == "2025Q2"
     assert timeline["latest_period"] == "2026Q1"

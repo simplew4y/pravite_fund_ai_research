@@ -425,28 +425,6 @@ describe("private-fund valuation tracking requests", () => {
                   error_message: "",
                   created_at: "2026-07-20T05:30:00Z",
                 },
-                price_comparison: {
-                  price_comparison_id: "price-1",
-                  snapshot_id: "snapshot-1",
-                  provider: "akshare",
-                  provider_symbol: "300274",
-                  currency: "CNY",
-                  valuation_date: "2026-07-20",
-                  benchmark_trade_date: "2026-07-20",
-                  benchmark_close: 82,
-                  latest_trade_date: "2026-07-21",
-                  latest_close: 100,
-                  target_price: 120,
-                  target_unit: "CNY/share",
-                  target_source: "DCF!D20",
-                  target_evidence_id: "fact:target-price",
-                  implied_upside: 0.4634,
-                  latest_upside: 0.2,
-                  status: "completed",
-                  error_message: "",
-                  metadata: { adjustment: "raw" },
-                  created_at: "2026-07-21T05:30:00Z",
-                },
                 metric_comparisons: [
                   {
                     comparison_id: "comparison-1",
@@ -701,15 +679,7 @@ describe("private-fund valuation tracking requests", () => {
       analyzerVersion: "valuation-tracking-v1",
     });
     expect(overview.series[0].metricAnalysis).toMatchObject({
-      marketData: { provider: "akshare", status: "completed" },
-      priceComparison: {
-        provider: "akshare",
-        benchmarkClose: 82,
-        latestClose: 100,
-        targetPrice: 120,
-        impliedUpside: 0.4634,
-        latestUpside: 0.2,
-      },
+      marketData: { status: "completed" },
       metricComparisons: [
         {
           metricKey: "quarter_net_profit_yoy",
@@ -752,6 +722,7 @@ describe("private-fund valuation tracking requests", () => {
         ],
       },
     });
+    expect(overview.series[0].metricAnalysis.marketData.provider).toBe("akshare");
     expect(overview.metricAlerts[0]).toMatchObject({
       alertId: "val-gap-1",
       alertType: "model_actual_gap",

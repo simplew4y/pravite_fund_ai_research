@@ -321,7 +321,7 @@ MVP 边界：原始 Excel 始终是不可变证据；不执行 VBA、不调用 E
 估值跟踪的默认决策界面收敛为五项固定指标：单季净利润增速、单季毛利率环比变化、Forward PE、近 20 日日均成交额、单季营收增速环比。模型侧只读取 Pipeline 已持久化的 `metric_facts`；季度指标使用单季口径，其中“单季营收增速环比”定义为本季度营收同比增速减去上一季度营收同比增速。真实侧通过可配置 API 建立带 provider、期间、观察时间和来源的不可变快照。
 
 - 📝 项目文件上传接口在保存成功后由服务端直接排队增量 Pipeline；前端消费返回的 `job`，不再重复发起第二个 Pipeline。Pipeline 完成后同时排队模型快照和 `valuation_context_refresh`，独立 Valuation Worker 也用当前文档指纹发现旁路导入。
-- 📝 `TUSHARE_TOKEN` / `TUSHARE_API_TOKEN` 可提供 A 股利润表和日成交数据；`PRIVATE_FUND_MARKET_DATA_API_URL` 可接入返回五项统一口径的内部/第三方接口。Forward PE 必须来自显式 Forward/NTM 一致预期，未配置一致预期源时显示“暂不可用”，禁止用 PE TTM 或普通 Current PER 替代。
+- ?? `free_combo` uses iFinD first, then public A/H-share fallbacks; `PRIVATE_FUND_MARKET_DATA_API_URL` may provide a normalized five-metric API. Forward PE must come from explicit Forward/NTM consensus data and never from TTM or current PE.
 - 📝 三项增长/毛利指标按百分点差距预警，Forward PE 和成交额按相对差距预警；缺少模型值或真实值时状态为 incomplete，不生成预警。默认关注/重大阈值分别为净利润增速 10/20pp、毛利率变化 1/2pp、Forward PE 15%/30%、成交额 20%/40%、营收增速环比 10/20pp。
 - 📝 财报、会议纪要和研究报告等非估值模型不会写入模型值或真实值，也不会直接触发估值预警；它们会生成带 `document:` evidence 的辅助分析卡片，并作为“其他资料对估值的综合影响”Agent 的证据输入，用于解释模型假设、差异和潜在估值传导。
 - 📝 新增 `valuation_metric_model_values`、`valuation_market_snapshots`、`valuation_metric_actual_values`、`valuation_metric_comparisons` 和 `valuation_context_cards`；API 在模型 series 的 `metric_analysis` 中按固定顺序返回五项比较、数据源状态和辅助卡片，并另行返回只含 `model_actual_gap` 的 `metric_alerts`。
@@ -329,16 +329,6 @@ MVP 边界：原始 Excel 始终是不可变证据；不执行 VBA、不调用 E
 - 📝 新增 `valuation_impact_agent_runs` 与 `valuation_impact_cards`，按模型版本、资料指纹和提取器版本缓存；资料变化或版本升级后重新生成，失败和无证据状态可审计，不回退到模拟卡片。API 在 `metric_analysis.valuation_impacts` 返回运行状态与结构化卡片。
 - 📝 真实 `300274 v44.xlsx` 隔离回归完成：模型 Pipeline 产生 11,160 条候选事实，可直接衍生 2024Q2 的单季净利润增速、单季毛利率环比变化和单季营收增速环比；文件未包含可信的显式 Forward PE 与 20 日成交额时保持缺失，不从普通 Current PER 猜测。
 
-### 📝 Tushare 真实数据与自动更新机制（2026-07-21）
-
-生产比价采用 Python Provider，不使用 Claude Skill 直接拉行情。Skill 继续负责工作簿语义和证据识别；真实数据由后台代码负责鉴权、限流、缓存、重试、快照和审计，保证无人值守时仍具有确定性。
-
-- 📝 受管服务启动时读取项目根目录下被 Git 忽略的 `.env`；仓库只保存无密钥的 `.env.example`。当前兼容 Tushare endpoint 已通过 `stock_basic`、`income` 和 `daily` 真实调用，Token 不写入源码、日志、文档或数据库。
-- 📝 新文件完成入库后立即刷新；存量项目由 Valuation Worker 按 `Asia/Shanghai` 每 60 分钟投递一次 `market_data_refresh`。任务以本地小时为幂等键，不会在 5 秒轮询中重复请求行情。
-- 📝 账号上限为 150 次/分钟；进程级最小请求间隔默认 0.45 秒，同一公司结果缓存 300 秒。代理的 gzip 响应与 307 备用节点跳转已兼容，传输失败最多重试 3 次，任务层继续使用 30 秒、2 分钟、10 分钟退避。
-- 📝 `hybrid` 路由对 A 股使用 Tushare 财务和日线，对港股保留 AKShare 行情兜底；其他市场直接返回 unavailable，不向 A 股接口发送无效代码。Forward PE 仍必须由独立一致预期 Provider 提供。
-- 📝 三项季度指标只有模型期间与真实值期间完全一致时才计算差距。期间缺失或不一致时保留两边数值，状态为 `period_mismatch`，不生成预警；此前同指标的活动预警会自动关闭。
-- 📝 阳光电源正式项目已保存 Tushare 快照：真实财务期间为 2026Q1，成交额截至 2026-07-20。当前模型季度值为 2024Q2，因此界面会明确显示期间不一致，不再产生跨期伪预警。
 
 ### 📝 三分类收敛与五指标识别修复（2026-07-21）
 
@@ -359,7 +349,7 @@ MVP 边界：原始 Excel 始终是不可变证据；不执行 VBA、不调用 E
 - 📝 服务端只接受 1990–2050 的 ISO 日期、有限且在业务范围内的数值、最低置信度和当前证据包内的 `fact:`/`cell:`/`document:` ID；衍生指标至少需要两个证据输入。
 - 📝 Agent 只负责选择指标语义和证据；同比、环比及毛利率由服务端使用所选 facts 重新计算，不信任模型心算。重算结果与确定性结果一致时采用 Agent 格式化输出；冲突时保留确定性值并标记 `agent_conflict_deterministic_fallback`。
 - 📝 每个模型版本、提取器版本和目标期间的结果写入 `valuation_metric_agent_extractions`，成功结果复用缓存，不重复调用模型；原始响应只保留在数据库审计字段，不通过 API 暴露。
-- 📝 估值跟踪 API 在 `metric_analysis.skill_extraction` 返回已校验的固定结构、实际采用的指标键、冲突键和错误状态；Agent 识别的估值日同时进入目标价与真实价格比较，并记录来源和证据。
+- ?? ???? API ? `metric_analysis.skill_extraction` ?????????????????????????????
 - 📝 六个正式项目首轮验证完成：阳光电源采用 Agent 选择的 3 项证据，Horizon 2 项，Formula One 1 项，NVIDIA 1 项；Hermès 和 Porsche 的 Agent 候选未通过固定公式或证据门，原有确定性指标保持不变。六个估值日分别为 `2022-10-26`、`2025-08-06`、`2025-06-11`、`2025-06-30`、`2025-07-15`、`2025-07-30`。
 - 📝 当 Agent 只引用文档级证据时，服务端会把输出日期与文件名中的完整年月日对账；Formula One 和 Porsche 的粗粒度 `document_date=2025-01-01` 已分别纠正为 `2025-06-11` 和 `2025-07-30`。显式工作簿日期单元格仍优先。
 
@@ -437,17 +427,17 @@ HTTP API 新增 Agent 分析创建/读取、派生模型创建和派生文件下
 
 - 📝 删除估值跟踪前端的 `SUNGROW_TEMPORARY_ACTUALS`、阳光电源识别分支和临时差值重算逻辑；五项真实值统一读取 `metric_analysis.metric_comparisons`。
 - 📝 页面真实值标签统一为“真实值 · API”，不再展示“临时录入”，也不在浏览器端使用公司专属数字兜底。
-- 📝 当前阳光电源真实快照由 Tushare 提供，并按一小时刷新机制更新。单季净利润增速、单季毛利率环比变化、近 20 日日均成交额和单季营收增速环比使用接口结果；数据源未提供的 Forward PE 明确保持 unavailable，不用硬编码补齐。
+- ?? Current Sungrow snapshots use the configured market-data provider and refresh hourly. Missing Forward PE remains unavailable rather than falling back to TTM PE.
 - 📝 组件回归测试、TypeScript 检查和 production build 均通过，服务重启后估值与后台 Worker 全部在线。
 
 ## 📝 估值五指标历史时间轴（2026-07-21）
 
 - 📝 估值总览接口新增 `metric_analysis.metric_timeline`，每个季度节点都返回同一套五指标、模型值、对应时点 API 真实值、差距和该期预警；原有最新期字段继续兼容。
-- 📝 Tushare 刷新时一次拉取季度财务与日行情历史，将最多 20 个可用季度写入市场快照的 `raw_json.metric_history`；页面切换节点只读取已缓存结果，不会逐次调用上游接口。
+- ?? Market refreshes persist up to 20 available quarters in `raw_json.metric_history`; the UI reads cached nodes and does not request upstream data per selection.
 - 📝 时间轴最多展示模型与真实数据合并后的 24 个季度。默认定位最近一个可直接比较的季度，同时保留“跳到最新披露”入口；当前阳光电源默认是 `2024Q2`，最新 API 披露期是 `2026Q1`。
 - 📝 单季净利润增速、毛利率环比变化、近 20 日日均成交额和营收增速环比均按节点日期计算；20 日成交额使用该季度末最后一个完整交易日之前的 20 个交易日，避免把当前值错误复用到历史季度。
 - 📝 Forward PE 只在模型或一致预期数据明确属于该期间时展示；阳光电源 `2023E/FY1` 模型值映射到 `2023Q4`，API 无历史一致预期时保持不可用，不用普通历史 PE 代替。
-- 📝 估值跟踪主区域只渲染这五项数值对比和所选期间差距预警；目标价卡片已移出该界面，其他文件分析仍通过影响卡片与上下文卡片辅助判断。
+- ?? ???????????????????????????????????????????????????
 - 📝 自动刷新频率保持一小时一次；旧快照没有历史数组时接口仍能回退到最新值，因而无需数据库迁移。
 - 📝 页面优先锚定时间轴中最新的直接可比期；若没有直接可比期，再选择最新同时具备模型值与 API 值的期间，最后才回退到接口默认期或最新披露期。
 - 📝 默认只常显优先期前后各两个季度，较远历史与较新披露分别收进左右折叠区；展开使用轻量位移动效并尊重“减少动态效果”设置，折叠当前远端选中期时自动回到优先期。

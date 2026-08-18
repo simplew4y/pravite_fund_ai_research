@@ -1353,8 +1353,8 @@ def create_app(
         if valuation_worker_enabled:
             from omnigent.server import private_fund_valuation_worker
 
+            workspace = private_fund_valuation_worker._workspace_root()
             async def _run_private_fund_valuation_worker() -> None:
-                workspace = private_fund_valuation_worker._workspace_root()
                 poll_seconds = max(
                     1.0,
                     float(_os.environ.get("PRIVATE_FUND_VALUATION_POLL_SECONDS", "5") or 5),

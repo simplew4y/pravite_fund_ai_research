@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -179,6 +180,40 @@ class _FakeValuationAgent:
         del messages, max_tokens, temperature
         return self._responses.pop(0)
 
+
+
+def test_security_directory_refreshes_full_a_and_hk_listings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class FakeAkshare:
+        @staticmethod
+        def stock_info_a_code_name() -> list[dict[str, str]]:
+            return [
+                {"code": "600000", "name": "浦发银行"},
+                {"代码": "920005", "名称": "鼎佳精密"},
+            ]
+
+        @staticmethod
+        def stock_hk_spot_em() -> list[dict[str, str]]:
+            return [{"代码": "00001", "名称": "长和"}]
+
+    monkeypatch.setitem(sys.modules, "akshare", FakeAkshare)
+    database = tmp_path / "collection.db"
+    _create_collection(database)
+    with valuation._connect(database) as conn:
+        valuation.ensure_valuation_schema(conn)
+        assert valuation._refresh_security_directory(conn, "a_share") is True
+        assert valuation._refresh_security_directory(conn, "hk") is True
+        candidate, reasons = valuation._find_security_candidate(
+            conn, company_name="鼎佳精密", ticker="920005"
+        )
+        assert candidate and candidate["ticker"] == "920005.BJ"
+        assert reasons == []
+        assert conn.execute(
+            "SELECT COUNT(*) FROM valuation_security_directory WHERE cache_status='active'"
+        ).fetchone()[0] == 3
+        assert valuation._refresh_security_directory(conn, "a_share") is False
+        assert valuation._refresh_security_directory(conn, "hk") is False
 
 def test_period_header_is_never_treated_as_a_writable_model_input() -> None:
     assert valuation_agent._looks_like_period_header(

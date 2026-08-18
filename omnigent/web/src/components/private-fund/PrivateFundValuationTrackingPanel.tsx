@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -26,6 +26,7 @@ import { useTranslation } from "react-i18next";
 
 import { usePrivateFundValuationTracking } from "@/hooks/usePrivateFundProjects";
 import {
+  getPrivateFundValuationPeriodMarket,
   runPrivateFundValuationTracking,
   searchPrivateFundValuationSecurities,
   updatePrivateFundValuationModelIdentity,
@@ -56,6 +57,19 @@ const QUARTERLY_METRICS = [
   "quarter_gross_margin_qoq_delta",
   "quarter_revenue_growth_qoq",
 ] as const;
+
+const METRIC_FORMULAS: Record<(typeof EXPECTED_METRICS)[number], string> = {
+  quarter_net_profit_yoy:
+    "\uFF08\u672C\u5B63\u5EA6\u5F52\u6BCD\u51C0\u5229\u6DA6 - \u4E0A\u5E74\u540C\u671F\u5F52\u6BCD\u51C0\u5229\u6DA6\uFF09\u00F7 |\u4E0A\u5E74\u540C\u671F\u5F52\u6BCD\u51C0\u5229\u6DA6| \u00D7 100%",
+  quarter_gross_margin_qoq_delta:
+    "\u672C\u5B63\u5EA6\u9500\u552E\u6BDB\u5229\u7387 - \u4E0A\u5B63\u5EA6\u9500\u552E\u6BDB\u5229\u7387",
+  forward_pe:
+    "\u5F53\u524D\u603B\u5E02\u503C \u00F7 \u672A\u676512\u4E2A\u6708\u4E00\u81F4\u9884\u671F\u5F52\u6BCD\u51C0\u5229\u6DA6",
+  avg_turnover_amount_20d:
+    "\u6700\u8FD120\u4E2A\u5B8C\u6574\u4EA4\u6613\u65E5\u6210\u4EA4\u989D\u5408\u8BA1 \u00F7 20",
+  quarter_revenue_growth_qoq:
+    "\u672C\u5B63\u5EA6\u8425\u4E1A\u6536\u5165\u540C\u6BD4\u589E\u901F - \u4E0A\u5B63\u5EA6\u8425\u4E1A\u6536\u5165\u540C\u6BD4\u589E\u901F",
+};
 
 const IMPACT_DIRECTION_STYLES = {
   up: {
@@ -288,6 +302,10 @@ function ComparisonRow({
         <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
           {metric.description}
         </p>
+        <p className="mt-1 text-[10px] leading-4 text-[var(--pf-ink-secondary)]">
+          {String.fromCodePoint(0x516c, 0x5f0f, 0xff1a)}
+          {METRIC_FORMULAS[metric.metricKey as keyof typeof METRIC_FORMULAS]}
+        </p>
       </div>
 
       <div className="rounded-lg border border-[var(--pf-line)] bg-[var(--pf-panel)] px-3 py-2.5">
@@ -345,21 +363,28 @@ function ComparisonRow({
 
 function MarketSnapshotSection({
   snapshot,
+  period,
+  isLoading,
+  errorMessage,
 }: {
   snapshot: PrivateFundValuationMarketSnapshot | undefined;
+  period: string;
+  isLoading: boolean;
+  errorMessage: string;
 }) {
-  if (!snapshot) return null;
-  const statusLabel =
-    snapshot.periodMismatchCount > 0
-      ? "期间待对齐"
-      : snapshot.comparedCount > 0
-        ? "已对比"
-        : snapshot.actualAvailableCount > 0
-          ? "部分完成"
-          : "待补充";
+  if (!snapshot && !isLoading && !errorMessage) return null;
+  const statusLabel = isLoading
+    ? "加载中"
+    : snapshot?.periodMismatchCount
+      ? "口径待确认"
+      : snapshot?.comparedCount
+        ? "加载中"
+        : snapshot?.actualAvailableCount
+          ? "仅 API"
+          : "暂无数据";
   return (
     <section
-      aria-labelledby="valuation-market-snapshot-title"
+      aria-label={snapshot?.label ?? period}
       className="overflow-hidden rounded-xl border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] shadow-sm"
     >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--pf-line)] bg-[var(--pf-panel-subtle)] px-4 py-3">
@@ -368,35 +393,52 @@ function MarketSnapshotSection({
             id="valuation-market-snapshot-title"
             className="text-xs font-semibold text-[var(--pf-ink)]"
           >
-            当前市场快照
+            {period ? period + " 市场快照" : snapshot?.label}
           </h2>
           <p className="mt-0.5 text-[9px] text-[var(--pf-ink-muted)]">
-            Forward PE 与近 20 日日均成交额不归入财报季度；窗口不一致时仅展示，不触发预警。
+            Forward PE 取季度末最近交易日值；成交额取截至该日的近 20 个交易日均值。
           </p>
         </div>
         <span
           className={cn(
             "rounded-full border px-2 py-0.5 text-[9px] font-semibold",
-            snapshot.periodMismatchCount > 0 ? SEVERITY.warning.badge : SEVERITY.normal.badge,
+            snapshot?.periodMismatchCount ? SEVERITY.warning.badge : SEVERITY.normal.badge,
           )}
         >
           {statusLabel}
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--pf-line)] px-4 py-2 text-[10px] text-[var(--pf-ink-secondary)]">
-        <span>模型 {snapshot.modelAvailableCount}/2</span>
-        <span>API {snapshot.actualAvailableCount}/2</span>
-        <span>可直接对比 {snapshot.comparedCount}/2</span>
-        <span>快照：{formatTime(snapshot.asOf)}</span>
-      </div>
-      {snapshot.comparisons.length ? (
-        snapshot.comparisons.map((metric) => (
-          <ComparisonRow key={metric.metricKey} metric={metric} showSeverity={false} />
-        ))
-      ) : (
-        <div className="px-5 py-8 text-center text-[10px] text-[var(--pf-ink-muted)]">
-          等待市场指标刷新。
+      {snapshot ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--pf-line)] px-4 py-2 text-[10px] text-[var(--pf-ink-secondary)]">
+          <span>模型 {snapshot.modelAvailableCount}/2</span>
+          <span>API {snapshot.actualAvailableCount}/2</span>
+          <span>可直接对比 {snapshot.comparedCount}/2</span>
+          <span>快照：{formatTime(snapshot.asOf)}</span>
         </div>
+      ) : null}
+      {isLoading ? (
+        <div className="px-5 py-8 text-center text-[10px] text-[var(--pf-ink-muted)]">
+          正在读取所选季度的市场数据...
+        </div>
+      ) : errorMessage ? (
+        <div className="px-5 py-8 text-center text-[10px] text-red-600">{errorMessage}</div>
+      ) : (
+        <>
+          {snapshot?.errorMessage ? (
+            <div className="border-b border-[var(--pf-line)] bg-amber-50 px-4 py-2 text-[10px] text-amber-800">
+              {snapshot.errorMessage}
+            </div>
+          ) : null}
+          {snapshot?.comparisons.length ? (
+            snapshot.comparisons.map((metric) => (
+              <ComparisonRow key={metric.metricKey} metric={metric} showSeverity={false} />
+            ))
+          ) : (
+            <div className="px-5 py-8 text-center text-[10px] text-[var(--pf-ink-muted)]">
+              所选季度暂无市场数据。
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -744,6 +786,124 @@ function impactConfidenceLabel(confidence: number): string {
   return "中低";
 }
 
+type ValuationImpactSourceLink = {
+  key: string;
+  label: string;
+  date: string;
+  url: string;
+  title: string;
+};
+
+function sourceUrlLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname}${parsed.pathname}`;
+  } catch {
+    return url.split("?")[0] ?? url;
+  }
+}
+
+function sourceHost(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
+function sourceButtonLabel(location: Record<string, unknown>, url: string): string {
+  const provider = String(location.provider ?? "");
+  if (provider.includes("ifind")) return "同花顺";
+  return String(location.source_name ?? "").trim() || sourceHost(url) || "来源";
+}
+
+function sourceDate(value: unknown): string {
+  return String(value ?? "").slice(0, 10);
+}
+
+function sourceRefLink(sourceRef: string): ValuationImpactSourceLink | null {
+  const match = sourceRef.match(/^(.*?)\s+-\s+(\d{4}-\d{2}-\d{2})\s+-\s+(https?:\/\/\S+)$/);
+  if (!match) return null;
+  const [, label, date, url] = match;
+  return {
+    key: url,
+    label: label.trim() || sourceHost(url) || "来源",
+    date,
+    url,
+    title: `打开原文：${sourceUrlLabel(url)}`,
+  };
+}
+
+function valuationImpactSourceLinks(
+  card: PrivateFundValuationImpactAnalysis["cards"][number],
+): ValuationImpactSourceLink[] {
+  const links: ValuationImpactSourceLink[] = [];
+  const seen = new Set<string>();
+  for (const location of card.evidenceLocations) {
+    const url = String(location.source_url ?? location.canonical_url ?? "").trim();
+    if (!url) continue;
+    const key = String(location.canonical_url ?? location.source_url ?? url).trim();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({
+      key,
+      label: sourceButtonLabel(location, url),
+      date: sourceDate(location.published_at) || sourceDate(location.captured_at),
+      url,
+      title: `打开原文：${sourceUrlLabel(url)}`,
+    });
+  }
+  if (links.length) return links;
+  for (const sourceRef of card.sourceRefs) {
+    const link = sourceRefLink(sourceRef);
+    if (!link || seen.has(link.key)) continue;
+    seen.add(link.key);
+    links.push(link);
+  }
+  return links;
+}
+
+function ValuationImpactSources({
+  card,
+}: {
+  card: PrivateFundValuationImpactAnalysis["cards"][number];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const links = valuationImpactSourceLinks(card);
+  if (!links.length) {
+    return <p className="mt-1">来源：{card.sourceRefs.join("；")}</p>;
+  }
+  const visible = expanded ? links : links.slice(0, 3);
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+      <span>来源：</span>
+      {visible.map((source) => (
+        <span className="inline-flex items-center gap-1" key={source.key}>
+          <a
+            className="rounded-full border border-[var(--pf-line)] bg-[var(--pf-panel-raised)] px-2 py-0.5 text-[9px] font-semibold text-[var(--pf-accent)] hover:border-[var(--pf-accent)] hover:bg-[var(--pf-accent-soft)]"
+            href={source.url}
+            rel="noreferrer"
+            target="_blank"
+            title={source.title}
+          >
+            {source.label}
+          </a>
+          {source.date ? <time dateTime={source.date}>{source.date}</time> : null}
+        </span>
+      ))}
+      {!expanded && links.length > visible.length ? (
+        <button
+          className="rounded-full border border-[var(--pf-line)] px-2 py-0.5 text-[9px] font-semibold text-[var(--pf-ink-muted)] hover:border-[var(--pf-accent)] hover:text-[var(--pf-accent)]"
+          onClick={() => setExpanded(true)}
+          type="button"
+        >
+          +{links.length - visible.length}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ValuationImpactSection({ analysis }: { analysis: PrivateFundValuationImpactAnalysis }) {
   const statusLabel =
     analysis.status === "completed"
@@ -770,7 +930,7 @@ function ValuationImpactSection({ analysis }: { analysis: PrivateFundValuationIm
               其他资料对估值的综合影响
             </h2>
             <p className="mt-0.5 text-[10px] leading-4 text-[var(--pf-ink-muted)]">
-              Agent 基于当前项目的研究资料、会议纪要和财务资料生成，并保留原文证据定位。
+              Agent 基于当前项目的研究资料、会议纪要、财务资料和行业资讯生成，并保留原文证据定位。
             </p>
           </div>
         </div>
@@ -784,6 +944,12 @@ function ValuationImpactSection({ analysis }: { analysis: PrivateFundValuationIm
           {analysis.cards.map((card) => {
             const style = IMPACT_DIRECTION_STYLES[card.direction];
             const DirectionIcon = style.icon;
+            const isIndustryNewsCard =
+              card.evidenceIds.some((id) => id.startsWith("sentiment:")) ||
+              card.evidenceLocations.some((location) => {
+                const provider = String(location.provider ?? "");
+                return provider.includes("ifind") || provider.includes("google_news");
+              });
             return (
               <article className="flex flex-col bg-[var(--pf-panel-raised)] p-4" key={card.cardId}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -795,9 +961,16 @@ function ValuationImpactSection({ analysis }: { analysis: PrivateFundValuationIm
                   >
                     <DirectionIcon className="size-2.5" /> {style.label}
                   </span>
-                  <span className="text-[9px] text-[var(--pf-ink-muted)]">
-                    {card.horizon} · 置信度{impactConfidenceLabel(card.confidence)}
-                  </span>
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {isIndustryNewsCard ? (
+                      <span className="rounded-full border border-[var(--pf-accent-soft)] bg-[var(--pf-accent-soft)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--pf-accent-ink)]">
+                        行业资讯
+                      </span>
+                    ) : null}
+                    <span className="text-[9px] text-[var(--pf-ink-muted)]">
+                      {card.horizon} · 置信度{impactConfidenceLabel(card.confidence)}
+                    </span>
+                  </div>
                 </div>
 
                 <h3 className="mt-3 text-sm font-semibold tracking-tight text-[var(--pf-ink)]">
@@ -832,7 +1005,7 @@ function ValuationImpactSection({ analysis }: { analysis: PrivateFundValuationIm
                     <span className="font-semibold text-[var(--pf-ink-secondary)]">后续观察：</span>
                     {card.watchItems.join("、")}
                   </p>
-                  <p className="mt-1">来源：{card.sourceRefs.join("；")}</p>
+                  <ValuationImpactSources card={card} />
                 </div>
               </article>
             );
@@ -1165,9 +1338,14 @@ function ValuationIdentityEditor({
       setIsCandidateOpen(false);
       setIsIdentityDirty(false);
       setMessage("已保存，市场数据刷新已排队");
-      await queryClient.invalidateQueries({
-        queryKey: ["private-fund-valuation-tracking", datasetId],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["private-fund-valuation-tracking", datasetId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["private-fund-valuation-period-market", datasetId],
+        }),
+      ]);
     },
     onError: (error: Error) => setMessage(error.message),
   });
@@ -1308,6 +1486,26 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
   const activeTimelinePeriod = metricTimeline?.periods.find(
     (period) => period.period === effectiveSelectedPeriod,
   );
+  const periodMarketQuery = useQuery({
+    queryKey: [
+      "private-fund-valuation-period-market",
+      datasetId,
+      activeSeriesId,
+      activeSeries?.currentModelVersionId,
+      effectiveSelectedPeriod,
+    ],
+    queryFn: () =>
+      getPrivateFundValuationPeriodMarket(
+        datasetId,
+        activeSeriesId,
+        activeSeries!.currentModelVersionId!,
+        effectiveSelectedPeriod,
+      ),
+    enabled: Boolean(
+      activeSeriesId && activeSeries?.currentModelVersionId && effectiveSelectedPeriod,
+    ),
+    staleTime: 5 * 60 * 1000,
+  });
   const comparisons = QUARTERLY_METRICS.map((key) => {
     const periodMetric = activeTimelinePeriod?.comparisons.find(
       (metric) => metric.metricKey === key,
@@ -1317,7 +1515,9 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
     );
     return periodMetric ?? currentMetric;
   }).filter((metric): metric is PrivateFundValuationMetricComparison => Boolean(metric));
-  const marketSnapshot = metricAnalysis?.marketSnapshot;
+  const marketSnapshot = effectiveSelectedPeriod
+    ? periodMarketQuery.data
+    : metricAnalysis?.marketSnapshot;
   const selectedGapAlerts = comparisons.filter((metric) =>
     ["warning", "critical"].includes(metric.severity),
   );
@@ -1332,6 +1532,21 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
         isJobActivelyRefreshing(job),
     ),
   );
+  const refreshWasRunning = useRef(false);
+
+  useEffect(() => {
+    if (refreshWasRunning.current && !refreshRunning) {
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["private-fund-valuation-tracking", datasetId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["private-fund-valuation-period-market", datasetId],
+        }),
+      ]);
+    }
+    refreshWasRunning.current = refreshRunning;
+  }, [datasetId, queryClient, refreshRunning]);
 
   useEffect(() => {
     setSelectedPeriod(preferredPeriod);
@@ -1345,9 +1560,14 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
         ...(selectedSourceDocumentIds.length ? { documentIds: selectedSourceDocumentIds } : {}),
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["private-fund-valuation-tracking", datasetId],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["private-fund-valuation-tracking", datasetId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["private-fund-valuation-period-market", datasetId],
+        }),
+      ]);
     },
   });
   if (valuationQuery.isLoading) return <LoadingState />;
@@ -1481,7 +1701,12 @@ export function PrivateFundValuationTrackingPanel({ datasetId }: { datasetId: st
         />
       ) : null}
 
-      <MarketSnapshotSection snapshot={marketSnapshot} />
+      <MarketSnapshotSection
+        errorMessage={effectiveSelectedPeriod ? (periodMarketQuery.error?.message ?? "") : ""}
+        isLoading={Boolean(effectiveSelectedPeriod) && periodMarketQuery.isLoading}
+        period={effectiveSelectedPeriod}
+        snapshot={marketSnapshot}
+      />
 
       <section
         aria-labelledby="valuation-quarterly-metrics-title"

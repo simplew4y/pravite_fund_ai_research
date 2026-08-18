@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import math
+import os
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
+from xml.etree import ElementTree
 
 import backoff
 
@@ -18,6 +24,8 @@ EXTRACTOR_VERSION = "valuation-impact-skill-v3"
 MAX_DOCUMENTS = 6
 MAX_CHUNKS_PER_DOCUMENT = 3
 MAX_TOTAL_CHARS = 6_000
+DEFAULT_SENTIMENT_LOOKBACK_DAYS = 90
+MAX_SENTIMENT_EVIDENCE = 12
 
 _SKILL_ROOT = (
     Path(__file__).resolve().parents[1] / "resources" / "private_fund_skills" / SKILL_NAME
@@ -86,6 +94,37 @@ _VALUATION_TERMS = (
     "risk",
     "policy",
 )
+_SENTIMENT_BALANCED_PROVIDERS = ("google_news_rss", "ifind_report_query")
+_SENTIMENT_PROVIDER_MIN_QUOTA = 4
+_SENTIMENT_RELEVANCE_TERMS = (
+    "评级",
+    "买入",
+    "目标价",
+    "回购",
+    "分红",
+    "资金流入",
+    "南向资金",
+    "盈利",
+    "业绩",
+    "估值",
+    "海外",
+    "扩张",
+    "特许经营",
+    "同店",
+    "rating",
+    "buy",
+    "target price",
+    "buyback",
+    "dividend",
+    "earnings",
+    "same-store",
+)
+_SENTIMENT_LOW_VALUE_TERMS = (
+    "monthly return",
+    "月报表",
+    "date of board meeting",
+    "董事会会议日期",
+)
 
 
 class ValuationImpactChatClient(Protocol):
@@ -96,6 +135,307 @@ class ValuationImpactChatClient(Protocol):
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> str: ...
+
+
+class SentimentEvidenceAdapter(Protocol):
+    def fetch_sentiment_evidence(
+        self,
+        *,
+        dataset_id: str,
+        series_id: str,
+        model_version_id: str,
+        as_of: str,
+        lookback_days: int,
+    ) -> list[dict[str, Any]]: ...
+
+
+def _normalize_sentiment_story_title(title: Any) -> str:
+    text = _clean_text(title, 300).casefold()
+    text = re.sub(r"\s+-\s+[^-]{1,40}$", "", text)
+    return re.sub(r"[^\w\u4e00-\u9fff]+", "", text)
+
+
+def _sentiment_story_id(
+    title: Any, published_at: Any, ticker: Any = "", fallback: Any = ""
+) -> str:
+    title_key = _normalize_sentiment_story_title(title)
+    published_date = str(published_at or "")[:10]
+    ticker_key = re.sub(r"\W+", "", str(ticker or "").casefold())
+    if title_key and published_date:
+        return _digest(title_key, published_date, ticker_key, length=24)
+    return _digest(fallback, title_key, published_date, ticker_key, length=24)
+
+
+def _ifind_code(ticker: str) -> str:
+    value = str(ticker or "").strip().upper()
+    if value.endswith(".HK"):
+        code = value[:-3]
+        if code.isdigit():
+            return code.zfill(4) + ".HK"
+    return value
+
+
+def _ifind_report_type(ticker: str) -> str:
+    if str(ticker or "").strip().upper().endswith(".HK"):
+        return os.environ.get("PRIVATE_FUND_IFIND_HK_REPORT_TYPE", "904")
+    return os.environ.get("PRIVATE_FUND_IFIND_A_REPORT_TYPE", "901")
+
+
+_IFIND_REPORT_FIELDS = ("pdfURL", "reportTitle", "ctime", "reportDate", "seq")
+
+
+def _ifind_column_table_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    if not any(key in payload for key in _IFIND_REPORT_FIELDS):
+        return []
+    list_lengths = [len(value) for value in payload.values() if isinstance(value, list)]
+    if not list_lengths:
+        return [payload]
+    rows: list[dict[str, Any]] = []
+    for index in range(max(list_lengths)):
+        row: dict[str, Any] = {}
+        for key, value in payload.items():
+            if isinstance(value, list):
+                row[key] = value[index] if index < len(value) else None
+            else:
+                row[key] = value
+        rows.append(row)
+    return rows
+
+
+def _ifind_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        rows: list[dict[str, Any]] = []
+        for item in payload:
+            rows.extend(_ifind_rows(item))
+        return rows
+    if not isinstance(payload, dict):
+        return []
+    rows = _ifind_column_table_rows(payload)
+    if rows:
+        return rows
+    for key in ("data", "rows", "result", "table", "tables"):
+        value = payload.get(key)
+        rows = _ifind_rows(value)
+        if rows:
+            return rows
+    return []
+
+
+class IfindReportQuerySentimentAdapter:
+    """Fetch announcement evidence from iFinD report_query."""
+
+    def __init__(
+        self,
+        company_name: str,
+        company_ticker: str = "",
+        *,
+        access_token: str | None = None,
+        url: str | None = None,
+        timeout: float = 8,
+    ) -> None:
+        self.company_name = company_name.strip()
+        self.company_ticker = company_ticker.strip()
+        self.access_token = access_token or os.environ.get("PRIVATE_FUND_IFIND_ACCESS_TOKEN", "")
+        self.url = url or os.environ.get(
+            "PRIVATE_FUND_IFIND_REPORT_QUERY_URL",
+            "https://quantapi.51ifind.com/api/v1/report_query",
+        )
+        self.timeout = timeout
+
+    def fetch_sentiment_evidence(
+        self,
+        *,
+        dataset_id: str,
+        series_id: str,
+        model_version_id: str,
+        as_of: str,
+        lookback_days: int,
+    ) -> list[dict[str, Any]]:
+        del dataset_id, series_id, model_version_id
+        if not self.access_token or not self.company_ticker:
+            return []
+        as_of_dt = _parse_datetime(as_of) or datetime.now(timezone.utc)
+        window_start = as_of_dt - timedelta(days=max(1, lookback_days))
+        code = _ifind_code(self.company_ticker)
+        body = {
+            "codes": code,
+            "functionpara": {"reportType": _ifind_report_type(code)},
+            "beginrDate": window_start.date().isoformat(),
+            "endrDate": as_of_dt.date().isoformat(),
+            "outputpara": (
+                "pdfURL:Y,reportTitle:Y,ctime:Y,secName:Y,thscode:Y,"
+                "reportDate:Y,announcementLanguage:Y,seq:Y"
+            ),
+        }
+        request = Request(
+            self.url,
+            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "access_token": self.access_token,
+                "User-Agent": "Omnigent/valuation-sentiment-ifind",
+            },
+            method="POST",
+        )
+        with urlopen(request, timeout=self.timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        captured_at = datetime.now(timezone.utc).isoformat()
+        rows: list[dict[str, Any]] = []
+        for item in _ifind_rows(payload)[:MAX_SENTIMENT_EVIDENCE]:
+            title = _clean_text(item.get("reportTitle"), 300)
+            url = _clean_text(item.get("pdfURL"), 500)
+            if not title or not url:
+                continue
+            published_dt = _parse_datetime(item.get("ctime")) or _parse_datetime(
+                item.get("reportDate")
+            )
+            if published_dt is None:
+                continue
+            published_at = published_dt.isoformat()
+            sec_name = _clean_text(item.get("secName"), 160) or self.company_name
+            source_name = sec_name or "\u540c\u82b1\u987aiFinD"
+            story_id = _sentiment_story_id(
+                title,
+                published_at,
+                item.get("thscode") or code,
+                item.get("seq") or url,
+            )
+            excerpt = _clean_text(f"{title}\u3002{sec_name} {item.get('reportDate') or ''}", 700)
+            rows.append(
+                {
+                    "sentiment_id": "ifind:" + _digest(item.get("seq"), url, title, length=24),
+                    "provider": "ifind_report_query",
+                    "source_type": "provider_api",
+                    "source_name": source_name,
+                    "source_url": url,
+                    "publisher_url": url,
+                    "canonical_url": url,
+                    "canonical_story_id": story_id,
+                    "title": title,
+                    "excerpt": excerpt,
+                    "locator": (
+                        "\u540c\u82b1\u987aiFinD\u516c\u544a\u67e5\u8be2\uff1a"
+                        "\u516c\u544a\u6807\u9898\u4e0e\u94fe\u63a5"
+                    ),
+                    "published_at": published_at,
+                    "captured_at": captured_at,
+                    "raw_json": item,
+                }
+            )
+        return rows
+
+
+class CompositeSentimentEvidenceAdapter:
+    def __init__(self, adapters: list[SentimentEvidenceAdapter]) -> None:
+        self.adapters = adapters
+
+    def fetch_sentiment_evidence(self, **kwargs: Any) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for adapter in self.adapters:
+            try:
+                rows.extend(adapter.fetch_sentiment_evidence(**kwargs))
+            except Exception:  # noqa: BLE001 - keep one provider failure non-blocking
+                continue
+        return rows
+
+
+def default_sentiment_adapter(company_name: str, company_ticker: str) -> SentimentEvidenceAdapter:
+    adapters: list[SentimentEvidenceAdapter] = [
+        GoogleNewsRssSentimentAdapter(company_name, company_ticker)
+    ]
+    if os.environ.get("PRIVATE_FUND_IFIND_ACCESS_TOKEN"):
+        adapters.append(IfindReportQuerySentimentAdapter(company_name, company_ticker))
+    return CompositeSentimentEvidenceAdapter(adapters)
+
+
+class GoogleNewsRssSentimentAdapter:
+    """Fetch recent public-news evidence without requiring another API key."""
+
+    def __init__(
+        self,
+        company_name: str,
+        company_ticker: str = "",
+        *,
+        timeout: float = 8,
+    ) -> None:
+        self.company_name = company_name.strip()
+        self.company_ticker = company_ticker.strip()
+        self.timeout = timeout
+
+    def fetch_sentiment_evidence(
+        self,
+        *,
+        dataset_id: str,
+        series_id: str,
+        model_version_id: str,
+        as_of: str,
+        lookback_days: int,
+    ) -> list[dict[str, Any]]:
+        del dataset_id, series_id, model_version_id
+        as_of_dt = _parse_datetime(as_of) or datetime.now(timezone.utc)
+        window_start = as_of_dt - timedelta(days=max(1, lookback_days))
+        terms = [f'"{self.company_name}"']
+        if self.company_ticker:
+            terms.append(f'"{self.company_ticker}"')
+        query = (
+            " OR ".join(terms)
+            + f" after:{window_start.date().isoformat()}"
+            + f" before:{(as_of_dt + timedelta(days=1)).date().isoformat()}"
+        )
+        feed_url = "https://news.google.com/rss/search?" + urlencode(
+            {"q": query, "hl": "zh-CN", "gl": "CN", "ceid": "CN:zh-Hans"}
+        )
+        request = Request(
+            feed_url,
+            headers={"User-Agent": "Omnigent/valuation-sentiment"},
+        )
+        with urlopen(request, timeout=self.timeout) as response:
+            root = ElementTree.fromstring(response.read())
+
+        captured_at = datetime.now(timezone.utc).isoformat()
+        rows: list[dict[str, Any]] = []
+        for item in root.findall("./channel/item")[:MAX_SENTIMENT_EVIDENCE]:
+            title = _clean_text(item.findtext("title"), 300)
+            link = _clean_text(item.findtext("link"), 500)
+            published_raw = _clean_text(item.findtext("pubDate"), 100)
+            source_node = item.find("source")
+            source_name = _clean_text(source_node.text if source_node is not None else "", 160)
+            publisher_url = _clean_text(
+                source_node.get("url") if source_node is not None else "", 500
+            )
+            description = html.unescape(
+                re.sub(r"<[^>]+>", " ", str(item.findtext("description") or ""))
+            )
+            excerpt = _clean_text(f"{title}。{description}", 700)
+            if not title or not link or not excerpt:
+                continue
+            try:
+                published_at = (
+                    parsedate_to_datetime(published_raw).astimezone(timezone.utc).isoformat()
+                )
+            except (TypeError, ValueError, OverflowError):
+                continue
+            rows.append(
+                {
+                    "sentiment_id": "gnews:" + _digest(link, length=24),
+                    "provider": "google_news_rss",
+                    "source_type": "public_web",
+                    "source_name": source_name or "Google News",
+                    "source_url": link,
+                    "publisher_url": publisher_url,
+                    "canonical_url": link,
+                    "canonical_story_id": _sentiment_story_id(
+                        title, published_at, self.company_ticker, link
+                    ),
+                    "title": title,
+                    "excerpt": excerpt,
+                    "locator": "Google News RSS 条目标题与摘要",
+                    "published_at": published_at,
+                    "captured_at": captured_at,
+                }
+            )
+        return rows
 
 
 class RetryableLLMError(RuntimeError):
@@ -181,6 +521,41 @@ def _clean_text(value: Any, limit: int) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()[:limit]
 
 
+def _parse_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        try:
+            parsed = datetime.fromisoformat(f"{text}T00:00:00+00:00")
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _url_host(value: Any) -> str:
+    host = (urlparse(str(value or "")).hostname or "").casefold()
+    return host[4:] if host.startswith("www.") else host
+
+
+def _is_whitelisted_url(url: str, whitelist_hosts: list[str] | None) -> bool:
+    hosts = {
+        host[4:] if host.startswith("www.") else host
+        for host in (str(item or "").strip().casefold() for item in whitelist_hosts or [])
+        if host
+    }
+    if not hosts:
+        return True
+    host = _url_host(url)
+    return any(host == item or host.endswith(f".{item}") for item in hosts)
+
+
 def _tables(conn: sqlite3.Connection) -> set[str]:
     return {
         str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -244,6 +619,30 @@ def ensure_impact_schema(conn: sqlite3.Connection) -> None:
             ON valuation_impact_agent_runs(model_version_id, updated_at DESC);
         CREATE INDEX IF NOT EXISTS ix_valuation_impact_cards_run
             ON valuation_impact_cards(run_id, ordinal);
+
+        CREATE TABLE IF NOT EXISTS valuation_sentiment_evidence (
+            sentiment_id TEXT PRIMARY KEY,
+            dataset_id TEXT NOT NULL,
+            series_id TEXT,
+            model_version_id TEXT,
+            provider TEXT,
+            source_type TEXT NOT NULL DEFAULT 'provider_api',
+            source_name TEXT,
+            source_url TEXT NOT NULL,
+            canonical_url TEXT,
+            canonical_story_id TEXT,
+            title TEXT,
+            excerpt TEXT NOT NULL,
+            locator TEXT,
+            published_at TEXT,
+            captured_at TEXT NOT NULL,
+            raw_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS ix_valuation_sentiment_scope
+            ON valuation_sentiment_evidence(
+                dataset_id, series_id, model_version_id, published_at DESC
+            );
         """
     )
     schema_row = conn.execute(
@@ -365,6 +764,7 @@ def _supporting_documents(
     ).fetchall()
     return [dict(row) for row in rows]
 
+
 def _chunk_rows(conn: sqlite3.Connection, doc_id: str) -> list[dict[str, Any]]:
     if "chunks" not in _tables(conn):
         return []
@@ -429,8 +829,6 @@ def _model_context(conn: sqlite3.Connection, model_version_id: str) -> list[dict
     return [dict(row) for row in rows]
 
 
-
-
 def _document_version_payload(document: dict[str, Any]) -> dict[str, Any]:
     return {
         "document_id": str(document.get("doc_id") or ""),
@@ -485,9 +883,279 @@ def _evidence_location(
 def _selection_scope(document_ids: list[str] | None) -> dict[str, Any]:
     selected = [str(item).strip() for item in document_ids or [] if str(item).strip()]
     return {
-        "mode": "selected_documents" if document_ids is not None else "all_current_effective_documents",
+        "mode": "selected_documents"
+        if document_ids is not None
+        else "all_current_effective_documents",
         "document_ids": selected,
     }
+
+
+def _stored_sentiment_rows(
+    conn: sqlite3.Connection,
+    *,
+    dataset_id: str,
+    series_id: str,
+    model_version_id: str,
+) -> list[dict[str, Any]]:
+    if "valuation_sentiment_evidence" not in _tables(conn):
+        return []
+    rows = conn.execute(
+        """
+        SELECT * FROM valuation_sentiment_evidence
+        WHERE dataset_id=?
+          AND (NULLIF(series_id,'') IS NULL OR series_id=?)
+          AND (NULLIF(model_version_id,'') IS NULL OR model_version_id=?)
+        ORDER BY COALESCE(published_at, captured_at, created_at) DESC
+        LIMIT 50
+        """,
+        (dataset_id, series_id, model_version_id),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _adapter_sentiment_rows(
+    adapter: SentimentEvidenceAdapter | None,
+    *,
+    dataset_id: str,
+    series_id: str,
+    model_version_id: str,
+    as_of: str,
+    lookback_days: int,
+) -> tuple[list[dict[str, Any]], str | None]:
+    if adapter is None:
+        return [], None
+    try:
+        rows = adapter.fetch_sentiment_evidence(
+            dataset_id=dataset_id,
+            series_id=series_id,
+            model_version_id=model_version_id,
+            as_of=as_of,
+            lookback_days=lookback_days,
+        )
+    except Exception as exc:  # noqa: BLE001 - sentiment should not block document analysis
+        return [], _clean_text(exc, 300)
+    return [dict(row) for row in rows if isinstance(row, dict)], None
+
+
+def _sentiment_independence_key(row: dict[str, Any]) -> str:
+    explicit = _clean_text(row.get("canonical_story_id"), 160)
+    if explicit:
+        return f"story:{explicit.casefold()}"
+    canonical_url = _clean_text(row.get("canonical_url"), 500) or _clean_text(
+        row.get("source_url"), 500
+    )
+    title = _clean_text(row.get("title"), 240).casefold()
+    excerpt = _clean_text(row.get("excerpt"), 500).casefold()
+    published = str(row.get("published_at") or row.get("captured_at") or "")[:10]
+    return "story:" + _digest(canonical_url, title, excerpt[:240], published, length=24)
+
+
+def _sentiment_in_window(row: dict[str, Any], *, as_of_dt: datetime, lookback_days: int) -> bool:
+    observed_at = _parse_datetime(row.get("published_at")) or _parse_datetime(
+        row.get("captured_at")
+    )
+    if observed_at is None:
+        return False
+    window_start = as_of_dt - timedelta(days=max(0, lookback_days))
+    return window_start <= observed_at <= as_of_dt
+
+
+def _sentiment_location(row: dict[str, Any], excerpt: str) -> dict[str, Any]:
+    return {
+        "locator_type": "web_url_quote",
+        "source_url": _clean_text(row.get("source_url"), 500),
+        "canonical_url": _clean_text(row.get("canonical_url"), 500),
+        "source_name": _clean_text(row.get("source_name"), 160),
+        "provider": _clean_text(row.get("provider"), 120),
+        "published_at": _clean_text(row.get("published_at"), 80),
+        "captured_at": _clean_text(row.get("captured_at"), 80),
+        "locator": _clean_text(row.get("locator"), 240),
+        "quote": excerpt[:500],
+    }
+
+
+def _sentiment_provider(item: dict[str, Any]) -> str:
+    location = item.get("evidence_location")
+    if isinstance(location, dict):
+        return _clean_text(location.get("provider"), 120)
+    return ""
+
+
+def _sentiment_relevance_score(item: dict[str, Any]) -> int:
+    text = " ".join(
+        str(item.get(key) or "")
+        for key in ("title", "source_name", "source_ref", "content", "source_url")
+    ).casefold()
+    score = 0
+    for term in (*_VALUATION_TERMS, *_SENTIMENT_RELEVANCE_TERMS):
+        if str(term).casefold() in text:
+            score += 2
+    for term in _SENTIMENT_LOW_VALUE_TERMS:
+        if str(term).casefold() in text:
+            score -= 6
+    if item.get("published_at"):
+        score += 1
+    if item.get("source_url"):
+        score += 1
+    return score
+
+
+def _select_sentiment_excerpts(
+    candidates: list[dict[str, Any]], *, limit: int = MAX_SENTIMENT_EVIDENCE
+) -> list[dict[str, Any]]:
+    if len(candidates) <= limit:
+        return candidates
+
+    def sort_key(item: dict[str, Any]) -> tuple[int, str, str]:
+        return (
+            int(item.get("relevance_score") or 0),
+            _clean_text(item.get("published_at"), 80),
+            _clean_text(item.get("evidence_id"), 160),
+        )
+
+    ranked = sorted(candidates, key=sort_key, reverse=True)
+    selected: list[dict[str, Any]] = []
+    selected_ids: set[str] = set()
+
+    def add(item: dict[str, Any]) -> None:
+        evidence_id = _clean_text(item.get("evidence_id"), 160)
+        if len(selected) >= limit or not evidence_id or evidence_id in selected_ids:
+            return
+        selected.append(item)
+        selected_ids.add(evidence_id)
+
+    for provider in _SENTIMENT_BALANCED_PROVIDERS:
+        provider_items = [item for item in ranked if _sentiment_provider(item) == provider]
+        for item in provider_items[:_SENTIMENT_PROVIDER_MIN_QUOTA]:
+            add(item)
+
+    for item in ranked:
+        add(item)
+
+    return selected[:limit]
+
+
+def _sentiment_provider_counts(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        provider = _sentiment_provider(item)
+        if provider:
+            counts[provider] = counts.get(provider, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _sentiment_payloads(
+    conn: sqlite3.Connection,
+    *,
+    dataset_id: str,
+    series_id: str,
+    model_version_id: str,
+    sentiment_adapter: SentimentEvidenceAdapter | None,
+    sentiment_as_of: str | None,
+    sentiment_lookback_days: int,
+    sentiment_whitelist_hosts: list[str] | None,
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, str],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, Any],
+]:
+    as_of_dt = _parse_datetime(sentiment_as_of) or datetime.now(timezone.utc)
+    as_of = as_of_dt.isoformat()
+    stored = _stored_sentiment_rows(
+        conn,
+        dataset_id=dataset_id,
+        series_id=series_id,
+        model_version_id=model_version_id,
+    )
+    adapter_rows, adapter_error = _adapter_sentiment_rows(
+        sentiment_adapter,
+        dataset_id=dataset_id,
+        series_id=series_id,
+        model_version_id=model_version_id,
+        as_of=as_of,
+        lookback_days=sentiment_lookback_days,
+    )
+    candidate_excerpts: list[dict[str, Any]] = []
+    sources: dict[str, str] = {}
+    locations: dict[str, dict[str, Any]] = {}
+    meta: dict[str, dict[str, Any]] = {}
+    seen: set[str] = set()
+    skipped = 0
+    for row in [*stored, *adapter_rows]:
+        url = _clean_text(row.get("source_url"), 500)
+        excerpt = _clean_text(row.get("excerpt"), 700)
+        captured_at = _clean_text(row.get("captured_at"), 80)
+        if not url or not excerpt or not captured_at:
+            skipped += 1
+            continue
+        whitelist_url = _clean_text(row.get("publisher_url"), 500) or url
+        if not _is_whitelisted_url(whitelist_url, sentiment_whitelist_hosts):
+            skipped += 1
+            continue
+        if not _sentiment_in_window(row, as_of_dt=as_of_dt, lookback_days=sentiment_lookback_days):
+            skipped += 1
+            continue
+        raw_id = _clean_text(row.get("sentiment_id") or row.get("evidence_id"), 160)
+        evidence_id = (
+            raw_id
+            if raw_id.startswith("sentiment:")
+            else f"sentiment:{raw_id or _digest(url, excerpt, captured_at)}"
+        )
+        dedupe_key = f"{evidence_id}:{_digest(url, excerpt)}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        source_name = (
+            _clean_text(row.get("source_name"), 160) or _url_host(url) or "sentiment source"
+        )
+        source_ref = f"{source_name} - {str(row.get('published_at') or captured_at)[:10]} - {url}"
+        independence_key = _sentiment_independence_key(row)
+        location = _sentiment_location(row, excerpt)
+        item = {
+            "evidence_id": evidence_id,
+            "source_name": source_name,
+            "source_type": _clean_text(row.get("source_type"), 80) or "provider_api",
+            "source_url": url,
+            "provider": location.get("provider", ""),
+            "title": _clean_text(row.get("title"), 300),
+            "published_at": _clean_text(row.get("published_at"), 80),
+            "captured_at": captured_at,
+            "source_ref": source_ref,
+            "independence_key": independence_key,
+            "evidence_location": location,
+            "content": excerpt,
+        }
+        item["relevance_score"] = _sentiment_relevance_score(item)
+        candidate_excerpts.append(item)
+
+    excerpts = _select_sentiment_excerpts(candidate_excerpts)
+    for item in excerpts:
+        evidence_id = str(item["evidence_id"])
+        sources[evidence_id] = str(item["source_ref"])
+        location = item.get("evidence_location")
+        locations[evidence_id] = location if isinstance(location, dict) else {}
+        meta[evidence_id] = {
+            "evidence_type": "sentiment",
+            "independence_key": item["independence_key"],
+            "source_url": item["source_url"],
+        }
+
+    summary = {
+        "sentiment_as_of": as_of,
+        "sentiment_lookback_days": sentiment_lookback_days,
+        "sentiment_candidate_evidence_count": len(candidate_excerpts),
+        "sentiment_evidence_count": len(excerpts),
+        "sentiment_independent_source_count": len({item["independence_key"] for item in excerpts}),
+        "sentiment_provider_counts": _sentiment_provider_counts(excerpts),
+        "sentiment_candidate_provider_counts": _sentiment_provider_counts(candidate_excerpts),
+        "sentiment_observations": excerpts,
+        "sentiment_skipped_count": skipped,
+    }
+    if adapter_error:
+        summary["sentiment_adapter_error"] = adapter_error
+    return excerpts, sources, locations, meta, summary
 
 
 def _review_for_card(
@@ -506,8 +1174,19 @@ def _review_for_card(
         str(raw.get(key) or "") for key in ("title", "evidence_summary", "valuation_impact")
     ).casefold()
     review_terms = (
-        "management", "plan", "planned", "undelivered", "order", "unconfirmed",
-        "管理层", "计划", "规划", "未交付", "订单", "待确认", "未确认",
+        "management",
+        "plan",
+        "planned",
+        "undelivered",
+        "order",
+        "unconfirmed",
+        "管理层",
+        "计划",
+        "规划",
+        "未交付",
+        "订单",
+        "待确认",
+        "未确认",
     )
     if any(term in text for term in review_terms):
         reasons.append("forward_looking_or_management_only_evidence")
@@ -517,10 +1196,26 @@ def _review_for_card(
         "status": "located" if evidence_locations else "missing_precise_location",
         "evidence_count": len(valid_evidence),
         "located_evidence_count": len(evidence_locations),
-        "document_ids": list(dict.fromkeys(str(item.get("document_id") or "") for item in evidence_locations)),
-        "locator_types": list(dict.fromkeys(str(item.get("locator_type") or "") for item in evidence_locations)),
+        "document_ids": list(
+            dict.fromkeys(
+                str(item.get("document_id") or "")
+                for item in evidence_locations
+                if item.get("document_id")
+            )
+        ),
+        "source_urls": list(
+            dict.fromkeys(
+                str(item.get("source_url") or "")
+                for item in evidence_locations
+                if item.get("source_url")
+            )
+        ),
+        "locator_types": list(
+            dict.fromkeys(str(item.get("locator_type") or "") for item in evidence_locations)
+        ),
     }
     return ("needs_review" if reasons else "ready"), reasons, coverage
+
 
 def build_evidence_packet(
     conn: sqlite3.Connection,
@@ -529,11 +1224,18 @@ def build_evidence_packet(
     series_id: str,
     model_version_id: str,
     document_ids: list[str] | None = None,
-) -> tuple[dict[str, Any], dict[str, str], dict[str, dict[str, Any]], str]:
+    sentiment_adapter: SentimentEvidenceAdapter | None = None,
+    sentiment_as_of: str | None = None,
+    sentiment_lookback_days: int = DEFAULT_SENTIMENT_LOOKBACK_DAYS,
+    sentiment_whitelist_hosts: list[str] | None = None,
+) -> tuple[
+    dict[str, Any], dict[str, str], dict[str, dict[str, Any]], dict[str, dict[str, Any]], str
+]:
     documents = _supporting_documents(conn, dataset_id=dataset_id, document_ids=document_ids)
     excerpts: list[dict[str, Any]] = []
     evidence_sources: dict[str, str] = {}
     evidence_locations: dict[str, dict[str, Any]] = {}
+    evidence_meta: dict[str, dict[str, Any]] = {}
     unlocatable_documents: dict[str, dict[str, Any]] = {}
     total_chunks = 0
     total_chars = 0
@@ -570,12 +1272,36 @@ def build_evidence_packet(
             )
             evidence_sources[evidence_id] = source_ref
             evidence_locations[evidence_id] = location
+            evidence_meta[evidence_id] = {
+                "evidence_type": "document_chunk",
+                "independence_key": str(document.get("doc_id") or ""),
+            }
             total_chars += len(content)
         if ranked_chunks and located_for_document == 0:
             unlocatable_documents[str(document.get("doc_id") or "")] = {
                 **_document_version_payload(document),
                 "reason": "未满足证据定位要求",
             }
+    (
+        sentiment_excerpts,
+        sentiment_sources,
+        sentiment_locations,
+        sentiment_meta,
+        sentiment_summary,
+    ) = _sentiment_payloads(
+        conn,
+        dataset_id=dataset_id,
+        series_id=series_id,
+        model_version_id=model_version_id,
+        sentiment_adapter=sentiment_adapter,
+        sentiment_as_of=sentiment_as_of,
+        sentiment_lookback_days=sentiment_lookback_days,
+        sentiment_whitelist_hosts=sentiment_whitelist_hosts,
+    )
+    excerpts.extend(sentiment_excerpts)
+    evidence_sources.update(sentiment_sources)
+    evidence_locations.update(sentiment_locations)
+    evidence_meta.update(sentiment_meta)
     document_versions = [_document_version_payload(document) for document in documents]
     coverage_summary = {
         "selection_scope": _selection_scope(document_ids),
@@ -584,11 +1310,19 @@ def build_evidence_packet(
         "usable_evidence_count": len(excerpts),
         "unlocatable_documents": list(unlocatable_documents.values()),
         "needs_reparse_count": len(unlocatable_documents),
+        **sentiment_summary,
     }
     source_fingerprint = _digest(
         _json(_selection_scope(document_ids)),
-        *(f"{item['document_id']}:{item['version_no']}:{item['checksum']}" for item in document_versions),
-        *(f"{item['evidence_id']}:{_digest(item['content'])}:{_json(item['evidence_location'])}" for item in excerpts),
+        *(
+            f"{item['document_id']}:{item['version_no']}:{item['checksum']}"
+            for item in document_versions
+        ),
+        *(
+            f"{item['evidence_id']}:{_digest(item['content'])}:{_json(item['evidence_location'])}"
+            for item in excerpts
+        ),
+        _json({key: value.get("independence_key") for key, value in evidence_meta.items()}),
         length=40,
     )
     packet = {
@@ -614,7 +1348,8 @@ def build_evidence_packet(
         ],
         "evidence_excerpts": excerpts,
     }
-    return packet, evidence_sources, evidence_locations, source_fingerprint
+    return packet, evidence_sources, evidence_locations, evidence_meta, source_fingerprint
+
 
 def _parse_json_object(text: str) -> dict[str, Any]:
     candidate = str(text or "").strip()
@@ -663,8 +1398,10 @@ def validate_output(
     *,
     evidence_sources: dict[str, str],
     evidence_locations: dict[str, dict[str, Any]] | None = None,
+    evidence_meta: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     evidence_locations = evidence_locations or {}
+    evidence_meta = evidence_meta or {}
     warnings = [
         _clean_text(item, 500) for item in payload.get("warnings", []) if _clean_text(item, 500)
     ]
@@ -713,8 +1450,24 @@ def validate_output(
         if not valid:
             warnings.append(f"估值影响“{title or ordinal}”未通过结构或证据校验，已忽略。")
             continue
+        sentiment_ids = [item for item in valid_evidence if item.startswith("sentiment:")]
+        if sentiment_ids:
+            independent_sentiment = {
+                str((evidence_meta.get(item) or {}).get("independence_key") or item)
+                for item in sentiment_ids
+                if item in evidence_locations
+            }
+            if len(sentiment_ids) < 2 or len(independent_sentiment) < 2:
+                warnings.append(
+                    f"\u8206\u60c5\u5f71\u54cd\u201c{title or ordinal}\u201d"
+                    "\u5c11\u4e8e\u4e24\u6761\u72ec\u7acb\u3001\u53ef\u5b9a\u4f4d\u8bc1\u636e\uff0c"
+                    "\u5df2\u4fdd\u7559\u4e3a\u89c2\u5bdf\u4f46\u4e0d\u751f\u6210\u5f71\u54cd\u5361\u3002"
+                )
+                continue
         titles.add(title_key)
-        locations = [evidence_locations[item] for item in valid_evidence if item in evidence_locations]
+        locations = [
+            evidence_locations[item] for item in valid_evidence if item in evidence_locations
+        ]
         review_status, review_reasons, evidence_coverage = _review_for_card(
             confidence=confidence,
             valid_evidence=valid_evidence,
@@ -824,6 +1577,8 @@ def _fallback_source_cards(
         if not isinstance(excerpt, dict):
             continue
         evidence_id = str(excerpt.get("evidence_id") or "")
+        if evidence_id.startswith("sentiment:"):
+            continue
         if evidence_id not in evidence_sources:
             continue
         source_name = _clean_text(excerpt.get("source_name"), 80) or "辅助资料"
@@ -846,15 +1601,25 @@ def _fallback_source_cards(
                 "watch_items": ["核验资料事件对估值假设的传导路径和量化影响。"],
                 "source_refs": [evidence_sources[evidence_id]],
                 "evidence_ids": [evidence_id],
-                "evidence_locations": [evidence_locations[evidence_id]] if evidence_id in evidence_locations else [],
+                "evidence_locations": [evidence_locations[evidence_id]]
+                if evidence_id in evidence_locations
+                else [],
                 "review_status": "needs_review",
                 "review_reasons": ["llm_unavailable_fallback", "requires_human_validation"],
                 "evidence_coverage": {
-                    "status": "located" if evidence_id in evidence_locations else "missing_precise_location",
+                    "status": "located"
+                    if evidence_id in evidence_locations
+                    else "missing_precise_location",
                     "evidence_count": 1,
                     "located_evidence_count": 1 if evidence_id in evidence_locations else 0,
-                    "document_ids": [str(evidence_locations[evidence_id].get("document_id") or "")] if evidence_id in evidence_locations else [],
-                    "locator_types": [str(evidence_locations[evidence_id].get("locator_type") or "")] if evidence_id in evidence_locations else [],
+                    "document_ids": [str(evidence_locations[evidence_id].get("document_id") or "")]
+                    if evidence_id in evidence_locations
+                    else [],
+                    "locator_types": [
+                        str(evidence_locations[evidence_id].get("locator_type") or "")
+                    ]
+                    if evidence_id in evidence_locations
+                    else [],
                 },
             }
         )
@@ -862,6 +1627,60 @@ def _fallback_source_cards(
         "analysis_summary": "LLM 网关暂不可用，已生成仅基于项目资料原文的待核验证据卡片。",
         "impacts": impacts,
         "warnings": [f"LLM Agent unavailable: {_clean_text(error, 300)}"],
+    }
+
+
+def _fallback_sentiment_card(
+    packet: dict[str, Any],
+    evidence_sources: dict[str, str],
+    evidence_locations: dict[str, dict[str, Any]],
+    evidence_meta: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    sentiment = [
+        item
+        for item in packet.get("evidence_excerpts") or []
+        if isinstance(item, dict)
+        and str(item.get("evidence_id") or "").startswith("sentiment:")
+        and str(item.get("evidence_id") or "") in evidence_sources
+        and str(item.get("evidence_id") or "") in evidence_locations
+    ]
+    independent = {
+        str((evidence_meta.get(str(item.get("evidence_id") or "")) or {}).get("independence_key"))
+        for item in sentiment
+    }
+    if len(sentiment) < 2 or len(independent) < 2:
+        return None
+    picked = sentiment[:3]
+    evidence_ids = [str(item["evidence_id"]) for item in picked]
+    return {
+        "ordinal": 1,
+        "direction": "mixed",
+        "horizon": "待核验",
+        "confidence": 0.6,
+        "title": "公开舆情形成双向估值观察",
+        "evidence_summary": "；".join(_clean_text(item.get("content"), 220) for item in picked),
+        "valuation_impact": (
+            "多条独立公开舆情显示市场关注度、资金流或机构观点已发生变化。该信号可影响"
+            "估值倍数和情绪折价，但尚不足以直接改写收入、利润率或现金流假设。"
+        ),
+        "affected_inputs": ["valuation_multiple", "revenue_growth"],
+        "watch_items": ["持续跟踪是否出现财务指引、订单、利润率或现金流层面的交叉验证。"],
+        "source_refs": [evidence_sources[item] for item in evidence_ids],
+        "evidence_ids": evidence_ids,
+        "evidence_locations": [evidence_locations[item] for item in evidence_ids],
+        "review_status": "needs_review",
+        "review_reasons": ["sentiment_only_requires_fundamental_cross_check"],
+        "evidence_coverage": {
+            "status": "located",
+            "evidence_count": len(evidence_ids),
+            "located_evidence_count": len(evidence_ids),
+            "source_urls": list(
+                dict.fromkeys(
+                    str(evidence_locations[item].get("source_url") or "") for item in evidence_ids
+                )
+            ),
+            "locator_types": ["web_url_quote"],
+        },
     }
 
 
@@ -970,17 +1789,27 @@ def extract_with_skill(
     model_version_id: str,
     llm_client: ValuationImpactChatClient,
     document_ids: list[str] | None = None,
+    sentiment_adapter: SentimentEvidenceAdapter | None = None,
+    sentiment_as_of: str | None = None,
+    sentiment_lookback_days: int = DEFAULT_SENTIMENT_LOOKBACK_DAYS,
+    sentiment_whitelist_hosts: list[str] | None = None,
     locale: str = "zh-CN",
 ) -> dict[str, Any]:
     from omnigent.server.private_fund_memory import read_current_user_memory
 
     ensure_impact_schema(conn)
-    packet, evidence_sources, evidence_locations, source_fingerprint = build_evidence_packet(
-        conn,
-        dataset_id=dataset_id,
-        series_id=series_id,
-        model_version_id=model_version_id,
-        document_ids=document_ids,
+    packet, evidence_sources, evidence_locations, evidence_meta, source_fingerprint = (
+        build_evidence_packet(
+            conn,
+            dataset_id=dataset_id,
+            series_id=series_id,
+            model_version_id=model_version_id,
+            document_ids=document_ids,
+            sentiment_adapter=sentiment_adapter,
+            sentiment_as_of=sentiment_as_of,
+            sentiment_lookback_days=sentiment_lookback_days,
+            sentiment_whitelist_hosts=sentiment_whitelist_hosts,
+        )
     )
     now = _now_iso()
     run_id = "viar_" + _digest(
@@ -1050,9 +1879,11 @@ def extract_with_skill(
             "role": "user",
             "content": (
                 "Generate distinct valuation-impact cards from the current supporting "
-                "documents. Use no outside facts and cite only supplied chunk IDs. "
-                "Do not synthesize a single net direction unless explicit auditable "
-                "quantitative assumptions are present.\n"
+                "documents and supplied sentiment observations. Use no outside facts "
+                "and cite only "
+                "supplied chunk: or sentiment: IDs. Do not synthesize a single net direction "
+                "unless explicit auditable quantitative assumptions are present. "
+                "Treat one-source sentiment as observation only.\n"
                 + json.dumps(packet, ensure_ascii=False)
             ),
         },
@@ -1064,7 +1895,17 @@ def extract_with_skill(
             raw_payload,
             evidence_sources=evidence_sources,
             evidence_locations=evidence_locations,
+            evidence_meta=evidence_meta,
         )
+        if not formatted["impacts"]:
+            sentiment_fallback = _fallback_sentiment_card(
+                packet, evidence_sources, evidence_locations, evidence_meta
+            )
+            if sentiment_fallback is not None:
+                formatted["impacts"] = [sentiment_fallback]
+                formatted["warnings"].append(
+                    "LLM 未生成正式影响卡，已基于两条以上独立、可定位舆情保留双向影响卡。"
+                )
         status = "completed"
         error_message = None
     except Exception as exc:  # noqa: BLE001 - retain a conservative evidence fallback
@@ -1107,10 +1948,17 @@ def extract_with_skill(
         raise RuntimeError("valuation impact Agent run was not persisted")
     return _run_payload(conn, row)
 
+
 __all__ = [
+    "DEFAULT_SENTIMENT_LOOKBACK_DAYS",
     "EXTRACTOR_VERSION",
     "SKILL_NAME",
+    "CompositeSentimentEvidenceAdapter",
+    "GoogleNewsRssSentimentAdapter",
+    "IfindReportQuerySentimentAdapter",
+    "SentimentEvidenceAdapter",
     "build_evidence_packet",
+    "default_sentiment_adapter",
     "ensure_impact_schema",
     "extract_with_skill",
     "latest_impact_payload",
