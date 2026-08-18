@@ -768,6 +768,7 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
   const [editingRule, setEditingRule] = useState<PrivateFundWatchRule | null | undefined>(
     undefined,
   );
+  const [ruleSaveNotice, setRuleSaveNotice] = useState<string | null>(null);
   const [governanceStatus, setGovernanceStatus] = useState<"active" | "archived">("active");
   const [selectedGovernanceIds, setSelectedGovernanceIds] = useState<Set<string>>(new Set());
 
@@ -821,9 +822,13 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
         ? updatePrivateFundWatchRule(datasetId, rule.ruleId, input)
         : createPrivateFundWatchRule(datasetId, input);
     },
-    onSuccess: () => {
+    onMutate: () => setRuleSaveNotice(null),
+    onSuccess: async (_savedRule, variables) => {
       setEditingRule(undefined);
-      queryClient.invalidateQueries({ queryKey: ["private-fund-tracking", datasetId] });
+      await queryClient.invalidateQueries({ queryKey: ["private-fund-tracking", datasetId] });
+      setRuleSaveNotice(
+        variables.rule ? t("tracking.ruleUpdated") : t("tracking.ruleCreated"),
+      );
     },
   });
   const governanceMutation = useMutation({
@@ -1297,12 +1302,25 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
               </div>
               <button
                 className="pf-primary-button"
-                onClick={() => setEditingRule(null)}
+                onClick={() => {
+                  setRuleSaveNotice(null);
+                  setEditingRule(null);
+                }}
                 type="button"
               >
                 <Plus className="size-3.5" /> {t("tracking.newRule")}
               </button>
             </div>
+            {ruleSaveNotice ? (
+              <div
+                aria-live="polite"
+                className="flex items-center gap-2 border-b border-[var(--pf-line)] bg-emerald-500/10 px-4 py-2 text-xs text-emerald-700"
+                role="status"
+              >
+                <Check className="size-3.5 shrink-0" />
+                {ruleSaveNotice}
+              </div>
+            ) : null}
             {editingRule !== undefined ? (
               <div className="border-b border-[var(--pf-line)] bg-[var(--pf-panel-subtle)]">
                 <RuleEditor
@@ -1370,7 +1388,10 @@ export function PrivateFundTrackingPanel({ datasetId }: { datasetId: string }) {
                 </div>
                 <button
                   className="pf-icon-button"
-                  onClick={() => setEditingRule(rule)}
+                  onClick={() => {
+                    setRuleSaveNotice(null);
+                    setEditingRule(rule);
+                  }}
                   title={t("tracking.editRule")}
                   type="button"
                 >

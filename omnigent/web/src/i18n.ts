@@ -731,6 +731,8 @@ export const zhCN = {
     keyword: "关键词：{{keyword}}",
     matchAllEvents: "匹配该事项类型下的全部事件",
     editRule: "编辑规则",
+    ruleCreated: "规则已创建，列表已同步。",
+    ruleUpdated: "规则已更新，列表已同步。",
     legacyFound: "发现 {{count}} 条旧版风险或催化剂记录。它们仍可查看，但不会触发提醒。",
     rebuildConfirm: "重新分析会调用当前模型并产生用量。旧版记录会保留到分析成功，是否继续？",
     governanceTitle: "历史低质量数据治理",
@@ -1561,6 +1563,8 @@ export const enUS = {
     keyword: "Keyword: {{keyword}}",
     matchAllEvents: "Match all events for this item type",
     editRule: "Edit rule",
+    ruleCreated: "Rule created and the list is up to date.",
+    ruleUpdated: "Rule updated and the list is up to date.",
     legacyFound:
       "Found {{count}} legacy risk or catalyst records. They remain available but do not trigger alerts.",
     rebuildConfirm:

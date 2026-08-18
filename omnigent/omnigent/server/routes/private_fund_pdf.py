@@ -496,6 +496,7 @@ class _GlobalUploadIdentity:
     company_confidence: float = 0.0
     ticker_confidence: float = 0.0
     method: str = "not_detected"
+    requires_review: bool = False
 
 
 def _clean_filename_company_name(value: str) -> str:
@@ -575,12 +576,28 @@ def _global_upload_identity(classification: Any, filename: str) -> _GlobalUpload
     classified_confidence = float(
         getattr(classification, "company_confidence", 0) or 0
     )
+    company_requires_review = bool(
+        getattr(classification, "company_requires_review", False)
+    )
+    if company_requires_review:
+        classified_confidence = min(classified_confidence, 0.69)
+    classified_method = str(getattr(classification, "company_method", "") or "")
+    llm_decided_identity = bool(
+        classified_name and classified_method.startswith("llm_")
+    )
     filename_and_document_agree = bool(
         filename_identity.company_name
         and classified_name
         and _identities_match(filename_identity.company_name, classified_name)
     )
-    if filename_and_document_agree:
+    if llm_decided_identity:
+        company_name = classified_name
+        company_confidence = (
+            max(filename_identity.company_confidence, classified_confidence)
+            if filename_and_document_agree
+            else classified_confidence
+        )
+    elif filename_and_document_agree:
         company_name = classified_name
         company_confidence = max(
             filename_identity.company_confidence, classified_confidence
@@ -592,17 +609,34 @@ def _global_upload_identity(classification: Any, filename: str) -> _GlobalUpload
             if filename_identity.company_name
             else classified_confidence
         )
-    company_ticker = filename_identity.company_ticker or classified_ticker
-    ticker_confidence = (
-        filename_identity.ticker_confidence
-        if filename_identity.company_ticker
-        else classified_confidence if classified_ticker else 0.0
-    )
+    if llm_decided_identity:
+        company_ticker = classified_ticker or (
+            filename_identity.company_ticker if filename_and_document_agree else ""
+        )
+        ticker_confidence = (
+            classified_confidence
+            if classified_ticker
+            else (
+                filename_identity.ticker_confidence
+                if filename_and_document_agree
+                else 0.0
+            )
+        )
+    else:
+        company_ticker = filename_identity.company_ticker or classified_ticker
+        ticker_confidence = (
+            filename_identity.ticker_confidence
+            if filename_identity.company_ticker
+            else classified_confidence if classified_ticker else 0.0
+        )
+    if company_requires_review:
+        company_confidence = min(company_confidence, 0.69)
+        ticker_confidence = min(ticker_confidence, 0.69)
     methods = [
         value
         for value in (
             filename_identity.method if filename_identity.method != "not_detected" else "",
-            str(getattr(classification, "company_method", "") or ""),
+            classified_method,
         )
         if value
     ]
@@ -612,6 +646,7 @@ def _global_upload_identity(classification: Any, filename: str) -> _GlobalUpload
         company_confidence=company_confidence,
         ticker_confidence=ticker_confidence,
         method="+".join(dict.fromkeys(methods)) or "not_detected",
+        requires_review=company_requires_review,
     )
 
 
@@ -646,7 +681,14 @@ def _cluster_global_upload_identities(
                 and right.company_name
                 and _identities_match(left.company_name, right.company_name)
             )
-            if same_ticker or same_company:
+            # A reviewed identity is not safe evidence for clustering. Keep it
+            # separate so one ambiguous document does not block or absorb a
+            # confidently identified document from the same batch.
+            if (
+                not left.requires_review
+                and not right.requires_review
+                and (same_ticker or same_company)
+            ):
                 union(left_index, right_index)
 
     groups: dict[int, list[tuple[sqlite3.Row, _GlobalUploadIdentity]]] = {}
@@ -678,6 +720,7 @@ def _merge_global_upload_identity(
         company_confidence=names[0].company_confidence if names else 0.0,
         ticker_confidence=tickers[0].ticker_confidence if tickers else 0.0,
         method="+".join(dict.fromkeys(methods)) or "not_detected",
+        requires_review=any(identity.requires_review for identity in identities),
     )
 
 
@@ -795,6 +838,11 @@ def _ensure_global_upload_project(
     identity: _GlobalUploadIdentity,
     aliases: list[str],
 ) -> tuple[sqlite3.Row, float, str] | None:
+    # A model can identify a plausible company while still explicitly reporting
+    # ambiguity (for example, several companies are discussed in one document).
+    # Do not let an exact ticker/name match bypass that review requirement.
+    if identity.requires_review:
+        return None
     with _GLOBAL_UPLOAD_PROJECTS_LOCK:
         with _connect_global_registry() as conn:
             project_rows = conn.execute(
@@ -1267,7 +1315,10 @@ def _finalize_global_upload_batch(batch_id: str) -> None:
 
 
 def _run_global_upload_pipeline(
-    batch_id: str, dataset_id: str, item_ids: list[str]
+    batch_id: str,
+    dataset_id: str,
+    item_ids: list[str],
+    preclassifications: dict[str, Any] | None = None,
 ) -> None:
     row = _require_project_row(dataset_id)
     uploads_dir = _seed_uploads_from_raw(dataset_id)
@@ -1303,6 +1354,13 @@ def _run_global_upload_pipeline(
         "workspace_root": str(_dataset_workspace_root()),
         "recursive": True,
         "reset": False,
+        "_preclassifications_by_checksum": {
+            str(item["checksum"]): preclassifications[str(item["item_id"])]
+            for item in item_rows
+            if preclassifications
+            and item["checksum"]
+            and str(item["item_id"]) in preclassifications
+        },
         "_tenant": tenant_job_payload(),
     }
     with _PRIVATE_FUND_PIPELINE_JOBS_LOCK:
@@ -1407,20 +1465,31 @@ def _process_global_upload_batch_in_scope(batch_id: str) -> None:
                 exc_info=True,
             )
     identified: list[tuple[sqlite3.Row, _GlobalUploadIdentity]] = []
+    preclassifications: dict[str, Any] = {}
+    classifications_by_checksum: dict[str, Any] = {}
     for item in items:
         item_id = str(item["item_id"])
         try:
             _update_global_upload_item(item_id, status="identifying", error_message=None)
-            preview = ingest.build_document_preview(Path(str(item["staged_path"])))
-            classification = ingest.classify_document(
-                preview,
-                expected_company="",
-                expected_ticker="",
-                llm_client=classification_llm,
-            )
+            checksum = str(item["checksum"] or "")
+            classification = classifications_by_checksum.get(checksum)
+            if classification is None:
+                preview = ingest.build_document_preview(Path(str(item["staged_path"])))
+                classification = ingest.classify_document(
+                    preview,
+                    expected_company="",
+                    expected_ticker="",
+                    llm_client=classification_llm,
+                    llm_policy=(
+                        "verify" if classification_llm is not None else "ambiguous"
+                    ),
+                )
+                if checksum:
+                    classifications_by_checksum[checksum] = classification
             identity = _global_upload_identity(
                 classification, str(item["original_filename"])
             )
+            preclassifications[item_id] = classification
             identified.append((item, identity))
             _update_global_upload_item(
                 item_id,
@@ -1507,7 +1576,12 @@ def _process_global_upload_batch_in_scope(batch_id: str) -> None:
                 _update_global_upload_item(item_id, status="failed", error_message=str(exc))
     for dataset_id, item_ids in routed.items():
         try:
-            _run_global_upload_pipeline(batch_id, dataset_id, item_ids)
+            _run_global_upload_pipeline(
+                batch_id,
+                dataset_id,
+                item_ids,
+                preclassifications=preclassifications,
+            )
         except Exception as exc:
             _logger.exception(
                 "global upload project pipeline failed: batch_id=%s dataset_id=%s",
@@ -2659,6 +2733,9 @@ def _project_pipeline_worker_in_scope(job_id: str, payload: dict[str, Any]) -> N
             reset=bool(payload.get("reset", False)),
             job_id=job_id,
             classification_llm=classification_llm,
+            preclassifications_by_checksum=(
+                payload.get("_preclassifications_by_checksum") or None
+            ),
         )
         private_fund_workflow.get_or_create_workflow(_collection_db_path(dataset_id), dataset_id)
         tracking_jobs: list[dict[str, Any]] = []

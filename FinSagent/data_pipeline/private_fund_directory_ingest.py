@@ -22,12 +22,15 @@ from __future__ import annotations
 
 import argparse
 import bisect
+import copy
 import hashlib
+import importlib
 import json
 import os
 import re
 import shutil
 import sqlite3
+import sys
 import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
@@ -308,6 +311,61 @@ def ensure_global_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _initialize_current_collection_data_version(conn: sqlite3.Connection) -> None:
+    """Initialize data migrations in both installed and monorepo deployments."""
+
+    try:
+        from omnigent.server.private_fund_data_migrations import (
+            initialize_current_collection_version,
+        )
+    except ModuleNotFoundError as exc:
+        if exc.name not in {
+            "omnigent",
+            "omnigent.server",
+            "omnigent.server.private_fund_data_migrations",
+        }:
+            raise
+
+        repository_root = Path(__file__).resolve().parents[2]
+        omnigent_package_root = repository_root / "omnigent"
+        migration_module = (
+            omnigent_package_root
+            / "omnigent"
+            / "server"
+            / "private_fund_data_migrations.py"
+        )
+        if not migration_module.is_file():
+            raise RuntimeError(
+                "Collection data-version initialization requires either an installed "
+                "'omnigent' package or the sibling 'omnigent/' monorepo package."
+            ) from exc
+
+        package_root_text = str(omnigent_package_root)
+        if package_root_text not in sys.path:
+            sys.path.insert(0, package_root_text)
+
+        package_paths = {
+            "omnigent": omnigent_package_root / "omnigent",
+            "omnigent.server": omnigent_package_root / "omnigent" / "server",
+        }
+        for module_name, current_path in package_paths.items():
+            cached_module = sys.modules.get(module_name)
+            cached_path = getattr(cached_module, "__path__", None)
+            if cached_path is None:
+                continue
+            current_path_text = str(current_path)
+            cached_module.__path__ = [
+                current_path_text,
+                *(path for path in cached_path if path != current_path_text),
+            ]
+        importlib.invalidate_caches()
+        from omnigent.server.private_fund_data_migrations import (
+            initialize_current_collection_version,
+        )
+
+    initialize_current_collection_version(conn)
+
+
 def ensure_collection_schema(
     conn: sqlite3.Connection,
     *,
@@ -550,12 +608,7 @@ def ensure_collection_schema(
     )
     _ensure_collection_schema_migrations(conn)
     if initialize_current_data_version:
-        # Imported lazily so the standalone pipeline keeps its existing import surface.
-        from omnigent.server.private_fund_data_migrations import (
-            initialize_current_collection_version,
-        )
-
-        initialize_current_collection_version(conn)
+        _initialize_current_collection_data_version(conn)
     conn.commit()
 
 
@@ -2680,8 +2733,15 @@ def ingest_directory(
     reset: bool = False,
     job_id: Optional[str] = None,
     classification_llm: ClassificationChatClient | None = None,
+    preclassifications_by_checksum: dict[str, DocumentClassification] | None = None,
 ) -> IngestResult:
     source_dir = Path(directory_path).expanduser().resolve()
+    preclassified = preclassifications_by_checksum or {}
+
+    def supplied_classification(checksum: str) -> DocumentClassification | None:
+        value = preclassified.get(checksum)
+        return copy.deepcopy(value) if value is not None else None
+
     if not source_dir.is_dir():
         raise FileNotFoundError(f"directory_path is not a directory: {source_dir}")
 
@@ -2872,12 +2932,14 @@ def ingest_directory(
                 ):
                     if str(current["classifier_version"] or "") != CLASSIFIER_VERSION:
                         try:
-                            refreshed_classification = classify_document(
-                                build_document_preview(current_stored_path),
-                                expected_company=company_name,
-                                expected_ticker=company_ticker,
-                                llm_client=classification_llm,
-                            )
+                            refreshed_classification = supplied_classification(checksum)
+                            if refreshed_classification is None:
+                                refreshed_classification = classify_document(
+                                    build_document_preview(current_stored_path),
+                                    expected_company=company_name,
+                                    expected_ticker=company_ticker,
+                                    llm_client=classification_llm,
+                                )
                         except Exception as classification_exc:  # noqa: BLE001
                             refreshed_classification = _fallback_classification(
                                 company_name=company_name,
@@ -2918,13 +2980,14 @@ def ingest_directory(
                     stored_path = _copy_to_raw(source_path, raw_dir)
                     checksum = sha256_file(stored_path)
                     try:
-                        preview = build_document_preview(stored_path)
-                        classification = classify_document(
-                            preview,
-                            expected_company=company_name,
-                            expected_ticker=company_ticker,
-                            llm_client=classification_llm,
-                        )
+                        classification = supplied_classification(checksum)
+                        if classification is None:
+                            classification = classify_document(
+                                build_document_preview(stored_path),
+                                expected_company=company_name,
+                                expected_ticker=company_ticker,
+                                llm_client=classification_llm,
+                            )
                     except Exception as classification_exc:  # noqa: BLE001
                         classification = _fallback_classification(
                             company_name=company_name,

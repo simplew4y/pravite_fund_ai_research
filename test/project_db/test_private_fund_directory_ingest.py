@@ -170,11 +170,101 @@ def test_ingest_persists_controlled_business_type_and_company_detection(tmp_path
         assert document["classification_taxonomy_version"] == (
             "private_fund_document_taxonomy_v2"
         )
-        assert document["classifier_version"] == "hybrid_rules_llm_v2"
+        assert document["classifier_version"] == "hybrid_rules_llm_v3"
         assert document["company_name"] == "Tesla Inc"
         metadata = json.loads(document["classification_metadata_json"])
         assert metadata["doc_type"] == "financial_valuation_data"
         assert metadata["evidence"]
+
+
+def test_preclassified_upload_is_reused_without_a_second_llm_classification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    workspace = tmp_path / "workspace"
+    source.mkdir()
+    source_path = source / "sungrow-report.txt"
+    source_path.write_text(
+        "阳光电源股份有限公司\n2025年年度报告\n合并资产负债表",
+        encoding="utf-8",
+    )
+    supplied = ingest.DocumentClassification(
+        doc_type="financial_valuation_data",
+        doc_subtype="annual_report",
+        confidence=0.98,
+        company_name="阳光电源股份有限公司",
+        company_ticker="300274.SZ",
+        company_confidence=0.99,
+        classification_status="accepted",
+        method="hybrid_llm",
+        company_method="llm_content_entity",
+        evidence=["阳光电源股份有限公司", "2025年年度报告"],
+    )
+
+    def unexpected_classification(*_args, **_kwargs):
+        raise AssertionError("the pipeline must reuse the unified-upload classification")
+
+    monkeypatch.setattr(ingest, "classify_document", unexpected_classification)
+    result = ingest.ingest_directory(
+        directory_path=source,
+        workspace_root=workspace,
+        dataset_id=DATASET_ID,
+        dataset_name="Sungrow research",
+        company_name="阳光电源股份有限公司",
+        company_ticker="300274.SZ",
+        preclassifications_by_checksum={ingest.sha256_file(source_path): supplied},
+    )
+
+    assert result.status == "completed"
+    assert result.documents[0].classification_method == "hybrid_llm"
+    assert result.documents[0].company_name == "阳光电源股份有限公司"
+
+
+def test_preclassification_is_never_reused_for_a_different_checksum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    workspace = tmp_path / "workspace"
+    source.mkdir()
+    source_path = source / "same-name.txt"
+    source_path.write_text("Fresh company research content", encoding="utf-8")
+    stale = ingest.DocumentClassification(
+        doc_type="financial_valuation_data",
+        doc_subtype="annual_report",
+        confidence=0.99,
+        company_name="Stale Company Ltd.",
+        company_confidence=0.99,
+        classification_status="accepted",
+        method="stale_preclassification",
+    )
+    fresh = ingest.DocumentClassification(
+        doc_type="meeting_third_party",
+        doc_subtype="internal_research_report",
+        confidence=0.91,
+        company_name="Fresh Company Ltd.",
+        company_confidence=0.91,
+        classification_status="accepted",
+        method="fresh_classification",
+    )
+    calls = 0
+
+    def classify_fresh(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return fresh
+
+    monkeypatch.setattr(ingest, "classify_document", classify_fresh)
+    result = ingest.ingest_directory(
+        directory_path=source,
+        workspace_root=workspace,
+        dataset_id=DATASET_ID,
+        dataset_name="Checksum binding",
+        preclassifications_by_checksum={"not-the-file-checksum": stale},
+    )
+
+    assert calls == 1
+    assert result.documents[0].classification_method == "fresh_classification"
+    assert result.documents[0].company_name == "Fresh Company Ltd."
 
 
 def test_company_conflict_preserves_source_but_does_not_index_it(tmp_path: Path) -> None:

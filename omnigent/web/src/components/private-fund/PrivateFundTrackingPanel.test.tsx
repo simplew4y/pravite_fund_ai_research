@@ -113,6 +113,7 @@ function renderPanel() {
       <PrivateFundTrackingPanel datasetId="sungrow" />
     </QueryClientProvider>,
   );
+  return client;
 }
 
 describe("PrivateFundTrackingPanel", () => {
@@ -345,6 +346,7 @@ describe("PrivateFundTrackingPanel", () => {
       .getAllByRole("dialog")
       .find((element) => element.querySelector('[data-pdf-page-container="true"]'));
     expect(sourceDialog).toHaveClass("sm:max-w-none");
+    expect(sourceDialog).toHaveClass("z-50");
     expect(sourceDialog).toHaveClass("h-[max(360px,calc(100dvh-400px))]");
     expect(sourceDialog).toHaveClass("w-[max(640px,calc(100vw-400px))]");
     const pageContainer = sourceDialog?.querySelector<HTMLElement>(
@@ -358,6 +360,10 @@ describe("PrivateFundTrackingPanel", () => {
       "/v1/private-fund/pdf/source/page?",
     );
     expect(String(sourceFetch.mock.calls[0]?.[0] ?? "")).toContain("page_no=12");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() =>
+      expect(document.querySelector('[data-pdf-page-container="true"]')).not.toBeInTheDocument(),
+    );
   });
 
   it("creates a complete watch rule with keyword, event type, importance and frequency", async () => {
@@ -392,6 +398,8 @@ describe("PrivateFundTrackingPanel", () => {
         }),
       ),
     );
+    expect(await screen.findByRole("status")).toHaveTextContent("规则已创建，列表已同步。");
+    expect(screen.queryByRole("textbox", { name: "规则名称" })).not.toBeInTheDocument();
   });
 
   it("archives selected records from the low-quality governance queue", async () => {

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useChatStore } from "@/store/chatStore";
@@ -67,6 +67,26 @@ function activeRow(): HTMLElement | null {
 function renderWithTooltips(ui: ReactElement) {
   return render(<TooltipProvider>{ui}</TooltipProvider>);
 }
+
+describe("Composer per-session drafts", () => {
+  afterEach(() => cleanup());
+
+  it("restores each unsent draft after switching away and back", async () => {
+    useChatStore.setState({ conversationId: "draft-session-a", skills: [] });
+    render(<Composer {...composerProps()} />);
+    fireEvent.change(textarea(), { target: { value: "会话 A 的未发送草稿" } });
+
+    act(() => useChatStore.setState({ conversationId: "draft-session-b" }));
+    await waitFor(() => expect(textarea()).toHaveValue(""));
+    fireEvent.change(textarea(), { target: { value: "会话 B 的未发送草稿" } });
+
+    act(() => useChatStore.setState({ conversationId: "draft-session-a" }));
+    await waitFor(() => expect(textarea()).toHaveValue("会话 A 的未发送草稿"));
+
+    act(() => useChatStore.setState({ conversationId: "draft-session-b" }));
+    await waitFor(() => expect(textarea()).toHaveValue("会话 B 的未发送草稿"));
+  });
+});
 
 describe("Composer slash-command menu", () => {
   beforeEach(() => {
@@ -1308,7 +1328,7 @@ describe("Composer private-fund context compaction", () => {
     );
     fireEvent.change(textarea(), { target: { value: "尚未发送的研究问题" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "压缩上下文" }));
+    fireEvent.click(screen.getByRole("button", { name: /^压缩上下文/u }));
 
     expect(useChatStore.getState().compact).toHaveBeenCalledOnce();
     expect(textarea().value).toBe("尚未发送的研究问题");
@@ -1317,6 +1337,6 @@ describe("Composer private-fund context compaction", () => {
   it("does not add the dedicated compact button to ordinary sessions", () => {
     renderWithTooltips(<Composer {...composerProps({ isNativeWrapper: true })} />);
 
-    expect(screen.queryByRole("button", { name: "压缩上下文" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^压缩上下文/u })).toBeNull();
   });
 });

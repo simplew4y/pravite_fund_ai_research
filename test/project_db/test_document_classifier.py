@@ -26,7 +26,7 @@ class _FakeChatClient:
         max_tokens: int | None = None,
         temperature: float | None = None,
     ) -> str:
-        assert max_tokens == 900
+        assert max_tokens == classifier.LLM_CLASSIFICATION_MAX_TOKENS
         assert temperature == 0.0
         self.calls.append(messages)
         return self.payload if isinstance(self.payload, str) else json.dumps(self.payload, ensure_ascii=False)
@@ -93,7 +93,10 @@ def test_ambiguous_document_uses_llm_but_validates_the_taxonomy() -> None:
     preview = classifier.DocumentPreview(
         filename="document.pdf",
         file_type="pdf",
-        text="A discussion of demand, margins, channel inventory and next year's outlook.",
+        text=(
+            "Sungrow Power Supply Co., Ltd. research update. "
+            "A discussion of demand, margins, channel inventory and next year's outlook."
+        ),
     )
     llm = _FakeChatClient(
         {
@@ -117,6 +120,112 @@ def test_ambiguous_document_uses_llm_but_validates_the_taxonomy() -> None:
     assert result.doc_subtype == "internal_research_report"
     assert result.classification_status == "accepted"
     assert result.company_name == "Sungrow Power Supply Co., Ltd."
+
+
+def test_ungrounded_llm_company_is_kept_for_review_but_cannot_auto_route() -> None:
+    preview = classifier.DocumentPreview(
+        filename="anonymous-notes.pdf",
+        file_type="pdf",
+        text="Management discussed demand and margin trends without naming the company.",
+    )
+    llm = _FakeChatClient(
+        {
+            "taxonomy_version": classifier.TAXONOMY_VERSION,
+            "doc_type": "meeting_third_party",
+            "doc_subtype": "research_meeting",
+            "confidence": 0.91,
+            "company_name": "Imaginary Holdings Ltd.",
+            "company_ticker": "FAKE",
+            "company_confidence": 0.99,
+            "evidence": ["Management discussed demand"],
+            "requires_review": False,
+        }
+    )
+
+    result = classifier.classify_document(preview, llm_client=llm, llm_policy="verify")
+
+    assert result.company_name == "Imaginary Holdings Ltd."
+    assert result.company_confidence == 0.69
+    assert result.company_method == "llm_unverified_content_entity"
+    assert result.company_requires_review is True
+    assert result.classification_status == "needs_review"
+
+
+def test_explicit_company_review_flag_prevents_high_confidence_auto_routing() -> None:
+    preview = classifier.DocumentPreview(
+        filename="peer-comparison.pdf",
+        file_type="pdf",
+        text="阳光电源股份有限公司与宁德时代新能源科技股份有限公司竞争格局比较。",
+    )
+    llm = _FakeChatClient(
+        {
+            "taxonomy_version": classifier.TAXONOMY_VERSION,
+            "doc_type": "meeting_third_party",
+            "doc_subtype": "broker_company_report",
+            "confidence": 0.92,
+            "company_name": "阳光电源股份有限公司",
+            "company_ticker": "300274.SZ",
+            "company_confidence": 0.98,
+            "company_requires_review": True,
+            "evidence": ["阳光电源股份有限公司与宁德时代新能源科技股份有限公司"],
+            "requires_review": False,
+        }
+    )
+
+    result = classifier.classify_document(preview, llm_client=llm, llm_policy="verify")
+
+    assert result.company_confidence == 0.69
+    assert result.company_requires_review is True
+    assert result.classification_status == "needs_review"
+
+
+def test_verify_policy_uses_llm_even_when_rules_are_high_confidence() -> None:
+    preview = classifier.DocumentPreview(
+        filename="misleading-company-2025-annual-report.pdf",
+        file_type="pdf",
+        text=(
+            "阳光电源股份有限公司\n2025年年度报告\n"
+            "证券代码：300274\n合并资产负债表"
+        ),
+    )
+    llm = _FakeChatClient(
+        {
+            "taxonomy_version": classifier.TAXONOMY_VERSION,
+            "doc_type": "financial_valuation_data",
+            "doc_subtype": "annual_report",
+            "confidence": 0.98,
+            "company_name": "阳光电源股份有限公司",
+            "company_ticker": "300274.SZ",
+            "company_confidence": 0.99,
+            "evidence": ["阳光电源股份有限公司", "2025年年度报告"],
+            "requires_review": False,
+        }
+    )
+
+    result = classifier.classify_document(preview, llm_client=llm, llm_policy="verify")
+
+    assert len(llm.calls) == 1
+    assert result.method == "hybrid_llm"
+    assert result.company_method == "llm_content_entity"
+    assert result.company_name == "阳光电源股份有限公司"
+
+
+def test_llm_excerpt_is_bounded_and_keeps_high_signal_company_lines() -> None:
+    preview = classifier.DocumentPreview(
+        filename="document.pdf",
+        file_type="pdf",
+        text=(
+            "generic cover\n"
+            + ("ordinary narrative without useful identity\n" * 500)
+            + "宁德时代新能源科技股份有限公司 证券代码 300750.SZ 年度报告\n"
+            + ("appendix filler\n" * 300)
+        ),
+    )
+
+    excerpt = classifier._llm_document_excerpt(preview)
+
+    assert len(excerpt) <= classifier.MAX_LLM_PREVIEW_CHARS
+    assert "宁德时代新能源科技股份有限公司" in excerpt
 
 
 def test_llm_cannot_create_an_unregistered_document_type() -> None:

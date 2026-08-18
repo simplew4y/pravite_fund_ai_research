@@ -21,11 +21,6 @@ from omnigent.product_release import (
     product_release,
     product_version,
 )
-from omnigent.server import (
-    private_fund_source_folders,
-    private_fund_tracking,
-    private_fund_valuation_tracking,
-)
 
 MIGRATION_TABLE = "workbench_schema_migrations"
 MIGRATION_COMPONENTS = (
@@ -223,6 +218,8 @@ def _dataset_id(conn: sqlite3.Connection, collection_db: Path) -> str:
 
 
 def _migrate_source_folders(conn: sqlite3.Connection, dataset_id: str) -> None:
+    from omnigent.server import private_fund_source_folders
+
     try:
         rows = conn.execute(
             """
@@ -249,6 +246,8 @@ def _discard_legacy_risk_catalyst_tracking(
     conn: sqlite3.Connection, dataset_id: str
 ) -> dict[str, int]:
     """Discard beta risk/catalyst outputs while preserving source files and Memos."""
+
+    from omnigent.server import private_fund_tracking
 
     item_filter = "dataset_id=? AND item_type IN ('risk', 'catalyst')"
     item_ids = [
@@ -399,6 +398,12 @@ def migrate_collection_database(
     app_version: str,
     backup_path: Path,
 ) -> dict[str, Any]:
+    from omnigent.server import (
+        private_fund_source_folders,
+        private_fund_tracking,
+        private_fund_valuation_tracking,
+    )
+
     target = database_target_version()
     with sqlite3.connect(collection_db, timeout=30) as probe:
         states = {

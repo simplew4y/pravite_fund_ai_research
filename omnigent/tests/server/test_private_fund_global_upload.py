@@ -66,7 +66,9 @@ def test_filename_company_match_routes_and_indexes_one_project(
         lambda *_args, **_kwargs: _classification(""),
     )
 
-    def complete_pipeline(_batch_id: str, dataset_id: str, item_ids: list[str]) -> None:
+    def complete_pipeline(
+        _batch_id: str, dataset_id: str, item_ids: list[str], **_kwargs: Any
+    ) -> None:
         assert dataset_id == "sungrow"
         for item_id in item_ids:
             private_fund_pdf._update_global_upload_item(item_id, status="completed")
@@ -128,7 +130,9 @@ def test_same_company_in_multiple_projects_uses_one_canonical_project(
         lambda *_args, **_kwargs: _classification("阳光电源股份有限公司"),
     )
 
-    def complete_pipeline(_batch_id: str, dataset_id: str, item_ids: list[str]) -> None:
+    def complete_pipeline(
+        _batch_id: str, dataset_id: str, item_ids: list[str], **_kwargs: Any
+    ) -> None:
         assert dataset_id == "sungrow-main"
         for item_id in item_ids:
             private_fund_pdf._update_global_upload_item(item_id, status="completed")
@@ -174,6 +178,102 @@ def test_filename_identity_understands_the_sample_document_names() -> None:
         assert (identity.company_name, identity.company_ticker) == expected
 
 
+def test_llm_verified_identity_overrides_a_misleading_filename() -> None:
+    classification = SimpleNamespace(
+        company_name="阳光电源股份有限公司",
+        company_ticker="300274.SZ",
+        company_confidence=0.98,
+        company_method="llm_content_entity",
+    )
+
+    identity = private_fund_pdf._global_upload_identity(
+        classification,
+        "宁德时代300750年度报告.pdf",
+    )
+
+    assert identity.company_name == "阳光电源股份有限公司"
+    assert identity.company_ticker == "300274.SZ"
+    assert identity.company_confidence == 0.98
+
+
+def test_llm_company_does_not_inherit_a_conflicting_filename_ticker() -> None:
+    classification = SimpleNamespace(
+        company_name="阳光电源股份有限公司",
+        company_ticker="",
+        company_confidence=0.98,
+        company_method="llm_content_entity",
+    )
+
+    identity = private_fund_pdf._global_upload_identity(
+        classification,
+        "宁德时代300750年度报告.pdf",
+    )
+
+    assert identity.company_name == "阳光电源股份有限公司"
+    assert identity.company_ticker == ""
+
+
+def test_reviewed_item_does_not_absorb_a_verified_item_in_batch_clustering() -> None:
+    reviewed = private_fund_pdf._GlobalUploadIdentity(
+        company_name="阳光电源股份有限公司",
+        company_ticker="300274.SZ",
+        requires_review=True,
+    )
+    verified = private_fund_pdf._GlobalUploadIdentity(
+        company_name="阳光电源股份有限公司",
+        company_ticker="300274.SZ",
+        company_confidence=0.98,
+    )
+    item_a = SimpleNamespace()
+    item_b = SimpleNamespace()
+
+    groups = private_fund_pdf._cluster_global_upload_identities(
+        [(item_a, reviewed), (item_b, verified)]
+    )
+
+    assert len(groups) == 2
+
+
+def test_company_review_flag_prevents_automatic_project_confidence() -> None:
+    classification = SimpleNamespace(
+        company_name="阳光电源股份有限公司",
+        company_ticker="300274.SZ",
+        company_confidence=0.99,
+        company_requires_review=True,
+        company_method="llm_content_entity",
+    )
+
+    identity = private_fund_pdf._global_upload_identity(
+        classification,
+        "阳光电源300274研究资料.pdf",
+    )
+
+    assert identity.company_confidence == 0.69
+    assert identity.requires_review is True
+
+
+def test_company_review_flag_blocks_even_an_exact_existing_project(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    monkeypatch.setattr(private_fund_pdf, "_dataset_workspace_root", lambda: tmp_path)
+    _project(
+        "sungrow",
+        "阳光电源",
+        company_name="阳光电源股份有限公司",
+        company_ticker="300274.SZ",
+    )
+    identity = private_fund_pdf._GlobalUploadIdentity(
+        company_name="阳光电源股份有限公司",
+        company_ticker="300274.SZ",
+        company_confidence=0.69,
+        ticker_confidence=0.69,
+        method="llm_content_entity",
+        requires_review=True,
+    )
+
+    assert private_fund_pdf._ensure_global_upload_project(identity, []) is None
+
+
 def test_sample_batch_creates_six_company_projects_and_routes_all_files(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
@@ -202,7 +302,9 @@ def test_sample_batch_creates_six_company_projects_and_routes_all_files(
 
     monkeypatch.setattr(ingest, "classify_document", classify)
 
-    def complete_pipeline(_batch_id: str, _dataset_id: str, item_ids: list[str]) -> None:
+    def complete_pipeline(
+        _batch_id: str, _dataset_id: str, item_ids: list[str], **_kwargs: Any
+    ) -> None:
         for item_id in item_ids:
             private_fund_pdf._update_global_upload_item(item_id, status="completed")
 
