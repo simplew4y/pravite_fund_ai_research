@@ -14,6 +14,8 @@ import type {
   AgentWorkerPort,
   StartAgentSessionInput,
 } from "../agent-supervisor.js";
+import type { ModelGatewayCapability } from "../kernel-plugins/model-gateway.js";
+import { buildModelRequestDraft } from "./gateway-provider.js";
 import {
   streamChatCompletion,
   type ChatMessage,
@@ -176,6 +178,7 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
   readonly #listeners = new Set<(event: AgentEvent) => void>();
   readonly #options: HarnessAgentRuntimeOptions;
   #toolHandler: AgentToolRequestHandler | undefined;
+  #modelGateway: ModelGatewayCapability | undefined;
   #stopped = false;
 
   constructor(options: HarnessAgentRuntimeOptions) {
@@ -184,6 +187,21 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
 
   public setToolHandler(handler: AgentToolRequestHandler | undefined): void {
     this.#toolHandler = handler;
+  }
+
+  /**
+   * Route every model call through the commit-before-send gateway. Until
+   * this is bound the loop falls back to the direct client (kill switch).
+   */
+  public setModelGateway(gateway: ModelGatewayCapability | undefined): void {
+    this.#modelGateway = gateway;
+  }
+
+  /** Transport endpoint for a live session; used by the provider adapter. */
+  public endpointForSession(sessionId: string): ChatModelEndpoint {
+    const session = this.#requireSession(sessionId);
+    const endpoint = this.#options.resolveEndpoint(session);
+    return { ...endpoint, model: this.#modelFor(session) };
   }
 
   public async start(input: StartAgentSessionInput): Promise<void> {
@@ -240,9 +258,9 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
     this.#emit(sessionId, null, "compaction.started", { reason: "manual" });
     void (async () => {
       try {
-        const messages = this.#deriveSessionMessages(session);
+        const derived = this.#deriveSessionMessages(session);
         const summaryRequest: ChatMessage[] = [
-          ...messages,
+          ...derived.messages,
           {
             role: "user",
             content:
@@ -250,17 +268,14 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
               "请把以上对话压缩成一段忠实的中文摘要，保留全部结论、数字区间与未决事项。只输出摘要。",
           },
         ];
-        let summary = "";
-        for await (const event of streamChatCompletion(
-          this.#options.resolveEndpoint(session),
-          {
-            model: this.#modelFor(session),
-            messages: summaryRequest,
-          },
-          this.#options.fetchImplementation,
-        )) {
-          if (event.type === "completed") summary = event.text;
-        }
+        const { text: summary } = await this.#streamStep({
+          session,
+          operationId: null,
+          turnId: newId("turn"),
+          stepId: newId("step"),
+          messages: summaryRequest,
+          journalThroughSequence: derived.throughSequence,
+        });
         this.#emit(sessionId, null, "compaction.completed", { summary });
       } catch (error) {
         this.#emit(sessionId, null, "compaction.failed", {
@@ -308,7 +323,10 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
     );
   }
 
-  #deriveSessionMessages(session: SessionContext): ChatMessage[] {
+  #deriveSessionMessages(session: SessionContext): {
+    messages: ChatMessage[];
+    throughSequence: number;
+  } {
     const events: Pick<SessionEvent, "type" | "payload">[] = [];
     let after = 0;
     for (;;) {
@@ -323,7 +341,96 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
       after = batch[batch.length - 1]!.sequence;
       if (batch.length < 1_000 || events.length >= MAX_HISTORY_EVENTS) break;
     }
-    return deriveMessages(events, this.#systemPromptFor(session));
+    return {
+      messages: deriveMessages(events, this.#systemPromptFor(session)),
+      throughSequence: after,
+    };
+  }
+
+  /**
+   * One model step. With a gateway bound this is the commit-before-send
+   * path: the exact request body is journaled before any network send and
+   * every provider event is persisted for replay. Without one it falls
+   * back to the direct client.
+   */
+  async #streamStep(input: {
+    session: SessionContext;
+    operationId: string | null;
+    turnId: string;
+    stepId: string;
+    messages: readonly ChatMessage[];
+    tools?: readonly ChatToolDefinition[];
+    journalThroughSequence: number;
+    signal?: AbortSignal;
+    onDelta?: (text: string) => void;
+  }): Promise<{ text: string; toolCalls: ChatToolCall[] }> {
+    const model = this.#modelFor(input.session);
+    if (this.#modelGateway === undefined) {
+      let text = "";
+      let toolCalls: ChatToolCall[] = [];
+      for await (const event of streamChatCompletion(
+        this.#options.resolveEndpoint(input.session),
+        {
+          model,
+          messages: input.messages,
+          ...(input.tools === undefined ? {} : { tools: input.tools }),
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
+        },
+        this.#options.fetchImplementation,
+      )) {
+        if (event.type === "delta") {
+          text += event.text;
+          input.onDelta?.(event.text);
+        } else {
+          toolCalls = [...event.toolCalls];
+        }
+      }
+      return { text, toolCalls };
+    }
+
+    const gateway = this.#modelGateway.forTenant(input.session.tenantNamespace);
+    const draft = buildModelRequestDraft({
+      sessionId: input.session.sessionId,
+      operationId: input.operationId,
+      turnId: input.turnId,
+      stepId: input.stepId,
+      model,
+      messages: input.messages,
+      ...(input.tools === undefined ? {} : { tools: input.tools }),
+      journalThroughSequence: input.journalThroughSequence,
+    });
+    let text = "";
+    const toolCalls: ChatToolCall[] = [];
+    for await (const event of gateway.stream(draft, {
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+    })) {
+      switch (event.type) {
+        case "delta":
+          if (event.channel === "text") {
+            text += event.delta;
+            input.onDelta?.(event.delta);
+          }
+          break;
+        case "tool_call":
+          toolCalls.push({
+            id: event.toolCallId,
+            type: "function",
+            function: {
+              name: event.name,
+              arguments: JSON.stringify(event.arguments),
+            },
+          });
+          break;
+        case "error":
+          throw new Error(`Model provider error (${event.code}): ${event.message}`);
+        case "aborted":
+          throw new Error(`Model request aborted: ${event.reason}`);
+        case "usage":
+        case "final":
+          break;
+      }
+    }
+    return { text, toolCalls };
   }
 
   #systemPromptFor(session: SessionContext): string {
@@ -370,12 +477,12 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
       // persisted by the session service before prompt(), so drop the tail
       // duplicate if present and re-append the live content).
       const derived = this.#deriveSessionMessages(session);
-      const last = derived[derived.length - 1];
-      if (last?.role === "user" && last.content === content) derived.pop();
-      const messages: ChatMessage[] = [...derived, { role: "user", content }];
+      const history = derived.messages;
+      const last = history[history.length - 1];
+      if (last?.role === "user" && last.content === content) history.pop();
+      const messages: ChatMessage[] = [...history, { role: "user", content }];
       const tools = buildToolDefinitions();
-      const endpoint = this.#options.resolveEndpoint(session);
-      const model = this.#modelFor(session);
+      const turnId = newId("turn");
       let turnText = "";
 
       const maxSteps = this.#options.maxSteps ?? MAX_STEPS;
@@ -396,28 +503,22 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
           messages.push({ role: "user", content: extra });
         }
 
-        let stepText = "";
-        let toolCalls: readonly ChatToolCall[] = [];
-        for await (const event of streamChatCompletion(
-          endpoint,
-          {
-            model,
-            messages,
-            signal,
-            ...(finalStep ? {} : { tools }),
-          },
-          this.#options.fetchImplementation,
-        )) {
-          if (event.type === "delta") {
-            stepText += event.text;
-            turnText += event.text;
+        const { text: stepText, toolCalls } = await this.#streamStep({
+          session,
+          operationId,
+          turnId,
+          stepId: newId("step"),
+          messages,
+          ...(finalStep ? {} : { tools }),
+          journalThroughSequence: derived.throughSequence,
+          signal,
+          onDelta: (delta) => {
+            turnText += delta;
             this.#emit(sessionId, operationId, "message.assistant.delta", {
-              delta: event.text,
+              delta,
             });
-          } else {
-            toolCalls = event.toolCalls;
-          }
-        }
+          },
+        });
 
         if (toolCalls.length === 0 || finalStep) {
           // The durable answer is the final step's text: intermediate

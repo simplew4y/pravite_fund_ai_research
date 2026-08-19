@@ -452,6 +452,9 @@ describe("canonical session HTTP and SSE control plane", () => {
       url: `/v1/sessions/${session.id}`,
     });
     expect(recoveredSession.statusCode, recoveredSession.body).toBe(200);
+    // The hung compaction must have exactly one durable terminal: either the
+    // gateway aborted it during shutdown (recorded before exit) or restart
+    // reconciliation stamped it — both accounts are valid.
     const recovered = await eventuallyEvents(
       runtime,
       session.id,
@@ -459,21 +462,28 @@ describe("canonical session HTTP and SSE control plane", () => {
         events.some(
           (event) =>
             event.type === "compaction.failed" &&
-            event.payload["reason"] === "control_plane_restart",
+            event.sequence > started.sequence,
         ),
     );
     const recoveredTerminal = recovered.find(
       (event) =>
         event.type === "compaction.failed" &&
-        event.payload["reason"] === "control_plane_restart",
+        event.sequence > started.sequence,
     );
     if (recoveredTerminal === undefined) {
       throw new Error("Expected a recovered compaction terminal");
     }
-    expect(recoveredTerminal.payload).toMatchObject({
-      recoverable: true,
-      requestedSequence: started.sequence - 1,
-    });
+    if (recoveredTerminal.payload["reason"] !== undefined) {
+      expect(recoveredTerminal.payload).toMatchObject({
+        reason: "control_plane_restart",
+        recoverable: true,
+        requestedSequence: started.sequence - 1,
+      });
+    } else {
+      expect(String(recoveredTerminal.payload["error"] ?? "")).toContain(
+        "aborted: shutdown",
+      );
+    }
 
     const retryResponse = await runtime.app.inject({
       method: "POST",
@@ -583,12 +593,21 @@ describe("canonical session HTTP and SSE control plane", () => {
       recoveredOperation.statusCode,
       recoveredOperation.body,
     ).toBe(200);
-    expect(recoveredOperation.json()).toMatchObject({
+    const recovered = recoveredOperation.json<{
+      id: string;
+      status: string;
+      error: string | null;
+    }>();
+    expect(recovered).toMatchObject({
       id: operation.operationId,
       status: "failed",
-      error:
-        "Control plane restarted before the agent operation emitted a terminal event",
     });
+    // Either the gateway aborted the in-flight request during shutdown (the
+    // failure was durably recorded before exit) or restart reconciliation
+    // stamped the orphaned operation — both are valid terminal accounts.
+    expect(recovered.error).toMatch(
+      /aborted: shutdown|Control plane restarted before the agent operation/,
+    );
     const recoveredEvents = await eventuallyEvents(
       runtime,
       session.id,
@@ -596,20 +615,22 @@ describe("canonical session HTTP and SSE control plane", () => {
         events.some(
           (event) =>
             event.type === "operation.failed" &&
-            event.operationId === operation.operationId &&
-            event.payload["reason"] === "control_plane_restart",
+            event.operationId === operation.operationId,
         ),
     );
-    expect(
-      recoveredEvents.find(
-        (event) =>
-          event.type === "operation.failed" &&
-          event.operationId === operation.operationId,
-      )?.payload,
-    ).toMatchObject({
-      reason: "control_plane_restart",
-      recoverable: true,
-    });
+    const failure = recoveredEvents.find(
+      (event) =>
+        event.type === "operation.failed" &&
+        event.operationId === operation.operationId,
+    )?.payload;
+    if (failure?.["reason"] !== undefined) {
+      expect(failure).toMatchObject({
+        reason: "control_plane_restart",
+        recoverable: true,
+      });
+    } else {
+      expect(String(failure?.["error"] ?? "")).toContain("aborted: shutdown");
+    }
 
     const retry = await runtime.app.inject({
       method: "POST",

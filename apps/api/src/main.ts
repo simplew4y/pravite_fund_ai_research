@@ -16,7 +16,16 @@ import {
 } from "./kernel-plugins/domain-services.js";
 import { apiHttpPlugin } from "./kernel-plugins/http.js";
 import { identityPlugin } from "./kernel-plugins/identity.js";
+import { modelGatewayPlugin } from "./kernel-plugins/model-gateway.js";
 import { researchStoresPlugin } from "./kernel-plugins/research-stores.js";
+import {
+  HARNESS_CONTEXT_COMPILER_VERSION,
+  OpenAiCompatibleModelProvider,
+} from "./harness-agent/gateway-provider.js";
+import {
+  RepositoryModelRequestJournal,
+  type ModelAuditBlobWriter,
+} from "./model-request-journal.js";
 
 export interface ApiRuntime {
   readonly config: ApiConfig;
@@ -55,6 +64,46 @@ export async function createApiRuntime(
     await kernel.use(insightsPlugin);
     await kernel.use(identityPlugin, { config });
     await kernel.use(sessionsPlugin, { config });
+    if (config.modelCommitBeforeSend ?? true) {
+      // Commit-before-send: the final request body is journaled before any
+      // network send; transport credentials resolve out-of-band per session.
+      const agentRuntime = kernel.get("agentRuntime");
+      const controlDb = kernel.get("controlDb");
+      const blobWriter: ModelAuditBlobWriter | undefined =
+        config.blobStore === undefined
+          ? undefined
+          : {
+              write: async (input) => {
+                const store = kernel.get("blobStore");
+                return store.put({
+                  tenantId: input.tenantNamespace,
+                  source: input.bytes,
+                  mimeType: input.mimeType,
+                  classification: input.classification,
+                });
+              },
+            };
+      await kernel.use(modelGatewayPlugin, {
+        provider: new OpenAiCompatibleModelProvider((sessionId) =>
+          agentRuntime.endpointForSession(sessionId),
+        ),
+        createJournal: (tenantNamespace) =>
+          new RepositoryModelRequestJournal({
+            tenantNamespace,
+            repository: controlDb.repositories.sessionJournal,
+            sourceVersion: HARNESS_CONTEXT_COMPILER_VERSION,
+            ...(blobWriter === undefined
+              ? // Without an encrypted blob store, keep audit payloads
+                // inline with a wider budget instead of failing closed on
+                // long contexts. Reasoning deltas (restricted) never occur
+                // on this provider.
+                { inlineLimitBytes: 1024 * 1024 }
+              : { blobWriter }),
+          }),
+        gatewayOptions: { defaultTimeoutMs: 300_000 },
+      });
+      agentRuntime.setModelGateway(kernel.get("modelGateway"));
+    }
     await kernel.use(apiHttpPlugin, { config });
   } catch (error) {
     await kernel.stop().catch(() => undefined);

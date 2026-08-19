@@ -127,7 +127,8 @@ const modelRequestSemanticFields = {
   schemaVersion: z.literal(MODEL_REQUEST_SCHEMA_VERSION),
   requestId: identifierSchema,
   sessionId: identifierSchema,
-  operationId: identifierSchema,
+  /** Null for maintenance calls (e.g. compaction) that own no operation. */
+  operationId: identifierSchema.nullable(),
   turnId: identifierSchema,
   stepId: identifierSchema,
   providerId: identifierSchema,

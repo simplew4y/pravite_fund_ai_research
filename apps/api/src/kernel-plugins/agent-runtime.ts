@@ -10,10 +10,13 @@ import type {
 import type { ApiConfig } from "../config.js";
 import { HarnessAgentRuntime } from "../harness-agent/runtime.js";
 import type { ChatModelEndpoint } from "../harness-agent/model-client.js";
+import type { ModelGatewayCapability } from "./model-gateway.js";
 import type { ControlDbService } from "@private-fund/db";
 
 export type AgentRuntimeService = AgentWorkerPort & {
   setToolHandler(handler: AgentToolRequestHandler | undefined): void;
+  setModelGateway(gateway: ModelGatewayCapability | undefined): void;
+  endpointForSession(sessionId: string): ChatModelEndpoint;
 };
 
 declare module "@private-fund/kernel" {
