@@ -1,9 +1,12 @@
+import type { DatabaseSync } from "node:sqlite";
+
 import type { SessionEvent } from "@private-fund/contracts";
 import type {
   SessionEventsRepository,
   SessionJournalIntegrityReport,
   SessionJournalRepository,
 } from "@private-fund/db";
+import { withTransaction } from "@private-fund/db";
 
 import type { SessionEventSourceKind } from "@private-fund/contracts";
 
@@ -37,10 +40,21 @@ export function shadowIdempotencyKey(
   return `shadow-${sessionId}-${String(sequence)}`;
 }
 
+export type SessionJournalMode = "shadow" | "authority";
+
 export interface ShadowSessionJournalOptions {
+  readonly database: DatabaseSync;
   readonly sessionEvents: SessionEventsRepository;
   readonly sessionJournal: SessionJournalRepository;
   readonly enabled: boolean;
+  /**
+   * shadow: the legacy table is authoritative; the journal mirrors lazily
+   * and mirror failures never break the user path.
+   * authority: the journal is authoritative; every durable event is written
+   * to both tables in one transaction and a journal failure rejects the
+   * write outright (fail closed).
+   */
+  readonly mode?: SessionJournalMode;
   readonly onError?: (error: unknown, sessionId: string) => void;
 }
 
@@ -59,15 +73,20 @@ export interface ShadowSessionJournalOptions {
 export class ShadowSessionJournal {
   readonly #sessionEvents: SessionEventsRepository;
   readonly #sessionJournal: SessionJournalRepository;
+  readonly #database: DatabaseSync;
   readonly #enabled: boolean;
+  readonly #mode: SessionJournalMode;
   readonly #onError: (error: unknown, sessionId: string) => void;
+  readonly #cursors = new Map<string, number>();
   #failureCount = 0;
   #syncedCount = 0;
 
   constructor(options: ShadowSessionJournalOptions) {
+    this.#database = options.database;
     this.#sessionEvents = options.sessionEvents;
     this.#sessionJournal = options.sessionJournal;
     this.#enabled = options.enabled;
+    this.#mode = options.mode ?? "shadow";
     this.#onError =
       options.onError ??
       ((error, sessionId) => {
@@ -80,6 +99,47 @@ export class ShadowSessionJournal {
 
   get enabled(): boolean {
     return this.#enabled;
+  }
+
+  get mode(): SessionJournalMode {
+    return this.#mode;
+  }
+
+  /**
+   * Authority-mode write path: append the legacy UI projection and its
+   * journal fact in ONE transaction. The mirror uses the exact shadow-sync
+   * envelope (same idempotency key, source and payload), so flipping modes
+   * in either direction never conflicts with existing rows.
+   *
+   * In shadow mode this degrades to the legacy append plus a lazy,
+   * failure-tolerant sync — the historical behaviour.
+   */
+  appendWithMirror(
+    tenantNamespace: string,
+    appendLegacy: () => SessionEvent,
+  ): SessionEvent {
+    if (!this.#enabled || this.#mode !== "authority") {
+      const event = appendLegacy();
+      if (this.#enabled) this.sync(tenantNamespace, event.sessionId);
+      return event;
+    }
+    const event = withTransaction(this.#database, () => {
+      const appended = appendLegacy();
+      // Backfill rows written outside this path (session.created and fork
+      // copies are inserted inside the sessions repository transaction), so
+      // the mirrored stream keeps the exact legacy order.
+      this.#catchUp(tenantNamespace, appended.sessionId, appended.sequence - 1);
+      this.#append(tenantNamespace, appended);
+      this.#syncedCount += 1;
+      return appended;
+    });
+    // Advance the watermark only after the transaction committed; a rolled
+    // back mirror must not leave the cursor ahead of the journal.
+    this.#cursors.set(
+      this.#cursorKey(tenantNamespace, event.sessionId),
+      event.sequence,
+    );
+    return event;
   }
 
   get failureCount(): number {
@@ -96,31 +156,52 @@ export class ShadowSessionJournal {
    */
   sync(tenantNamespace: string, sessionId: string): number {
     if (!this.#enabled) return 0;
-    let appended = 0;
     try {
-      let after = this.#journalTail(tenantNamespace, sessionId);
-      for (;;) {
-        const batch = this.#sessionEvents.replayForTenant(
-          tenantNamespace,
-          sessionId,
-          after,
-          SYNC_BATCH,
-        );
-        if (batch.length === 0) break;
-        for (const event of batch) {
-          this.#append(tenantNamespace, event);
-          appended += 1;
-        }
-        after = batch[batch.length - 1]!.sequence;
-        if (batch.length < SYNC_BATCH) break;
-      }
+      const { appended, cursor } = this.#catchUp(
+        tenantNamespace,
+        sessionId,
+        Number.MAX_SAFE_INTEGER,
+      );
+      this.#cursors.set(this.#cursorKey(tenantNamespace, sessionId), cursor);
       this.#syncedCount += appended;
       return appended;
     } catch (error) {
       this.#failureCount += 1;
       this.#onError(error, sessionId);
-      return appended;
+      return 0;
     }
+  }
+
+  /** Mirror every legacy event with sequence <= through (idempotent). */
+  #catchUp(
+    tenantNamespace: string,
+    sessionId: string,
+    through: number,
+  ): { appended: number; cursor: number } {
+    let appended = 0;
+    let after = this.#mirrorCursor(tenantNamespace, sessionId);
+    while (after < through) {
+      const batch = this.#sessionEvents.replayForTenant(
+        tenantNamespace,
+        sessionId,
+        after,
+        SYNC_BATCH,
+      );
+      if (batch.length === 0) break;
+      for (const event of batch) {
+        if (event.sequence > through) break;
+        this.#append(tenantNamespace, event);
+        appended += 1;
+        after = event.sequence;
+      }
+      if (
+        batch.length < SYNC_BATCH ||
+        batch[batch.length - 1]!.sequence > through
+      ) {
+        break;
+      }
+    }
+    return { appended, cursor: after };
   }
 
   verify(
@@ -133,19 +214,38 @@ export class ShadowSessionJournal {
     );
   }
 
-  #journalTail(tenantNamespace: string, sessionId: string): number {
+  #cursorKey(tenantNamespace: string, sessionId: string): string {
+    return `${tenantNamespace}|${sessionId}`;
+  }
+
+  /**
+   * Highest legacy sequence already mirrored. The journal interleaves tool
+   * and model audit rows, so the watermark is the max shadowSequence among
+   * shadow-sync rows — never the journal's own tail sequence.
+   */
+  #mirrorCursor(tenantNamespace: string, sessionId: string): number {
+    const cached = this.#cursors.get(this.#cursorKey(tenantNamespace, sessionId));
+    if (cached !== undefined) return cached;
     let tail = 0;
+    let after = 0;
     for (;;) {
       const batch = this.#sessionJournal.replayForTenant(
         tenantNamespace,
         sessionId,
-        tail,
+        after,
         SYNC_BATCH,
       );
-      if (batch.length === 0) return tail;
-      tail = batch[batch.length - 1]!.sequence;
-      if (batch.length < SYNC_BATCH) return tail;
+      if (batch.length === 0) break;
+      for (const event of batch) {
+        if (event.source.version !== SHADOW_SOURCE_VERSION) continue;
+        const mirrored = event.payload.shadowSequence;
+        if (typeof mirrored === "number" && mirrored > tail) tail = mirrored;
+      }
+      after = batch[batch.length - 1]!.sequence;
+      if (batch.length < SYNC_BATCH) break;
     }
+    this.#cursors.set(this.#cursorKey(tenantNamespace, sessionId), tail);
+    return tail;
   }
 
   #append(tenantNamespace: string, event: SessionEvent): void {

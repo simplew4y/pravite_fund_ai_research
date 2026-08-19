@@ -316,6 +316,10 @@ export class RepositoryJobService implements JobService {
 
 export interface SessionJournalShadowPort {
   sync(tenantNamespace: string, sessionId: string): number;
+  appendWithMirror(
+    tenantNamespace: string,
+    appendLegacy: () => SessionEvent,
+  ): SessionEvent;
 }
 
 export interface RepositorySessionServiceOptions {
@@ -582,7 +586,7 @@ export class RepositorySessionService implements SessionService {
           if (!isForkHistoryEvent(event.type)) {
             continue;
           }
-          this.#repositories.sessionEvents.appendForTenant(
+          this.#appendForkHistory(
             tenant.dataNamespace,
             {
               sessionId,
@@ -1306,13 +1310,38 @@ export class RepositorySessionService implements SessionService {
       readonly operationId?: string | null;
     },
   ): SessionEvent {
-    const event = this.#repositories.sessionEvents.appendForTenant(
-      tenant.dataNamespace,
-      input,
-    );
-    this.#journalShadow?.sync(tenant.dataNamespace, input.sessionId);
+    const appendLegacy = (): SessionEvent =>
+      this.#repositories.sessionEvents.appendForTenant(
+        tenant.dataNamespace,
+        input,
+      );
+    // Authority mode writes the journal fact and the UI projection in one
+    // transaction (journal failure rejects the event); shadow mode keeps the
+    // historical lazy mirror.
+    const event =
+      this.#journalShadow === null
+        ? appendLegacy()
+        : this.#journalShadow.appendWithMirror(
+            tenant.dataNamespace,
+            appendLegacy,
+          );
     this.#publish(tenant, event);
     return event;
+  }
+
+  #appendForkHistory(
+    tenantNamespace: string,
+    input: {
+      readonly sessionId: string;
+      readonly type: string;
+      readonly payload: Record<string, unknown>;
+    },
+  ): SessionEvent {
+    const appendLegacy = (): SessionEvent =>
+      this.#repositories.sessionEvents.appendForTenant(tenantNamespace, input);
+    return this.#journalShadow === null
+      ? appendLegacy()
+      : this.#journalShadow.appendWithMirror(tenantNamespace, appendLegacy);
   }
 
   #publish(tenant: TenantContext, event: SessionEvent): void {

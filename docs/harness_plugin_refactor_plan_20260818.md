@@ -167,4 +167,4 @@ Agent   plugin-model-gateway   ctx.llm：Provider adapter 注册 + commit-before
 
 | 6 ModelGateway 接管 | 本次提交 | ✅ commit-before-send 生效于生产路径：agent loop 全部模型调用（含 compaction）经 `ctx.modelGateway`，最终请求体（system prompt/上下文/工具 schema/参数，凭据除外）先落 `model.request.snapshot` 再发送，写失败即拒发；每个 provider 事件带 causation 落审计日志；毒化日志测试证明 fail closed（无任何模型输出）。kill switch：`PRIVATE_FUND_MODEL_COMMIT_BEFORE_SEND=0` |
 
-尚未切换（浸泡期后动作）：journal 权威切换（仍 Shadow，legacy `session_events` 为权威——现在它同时是 agent loop 的上下文来源，切换后 deriveMessages 改读 journal 即可）。
+| 7 Journal 转正 | 本次提交 | ✅ Session Journal 成为会话域权威：每个持久事件在**同一事务**内写入 journal 事实与 legacy UI 投影（journal 写失败整体回滚，毒化测试证明消息内容零泄漏、失败簿记仍可记录）；`deriveMessages` 改读 journal 镜像行（按 provenance 过滤审计行，内部翻页）；镜像水位改按 shadowSequence（修复审计行推高原生尾号导致漏镜像的缺陷）；create/fork 直插行在首个后续事务内补齐，顺序与投影恒等。读契约（SSE/事件接口）不变，前端零感知。kill switch：`PRIVATE_FUND_SESSION_JOURNAL_AUTHORITY=0` 回影子模式（同构信封，双向切换零冲突） |

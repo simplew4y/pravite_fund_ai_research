@@ -132,14 +132,20 @@ describe("commit-before-send model audit", () => {
       journal.filter((event) => event.type === "model.stream.completed"),
     ).toHaveLength(2);
 
-    // Provider events are causally linked to their request snapshot.
-    const streamEvents = journal.filter((event) =>
-      [
-        "message.assistant.delta",
-        "assistant.toolcall_end",
-        "model.stream.completed",
-      ].includes(event.type),
+    // Provider events are causally linked to their request snapshot. The
+    // journal also carries UI mirror rows (source shadow-sync/1) for the
+    // same types, so select by model provenance.
+    const streamEvents = journal.filter(
+      (event) =>
+        [
+          "message.assistant.delta",
+          "assistant.toolcall_end",
+          "model.stream.completed",
+        ].includes(event.type) &&
+        event.source.kind === "model" &&
+        event.source.version !== "shadow-sync/1",
     );
+    expect(streamEvents.length).toBeGreaterThan(0);
     const snapshotIds = new Set(snapshots.map((event) => event.eventId));
     for (const event of streamEvents) {
       expect(event.causationEventId).not.toBeNull();

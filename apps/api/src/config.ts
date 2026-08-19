@@ -64,6 +64,7 @@ const environmentSchema = z.object({
     .default(30_000),
   PRIVATE_FUND_WEB_ROOT: z.string().min(1).optional(),
   PRIVATE_FUND_SESSION_JOURNAL_SHADOW: z.string().default("1"),
+  PRIVATE_FUND_SESSION_JOURNAL_AUTHORITY: z.string().default("1"),
   PRIVATE_FUND_COOKIE_SECURE: z.string().optional(),
   PRIVATE_FUND_MODEL_COMMIT_BEFORE_SEND: z.string().default("1"),
   PRIVATE_FUND_AGENT_BASE_URL: z.string().url().optional(),
@@ -109,6 +110,9 @@ export interface ApiConfig {
   };
   webRoot?: string;
   sessionJournalShadow?: boolean;
+  /** Journal-authoritative writes: durable events commit to the journal and
+   * the legacy UI projection in one transaction (fail closed). */
+  sessionJournalAuthority?: boolean;
   /** Session-cookie Secure attribute. Defaults to true in cloud auth mode. */
   cookieSecure?: boolean;
   /** Route model calls through the commit-before-send gateway (default on). */
@@ -215,6 +219,9 @@ export function loadApiConfig(
           ),
         }),
     sessionJournalShadow: truthy(parsed.PRIVATE_FUND_SESSION_JOURNAL_SHADOW),
+    sessionJournalAuthority: truthy(
+      parsed.PRIVATE_FUND_SESSION_JOURNAL_AUTHORITY,
+    ),
     cookieSecure:
       parsed.PRIVATE_FUND_COOKIE_SECURE === undefined
         ? parsed.PRIVATE_FUND_AUTH_MODE === "cloud"

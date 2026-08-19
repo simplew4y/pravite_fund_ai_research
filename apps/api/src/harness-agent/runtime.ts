@@ -76,8 +76,25 @@ interface ActiveTurn {
   readonly done: Promise<void>;
 }
 
+export interface DurableEventRecord {
+  readonly sequence: number;
+  readonly type: string;
+  readonly payload: Record<string, unknown>;
+}
+
 export interface HarnessAgentRuntimeOptions {
   readonly sessionEvents: SessionEventsRepository;
+  /**
+   * Authority-mode context source: read the model-visible event stream from
+   * the Session Journal instead of the legacy projection. Falls back to
+   * sessionEvents when absent.
+   */
+  readonly replayEvents?: (
+    tenantNamespace: string,
+    sessionId: string,
+    afterSequence: number,
+    limit: number,
+  ) => DurableEventRecord[];
   /** Resolves the chat endpoint for a session (cloud gateway or dev env). */
   readonly resolveEndpoint: HarnessAgentEndpointResolver;
   /**
@@ -327,10 +344,19 @@ export class HarnessAgentRuntime implements AgentWorkerPort {
     messages: ChatMessage[];
     throughSequence: number;
   } {
+    const replay =
+      this.#options.replayEvents ??
+      ((tenantNamespace: string, sessionId: string, after: number, limit: number) =>
+        this.#options.sessionEvents.replayForTenant(
+          tenantNamespace,
+          sessionId,
+          after,
+          limit,
+        ));
     const events: Pick<SessionEvent, "type" | "payload">[] = [];
     let after = 0;
     for (;;) {
-      const batch = this.#options.sessionEvents.replayForTenant(
+      const batch = replay(
         session.tenantNamespace,
         session.sessionId,
         after,

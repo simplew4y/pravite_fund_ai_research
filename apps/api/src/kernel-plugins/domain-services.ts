@@ -149,9 +149,11 @@ export const sessionsPlugin = defineKernelPlugin<{ config: ApiConfig }>({
     const { repositories } = ctx.controlDb;
     const worker = ctx.agentRuntime;
     const journalShadow = new ShadowSessionJournal({
+      database: ctx.controlDb.database,
       sessionEvents: repositories.sessionEvents,
       sessionJournal: repositories.sessionJournal,
       enabled: config.sessionJournalShadow ?? true,
+      mode: (config.sessionJournalAuthority ?? true) ? "authority" : "shadow",
     });
     const sessions = new RepositorySessionService({
       repositories,

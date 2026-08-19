@@ -54,8 +54,49 @@ export const agentRuntimePlugin = defineKernelPlugin<{ config: ApiConfig }>({
   apply(ctx, { config }) {
     const controlDb: ControlDbService = ctx.controlDb;
     const researchStores = ctx.researchStores;
+    const journalAuthority = config.sessionJournalAuthority ?? true;
     const runtime = new HarnessAgentRuntime({
       sessionEvents: controlDb.repositories.sessionEvents,
+      ...(journalAuthority
+        ? {
+            // Authority mode: the model-visible context derives from the
+            // Session Journal's mirrored UI facts (shadow-sync rows carry
+            // the original payload plus the projection sequence). Audit
+            // rows (tool intents, model snapshots) are filtered out by
+            // provenance.
+            replayEvents: (tenantNamespace, sessionId, after, limit) => {
+              const records: {
+                sequence: number;
+                type: string;
+                payload: Record<string, unknown>;
+              }[] = [];
+              let cursor = after;
+              // Page internally: filtering must not shrink a page below the
+              // caller's limit and end its pagination early.
+              while (records.length < limit) {
+                const page = controlDb.repositories.sessionJournal.replayForTenant(
+                  tenantNamespace,
+                  sessionId,
+                  cursor,
+                  1_000,
+                );
+                if (page.length === 0) break;
+                for (const event of page) {
+                  cursor = event.sequence;
+                  if (event.source.version !== "shadow-sync/1") continue;
+                  records.push({
+                    sequence: event.sequence,
+                    type: event.type,
+                    payload: event.payload,
+                  });
+                  if (records.length >= limit) break;
+                }
+                if (page.length < 1_000) break;
+              }
+              return records;
+            },
+          }
+        : {}),
       // System-prompt assembly: project identity + corpus inventory, so the
       // model knows which company it researches and what evidence exists.
       describeSession: (session) => {
