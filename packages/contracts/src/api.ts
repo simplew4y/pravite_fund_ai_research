@@ -26,6 +26,18 @@ export const createProjectRequestSchema = z.object({
   ticker: z.string().trim().max(40).optional(),
 });
 
+export const updateProjectRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    companyName: z.string().trim().max(300).nullable().optional(),
+    ticker: z.string().trim().max(40).nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => Object.values(value).some((field) => field !== undefined),
+    { message: "At least one field must be provided" },
+  );
+
 export const sessionSchema = z.object({
   id: identifierSchema,
   projectId: identifierSchema,
@@ -155,6 +167,7 @@ export const compactSessionRequestSchema = z
 export type TenantIdentity = z.infer<typeof tenantIdentitySchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
+export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
 export type Session = z.infer<typeof sessionSchema>;
 export type ListSessionChildrenQuery = z.infer<
   typeof listSessionChildrenQuerySchema

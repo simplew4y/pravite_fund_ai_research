@@ -9,6 +9,7 @@ import {
 import { MonoLabel } from "../../components/MonoLabel";
 import { useT } from "../../i18n/useT";
 import { useUiStore } from "../../store/ui";
+import { AccountDialog } from "../account/AccountDialog";
 import { InboxPanel, useInboxCount } from "./InboxPanel";
 import { RailSessionList } from "./SessionList";
 
@@ -103,6 +104,7 @@ export function ProjectRail() {
   const { selectedProjectId, selectProject, toggleLang } = useUiStore();
   const [creating, setCreating] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [search, setSearch] = useState("");
   const inboxCount = useInboxCount();
 
@@ -188,6 +190,11 @@ export function ProjectRail() {
       ) : null}
 
       <div className="rail-footer">
+        {removeProject.isError ? (
+          <p className="error-text" style={{ fontSize: 12, margin: 0 }}>
+            {t("common.error")}
+          </p>
+        ) : null}
         <button
           className="btn btn-quiet danger"
           title={t("project.delete")}
@@ -208,7 +215,12 @@ export function ProjectRail() {
           <Inbox size={16} />
           {inboxCount > 0 ? <span className="badge-dot" /> : null}
         </button>
-        <button className="btn btn-quiet" title={t("rail.settings")} aria-label={t("rail.settings")}>
+        <button
+          className="btn btn-quiet"
+          title={t("account.title")}
+          aria-label={t("account.title")}
+          onClick={() => setAccountOpen(true)}
+        >
           <Settings size={16} />
         </button>
         <button
@@ -223,6 +235,7 @@ export function ProjectRail() {
 
       {creating ? <CreateProjectDialog onClose={() => setCreating(false)} /> : null}
       {inboxOpen ? <InboxPanel onClose={() => setInboxOpen(false)} /> : null}
+      {accountOpen ? <AccountDialog onClose={() => setAccountOpen(false)} /> : null}
     </nav>
   );
 }

@@ -12,6 +12,7 @@ import type {
   CreateSourceFolderRequest,
   CreateProjectRequest,
   CreateSessionRequest,
+  UpdateProjectRequest,
   DeleteSessionResourceResponse,
   DeleteSessionResourcesResponse,
   DeleteSessionResponse,
@@ -112,6 +113,11 @@ export interface ProjectService {
   list(tenant: TenantContext): Promise<Project[]>;
   create(tenant: TenantContext, input: CreateProjectRequest): Promise<Project>;
   get(tenant: TenantContext, projectId: string): Promise<Project | null>;
+  update(
+    tenant: TenantContext,
+    projectId: string,
+    input: UpdateProjectRequest,
+  ): Promise<Project | null>;
   remove(tenant: TenantContext, projectId: string): Promise<boolean>;
 }
 

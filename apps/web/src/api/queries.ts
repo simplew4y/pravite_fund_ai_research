@@ -60,10 +60,10 @@ export function useProjectDocuments(projectId: string | null, limit = 200) {
   });
 }
 
-export function useProjectSessions(projectId: string | null) {
+export function useProjectSessions(projectId: string | null, includeArchived = false) {
   return useQuery({
-    queryKey: ["sessions", projectId],
-    queryFn: () => listSessions(projectId!),
+    queryKey: ["sessions", projectId, includeArchived],
+    queryFn: () => listSessions(projectId!, includeArchived),
     enabled: projectId !== null,
     refetchInterval: 15_000,
   });

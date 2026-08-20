@@ -57,6 +57,20 @@ class MemoryProjects implements ProjectService {
     return this.rows.find((row) => row.id === projectId) ?? null;
   }
 
+  async update(
+    _tenant: TenantContext,
+    projectId: string,
+    input: { name?: string; companyName?: string | null; ticker?: string | null },
+  ): Promise<Project | null> {
+    const row = this.rows.find((candidate) => candidate.id === projectId);
+    if (!row) return null;
+    if (input.name !== undefined) row.name = input.name;
+    if (input.companyName !== undefined) row.companyName = input.companyName;
+    if (input.ticker !== undefined) row.ticker = input.ticker;
+    row.updatedAt = new Date().toISOString();
+    return row;
+  }
+
   async remove(_tenant: TenantContext, projectId: string): Promise<boolean> {
     const index = this.rows.findIndex((row) => row.id === projectId);
     if (index < 0) return false;
@@ -315,6 +329,34 @@ describe("TypeScript API", () => {
 
     const listed = await app.inject({ method: "GET", url: "/v1/projects" });
     expect(listed.json().projects).toHaveLength(1);
+
+    const projectId = created.json().id as string;
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/v1/projects/${projectId}`,
+      payload: { name: "Tesla Motors", ticker: null },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json()).toMatchObject({
+      id: projectId,
+      name: "Tesla Motors",
+      ticker: null,
+      companyName: "Tesla, Inc.",
+    });
+
+    const emptyPatch = await app.inject({
+      method: "PATCH",
+      url: `/v1/projects/${projectId}`,
+      payload: {},
+    });
+    expect(emptyPatch.statusCode).toBe(400);
+
+    const missing = await app.inject({
+      method: "PATCH",
+      url: "/v1/projects/project-does-not-exist",
+      payload: { name: "x" },
+    });
+    expect(missing.statusCode).toBe(404);
     await app.close();
   });
 

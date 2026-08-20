@@ -280,6 +280,52 @@ textarea.input {
   margin-top: 14px;
 }
 
+/* Viewer dialogs (evidence sources, previews, diffs) take most of the viewport. */
+.dialog-wide {
+  width: min(960px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 64px);
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-head .dialog-title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialog-scroll {
+  overflow: auto;
+  margin-top: 12px;
+  min-height: 0;
+}
+
+.dialog-scroll img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.dialog-scroll table {
+  border-collapse: collapse;
+  font: 12px/1.5 var(--font-mono, ui-monospace, monospace);
+}
+
+.dialog-scroll table td,
+.dialog-scroll table th {
+  border: 1px solid var(--color-border, #e4e4e7);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
 /* Blueprint frames become plain HeroUI cards; registration marks disappear. */
 .blueprint {
   position: relative;

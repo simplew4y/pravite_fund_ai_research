@@ -120,6 +120,16 @@ export async function deleteProject(projectId: string): Promise<void> {
   await request(`/v1/projects/${projectId}`, { method: "DELETE" });
 }
 
+export function updateProject(
+  projectId: string,
+  input: { name?: string; companyName?: string | null; ticker?: string | null },
+): Promise<Project> {
+  return requestJson(`/v1/projects/${projectId}`, projectSchema, {
+    method: "PATCH",
+    body: input,
+  });
+}
+
 export function listDocuments(
   projectId: string,
   options: { limit?: number; offset?: number } = {},
@@ -224,4 +234,67 @@ export function forkSession(sessionId: string, title?: string): Promise<Session>
     method: "POST",
     body: title === undefined ? {} : { title },
   });
+}
+
+export function updateSession(
+  sessionId: string,
+  input: { title?: string; archived?: boolean },
+): Promise<Session> {
+  return requestJson(`/v1/sessions/${sessionId}`, sessionSchema, {
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await request(`/v1/sessions/${sessionId}`, { method: "DELETE" });
+}
+
+/** 202 — progress and the terminal result arrive as compaction.* events. */
+export async function compactSession(sessionId: string): Promise<void> {
+  await request(`/v1/sessions/${sessionId}/compact`, { method: "POST", body: {} });
+}
+
+import {
+  sessionAttachmentPageSchema,
+  sessionAttachmentResourceSchema,
+  type SessionAttachmentResource,
+} from "@private-fund/contracts";
+
+export type { SessionAttachmentResource };
+
+export function listSessionAttachments(
+  sessionId: string,
+): Promise<SessionAttachmentResource[]> {
+  return requestJson(
+    `/v1/sessions/${sessionId}/attachments`,
+    sessionAttachmentPageSchema,
+  ).then((page) => page.items);
+}
+
+/** Multipart with exactly one part named "file" — the API rejects anything else. */
+export function uploadSessionAttachment(
+  sessionId: string,
+  file: File,
+): Promise<SessionAttachmentResource> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  return requestJson(
+    `/v1/sessions/${sessionId}/attachments`,
+    sessionAttachmentResourceSchema,
+    { method: "POST", form },
+  );
+}
+
+export async function deleteSessionAttachment(
+  sessionId: string,
+  attachmentId: string,
+): Promise<void> {
+  await request(`/v1/sessions/${sessionId}/attachments/${attachmentId}`, {
+    method: "DELETE",
+  });
+}
+
+export function attachmentContentUrl(sessionId: string, attachmentId: string): string {
+  return `/v1/sessions/${sessionId}/attachments/${attachmentId}/content`;
 }

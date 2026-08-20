@@ -26,6 +26,7 @@ import type {
   SessionChildrenPage,
   SessionEvent,
   SessionLabelsResponse,
+  UpdateProjectRequest,
   UpdateSessionRequest,
 } from "@private-fund/contracts";
 import {
@@ -169,6 +170,32 @@ export class RepositoryProjectService implements ProjectService {
       projectId,
     );
     return project === null ? null : publicProject(project);
+  }
+
+  public async update(
+    tenant: TenantContext,
+    projectId: string,
+    input: UpdateProjectRequest,
+  ): Promise<Project | null> {
+    this.requireTenantUser(tenant);
+    if (
+      this.repositories.projects.findForTenant(tenant.dataNamespace, projectId) ===
+      null
+    ) {
+      return null;
+    }
+    const updated = this.repositories.projects.updateForTenant(
+      tenant.dataNamespace,
+      projectId,
+      {
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.companyName === undefined
+          ? {}
+          : { companyName: input.companyName }),
+        ...(input.ticker === undefined ? {} : { ticker: input.ticker }),
+      },
+    );
+    return publicProject(updated);
   }
 
   public async remove(

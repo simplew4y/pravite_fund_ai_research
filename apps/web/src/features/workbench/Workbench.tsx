@@ -1,7 +1,13 @@
-import { useRef, useState, type DragEvent } from "react";
-import { Plus, Send, Sparkles, Upload, UploadCloud } from "lucide-react";
+import { useRef, useState, type DragEvent, type FormEvent } from "react";
+import { Pencil, Plus, Send, Sparkles, Upload, UploadCloud } from "lucide-react";
 
-import { sendMessage, uploadProjectDocuments, type Session } from "../../api/client";
+import {
+  sendMessage,
+  updateProject,
+  uploadProjectDocuments,
+  type Project,
+  type Session,
+} from "../../api/client";
 import { ApiError } from "../../api/http";
 import {
   useCreateSession,
@@ -13,8 +19,78 @@ import { Blueprint } from "../../components/Blueprint";
 import { MonoLabel } from "../../components/MonoLabel";
 import { useT } from "../../i18n/useT";
 import { useUiStore } from "../../store/ui";
+import { Modal } from "../../components/Modal";
 import { ChatView } from "../chat/ChatView";
 import { useQueryClient } from "@tanstack/react-query";
+
+function EditProjectDialog({
+  project,
+  onClose,
+}: {
+  project: Project;
+  onClose: () => void;
+}) {
+  const { t } = useT();
+  const client = useQueryClient();
+  const [name, setName] = useState(project.name);
+  const [companyName, setCompanyName] = useState(project.companyName ?? "");
+  const [ticker, setTicker] = useState(project.ticker ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateProject(project.id, {
+        name: name.trim(),
+        companyName: companyName.trim() ? companyName.trim() : null,
+        ticker: ticker.trim() ? ticker.trim() : null,
+      });
+      await client.invalidateQueries({ queryKey: ["projects"] });
+      onClose();
+    } catch {
+      setError(t("common.error"));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={project.name} onClose={onClose}>
+      <form onSubmit={(event) => void submit(event)} style={{ display: "grid", gap: 10 }}>
+        <input
+          className="input"
+          value={name}
+          placeholder={t("project.create.name")}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <input
+          className="input"
+          value={companyName}
+          placeholder={t("project.create.company")}
+          onChange={(event) => setCompanyName(event.target.value)}
+        />
+        <input
+          className="input"
+          value={ticker}
+          placeholder={t("project.create.ticker")}
+          onChange={(event) => setTicker(event.target.value)}
+        />
+        {error ? <p className="error-text">{error}</p> : null}
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            {t("common.cancel")}
+          </button>
+          <button className="btn btn-primary" type="submit" disabled={!name.trim() || saving}>
+            {t("common.save")}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 const ACCEPT = ".pdf,.xlsx,.xlsm,.docx,.pptx,.csv,.md,.markdown,.txt";
 const ACCEPTED_EXTENSIONS = new Set(
@@ -51,7 +127,7 @@ function UploadZone({ projectId }: { projectId: string }) {
     const { accepted, rejected } = partitionUploads(files);
     if (accepted.length === 0) {
       setState("failed");
-      setError(`${t("workbench.upload.rejected")}: ${rejected.join("、")}`);
+      setError(`${t("workbench.upload.rejected")}: ${rejected.join(t("common.listSeparator"))}`);
       return;
     }
     setState("uploading");
@@ -61,7 +137,7 @@ function UploadZone({ projectId }: { projectId: string }) {
       setState("done");
       setError(
         rejected.length > 0
-          ? `${t("workbench.upload.rejected")}: ${rejected.join("、")}`
+          ? `${t("workbench.upload.rejected")}: ${rejected.join(t("common.listSeparator"))}`
           : null,
       );
       await client.invalidateQueries({ queryKey: ["documents", projectId] });
@@ -132,19 +208,25 @@ export function Workbench({ projectId }: { projectId: string }) {
   const { t } = useT();
   const projects = useProjects();
   const documents = useProjectDocuments(projectId);
-  const sessions = useProjectSessions(projectId);
+  // includeArchived so an archived session opened from the rail still resolves.
+  const sessions = useProjectSessions(projectId, true);
   const createSession = useCreateSession();
   const { expandedSessionId, expandSession } = useUiStore();
   const client = useQueryClient();
   const headerUploadRef = useRef<HTMLInputElement>(null);
   const [newDraft, setNewDraft] = useState("");
   const [starting, setStarting] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  const [startError, setStartError] = useState<string | null>(null);
 
   async function startResearch(content: string) {
     if (starting) return;
     setStarting(true);
+    setStartError(null);
+    let session: Session | null = null;
     try {
-      const session = await createSession.mutateAsync({
+      session = await createSession.mutateAsync({
         projectId,
         title: content.slice(0, 60),
       });
@@ -154,6 +236,10 @@ export function Workbench({ projectId }: { projectId: string }) {
       });
       setNewDraft("");
       expandSession(session.id);
+    } catch (error) {
+      setStartError(error instanceof ApiError ? error.message : t("common.error"));
+      // The session may already exist — open it so the user can retry inside.
+      if (session) expandSession(session.id);
     } finally {
       setStarting(false);
     }
@@ -169,7 +255,7 @@ export function Workbench({ projectId }: { projectId: string }) {
     const { accepted, rejected } = partitionUploads(files);
     if (accepted.length === 0) {
       setHeaderUploadState("failed");
-      setHeaderUploadError(`${t("workbench.upload.rejected")}: ${rejected.join("、")}`);
+      setHeaderUploadError(`${t("workbench.upload.rejected")}: ${rejected.join(t("common.listSeparator"))}`);
       return;
     }
     setHeaderUploadState("uploading");
@@ -201,9 +287,20 @@ export function Workbench({ projectId }: { projectId: string }) {
       <div className="center-header">
         <h1>{project?.name ?? projectId}</h1>
         <MonoLabel>
-          {documents.data?.total ?? "–"} {t("rail.docs")} · {sessions.data?.length ?? "–"}{" "}
+          {documents.data?.total ?? "–"} {t("rail.docs")} ·{" "}
+          {sessions.data?.filter((session) => session.archivedAt === null).length ?? "–"}{" "}
           {t("rail.chats")}
         </MonoLabel>
+        <button
+          className="btn btn-quiet"
+          style={{ width: 28, height: 28 }}
+          title={t("project.edit")}
+          aria-label={t("project.edit")}
+          disabled={!project}
+          onClick={() => setEditing(true)}
+        >
+          <Pencil size={13} />
+        </button>
         <span style={{ flex: 1 }} />
         <button
           className="btn btn-quiet"
@@ -250,7 +347,7 @@ export function Workbench({ projectId }: { projectId: string }) {
 
       <div className="center-body">
         {expanded ? (
-          <ChatView session={expanded} />
+          <ChatView key={expanded.id} session={expanded} />
         ) : (
           <>
             <UploadZone projectId={projectId} />
@@ -269,6 +366,7 @@ export function Workbench({ projectId }: { projectId: string }) {
                 </div>
               </div>
               <div className="chat-footer" style={{ borderTop: 0 }}>
+                {startError ? <p className="error-text">{startError}</p> : null}
                 <form
                   className="composer"
                   onSubmit={(event) => {
@@ -303,6 +401,9 @@ export function Workbench({ projectId }: { projectId: string }) {
           </>
         )}
       </div>
+      {editing && project ? (
+        <EditProjectDialog project={project} onClose={() => setEditing(false)} />
+      ) : null}
     </main>
   );
 }

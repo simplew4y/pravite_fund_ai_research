@@ -1,5 +1,7 @@
 import type { SessionEvent } from "@private-fund/contracts";
 
+import { dedupeCitations, extractToolCitations, type Citation } from "./citations";
+
 export interface TranscriptToolCall {
   toolCallId: string;
   toolName: string;
@@ -12,6 +14,8 @@ export interface TranscriptMessage {
   text: string;
   thinking: string;
   tools: TranscriptToolCall[];
+  /** Evidence surfaced by this turn's evidence.search / evidence.get calls. */
+  citations: Citation[];
   completed: boolean;
 }
 
@@ -23,6 +27,8 @@ export interface Transcript {
   error: string | null;
   /** True while the event stream is reconnecting. */
   streamDegraded: boolean;
+  /** True between compaction.requested and its terminal event. */
+  compacting: boolean;
 }
 
 export const emptyTranscript: Transcript = {
@@ -31,6 +37,7 @@ export const emptyTranscript: Transcript = {
   lastSequence: 0,
   error: null,
   streamDegraded: false,
+  compacting: false,
 };
 
 function extractText(message: unknown): string {
@@ -64,6 +71,7 @@ function openAssistant(messages: TranscriptMessage[]): TranscriptMessage {
     text: "",
     thinking: "",
     tools: [],
+    citations: [],
     completed: false,
   };
   messages.push(created);
@@ -82,6 +90,7 @@ export function reduceTranscript(state: Transcript, event: SessionEvent): Transc
   }));
   let running = state.running;
   let error = state.error;
+  let compacting = state.compacting;
   const payload = event.payload;
 
   switch (event.type) {
@@ -94,6 +103,7 @@ export function reduceTranscript(state: Transcript, event: SessionEvent): Transc
           (typeof payload.content === "string" ? payload.content : ""),
         thinking: "",
         tools: [],
+        citations: [],
         completed: true,
       });
       running = true;
@@ -135,6 +145,12 @@ export function reduceTranscript(state: Transcript, event: SessionEvent): Transc
       );
       if (tool) {
         tool.status = event.type === "tool.completed" ? "completed" : "failed";
+        if (event.type === "tool.completed") {
+          target.citations = dedupeCitations([
+            ...target.citations,
+            ...extractToolCitations(payload.toolName, payload.result),
+          ]);
+        }
         if (event.type === "tool.failed") {
           const result = payload.result;
           tool.error =
@@ -151,6 +167,14 @@ export function reduceTranscript(state: Transcript, event: SessionEvent): Transc
     case "agent.run.ended":
       running = false;
       error = null;
+      break;
+    case "compaction.requested":
+    case "compaction.started":
+      compacting = true;
+      break;
+    case "compaction.completed":
+    case "compaction.failed":
+      compacting = false;
       break;
     case "operation.interrupted":
       running = false;
@@ -171,6 +195,7 @@ export function reduceTranscript(state: Transcript, event: SessionEvent): Transc
     messages,
     running,
     error,
+    compacting,
     streamDegraded: false,
     lastSequence: event.sequence,
   };

@@ -72,6 +72,7 @@ import {
   updateSessionRequestSchema,
   updateSourceFolderRequestSchema,
   updateTrackingWatchRuleRequestSchema,
+  updateProjectRequestSchema,
   updateValuationWatchRuleRequestSchema,
   valuationPageQuerySchema,
 } from "@private-fund/contracts";
@@ -166,6 +167,20 @@ export function registerProjectAndUploadRoutes(ctx: RouteContext): void {
       const tenant = await tenantFor(request, reply);
       const projectId = parseIdentifier(request.params.projectId, "project id");
       const project = await dependencies.projects.get(tenant, projectId);
+      if (!project) {
+        throw new DomainError("Project not found", "not_found", 404);
+      }
+      return project;
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/v1/projects/:projectId",
+    async (request, reply) => {
+      const tenant = await tenantFor(request, reply);
+      const projectId = parseIdentifier(request.params.projectId, "project id");
+      const input = updateProjectRequestSchema.parse(request.body);
+      const project = await dependencies.projects.update(tenant, projectId, input);
       if (!project) {
         throw new DomainError("Project not found", "not_found", 404);
       }

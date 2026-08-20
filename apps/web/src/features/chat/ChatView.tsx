@@ -5,7 +5,7 @@ import {
   Copy,
   GitBranch,
   Mic,
-  Paperclip,
+  Minimize2,
   Send,
   Square,
   Terminal,
@@ -15,6 +15,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  compactSession,
   deleteSessionResource,
   forkSession,
   interruptSession,
@@ -27,10 +28,57 @@ import { ApiError } from "../../api/http";
 import { Blueprint } from "../../components/Blueprint";
 import { useT } from "../../i18n/useT";
 import { useUiStore } from "../../store/ui";
+import type { DictKey } from "../../i18n/dict";
+import { EvidenceViewer } from "../evidence/EvidenceViewer";
+import { AttachmentsBar } from "./Attachments";
+import { splitCitationTokens } from "./citations";
 import { useSessionStream } from "./useSessionStream";
 import type { TranscriptMessage } from "./transcript";
 
-function AssistantMessage({ message }: { message: TranscriptMessage }) {
+const MAX_CITATION_CHIPS = 8;
+
+const TOOL_STATUS_LABEL: Record<"running" | "completed" | "failed", DictKey> = {
+  running: "tool.status.running",
+  completed: "tool.status.completed",
+  failed: "tool.status.failed",
+};
+
+/** Answer text with [chunk:…]-style tokens rendered as clickable source links. */
+function AnswerText({
+  text,
+  onOpenEvidence,
+}: {
+  text: string;
+  onOpenEvidence: (evidenceId: string) => void;
+}) {
+  const segments = splitCitationTokens(text);
+  return (
+    <pre>
+      {segments.map((segment, index) =>
+        segment.type === "text" ? (
+          <span key={index}>{segment.value}</span>
+        ) : (
+          <button
+            key={index}
+            className="ctx-chip"
+            style={{ display: "inline-flex", verticalAlign: "baseline" }}
+            onClick={() => onOpenEvidence(segment.evidenceId)}
+          >
+            {segment.evidenceId.slice(0, 24)}
+          </button>
+        ),
+      )}
+    </pre>
+  );
+}
+
+function AssistantMessage({
+  message,
+  onOpenEvidence,
+}: {
+  message: TranscriptMessage;
+  onOpenEvidence: (evidenceId: string) => void;
+}) {
   const { t } = useT();
   const thinkingSteps = message.thinking
     ? message.thinking.split("\n").filter((line) => line.trim()).length
@@ -58,14 +106,28 @@ function AssistantMessage({ message }: { message: TranscriptMessage }) {
             {tool.toolName}
           </div>
           <div className="tool-body">
-            {tool.status}
+            {t(TOOL_STATUS_LABEL[tool.status])}
             {tool.error ? ` · ${tool.error}` : ""}
           </div>
         </div>
       ))}
       {message.text ? (
         <div className="answer-card">
-          <pre>{message.text}</pre>
+          <AnswerText text={message.text} onOpenEvidence={onOpenEvidence} />
+          {message.citations.length > 0 ? (
+            <div className="ctx-chips" style={{ marginTop: 6 }}>
+              {message.citations.slice(0, MAX_CITATION_CHIPS).map((citation) => (
+                <button
+                  key={citation.evidenceId}
+                  className="ctx-chip"
+                  title={citation.excerpt}
+                  onClick={() => onOpenEvidence(citation.evidenceId)}
+                >
+                  {citation.evidenceId.slice(0, 28)}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {message.completed ? (
             <div className="answer-actions">
               <button
@@ -128,6 +190,7 @@ export function ChatView({ session }: { session: Session }) {
   const transcript = useSessionStream(session.id);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [viewerEvidenceId, setViewerEvidenceId] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedToBottom = useRef(true);
@@ -197,7 +260,17 @@ export function ChatView({ session }: { session: Session }) {
           >
             <Square size={14} />
           </button>
-        ) : null}
+        ) : (
+          <button
+            className="btn btn-quiet"
+            title={t("chat.compact")}
+            aria-label={t("chat.compact")}
+            disabled={transcript.compacting}
+            onClick={() => void runAction(() => compactSession(session.id))}
+          >
+            <Minimize2 size={14} />
+          </button>
+        )}
         <button
           className="btn btn-quiet"
           title={t("chat.fork")}
@@ -229,7 +302,11 @@ export function ChatView({ session }: { session: Session }) {
               <pre>{message.text}</pre>
             </div>
           ) : (
-            <AssistantMessage key={index} message={message} />
+            <AssistantMessage
+              key={index}
+              message={message}
+              onOpenEvidence={setViewerEvidenceId}
+            />
           ),
         )}
         {transcript.messages.length === 0 ? (
@@ -239,6 +316,12 @@ export function ChatView({ session }: { session: Session }) {
 
       <div className="chat-footer">
         <ContextChips sessionId={session.id} />
+        <AttachmentsBar sessionId={session.id} />
+        {transcript.compacting ? (
+          <p className="text-muted" style={{ fontSize: 12 }}>
+            {t("chat.compacting")}
+          </p>
+        ) : null}
         {transcript.streamDegraded ? (
           <p className="text-muted" style={{ fontSize: 12 }}>
             {t("chat.reconnecting")}
@@ -264,9 +347,6 @@ export function ChatView({ session }: { session: Session }) {
               }
             }}
           />
-          <button type="button" className="btn btn-quiet" title={t("chat.attach")} disabled>
-            <Paperclip size={16} />
-          </button>
           <button type="button" className="btn btn-quiet" title={t("chat.voice")} disabled>
             <Mic size={16} />
           </button>
@@ -284,6 +364,13 @@ export function ChatView({ session }: { session: Session }) {
           </button>
         </form>
       </div>
+      {viewerEvidenceId !== null ? (
+        <EvidenceViewer
+          projectId={session.projectId}
+          evidenceId={viewerEvidenceId}
+          onClose={() => setViewerEvidenceId(null)}
+        />
+      ) : null}
     </Blueprint>
   );
 }

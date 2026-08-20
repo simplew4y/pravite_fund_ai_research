@@ -50,7 +50,7 @@ output/
 
 knowledge_base/
 
-eval/dist-types/
+dist-types/
 apps/desktop/.build/
 *.egg-info/
 private_obsidian/
