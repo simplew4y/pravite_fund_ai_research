@@ -3,7 +3,7 @@
 import { createServer } from "node:http";
 
 const entry = process.argv.find((argument) =>
-  /apps\/(api|job-worker|obsidian-worker)\/dist\/main\.js$/.test(argument),
+  /apps\/(api|job-worker)\/dist\/main\.js$/.test(argument),
 );
 if (entry === undefined) {
   throw new Error("Fixture did not receive a canonical service entry");
@@ -13,7 +13,7 @@ const serviceId = entry.includes("/apps/api/")
   ? "api"
   : entry.includes("/apps/job-worker/")
     ? "job-worker"
-    : "obsidian-worker";
+    : "job-worker";
 
 if (process.env.PRIVATE_FUND_SERVICE_FIXTURE_FAIL === serviceId) {
   process.stderr.write(`fixture_failure:${serviceId}\n`);
@@ -22,7 +22,7 @@ if (process.env.PRIVATE_FUND_SERVICE_FIXTURE_FAIL === serviceId) {
 
 let server;
 if (
-  (serviceId === "api" || serviceId === "obsidian-worker") &&
+  serviceId === "api" &&
   process.env.PRIVATE_FUND_SERVICE_TEST_MODE !== "1"
 ) {
   const host =

@@ -47,7 +47,7 @@ test("canonical manifest contains only the TS control-plane topology", () => {
   assert.equal(manifest.architecture, "typescript-pi");
   assert.deepEqual(
     manifest.managedServices.map(({ id }) => id),
-    ["api", "job-worker", "obsidian-worker"],
+    ["api", "job-worker"],
   );
   assert(
     manifest.managedServices.every(({ runtime }) => runtime === "node"),
@@ -208,19 +208,17 @@ test("manager supports lifecycle commands and rolls back partial startup", () =>
     assert.equal(start.status, 0, start.stderr);
     assert.match(start.stdout, /api: ready/);
     assert.match(start.stdout, /job-worker: ready/);
-    assert.match(start.stdout, /obsidian-worker: ready/);
     assert.equal(statSync(stateDirectory).mode & 0o077, 0);
     assert.equal(statSync(logDirectory).mode & 0o077, 0);
 
     const status = runManager("status", environment);
     assert.equal(status.status, 0, status.stderr);
-    assert.equal((status.stdout.match(/: ready \(pid /g) ?? []).length, 3);
+    assert.equal((status.stdout.match(/: ready \(pid /g) ?? []).length, 2);
 
     const logs = runManager("logs", environment);
     assert.equal(logs.status, 0, logs.stderr);
     assert.match(logs.stdout, /fixture_ready:api/);
     assert.match(logs.stdout, /"event":"compute_worker_ready"/);
-    assert.match(logs.stdout, /fixture_ready:obsidian-worker/);
     const computeVenvPython = path.join(
       repositoryRoot,
       "python",
@@ -240,12 +238,12 @@ test("manager supports lifecycle commands and rolls back partial startup", () =>
 
     const restart = runManager("restart", environment);
     assert.equal(restart.status, 0, restart.stderr);
-    assert.equal((restart.stdout.match(/: stopped/g) ?? []).length, 3);
-    assert.equal((restart.stdout.match(/: ready \(pid /g) ?? []).length, 3);
+    assert.equal((restart.stdout.match(/: stopped/g) ?? []).length, 2);
+    assert.equal((restart.stdout.match(/: ready \(pid /g) ?? []).length, 2);
 
     const stop = runManager("stop", environment);
     assert.equal(stop.status, 0, stop.stderr);
-    assert.equal((stop.stdout.match(/: stopped/g) ?? []).length, 3);
+    assert.equal((stop.stdout.match(/: stopped/g) ?? []).length, 2);
     assert.equal(
       readdirSync(stateDirectory).filter((name) =>
         name.endsWith(".pid.json"),
@@ -255,14 +253,14 @@ test("manager supports lifecycle commands and rolls back partial startup", () =>
 
     const stoppedStatus = runManager("status", environment);
     assert.equal(stoppedStatus.status, 1);
-    assert.equal((stoppedStatus.stdout.match(/: stopped/g) ?? []).length, 3);
+    assert.equal((stoppedStatus.stdout.match(/: stopped/g) ?? []).length, 2);
 
     const failedStart = runManager("start", {
       ...environment,
-      PRIVATE_FUND_SERVICE_FIXTURE_FAIL: "obsidian-worker",
+      PRIVATE_FUND_SERVICE_FIXTURE_FAIL: "job-worker",
     });
     assert.equal(failedStart.status, 1);
-    assert.match(failedStart.stderr, /Startup failed; rolling back 3/);
+    assert.match(failedStart.stderr, /Startup failed; rolling back 2/);
     assert.equal(
       readdirSync(stateDirectory).filter((name) =>
         name.endsWith(".pid.json"),

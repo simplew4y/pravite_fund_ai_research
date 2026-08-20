@@ -7,7 +7,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDirectory, "..");
 const repositoryRoot = path.resolve(desktopRoot, "../..");
 const runtimeRoot = path.join(desktopRoot, ".build", "runtime");
-const activeApps = ["api", "job-worker", "obsidian-worker"];
+const activeApps = ["api", "job-worker"];
 
 async function copyWorkspace(source, destination, includeDist = true) {
   await mkdir(destination, { recursive: true });

@@ -38,9 +38,6 @@
       "path": "./packages/compute-projector"
     },
     {
-      "path": "./packages/obsidian-projector"
-    },
-    {
       "path": "./packages/model-runtime"
     },
     {
@@ -48,9 +45,6 @@
     },
     {
       "path": "./apps/job-worker"
-    },
-    {
-      "path": "./apps/obsidian-worker"
     },
     {
       "path": "./apps/api"

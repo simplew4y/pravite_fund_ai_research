@@ -29,21 +29,6 @@
         "kind": "log",
         "pattern": "\"event\":\"compute_worker_ready\""
       }
-    },
-    {
-      "id": "obsidian-worker",
-      "runtime": "node",
-      "role": "durable knowledge projection consumer",
-      "entry": "apps/obsidian-worker/dist/main.js",
-      "nodeArguments": [],
-      "readiness": {
-        "kind": "http",
-        "hostEnvironment": "PRIVATE_FUND_OBSIDIAN_HEALTH_HOST",
-        "defaultHost": "127.0.0.1",
-        "portEnvironment": "PRIVATE_FUND_OBSIDIAN_HEALTH_PORT",
-        "defaultPort": 6791,
-        "path": "/health/ready"
-      }
     }
   ],
   "ownedOnDemandProcesses": [

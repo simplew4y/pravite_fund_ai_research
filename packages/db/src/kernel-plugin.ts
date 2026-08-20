@@ -18,7 +18,7 @@ declare module "@private-fund/kernel" {
 
 /**
  * Control-plane SQLite database + repositories as a kernel service. Shared
- * by every process profile (api, job-worker, obsidian-worker).
+ * by every process profile (api, job-worker).
  */
 export const controlDbPlugin = defineKernelPlugin<{ path: string }>({
   name: "control-db",
