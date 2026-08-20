@@ -16,14 +16,14 @@ function queuedJob(): DurableJob {
     id: "job-business-1",
     tenantNamespace: "00000000-0000-4000-8000-000000000031",
     projectId: "project-1",
-    type: "tracking.scan",
+    type: "memo.generate",
     status: "running",
     payload: { datasetId: "project-1" },
     attempt: 1,
     maxAttempts: 3,
     leaseOwner: "business-worker",
     leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
-    idempotencyKey: "scan-1",
+    idempotencyKey: "memo-1",
     availableAt: now,
     createdAt: now,
     updatedAt: now,
@@ -52,8 +52,8 @@ describe("BusinessJobWorker", () => {
     const value = queue(job);
     const executor = {
       execute: vi.fn(async (_job: BusinessJob) => ({
-        kind: "tracking.scan",
-        createdVersions: 1,
+        kind: "memo.generate",
+        evidenceCount: 1,
       })),
     };
     const worker = new BusinessJobWorker(value, executor, {
@@ -65,8 +65,8 @@ describe("BusinessJobWorker", () => {
       jobId: job.id,
       workerId: "business-worker",
       result: {
-        kind: "tracking.scan",
-        createdVersions: 1,
+        kind: "memo.generate",
+        evidenceCount: 1,
       },
     });
     expect(value.fail).not.toHaveBeenCalled();

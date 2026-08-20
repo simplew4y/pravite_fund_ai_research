@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
-  readFile,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -38,7 +37,7 @@ describe("canonical artifact file routes", () => {
     }
   });
 
-  it("serves immutable Evidence, memo, and derived-model artifacts and replays resource import", async () => {
+  it("serves immutable Evidence and memo artifacts with tenant isolation", async () => {
     dataRoot = await mkdtemp(path.join(tmpdir(), "pf-artifact-files-"));
     const config: ApiConfig = {
       host: "127.0.0.1",
@@ -95,23 +94,14 @@ describe("canonical artifact file routes", () => {
       "memos",
       "memo.pdf",
     );
-    const derivedBytes = Buffer.from("derived workbook bytes", "utf8");
-    const derivedPath = path.join(
-      projectRoot,
-      "artifacts",
-      "valuation",
-      "derived.xlsx",
-    );
     await Promise.all([
       mkdir(path.dirname(sourcePath), { recursive: true }),
       mkdir(path.dirname(memoMarkdownPath), { recursive: true }),
-      mkdir(path.dirname(derivedPath), { recursive: true }),
     ]);
     await Promise.all([
       writeFile(sourcePath, sourceBytes),
       writeFile(memoMarkdownPath, memoMarkdown),
       writeFile(memoPdfPath, memoPdf),
-      writeFile(derivedPath, derivedBytes),
     ]);
 
     const seeder = new ProjectResearchStoreManager();
@@ -169,55 +159,6 @@ describe("canonical artifact file routes", () => {
         },
       ],
     }).record;
-    const series = workflow.valuation.upsertSeries({
-      datasetId: project.id,
-      seriesKey: "base-model",
-      name: "Base model",
-      companyTicker: "600000",
-    });
-    const model = workflow.valuation.saveModelVersion({
-      datasetId: project.id,
-      seriesId: series.seriesId,
-      docId: document.version.id,
-      logicalDocId: document.document.id,
-      documentVersionNo: document.version.versionNo,
-      checksum: document.version.sha256,
-      snapshotHash: "b".repeat(64),
-      originalFilename: document.version.originalFilename,
-      analyzerVersion: "artifact-test",
-    }).value;
-    const analysis = workflow.valuation.createAgentAnalysis({
-      datasetId: project.id,
-      seriesId: series.seriesId,
-      baseModelVersionId: model.modelVersionId,
-      agentVersion: "pi-agent-v1",
-      idempotencyKey: "artifact-analysis",
-    }).value;
-    workflow.valuation.transitionAgentAnalysis(
-      project.id,
-      analysis.analysisId,
-      { status: "running" },
-    );
-    workflow.valuation.transitionAgentAnalysis(
-      project.id,
-      analysis.analysisId,
-      {
-        status: "completed",
-        analysis: { recommendedChanges: [] },
-      },
-    );
-    const derived = workflow.valuation.saveDerivedModel({
-      datasetId: project.id,
-      seriesId: series.seriesId,
-      analysisId: analysis.analysisId,
-      baseModelVersionId: model.modelVersionId,
-      derivedVersionNo: 1,
-      outputFilename: "derived.xlsx",
-      outputPath: path.relative(projectRoot, derivedPath),
-      checksum: sha256(derivedBytes),
-      appliedChanges: [],
-      skippedChanges: [],
-    }).value;
     seeder.close();
 
     const evidencePreview = await runtime.app.inject({
@@ -257,54 +198,6 @@ describe("canonical artifact file routes", () => {
       "attachment",
     );
 
-    const derivedDownload = await runtime.app.inject({
-      method: "GET",
-      url:
-        `/v1/projects/${project.id}/valuation/derived-models/` +
-        `${derived.derivedModelId}/download`,
-      headers: { range: "bytes=0-6" },
-    });
-    expect(derivedDownload.statusCode, derivedDownload.body).toBe(206);
-    expect(derivedDownload.rawPayload).toEqual(
-      derivedBytes.subarray(0, 7),
-    );
-    expect(derivedDownload.headers["content-disposition"]).toContain(
-      "attachment",
-    );
-
-    const importUrl =
-      `/v1/projects/${project.id}/valuation/derived-models/` +
-      `${derived.derivedModelId}/resources`;
-    const firstImport = await runtime.app.inject({
-      method: "POST",
-      url: importUrl,
-      payload: { idempotencyKey: "artifact-resource-import" },
-    });
-    expect(firstImport.statusCode, firstImport.body).toBe(202);
-    expect(firstImport.json()).toMatchObject({
-      created: true,
-      derivedModel: {
-        derivedModelId: derived.derivedModelId,
-        resourceStatus: "queued",
-      },
-      job: { type: "document.ingest", status: "queued" },
-    });
-    const firstImportBody = firstImport.json<{
-      document: { id: string };
-      job: { id: string };
-    }>();
-    const replayImport = await runtime.app.inject({
-      method: "POST",
-      url: importUrl,
-      payload: { idempotencyKey: "artifact-resource-import" },
-    });
-    expect(replayImport.statusCode, replayImport.body).toBe(202);
-    expect(replayImport.json()).toMatchObject({
-      created: false,
-      document: { id: firstImportBody.document.id },
-      job: { id: firstImportBody.job.id },
-    });
-
     otherTenantRuntime = await createApiRuntime({
       ...config,
       port: 6769,
@@ -321,8 +214,6 @@ describe("canonical artifact file routes", () => {
       `/v1/projects/${project.id}/evidence/${encodeURIComponent(evidence.evidenceId)}/download`,
       `/v1/projects/${project.id}/tracking/memos/${memo.memoVersionId}/preview?format=markdown`,
       `/v1/projects/${project.id}/tracking/memos/${memo.memoVersionId}/download?format=pdf`,
-      `/v1/projects/${project.id}/valuation/derived-models/${derived.derivedModelId}/preview`,
-      `/v1/projects/${project.id}/valuation/derived-models/${derived.derivedModelId}/download`,
     ];
     for (const url of privateArtifactUrls) {
       // eslint-disable-next-line no-await-in-loop
@@ -332,27 +223,5 @@ describe("canonical artifact file routes", () => {
       });
       expect(response.statusCode, `${url}: ${response.body}`).toBe(404);
     }
-    const crossTenantImport = await otherTenantRuntime.app.inject({
-      method: "POST",
-      url: importUrl,
-      payload: { idempotencyKey: "cross-tenant-resource-import" },
-    });
-    expect(
-      crossTenantImport.statusCode,
-      crossTenantImport.body,
-    ).toBe(404);
-
-    await writeFile(derivedPath, Buffer.from("tampered", "utf8"));
-    const tampered = await runtime.app.inject({
-      method: "GET",
-      url:
-        `/v1/projects/${project.id}/valuation/derived-models/` +
-        `${derived.derivedModelId}/download`,
-    });
-    expect(tampered.statusCode).toBe(409);
-    expect(tampered.json()).toMatchObject({
-      error: "file_integrity_mismatch",
-    });
-    await expect(readFile(sourcePath)).resolves.toEqual(sourceBytes);
   });
 });

@@ -11,7 +11,6 @@ const infoDisabled = {
   registration_mode: null,
   durable_jobs: true,
   research_store: true,
-  workflow_store: true,
   insights_store: false,
 };
 

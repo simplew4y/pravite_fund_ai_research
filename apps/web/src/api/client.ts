@@ -22,7 +22,6 @@ export const serverInfoSchema = z
     registration_mode: z.string().nullable(),
     durable_jobs: z.boolean(),
     research_store: z.boolean(),
-    workflow_store: z.boolean(),
     insights_store: z.boolean(),
   })
   .loose();

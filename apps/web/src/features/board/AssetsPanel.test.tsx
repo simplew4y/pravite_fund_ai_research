@@ -36,7 +36,7 @@ const assetVersion = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  useUiStore.setState({ boardTab: "documents", expandedSessionId: null, lang: "zh" });
+  useUiStore.setState({ expandedSessionId: null, lang: "zh" });
 });
 
 describe("AssetsPanel", () => {

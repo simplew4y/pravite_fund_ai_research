@@ -30,25 +30,20 @@ function writeStored(key: string, value: string | null): void {
   }
 }
 
-export type BoardTab = "documents" | "memo" | "valuation" | "risks";
-
 interface UiState {
   lang: Lang;
   selectedProjectId: string | null;
   expandedSessionId: string | null;
-  boardTab: BoardTab;
   setLang: (lang: Lang) => void;
   toggleLang: () => void;
   selectProject: (projectId: string | null) => void;
   expandSession: (sessionId: string | null) => void;
-  setBoardTab: (tab: BoardTab) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
   lang: readStored(LANG_KEY) === "en" ? "en" : "zh",
   selectedProjectId: readStored(PROJECT_KEY),
   expandedSessionId: null,
-  boardTab: "documents",
   setLang: (lang) => {
     writeStored(LANG_KEY, lang);
     syncDocumentLang(lang);
@@ -66,5 +61,4 @@ export const useUiStore = create<UiState>((set) => ({
     set({ selectedProjectId, expandedSessionId: null });
   },
   expandSession: (expandedSessionId) => set({ expandedSessionId }),
-  setBoardTab: (boardTab) => set({ boardTab }),
 }));

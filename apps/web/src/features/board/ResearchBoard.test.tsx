@@ -27,13 +27,12 @@ const info = {
   registration_mode: null,
   durable_jobs: true,
   research_store: true,
-  workflow_store: true,
   insights_store: false,
 };
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  useUiStore.setState({ boardTab: "documents", expandedSessionId: null, lang: "zh" });
+  useUiStore.setState({ expandedSessionId: null, lang: "zh" });
 });
 
 describe("ResearchBoard", () => {

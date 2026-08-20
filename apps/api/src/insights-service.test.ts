@@ -1,12 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -35,7 +28,7 @@ const BETA: TenantIdentity = {
   dataNamespace: "00000000-0000-4000-8000-0000000000d2",
 };
 
-describe("repository project insights service", () => {
+describe("repository project insights service (memo pipeline)", () => {
   let dataRoot: string;
 
   beforeEach(async () => {
@@ -46,7 +39,7 @@ describe("repository project insights service", () => {
     await rm(dataRoot, { recursive: true, force: true });
   });
 
-  it("exposes tracking and valuation state with durable jobs and tenant isolation", async () => {
+  async function harness(projectName: string) {
     const database = openControlDatabase(":memory:");
     const repositories = createControlRepositories(database);
     repositories.users.upsertCloudShadow(ALPHA);
@@ -54,164 +47,7 @@ describe("repository project insights service", () => {
     const alpha = buildTenantContext(dataRoot, ALPHA);
     const beta = buildTenantContext(dataRoot, BETA);
     const projects = new RepositoryProjectService(repositories);
-    const project = await projects.create(alpha, {
-      name: "Insights project",
-    });
-    const stores = new ProjectResearchStoreManager();
-    const jobs = new RepositoryJobService(database);
-    const insights = new RepositoryProjectInsightsService(
-      repositories,
-      stores,
-      jobs,
-    );
-    const workflowStore = stores.getWorkflow(
-      path.join(alpha.projectsRoot, project.id),
-    );
-
-    const item = workflowStore.tracking.appendItemVersion({
-      datasetId: project.id,
-      itemType: "risk",
-      canonicalKey: "customer-concentration",
-      title: "客户集中度",
-      sourceType: "test",
-      sourceId: "source-v1",
-      content: "头部客户收入占比较高",
-      impact: "high",
-      evidenceIds: [],
-    });
-    const tracking = await insights.trackingOverview(alpha, project.id, {
-      limit: 100,
-      offset: 0,
-    });
-    expect(tracking).toMatchObject({
-      overview: {
-        datasetId: project.id,
-        counts: { risk: 1 },
-      },
-      items: { total: 1 },
-      watchRules: { total: 2 },
-    });
-    expect(
-      await insights.trackingItemTimeline(
-        alpha,
-        project.id,
-        item.item.itemId,
-      ),
-    ).toMatchObject({ item: { title: "客户集中度" } });
-
-    const customRule = await insights.createTrackingWatchRule(
-      alpha,
-      project.id,
-      {
-        name: "集中度变化",
-        targetType: "risk",
-        targetItemId: item.item.itemId,
-        query: { terms: ["集中度"] },
-        minPriority: "high",
-        frequency: "on_ingest",
-        active: true,
-      },
-    );
-    expect(customRule).toMatchObject({
-      name: "集中度变化",
-      active: true,
-    });
-
-    const trackingJob = await insights.runTracking(alpha, project.id, {
-      idempotencyKey: "tracking-scan-1",
-      includeHistory: false,
-    });
-    expect(trackingJob).toMatchObject({
-      created: true,
-      job: {
-        projectId: project.id,
-        type: "tracking.scan",
-        status: "queued",
-      },
-    });
-
-    const series = workflowStore.valuation.upsertSeries({
-      datasetId: project.id,
-      seriesKey: "tesla-base",
-      name: "Tesla Base Model",
-      companyTicker: "TSLA",
-    });
-    const version = workflowStore.valuation.saveModelVersion({
-      datasetId: project.id,
-      seriesId: series.seriesId,
-      docId: "document-model",
-      documentVersionNo: 1,
-      checksum: "a".repeat(64),
-      snapshotHash: "b".repeat(64),
-      originalFilename: "tesla.xlsx",
-      nodeCount: 0,
-      formulaNodeCount: 0,
-      reviewRequiredCount: 0,
-      analyzerVersion: "extractor-v1",
-    });
-    const valuation = await insights.valuationOverview(alpha, project.id, {
-      limit: 100,
-      offset: 0,
-    });
-    expect(valuation).toMatchObject({
-      series: { total: 1 },
-      watchRules: { total: 1 },
-    });
-    expect(
-      await insights.valuationModelOverview(
-        alpha,
-        project.id,
-        series.seriesId,
-        version.value.modelVersionId,
-      ),
-    ).toMatchObject({
-      series: { seriesId: series.seriesId },
-      version: { modelVersionId: version.value.modelVersionId },
-    });
-
-    const analysis = await insights.createValuationAnalysis(
-      alpha,
-      project.id,
-      series.seriesId,
-      {
-        idempotencyKey: "analysis-v1",
-        baseModelVersionId: version.value.modelVersionId,
-        focus: "利润率敏感性",
-        agentVersion: "pi-agent-v1",
-      },
-    );
-    expect(analysis).toMatchObject({
-      analysis: { status: "pending" },
-      job: { type: "valuation.compare", status: "queued" },
-      created: true,
-    });
-
-    await expect(
-      insights.trackingOverview(beta, project.id, {
-        limit: 100,
-        offset: 0,
-      }),
-    ).rejects.toMatchObject({ code: "not_found" });
-    await expect(
-      insights.valuationOverview(beta, project.id, {
-        limit: 100,
-        offset: 0,
-      }),
-    ).rejects.toMatchObject({ code: "not_found" });
-
-    stores.close();
-    database.close();
-  });
-
-  it("produces complete derive, market, memo and resource-import jobs with controlled paths", async () => {
-    const database = openControlDatabase(":memory:");
-    const repositories = createControlRepositories(database);
-    repositories.users.upsertCloudShadow(ALPHA);
-    const alpha = buildTenantContext(dataRoot, ALPHA);
-    const projects = new RepositoryProjectService(repositories);
-    const project = await projects.create(alpha, {
-      name: "Producer payload project",
-    });
+    const project = await projects.create(alpha, { name: projectName });
     const projectRoot = path.join(alpha.projectsRoot, project.id);
     const stores = new ProjectResearchStoreManager();
     const jobs = new RepositoryJobService(database);
@@ -220,210 +56,359 @@ describe("repository project insights service", () => {
       stores,
       jobs,
     );
-    const research = stores.get(projectRoot);
-    const workflow = stores.getWorkflow(projectRoot);
+    return {
+      database,
+      alpha,
+      beta,
+      project,
+      projectRoot,
+      stores,
+      insights,
+      close: () => {
+        stores.close();
+        database.close();
+      },
+    };
+  }
 
-    const sourceBytes = Buffer.from("not-executed-xlsx-fixture", "utf8");
-    const sourceSha256 = createHash("sha256")
-      .update(sourceBytes)
-      .digest("hex");
+  it("enqueues memo.generate jobs and rejects unresolved evidence references", async () => {
+    const ctx = await harness("Memo generation project");
+    const { alpha, project, projectRoot, stores, insights } = ctx;
+    const research = stores.get(projectRoot);
+
+    const sourceBytes = Buffer.from("memo evidence workbook", "utf8");
     const sourcePath = path.join(projectRoot, "sources", "base.xlsx");
     await mkdir(path.dirname(sourcePath), { recursive: true });
     await writeFile(sourcePath, sourceBytes);
     const document = research.documents.registerVersion({
-      logicalKey: "valuation:base",
+      logicalKey: "memo:base",
       sourceRelpath: "base.xlsx",
-      title: "Base model",
+      title: "Base workbook",
       originalFilename: "base.xlsx",
       storedPath: path.relative(projectRoot, sourcePath),
       fileType: "xlsx",
       mimeType:
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      sha256: sourceSha256,
+      sha256: createHash("sha256").update(sourceBytes).digest("hex"),
       fileSize: sourceBytes.byteLength,
       status: "indexed",
       activate: true,
     });
-    const series = workflow.valuation.upsertSeries({
-      datasetId: project.id,
-      seriesKey: "base-model",
-      name: "Base model",
-      companyTicker: "600000",
-    });
-    const model = workflow.valuation.saveModelVersion({
-      datasetId: project.id,
-      seriesId: series.seriesId,
-      docId: document.version.id,
-      logicalDocId: document.document.id,
-      documentVersionNo: 1,
-      checksum: sourceSha256,
-      snapshotHash: "b".repeat(64),
-      originalFilename: "base.xlsx",
-      analyzerVersion: "test",
-    }).value;
-    const analysis = workflow.valuation.createAgentAnalysis({
-      datasetId: project.id,
-      seriesId: series.seriesId,
-      baseModelVersionId: model.modelVersionId,
-      agentVersion: "pi-agent-v1",
-      idempotencyKey: "analysis-producer",
-    }).value;
-    workflow.valuation.transitionAgentAnalysis(
-      project.id,
-      analysis.analysisId,
-      { status: "running" },
-    );
-    workflow.valuation.transitionAgentAnalysis(
-      project.id,
-      analysis.analysisId,
-      {
-        status: "completed",
-        analysis: {
-          recommendedChanges: [
-            {
-              sheet: "DCF",
-              cell: "B7",
-              expectedCurrentValue: 10,
-              value: 12,
-              rationale: "Evidence-backed update",
-              evidenceIds: [],
-            },
-          ],
-        },
-      },
-    );
+    const evidence = research.evidence.put({
+      evidenceId: "cell:memo-dcf-b7",
+      kind: "cell",
+      documentVersionId: document.version.id,
+      title: "Target price",
+      originalText: "Target price | 2026E | 42.5",
+    }).evidence;
 
-    const derive = await insights.deriveValuationModel(
-      alpha,
-      project.id,
-      analysis.analysisId,
-      { idempotencyKey: "derive-producer" },
-    );
-    expect(derive.job).toMatchObject({
-      type: "valuation.derive",
-      payload: {
-        inputPath: await realpath(sourcePath),
-        computeOperation: "derive_workbook",
-        options: {
-          changes: [expect.objectContaining({ sheet: "DCF", cell: "B7" })],
-        },
-      },
-    });
-    expect(path.isAbsolute(String(derive.job.payload.outputDirectory))).toBe(
-      true,
-    );
-
-    const run = await insights.runValuationTracking(
-      alpha,
-      project.id,
-      {
-        idempotencyKey: "valuation-run-producer",
-        includeHistory: true,
-        refreshMarket: true,
-      },
-    );
-    expect(run.jobs).toHaveLength(1);
-    expect(run.jobs[0]?.job).toMatchObject({
-      type: "valuation.extract",
-      payload: {
-        datasetId: project.id,
-        documentId: document.document.id,
-        documentVersionId: document.version.id,
-        inputPath: await realpath(sourcePath),
-        computeOperation: "extract_workbook",
-        options: {
-          documentId: document.document.id,
-          documentVersionId: document.version.id,
-          includeHistory: true,
-        },
-      },
-    });
-    const valuationInputPath = String(
-      run.jobs[0]!.job.payload.inputPath,
-    );
-    const valuationOutputDirectory = String(
-      run.jobs[0]!.job.payload.outputDirectory,
-    );
-    const canonicalProjectRoot = await realpath(projectRoot);
-    expect(path.isAbsolute(valuationInputPath)).toBe(true);
-    expect(path.isAbsolute(valuationOutputDirectory)).toBe(true);
-    expect(
-      path.relative(canonicalProjectRoot, valuationInputPath),
-    ).not.toMatch(/^(?:\.\.(?:[/\\]|$)|[/\\])/u);
-    expect(
-      path.relative(projectRoot, valuationOutputDirectory),
-    ).not.toMatch(/^(?:\.\.(?:[/\\]|$)|[/\\])/u);
-    expect(
-      await insights.runValuationTracking(alpha, project.id, {
-        idempotencyKey: "valuation-run-producer",
-        includeHistory: true,
-        refreshMarket: true,
+    await expect(
+      insights.generateMemo(alpha, project.id, {
+        idempotencyKey: "memo-invalid-evidence",
+        instruction: "更新投资结论",
+        evidenceIds: ["fact:does-not-exist"],
       }),
-    ).toMatchObject({
-      jobs: [{ created: false, job: { id: run.jobs[0]!.job.id } }],
-      marketJobs: [
-        { created: false, job: { id: run.marketJobs[0]!.job.id } },
-      ],
+    ).rejects.toMatchObject({
+      code: "invalid_evidence_reference",
+      statusCode: 400,
     });
-    expect(run.refreshMarketEnqueued).toBe(true);
-    expect(run.marketJobs[0]?.job).toMatchObject({
-      type: "market.refresh",
-      payload: {
-        seriesId: series.seriesId,
-        modelVersionId: model.modelVersionId,
-        computeOperation: "fetch_market_data",
-        options: { provider: "akshare", ticker: "600000" },
-      },
-    });
-    const descriptorPath = String(
-      run.marketJobs[0]!.job.payload.inputPath,
-    );
-    expect(path.isAbsolute(descriptorPath)).toBe(true);
-    await expect(readFile(descriptorPath, "utf8")).resolves.toContain(
-      '"ticker": "600000"',
-    );
 
     const memo = await insights.generateMemo(alpha, project.id, {
       idempotencyKey: "memo-producer",
       instruction: "更新投资结论",
+      topic: "投资结论",
       title: "投资结论更新",
+      evidenceIds: [evidence.evidenceId],
     });
+    expect(memo.created).toBe(true);
     expect(memo.job).toMatchObject({
+      projectId: project.id,
       type: "memo.generate",
+      status: "queued",
       payload: {
+        datasetId: project.id,
         instruction: "更新投资结论",
+        topic: "投资结论",
         title: "投资结论更新",
+        evidenceIds: [evidence.evidenceId],
       },
     });
 
-    const memoMarkdown = Buffer.from("# 投资结论更新\n\n维持审慎乐观。", "utf8");
+    const replay = await insights.generateMemo(alpha, project.id, {
+      idempotencyKey: "memo-producer",
+      instruction: "更新投资结论",
+      topic: "投资结论",
+      title: "投资结论更新",
+      evidenceIds: [evidence.evidenceId],
+    });
+    expect(replay).toMatchObject({
+      created: false,
+      job: { id: memo.job.id },
+    });
+
+    ctx.close();
+  });
+
+  it("returns memo series with versions, filtering, paging and tenant isolation", async () => {
+    const ctx = await harness("Memo series project");
+    const { alpha, beta, project, projectRoot, stores, insights } = ctx;
+    const tracking = stores.getWorkflow(projectRoot).tracking;
+
+    const supplyV1 = tracking.saveMemoVersion({
+      datasetId: project.id,
+      topic: "供应链",
+      title: "供应链跟踪备忘录",
+      asOfDate: "2026-06-30",
+      sourceType: "agent_generated",
+      contentHash: "memo-supply-v1",
+      idempotencyKey: "memo-supply-v1",
+      sections: [
+        {
+          sectionKey: "risk",
+          title: "供应链风险",
+          content: "供应商切换仍在评估。",
+          evidenceIds: [],
+        },
+      ],
+    }).record;
+    const supplyV2 = tracking.saveMemoVersion({
+      datasetId: project.id,
+      topic: "供应链",
+      title: "供应链跟踪备忘录",
+      asOfDate: "2026-07-31",
+      sourceType: "agent_generated",
+      contentHash: "memo-supply-v2",
+      idempotencyKey: "memo-supply-v2",
+      sections: [
+        {
+          sectionKey: "risk",
+          title: "供应链风险",
+          content: "供应商切换方案已获批。",
+          evidenceIds: [],
+        },
+      ],
+    }).record;
+    tracking.saveMemoVersion({
+      datasetId: project.id,
+      topic: "客户集中度",
+      title: "客户集中度备忘录",
+      asOfDate: "2026-07-31",
+      sourceType: "agent_generated",
+      contentHash: "memo-concentration-v1",
+      idempotencyKey: "memo-concentration-v1",
+      sections: [],
+    });
+    expect(supplyV2.seriesId).toBe(supplyV1.seriesId);
+
+    const overview = await insights.memoSeries(alpha, project.id, {
+      limit: 100,
+      offset: 0,
+    });
+    expect(overview.series).toMatchObject({ total: 2 });
+    expect(overview.versions).toMatchObject({ total: 3 });
+
+    const filtered = await insights.memoSeries(alpha, project.id, {
+      seriesId: supplyV1.seriesId,
+      limit: 1,
+      offset: 0,
+    });
+    expect(filtered.versions).toMatchObject({
+      total: 2,
+      limit: 1,
+      offset: 0,
+      hasMore: true,
+      items: [
+        {
+          memoVersionId: supplyV2.memoVersionId,
+          seriesId: supplyV1.seriesId,
+          versionNo: 2,
+        },
+      ],
+    });
+
+    await expect(
+      insights.memoSeries(beta, project.id, { limit: 100, offset: 0 }),
+    ).rejects.toMatchObject({ code: "not_found" });
+
+    ctx.close();
+  });
+
+  it("compares memo versions with added/changed/not_mentioned/unchanged semantics", async () => {
+    const ctx = await harness("Memo compare project");
+    const { alpha, beta, project, projectRoot, stores, insights } = ctx;
+    const tracking = stores.getWorkflow(projectRoot).tracking;
+
+    const from = tracking.saveMemoVersion({
+      datasetId: project.id,
+      topic: "综合投研",
+      title: "综合投研备忘录",
+      asOfDate: "2026-06-30",
+      sourceType: "agent_generated",
+      contentHash: "memo-compare-v1",
+      idempotencyKey: "memo-compare-v1",
+      sections: [
+        {
+          sectionKey: "overview",
+          title: "概览",
+          content: "公司基本面保持稳定。",
+          evidenceIds: [],
+        },
+        {
+          sectionKey: "risk",
+          title: "风险",
+          content: "供应商切换仍在评估。",
+          evidenceIds: [],
+        },
+        {
+          sectionKey: "legacy",
+          title: "历史事项",
+          content: "旧产线折旧已计提完毕。",
+          evidenceIds: [],
+        },
+      ],
+    }).record;
+    const to = tracking.saveMemoVersion({
+      datasetId: project.id,
+      topic: "综合投研",
+      title: "综合投研备忘录",
+      asOfDate: "2026-07-31",
+      sourceType: "agent_generated",
+      contentHash: "memo-compare-v2",
+      idempotencyKey: "memo-compare-v2",
+      sections: [
+        {
+          sectionKey: "overview",
+          title: "概览",
+          content: "公司基本面保持稳定。",
+          evidenceIds: [],
+        },
+        {
+          sectionKey: "risk",
+          title: "风险",
+          content: "供应商切换方案已获批。",
+          evidenceIds: [],
+        },
+        {
+          sectionKey: "catalyst",
+          title: "催化剂",
+          content: "新产能预计四季度爬坡。",
+          evidenceIds: [],
+        },
+      ],
+    }).record;
+
+    const comparison = await insights.compareMemoVersions(
+      alpha,
+      project.id,
+      from.memoVersionId,
+      to.memoVersionId,
+    );
+    expect(comparison.fromVersion).toMatchObject({
+      memoVersionId: from.memoVersionId,
+      versionNo: 1,
+    });
+    expect(comparison.toVersion).toMatchObject({
+      memoVersionId: to.memoVersionId,
+      versionNo: 2,
+    });
+    expect(comparison.sectionChanges).toMatchObject([
+      { sectionKey: "catalyst", changeType: "added", oldContent: "" },
+      { sectionKey: "legacy", changeType: "not_mentioned", newContent: "" },
+      { sectionKey: "overview", changeType: "unchanged" },
+      {
+        sectionKey: "risk",
+        changeType: "changed",
+        oldContent: "供应商切换仍在评估。",
+        newContent: "供应商切换方案已获批。",
+      },
+    ]);
+    expect(comparison.itemChanges).toEqual([]);
+
+    const foreignSeries = tracking.saveMemoVersion({
+      datasetId: project.id,
+      topic: "另一个主题",
+      title: "另一个系列",
+      asOfDate: "2026-07-31",
+      sourceType: "agent_generated",
+      contentHash: "memo-foreign-series-v1",
+      idempotencyKey: "memo-foreign-series-v1",
+      sections: [],
+    }).record;
+    await expect(
+      insights.compareMemoVersions(
+        alpha,
+        project.id,
+        from.memoVersionId,
+        foreignSeries.memoVersionId,
+      ),
+    ).rejects.toMatchObject({
+      code: "insights_invalid_argument",
+      statusCode: 400,
+    });
+    await expect(
+      insights.compareMemoVersions(
+        alpha,
+        project.id,
+        from.memoVersionId,
+        "memo-version-missing",
+      ),
+    ).rejects.toMatchObject({
+      code: "insights_not_found",
+      statusCode: 404,
+    });
+    await expect(
+      insights.compareMemoVersions(
+        beta,
+        project.id,
+        from.memoVersionId,
+        to.memoVersionId,
+      ),
+    ).rejects.toMatchObject({ code: "not_found" });
+
+    ctx.close();
+  });
+
+  it("opens memo artifacts by format with attachMemoArtifacts fixtures", async () => {
+    const ctx = await harness("Memo artifact project");
+    const { alpha, project, projectRoot, stores, insights } = ctx;
+    const tracking = stores.getWorkflow(projectRoot).tracking;
+
+    const memoMarkdown = Buffer.from(
+      "# 投资结论更新\n\n维持审慎乐观。",
+      "utf8",
+    );
     const memoPdf = Buffer.from("%PDF-1.7\ncanonical memo fixture\n", "utf8");
+    const memoHtml = Buffer.from(
+      "<h1>投资结论更新</h1><p>维持审慎乐观。</p>",
+      "utf8",
+    );
     const memoMarkdownPath = path.join(
       projectRoot,
       "artifacts",
       "memos",
       "memo.md",
     );
-    const memoPdfPath = path.join(
+    const memoPdfPath = path.join(projectRoot, "artifacts", "memos", "memo.pdf");
+    const memoHtmlPath = path.join(
       projectRoot,
       "artifacts",
       "memos",
-      "memo.pdf",
+      "memo.html",
     );
     await mkdir(path.dirname(memoMarkdownPath), { recursive: true });
     await Promise.all([
       writeFile(memoMarkdownPath, memoMarkdown),
       writeFile(memoPdfPath, memoPdf),
+      writeFile(memoHtmlPath, memoHtml),
     ]);
-    const storedMemo = workflow.tracking.saveMemoVersion({
+
+    const storedMemo = tracking.saveMemoVersion({
       datasetId: project.id,
       topic: "投资结论更新",
       title: "投资结论更新",
       asOfDate: "2026-07-31",
       sourceType: "agent_generated",
-      contentHash: createHash("sha256")
-        .update(memoMarkdown)
-        .digest("hex"),
+      contentHash: createHash("sha256").update(memoMarkdown).digest("hex"),
       markdownPath: path.relative(projectRoot, memoMarkdownPath),
       pdfPath: path.relative(projectRoot, memoPdfPath),
       idempotencyKey: "memo-artifact-producer",
@@ -436,149 +421,78 @@ describe("repository project insights service", () => {
         },
       ],
     }).record;
-    const openedMemoMarkdown = await insights.openMemoArtifact(
+
+    const openedMarkdown = await insights.openMemoArtifact(
       alpha,
       project.id,
       storedMemo.memoVersionId,
       "markdown",
     );
     try {
-      expect(openedMemoMarkdown).toMatchObject({
+      expect(openedMarkdown).toMatchObject({
         filename: "memo.md",
         mimeType: "text/markdown; charset=utf-8",
         size: memoMarkdown.byteLength,
       });
-      await expect(readFile(openedMemoMarkdown.absolutePath)).resolves.toEqual(
+      await expect(readFile(openedMarkdown.absolutePath)).resolves.toEqual(
         memoMarkdown,
       );
     } finally {
-      await openedMemoMarkdown.handle.close();
+      await openedMarkdown.handle.close();
     }
-    const openedMemoPdf = await insights.openMemoArtifact(
+
+    // Without an HTML artifact, the default format falls back to PDF.
+    const openedDefaultPdf = await insights.openMemoArtifact(
       alpha,
       project.id,
       storedMemo.memoVersionId,
-      "pdf",
     );
     try {
-      expect(openedMemoPdf).toMatchObject({
+      expect(openedDefaultPdf).toMatchObject({
         filename: "memo.pdf",
         mimeType: "application/pdf",
         size: memoPdf.byteLength,
       });
-      await expect(readFile(openedMemoPdf.absolutePath)).resolves.toEqual(
+      await expect(readFile(openedDefaultPdf.absolutePath)).resolves.toEqual(
         memoPdf,
       );
     } finally {
-      await openedMemoPdf.handle.close();
+      await openedDefaultPdf.handle.close();
     }
+    await expect(
+      insights.openMemoArtifact(
+        alpha,
+        project.id,
+        storedMemo.memoVersionId,
+        "html",
+      ),
+    ).rejects.toMatchObject({
+      code: "memo_artifact_not_found",
+      statusCode: 404,
+    });
 
-    const derivedBytes = Buffer.from("derived-workbook", "utf8");
-    const derivedSha256 = createHash("sha256")
-      .update(derivedBytes)
-      .digest("hex");
-    const derivedPath = path.join(
-      projectRoot,
-      "artifacts",
-      "valuation",
-      "derived.xlsx",
-    );
-    await mkdir(path.dirname(derivedPath), { recursive: true });
-    await writeFile(derivedPath, derivedBytes);
-    const derived = workflow.valuation.saveDerivedModel({
-      datasetId: project.id,
-      seriesId: series.seriesId,
-      analysisId: analysis.analysisId,
-      baseModelVersionId: model.modelVersionId,
-      derivedVersionNo: 1,
-      outputFilename: "derived.xlsx",
-      outputPath: path.relative(projectRoot, derivedPath),
-      checksum: derivedSha256,
-      appliedChanges: [],
-      skippedChanges: [],
-    }).value;
-    const openedDerived = await insights.openDerivedModelFile(
+    tracking.attachMemoArtifacts(project.id, storedMemo.memoVersionId, {
+      markdownPath: path.relative(projectRoot, memoMarkdownPath),
+      htmlPath: path.relative(projectRoot, memoHtmlPath),
+      pdfPath: path.relative(projectRoot, memoPdfPath),
+    });
+    const openedDefaultHtml = await insights.openMemoArtifact(
       alpha,
       project.id,
-      derived.derivedModelId,
+      storedMemo.memoVersionId,
     );
     try {
-      expect(openedDerived).toMatchObject({
-        filename: "derived.xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        size: derivedBytes.byteLength,
-        sha256: derivedSha256,
+      expect(openedDefaultHtml).toMatchObject({
+        filename: "memo.html",
+        size: memoHtml.byteLength,
       });
-      await expect(readFile(openedDerived.absolutePath)).resolves.toEqual(
-        derivedBytes,
+      await expect(readFile(openedDefaultHtml.absolutePath)).resolves.toEqual(
+        memoHtml,
       );
     } finally {
-      await openedDerived.handle.close();
+      await openedDefaultHtml.handle.close();
     }
-    const resource = await insights.addDerivedModelToResources(
-      alpha,
-      project.id,
-      derived.derivedModelId,
-      { idempotencyKey: "derived-resource-producer" },
-    );
-    expect(resource).toMatchObject({
-      derivedModel: {
-        resourceStatus: "queued",
-        resourceDocId: null,
-      },
-      document: { logicalKey: `valuation-derived:${derived.derivedModelId}` },
-      job: {
-        type: "document.ingest",
-        payload: {
-          sourceDerivedModelId: derived.derivedModelId,
-        },
-      },
-    });
-    if (resource.job === null || resource.document === null) {
-      throw new Error("Resource import did not create its document job");
-    }
-    const resourceJobId = resource.job.id;
-    const resourceDocumentId = resource.document.id;
-    database
-      .prepare(
-        `UPDATE jobs
-         SET status = 'running', lease_owner = 'test-worker',
-             lease_expires_at = '2999-01-01T00:00:00.000Z'
-         WHERE id = ?`,
-      )
-      .run(resourceJobId);
-    const runningResources = await insights.valuationDerivedModels(
-      alpha,
-      project.id,
-      { limit: 100, offset: 0 },
-    );
-    expect(runningResources.items[0]).toMatchObject({
-      derivedModelId: derived.derivedModelId,
-      resourceStatus: "running",
-    });
 
-    database
-      .prepare(
-        `UPDATE jobs
-         SET status = 'completed', lease_owner = NULL,
-             lease_expires_at = NULL,
-             completed_at = '2026-07-31T00:00:00.000Z'
-         WHERE id = ?`,
-      )
-      .run(resourceJobId);
-    const completedResources = await insights.valuationDerivedModels(
-      alpha,
-      project.id,
-      { limit: 100, offset: 0 },
-    );
-    expect(completedResources.items[0]).toMatchObject({
-      derivedModelId: derived.derivedModelId,
-      resourceStatus: "completed",
-      resourceDocId: resourceDocumentId,
-    });
-
-    stores.close();
-    database.close();
+    ctx.close();
   });
 });

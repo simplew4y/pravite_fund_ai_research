@@ -19,10 +19,8 @@ import {
 } from "@private-fund/research-store";
 import {
   createWorkflowStore,
-  type JsonValue,
   type TrackingItemType,
   type TrackingPriority,
-  type ValuationNodeValue,
   type WorkflowStore,
 } from "@private-fund/workflow-store";
 import type {
@@ -31,11 +29,7 @@ import type {
   EnqueueJobResult,
 } from "@private-fund/job-queue";
 
-export const BUSINESS_JOB_TYPES = [
-  "memo.generate",
-  "tracking.scan",
-  "valuation.compare",
-] as const;
+export const BUSINESS_JOB_TYPES = ["memo.generate"] as const;
 
 export type BusinessJobType = (typeof BUSINESS_JOB_TYPES)[number];
 
@@ -177,20 +171,6 @@ function isWithin(candidate: string, root: string): boolean {
   );
 }
 
-function stringPayload(
-  payload: Record<string, unknown>,
-  name: string,
-): string {
-  const value = payload[name];
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw failure(
-      `Business job payload.${name} must be a non-empty string`,
-      "invalid_business_job",
-    );
-  }
-  return value;
-}
-
 function optionalStringPayload(
   payload: Record<string, unknown>,
   name: string,
@@ -208,24 +188,6 @@ function optionalStringPayload(
   return value;
 }
 
-function payloadBoolean(
-  payload: Record<string, unknown>,
-  name: string,
-  fallback: boolean,
-): boolean {
-  const value = payload[name];
-  if (value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== "boolean") {
-    throw failure(
-      `Business job payload.${name} must be a boolean`,
-      "invalid_business_job",
-    );
-  }
-  return value;
-}
-
 function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -236,99 +198,6 @@ function canonicalText(value: string, maximum: number): string {
     .replaceAll(/\s+/gu, " ")
     .trim()
     .slice(0, maximum);
-}
-
-function jsonValue(value: unknown): JsonValue {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    (typeof value === "number" && Number.isFinite(value))
-  ) {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map(jsonValue);
-  }
-  if (typeof value === "object" && value !== null) {
-    const result: Record<string, JsonValue> = {};
-    for (const [key, item] of Object.entries(value)) {
-      result[key] = jsonValue(item);
-    }
-    return result;
-  }
-  return String(value);
-}
-
-function priorityRank(priority: TrackingPriority): number {
-  return {
-    low: 0,
-    medium: 1,
-    high: 2,
-    critical: 3,
-  }[priority];
-}
-
-function materiality(
-  oldValue: ValuationNodeValue | undefined,
-  newValue: ValuationNodeValue | undefined,
-): {
-  readonly priority: TrackingPriority;
-  readonly absoluteChange: number | null;
-  readonly relativeChange: number | null;
-} {
-  const left = oldValue?.valueNumeric;
-  const right = newValue?.valueNumeric;
-  if (left === null || left === undefined || right === null || right === undefined) {
-    return {
-      priority: "medium",
-      absoluteChange: null,
-      relativeChange: null,
-    };
-  }
-  const absoluteChange = right - left;
-  const relativeChange = left === 0 ? null : absoluteChange / Math.abs(left);
-  const magnitude =
-    relativeChange === null
-      ? Math.abs(absoluteChange)
-      : Math.abs(relativeChange);
-  return {
-    priority:
-      magnitude >= 0.25
-        ? "critical"
-        : magnitude >= 0.1
-          ? "high"
-          : magnitude >= 0.03
-            ? "medium"
-            : "low",
-    absoluteChange,
-    relativeChange,
-  };
-}
-
-function comparableValue(value: ValuationNodeValue | undefined): unknown {
-  if (value === undefined) return null;
-  return {
-    valueNumeric: value.valueNumeric,
-    valueText: value.valueText,
-    unit: value.unit,
-    formula: value.formula,
-    sheetName: value.sheetName,
-    cellRef: value.cellRef,
-  };
-}
-
-function recommendedValue(value: ValuationNodeValue): unknown {
-  const raw = value.metadata.rawValue;
-  if (
-    raw === null ||
-    typeof raw === "string" ||
-    typeof raw === "boolean" ||
-    (typeof raw === "number" && Number.isFinite(raw))
-  ) {
-    return raw;
-  }
-  return value.valueNumeric ?? value.valueText;
 }
 
 async function writeNewOrIdentical(
@@ -428,12 +297,8 @@ export class RepositoryBusinessJobExecutor {
     const context = await this.#openProject(job);
     try {
       switch (job.type) {
-        case "tracking.scan":
-          return await this.#trackingScan(job, context, execution.signal);
         case "memo.generate":
           return await this.#generateMemo(job, context, execution.signal);
-        case "valuation.compare":
-          return await this.#compareValuation(job, context, execution.signal);
         default:
           throw failure(
             `Unsupported business job type: ${job.type}`,
@@ -587,153 +452,6 @@ export class RepositoryBusinessJobExecutor {
         `${source.logicalKey}:${match.type}:${locator}`,
         500,
       ),
-    };
-  }
-
-  async #trackingScan(
-    job: BusinessJob,
-    context: ProjectContext,
-    signal?: AbortSignal,
-  ): Promise<Record<string, unknown>> {
-    const tracking = context.workflow.tracking;
-    const includeHistory = payloadBoolean(
-      job.payload,
-      "includeHistory",
-      false,
-    );
-    const rules = tracking.ensureDefaultWatchRules(job.projectId);
-    const existingItems = [];
-    for (let offset = 0; ; offset += 500) {
-      const page = tracking.listItems(job.projectId, {
-        limit: 500,
-        offset,
-      });
-      existingItems.push(...page.items);
-      if (!page.hasMore) break;
-    }
-    const existing = new Map(
-      existingItems.map((item) => [
-        `${item.itemType}\0${item.canonicalKey}`,
-        item,
-      ]),
-    );
-    let scannedEvidence = 0;
-    let matchedEvidence = 0;
-    let createdVersions = 0;
-    let createdAlerts = 0;
-
-    for (const source of this.#evidenceSources(
-      context,
-      includeHistory,
-      signal,
-    )) {
-      signal?.throwIfAborted();
-      scannedEvidence += 1;
-      const classified = this.#classify(source);
-      if (classified === null) continue;
-      matchedEvidence += 1;
-      const key = `${classified.type}\0${classified.canonicalKey}`;
-      const prior = existing.get(key);
-      const changed =
-        prior?.currentVersion !== null &&
-        prior?.currentVersion !== undefined &&
-        prior.currentVersion.content !== classified.content;
-      const saved = tracking.appendItemVersion({
-        datasetId: job.projectId,
-        itemType: classified.type,
-        canonicalKey: classified.canonicalKey,
-        title: classified.title,
-        sourceType: "evidence",
-        sourceId: classified.source.evidence.evidenceId,
-        content: classified.content,
-        status: "active",
-        state: "active",
-        impact: classified.priority,
-        confidence: 0.72,
-        observedAt: job.createdAt,
-        evidenceIds: [classified.source.evidence.evidenceId],
-        metadata: {
-          extractor: "ts-deterministic-tracking-v1",
-          documentId: classified.source.documentId,
-          documentVersionId: classified.source.documentVersionId,
-          documentVersionNo: classified.source.documentVersionNo,
-        },
-        idempotencyKey: `tracking:${classified.source.evidence.evidenceId}:${sha256(classified.content).slice(0, 32)}`,
-        ...(changed
-          ? {
-              change: {
-                changeType: "content_changed",
-                materiality: classified.priority,
-                summary: `${classified.title} 的证据内容发生变化`,
-                details: {
-                  priorVersionId:
-                    prior?.currentVersionId ?? null,
-                  sourceEvidenceId:
-                    classified.source.evidence.evidenceId,
-                },
-              },
-            }
-          : {}),
-      });
-      if (saved.created) createdVersions += 1;
-      existing.set(key, saved.item);
-
-      tracking.recordObservation({
-        datasetId: job.projectId,
-        itemId: saved.item.itemId,
-        itemVersionId: saved.version.itemVersionId,
-        sourceType: "evidence",
-        sourceId: classified.source.evidence.evidenceId,
-        content: classified.content,
-        evidenceIds: [classified.source.evidence.evidenceId],
-        observedAt: job.createdAt,
-        idempotencyKey: `tracking-observation:${saved.version.itemVersionId}`,
-        extracted: {
-          itemType: classified.type,
-          priority: classified.priority,
-          extractor: "ts-deterministic-tracking-v1",
-        },
-      });
-
-      if (saved.change !== null) {
-        for (const rule of rules) {
-          if (
-            !rule.active ||
-            (rule.targetType !== "all" &&
-              rule.targetType !== classified.type) ||
-            (rule.targetItemId !== null &&
-              rule.targetItemId !== saved.item.itemId) ||
-            priorityRank(classified.priority) <
-              priorityRank(rule.minPriority)
-          ) {
-            continue;
-          }
-          const alert = tracking.createAlert({
-            datasetId: job.projectId,
-            ruleId: rule.ruleId,
-            itemId: saved.item.itemId,
-            changeEventId: saved.change.changeEventId,
-            alertType: saved.change.changeType,
-            priority: classified.priority,
-            title: classified.title,
-            summary: saved.change.summary,
-            whyItMatters: "受监控研究事项出现了新的、可定位到原始资料的变化。",
-            evidenceIds: [classified.source.evidence.evidenceId],
-            dedupeKey: `${rule.ruleId}:${saved.change.changeEventId}`,
-          });
-          if (alert.created) createdAlerts += 1;
-        }
-      }
-    }
-
-    return {
-      kind: "tracking.scan",
-      scannedEvidence,
-      matchedEvidence,
-      createdVersions,
-      createdAlerts,
-      includeHistory,
-      extractorVersion: "ts-deterministic-tracking-v1",
     };
   }
 
@@ -968,207 +686,5 @@ export class RepositoryBusinessJobExecutor {
         !asset.created &&
         (renderJob === null || !renderJob.created),
     };
-  }
-
-  async #compareValuation(
-    job: BusinessJob,
-    context: ProjectContext,
-    signal?: AbortSignal,
-  ): Promise<Record<string, unknown>> {
-    const analysisId = stringPayload(job.payload, "analysisId");
-    const datasetId = job.projectId;
-    const valuation = context.workflow.valuation;
-    let analysis = valuation.getAgentAnalysis(datasetId, analysisId);
-    if (
-      analysis.status === "pending" ||
-      analysis.status === "failed"
-    ) {
-      analysis = valuation.transitionAgentAnalysis(datasetId, analysisId, {
-        status: "running",
-      });
-    }
-    if (analysis.status === "completed") {
-      return {
-        kind: "valuation.compare",
-        analysisId,
-        status: "completed",
-        idempotentReplay: true,
-      };
-    }
-    signal?.throwIfAborted();
-
-    try {
-      const readValues = (modelVersionId: string): ValuationNodeValue[] => {
-        const values: ValuationNodeValue[] = [];
-        for (let offset = 0; ; offset += 1_000) {
-          const page = valuation.listNodeValues(modelVersionId, {
-            limit: 1_000,
-            offset,
-          });
-          values.push(...page.items);
-          if (!page.hasMore) return values;
-        }
-      };
-      const baseValues = readValues(analysis.baseModelVersionId);
-      const comparisonValues =
-        analysis.comparisonModelVersionId === null
-          ? []
-          : readValues(analysis.comparisonModelVersionId);
-      const left = new Map(baseValues.map((value) => [value.nodeId, value]));
-      const right = new Map(
-        comparisonValues.map((value) => [value.nodeId, value]),
-      );
-      const nodeIds = [...new Set([...left.keys(), ...right.keys()])].sort();
-      const changes: Array<Record<string, JsonValue>> = [];
-      const recommendations: Array<Record<string, JsonValue>> = [];
-      const evidenceIds = new Set<string>();
-      for (const nodeId of nodeIds) {
-        signal?.throwIfAborted();
-        const oldValue = left.get(nodeId);
-        const newValue = right.get(nodeId);
-        if (
-          JSON.stringify(comparableValue(oldValue)) ===
-          JSON.stringify(comparableValue(newValue))
-        ) {
-          continue;
-        }
-        const impact = materiality(oldValue, newValue);
-        oldValue && evidenceIds.add(oldValue.evidenceId);
-        newValue && evidenceIds.add(newValue.evidenceId);
-        const changeType =
-          oldValue === undefined
-            ? "node_added"
-            : newValue === undefined
-              ? "node_removed"
-              : oldValue.formula !== newValue.formula
-                ? "formula_changed"
-                : "value_changed";
-        const summary = `${newValue?.sheetName ?? oldValue?.sheetName ?? "Model"}!${newValue?.cellRef ?? oldValue?.cellRef ?? nodeId} ${changeType}`;
-        const change = {
-          nodeId,
-          changeType,
-          materiality: impact.priority,
-          summary,
-          oldValue: jsonValue(comparableValue(oldValue)),
-          newValue: jsonValue(comparableValue(newValue)),
-          absoluteChange: impact.absoluteChange,
-          relativeChange: impact.relativeChange,
-          evidenceIds: [
-            ...new Set(
-              [oldValue?.evidenceId, newValue?.evidenceId].filter(
-                (value): value is string => value !== undefined,
-              ),
-            ),
-          ],
-        };
-        changes.push(change);
-        if (
-          analysis.comparisonModelVersionId !== null &&
-          oldValue !== undefined &&
-          newValue !== undefined
-        ) {
-          recommendations.push({
-            sheet: oldValue.sheetName,
-            cell: oldValue.cellRef,
-            expectedCurrentValue: jsonValue(
-              recommendedValue(oldValue),
-            ),
-            ...(newValue.formula === null
-              ? { value: jsonValue(recommendedValue(newValue)) }
-              : { formula: newValue.formula }),
-            ...(newValue.metadata.numberFormat === undefined
-              ? {}
-              : {
-                  numberFormat: jsonValue(
-                    newValue.metadata.numberFormat,
-                  ),
-                }),
-            rationale: summary,
-            evidenceIds: change.evidenceIds,
-          });
-        }
-        if (analysis.comparisonModelVersionId !== null) {
-          valuation.recordChange({
-            datasetId,
-            seriesId: analysis.seriesId,
-            fromModelVersionId: analysis.baseModelVersionId,
-            toModelVersionId: analysis.comparisonModelVersionId,
-            nodeId,
-            changeType,
-            materiality: impact.priority,
-            summary,
-            oldValue:
-              (comparableValue(oldValue) as Record<string, unknown> | null) ??
-              {},
-            newValue:
-              (comparableValue(newValue) as Record<string, unknown> | null) ??
-              {},
-            absoluteChange: impact.absoluteChange,
-            relativeChange: impact.relativeChange,
-            evidenceIds: change.evidenceIds,
-            idempotencyKey: `${analysisId}:${nodeId}:${changeType}`,
-          });
-        }
-      }
-      const summary =
-        changes.length === 0
-          ? "未发现可验证的模型单元格变化。"
-          : `识别到 ${String(changes.length)} 项模型变化，其中 ${String(
-              changes.filter(
-                (change) =>
-                  change.materiality === "high" ||
-                  change.materiality === "critical",
-              ).length,
-            )} 项为高影响变化。`;
-      const completed = valuation.transitionAgentAnalysis(
-        datasetId,
-        analysisId,
-        {
-          status: "completed",
-          valuationMethod: "deterministic-cell-diff",
-          executiveSummary: summary,
-          investmentConclusion:
-            recommendations.length === 0
-              ? "当前比较未形成可安全应用的派生修改建议。"
-              : "派生建议仅包含具备源单元格前置条件与 Evidence 的变化，仍需人工复核。",
-          analysis: {
-            schemaVersion: 1,
-            focus: analysis.focus,
-            changes,
-            recommendedChanges: recommendations,
-          },
-          planner: {
-            strategy: "deterministic-cell-diff",
-            comparedVersionId:
-              analysis.comparisonModelVersionId,
-            derivationAllowed: recommendations.length > 0,
-          },
-          evidenceIds: [...evidenceIds].sort(),
-          rawResponse: JSON.stringify({ changes, recommendations }),
-          modelName: null,
-        },
-      );
-      return {
-        kind: "valuation.compare",
-        analysisId: completed.analysisId,
-        status: completed.status,
-        changeCount: changes.length,
-        recommendationCount: recommendations.length,
-        evidenceCount: evidenceIds.size,
-      };
-    } catch (error) {
-      try {
-        valuation.transitionAgentAnalysis(datasetId, analysisId, {
-          status: "failed",
-          errorMessage:
-            error instanceof Error
-              ? error.message.slice(0, 4_000)
-              : String(error).slice(0, 4_000),
-        });
-      } catch {
-        // The durable queue still records the primary failure.
-      }
-      throw error;
-    }
   }
 }

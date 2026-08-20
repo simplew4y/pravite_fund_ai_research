@@ -8,7 +8,6 @@ import type {
   JobService,
   ProjectInsightsService,
   ProjectService,
-  ProjectWorkflowService,
   ResearchService,
   SessionResourcesService,
   SessionService,
@@ -27,7 +26,6 @@ import { RepositorySessionResourcesService } from "../session-resources-service.
 import { RepositorySourceFolderService } from "../source-folder-service.js";
 import { JournaledToolRuntime } from "../tool-runtime.js";
 import { RepositoryGlobalUploadService } from "../global-upload-service.js";
-import { RepositoryProjectWorkflowService } from "../workflow-service.js";
 
 declare module "@private-fund/kernel" {
   interface KernelServices {
@@ -37,7 +35,6 @@ declare module "@private-fund/kernel" {
     sourceFolders: SourceFolderService;
     sessionResources: SessionResourcesService;
     globalUploads: GlobalUploadService;
-    workflow: ProjectWorkflowService;
     insights: ProjectInsightsService;
     sessions: SessionService;
   }
@@ -108,22 +105,13 @@ export const uploadsPlugin = defineKernelPlugin({
   },
 });
 
-/** Research workflow + insights (tracking/valuation/memo). */
+/** Memo pipeline (generation, versions, compare, artifacts). */
 export const insightsPlugin = defineKernelPlugin({
   name: "insights",
   inject: ["controlDb", "researchStores", "jobs"],
-  provides: ["workflow", "insights"],
+  provides: ["insights"],
   apply(ctx) {
     const { repositories } = ctx.controlDb;
-    provide(
-      ctx,
-      "workflow",
-      new RepositoryProjectWorkflowService(
-        repositories,
-        ctx.researchStores,
-        ctx.jobs,
-      ),
-    );
     provide(
       ctx,
       "insights",

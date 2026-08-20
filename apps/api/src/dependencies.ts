@@ -85,23 +85,6 @@ import type {
   ValuationPageQuery,
 } from "@private-fund/contracts";
 import type { OpenedFileResource } from "./secure-files.js";
-import type {
-  Assumption,
-  AssumptionStatus,
-  NodeVersion,
-  Page as WorkflowPage,
-  ReportVersion,
-  ResearchReport,
-  WorkflowSnapshot,
-} from "@private-fund/workflow-store";
-import type {
-  CompleteWorkflowNodeRequest,
-  CreateWorkflowAssumptionRequest,
-  CreateWorkflowReportRequest,
-  InitializeWorkflowRequest,
-  SetWorkflowContextRequest,
-  StartWorkflowNodeRequest,
-} from "@private-fund/contracts";
 
 export interface RequestIdentityProvider {
   authenticate(
@@ -505,107 +488,12 @@ export interface SessionResourcesService {
   ): Promise<SessionResource>;
 }
 
-export interface ProjectWorkflowService {
-  initialize(
-    tenant: TenantContext,
-    projectId: string,
-    input: InitializeWorkflowRequest,
-  ): Promise<WorkflowSnapshot>;
-  snapshot(
-    tenant: TenantContext,
-    projectId: string,
-  ): Promise<WorkflowSnapshot>;
-  selectCurrentNode(
-    tenant: TenantContext,
-    projectId: string,
-    nodeId: string | null,
-  ): Promise<WorkflowSnapshot>;
-  setContext(
-    tenant: TenantContext,
-    projectId: string,
-    input: SetWorkflowContextRequest,
-  ): Promise<WorkflowSnapshot>;
-  startNode(
-    tenant: TenantContext,
-    projectId: string,
-    nodeId: string,
-    input: StartWorkflowNodeRequest,
-  ): Promise<{ workflow: WorkflowSnapshot; nodeVersion: NodeVersion }>;
-  completeNode(
-    tenant: TenantContext,
-    projectId: string,
-    nodeId: string,
-    input: CompleteWorkflowNodeRequest,
-  ): Promise<{ workflow: WorkflowSnapshot; nodeVersion: NodeVersion }>;
-  createAssumption(
-    tenant: TenantContext,
-    projectId: string,
-    nodeId: string,
-    input: CreateWorkflowAssumptionRequest,
-  ): Promise<{ workflow: WorkflowSnapshot; assumption: Assumption }>;
-  assumptions(
-    tenant: TenantContext,
-    projectId: string,
-    nodeId: string,
-    options: {
-      limit: number;
-      offset: number;
-      status?: AssumptionStatus;
-    },
-  ): Promise<WorkflowPage<Assumption>>;
-  nodeVersions(
-    tenant: TenantContext,
-    projectId: string,
-    nodeId: string,
-    options: { limit: number; offset: number },
-  ): Promise<WorkflowPage<NodeVersion>>;
-  reports(
-    tenant: TenantContext,
-    projectId: string,
-    options: { limit: number; offset: number },
-  ): Promise<WorkflowPage<WorkflowReportListItem>>;
-  createReport(
-    tenant: TenantContext,
-    projectId: string,
-    input: CreateWorkflowReportRequest,
-  ): Promise<{
-    report: ResearchReport;
-    version: ReportVersion;
-    job: Job;
-    created: boolean;
-  }>;
-}
-
-export interface WorkflowReportListItem extends ResearchReport {
-  readonly currentVersion: ReportVersion | null;
-}
-
 export interface ProjectInsightsService {
-  trackingOverview(
-    tenant: TenantContext,
-    projectId: string,
-    options: TrackingPageQuery,
-  ): Promise<unknown>;
-  runTracking(
-    tenant: TenantContext,
-    projectId: string,
-    input: RunTrackingScanRequest,
-  ): Promise<{ job: Job; created: boolean }>;
   generateMemo(
     tenant: TenantContext,
     projectId: string,
     input: GenerateMemoRequest,
   ): Promise<{ job: Job; created: boolean }>;
-  trackingItems(
-    tenant: TenantContext,
-    projectId: string,
-    query: ListTrackingItemsQuery,
-  ): Promise<unknown>;
-  trackingItemTimeline(
-    tenant: TenantContext,
-    projectId: string,
-    itemId: string,
-  ): Promise<unknown>;
   memoSeries(
     tenant: TenantContext,
     projectId: string,
@@ -623,132 +511,6 @@ export interface ProjectInsightsService {
     memoVersionId: string,
     format?: MemoArtifactFormat,
   ): Promise<OpenedFileResource>;
-  trackingWatchRules(
-    tenant: TenantContext,
-    projectId: string,
-    query: TrackingPageQuery,
-  ): Promise<unknown>;
-  createTrackingWatchRule(
-    tenant: TenantContext,
-    projectId: string,
-    input: CreateTrackingWatchRuleRequest,
-  ): Promise<unknown>;
-  updateTrackingWatchRule(
-    tenant: TenantContext,
-    projectId: string,
-    ruleId: string,
-    input: UpdateTrackingWatchRuleRequest,
-  ): Promise<unknown>;
-  trackingAlerts(
-    tenant: TenantContext,
-    projectId: string,
-    query: ListTrackingAlertsQuery,
-  ): Promise<unknown>;
-  transitionTrackingAlert(
-    tenant: TenantContext,
-    projectId: string,
-    alertId: string,
-    input: TransitionTrackingAlertRequest,
-  ): Promise<unknown>;
-  valuationOverview(
-    tenant: TenantContext,
-    projectId: string,
-    options: ValuationPageQuery,
-  ): Promise<unknown>;
-  runValuationTracking(
-    tenant: TenantContext,
-    projectId: string,
-    input: RunValuationTrackingRequest,
-  ): Promise<unknown>;
-  valuationSeries(
-    tenant: TenantContext,
-    projectId: string,
-    options: ValuationPageQuery,
-  ): Promise<unknown>;
-  valuationModelVersions(
-    tenant: TenantContext,
-    projectId: string,
-    seriesId: string,
-    options: ValuationPageQuery,
-  ): Promise<unknown>;
-  compareValuationVersions(
-    tenant: TenantContext,
-    projectId: string,
-    seriesId: string,
-    fromVersionId: string,
-    toVersionId: string,
-  ): Promise<unknown>;
-  valuationModelOverview(
-    tenant: TenantContext,
-    projectId: string,
-    seriesId: string,
-    modelVersionId: string,
-  ): Promise<unknown>;
-  valuationAnalyses(
-    tenant: TenantContext,
-    projectId: string,
-    query: ListValuationResourcesQuery,
-  ): Promise<unknown>;
-  valuationAnalysis(
-    tenant: TenantContext,
-    projectId: string,
-    analysisId: string,
-  ): Promise<unknown>;
-  createValuationAnalysis(
-    tenant: TenantContext,
-    projectId: string,
-    seriesId: string,
-    input: CreateValuationAgentAnalysisRequest,
-  ): Promise<unknown>;
-  deriveValuationModel(
-    tenant: TenantContext,
-    projectId: string,
-    analysisId: string,
-    input: DeriveValuationModelRequest,
-  ): Promise<unknown>;
-  valuationDerivedModels(
-    tenant: TenantContext,
-    projectId: string,
-    query: ListValuationResourcesQuery,
-  ): Promise<unknown>;
-  openDerivedModelFile(
-    tenant: TenantContext,
-    projectId: string,
-    derivedModelId: string,
-  ): Promise<OpenedFileResource>;
-  addDerivedModelToResources(
-    tenant: TenantContext,
-    projectId: string,
-    derivedModelId: string,
-    input: AddDerivedModelToResourcesRequest,
-  ): Promise<unknown>;
-  valuationWatchRules(
-    tenant: TenantContext,
-    projectId: string,
-    options: ValuationPageQuery,
-  ): Promise<unknown>;
-  createValuationWatchRule(
-    tenant: TenantContext,
-    projectId: string,
-    input: CreateValuationWatchRuleRequest,
-  ): Promise<unknown>;
-  updateValuationWatchRule(
-    tenant: TenantContext,
-    projectId: string,
-    ruleId: string,
-    input: UpdateValuationWatchRuleRequest,
-  ): Promise<unknown>;
-  valuationAlerts(
-    tenant: TenantContext,
-    projectId: string,
-    query: ListValuationAlertsQuery,
-  ): Promise<unknown>;
-  transitionValuationAlert(
-    tenant: TenantContext,
-    projectId: string,
-    alertId: string,
-    input: TransitionValuationAlertRequest,
-  ): Promise<unknown>;
 }
 
 export interface ApiDependencies {
@@ -760,7 +522,6 @@ export interface ApiDependencies {
   sourceFolders?: SourceFolderService;
   globalUploads?: GlobalUploadService;
   sessionResources?: SessionResourcesService;
-  workflow?: ProjectWorkflowService;
   insights?: ProjectInsightsService;
   cloudAccounts?: {
     client: CloudAccountClient;

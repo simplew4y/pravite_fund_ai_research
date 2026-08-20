@@ -15,20 +15,15 @@ const WORKER_ENTRY = fileURLToPath(
 const OWNER_NAMESPACE = "00000000-0000-4000-8000-000000000081";
 const OTHER_NAMESPACE = "00000000-0000-4000-8000-000000000082";
 
-interface SeededInsights {
-  readonly projectId: string;
-  readonly itemId: string;
-  readonly trackingAlertId: string;
+interface SeededMemos {
   readonly memoSeriesId: string;
-  readonly valuationSeriesId: string;
-  readonly valuationVersion1Id: string;
-  readonly valuationVersion2Id: string;
-  readonly valuationAnalysisId: string;
-  readonly valuationRuleId: string;
-  readonly valuationAlertId: string;
+  readonly memoVersion1Id: string;
+  readonly memoVersion2Id: string;
+  readonly memoChangeEventId: string;
+  readonly memoItemVersionId: string;
 }
 
-describe("seeded tracking and valuation HTTP acceptance", () => {
+describe("memo HTTP acceptance", () => {
   let runtime: ApiRuntime | undefined;
   let otherTenantRuntime: ApiRuntime | undefined;
   let dataRoot: string | undefined;
@@ -41,7 +36,7 @@ describe("seeded tracking and valuation HTTP acceptance", () => {
     }
   });
 
-  it("preserves non-empty tracking and valuation reads, mutations, pagination and tenant scope", async () => {
+  it("serves memo listing, compare, generation, tenant scope and retired-route 404s", async () => {
     dataRoot = await mkdtemp(path.join(tmpdir(), "pf-insights-http-"));
     const config: ApiConfig = {
       host: "127.0.0.1",
@@ -61,7 +56,7 @@ describe("seeded tracking and valuation HTTP acceptance", () => {
       method: "POST",
       url: "/v1/projects",
       payload: {
-        name: "Seeded insights acceptance",
+        name: "Memo HTTP acceptance",
         companyName: "Acceptance Holdings",
         ticker: "000001.SZ",
       },
@@ -75,351 +70,181 @@ describe("seeded tracking and valuation HTTP acceptance", () => {
       "projects",
       project.id,
     );
-    const seeded = seedInsights(project.id, projectRoot);
+    const seeded = seedMemos(project.id, projectRoot);
 
-    const trackingOverview = await runtime.app.inject({
+    // (a) memo listing: series + versions pagination, seriesId filter.
+    const memoListing = await runtime.app.inject({
       method: "GET",
-      url: `/v1/projects/${project.id}/tracking?limit=1&offset=0`,
+      url: `/v1/projects/${project.id}/tracking/memos?limit=10&offset=0`,
     });
-    expect(trackingOverview.statusCode, trackingOverview.body).toBe(200);
-    expect(trackingOverview.json()).toMatchObject({
-      overview: {
-        datasetId: project.id,
-        counts: { risk: 1 },
-        unreadAlertCount: 1,
-      },
-      items: {
-        total: 1,
-        items: [
-          {
-            itemId: seeded.itemId,
-            status: "resolved",
-            currentVersion: {
-              content: "核心客户续约已经落地",
-              impact: "high",
-            },
-          },
-        ],
-      },
-      alerts: {
-        total: 1,
-        items: [
-          {
-            alertId: seeded.trackingAlertId,
-            status: "new",
-            priority: "high",
-          },
-        ],
-      },
-      watchRules: { total: 2, hasMore: true },
-      memoSeries: {
-        total: 1,
-        items: [
-          {
+    expect(memoListing.statusCode, memoListing.body).toBe(200);
+    expect(memoListing.json()).toMatchObject({
+      series: {
+        total: 2,
+        items: expect.arrayContaining([
+          expect.objectContaining({
             seriesId: seeded.memoSeriesId,
-            currentVersionNo: 1,
-            versionCount: 1,
-          },
-        ],
+            topic: "供应链",
+            currentVersionNo: 2,
+            versionCount: 2,
+          }),
+        ]),
       },
-      memoVersions: {
-        total: 1,
-        items: [{ topic: "客户集中度", sections: [{ sectionKey: "risk" }] }],
-      },
+      versions: { total: 3, limit: 10, offset: 0, hasMore: false },
     });
 
-    const trackingItems = await runtime.app.inject({
-      method: "GET",
-      url:
-        `/v1/projects/${project.id}/tracking/items` +
-        "?itemType=risk&status=resolved&limit=1&offset=0",
-    });
-    expect(trackingItems.statusCode, trackingItems.body).toBe(200);
-    expect(trackingItems.json()).toMatchObject({
-      total: 1,
-      limit: 1,
-      offset: 0,
-      hasMore: false,
-      items: [{ itemId: seeded.itemId, itemType: "risk" }],
-    });
-
-    const timeline = await runtime.app.inject({
-      method: "GET",
-      url:
-        `/v1/projects/${project.id}/tracking/items/` +
-        `${seeded.itemId}/timeline`,
-    });
-    expect(timeline.statusCode, timeline.body).toBe(200);
-    expect(timeline.json()).toMatchObject({
-      item: { itemId: seeded.itemId, status: "resolved" },
-      versions: [
-        { versionNo: 1, content: "核心客户续约仍存在不确定性" },
-        { versionNo: 2, content: "核心客户续约已经落地" },
-      ],
-      changes: [
-        {
-          changeType: "status_changed",
-          materiality: "high",
-          summary: "核心客户续约风险解除",
-        },
-      ],
-      observations: [
-        {
-          sourceType: "memo",
-          content: "投委会确认续约合同已经签署",
-        },
-      ],
-    });
-
-    const memoHistory = await runtime.app.inject({
+    const filteredListing = await runtime.app.inject({
       method: "GET",
       url:
         `/v1/projects/${project.id}/tracking/memos` +
         `?seriesId=${seeded.memoSeriesId}&limit=1&offset=0`,
     });
-    expect(memoHistory.statusCode, memoHistory.body).toBe(200);
-    expect(memoHistory.json()).toMatchObject({
-      series: {
-        total: 1,
-        items: [{ seriesId: seeded.memoSeriesId, versionCount: 1 }],
-      },
+    expect(filteredListing.statusCode, filteredListing.body).toBe(200);
+    expect(filteredListing.json()).toMatchObject({
+      series: { total: 2, limit: 1, offset: 0, hasMore: true },
       versions: {
-        total: 1,
+        total: 2,
+        limit: 1,
+        offset: 0,
+        hasMore: true,
         items: [
           {
+            memoVersionId: seeded.memoVersion2Id,
             seriesId: seeded.memoSeriesId,
-            seriesTitle: "客户集中度跟踪备忘录",
+            seriesTitle: "供应链跟踪备忘录",
+            versionNo: 2,
             sections: [
-              {
-                title: "风险结论",
-                evidenceIds: ["fact:customer-renewal"],
-              },
+              expect.objectContaining({ sectionKey: "overview" }),
+              expect.objectContaining({ sectionKey: "risk" }),
+              expect.objectContaining({ sectionKey: "catalyst" }),
             ],
           },
         ],
       },
     });
 
-    const initialTrackingRules = await runtime.app.inject({
+    // (b) memo compare: full section-change semantics plus memo-linked
+    // item changes (source_type='memo' item versions written through the
+    // workflow-store tracking repository).
+    const memoComparison = await runtime.app.inject({
       method: "GET",
       url:
-        `/v1/projects/${project.id}/tracking/watch-rules` +
-        "?limit=10&offset=0",
+        `/v1/projects/${project.id}/tracking/memos/compare` +
+        `?fromVersionId=${seeded.memoVersion1Id}` +
+        `&toVersionId=${seeded.memoVersion2Id}`,
     });
-    expect(initialTrackingRules.statusCode, initialTrackingRules.body).toBe(
-      200,
-    );
-    expect(initialTrackingRules.json()).toMatchObject({
-      total: 2,
-      items: expect.arrayContaining([
-        expect.objectContaining({ targetType: "risk", active: true }),
-        expect.objectContaining({ targetType: "catalyst", active: true }),
-      ]),
-    });
-
-    const createTrackingRule = await runtime.app.inject({
-      method: "POST",
-      url: `/v1/projects/${project.id}/tracking/watch-rules`,
-      payload: {
-        name: "客户续约专项规则",
-        targetType: "risk",
-        targetItemId: seeded.itemId,
-        query: { terms: ["续约", "合同"] },
-        minPriority: "high",
-        frequency: "daily",
-        active: true,
+    expect(memoComparison.statusCode, memoComparison.body).toBe(200);
+    expect(memoComparison.json()).toMatchObject({
+      fromVersion: {
+        memoVersionId: seeded.memoVersion1Id,
+        versionNo: 1,
       },
-    });
-    expect(createTrackingRule.statusCode, createTrackingRule.body).toBe(201);
-    const createdTrackingRule = createTrackingRule.json<{
-      ruleId: string;
-    }>();
-    expect(createTrackingRule.json()).toMatchObject({
-      datasetId: project.id,
-      name: "客户续约专项规则",
-      targetType: "risk",
-      targetItemId: seeded.itemId,
-      query: { terms: ["续约", "合同"] },
-      minPriority: "high",
-      frequency: "daily",
-      active: true,
-    });
-
-    const updateTrackingRule = await runtime.app.inject({
-      method: "PATCH",
-      url:
-        `/v1/projects/${project.id}/tracking/watch-rules/` +
-        createdTrackingRule.ruleId,
-      payload: {
-        name: "客户续约专项规则（归档）",
-        active: false,
+      toVersion: {
+        memoVersionId: seeded.memoVersion2Id,
+        versionNo: 2,
       },
-    });
-    expect(updateTrackingRule.statusCode, updateTrackingRule.body).toBe(200);
-    expect(updateTrackingRule.json()).toMatchObject({
-      ruleId: createdTrackingRule.ruleId,
-      name: "客户续约专项规则（归档）",
-      targetItemId: seeded.itemId,
-      minPriority: "high",
-      active: false,
-    });
-
-    const trackingAlerts = await runtime.app.inject({
-      method: "GET",
-      url:
-        `/v1/projects/${project.id}/tracking/alerts` +
-        "?status=new&limit=1&offset=0",
-    });
-    expect(trackingAlerts.statusCode, trackingAlerts.body).toBe(200);
-    expect(trackingAlerts.json()).toMatchObject({
-      total: 1,
-      items: [
+      sectionChanges: [
         {
-          alertId: seeded.trackingAlertId,
-          itemId: seeded.itemId,
-          evidenceIds: ["fact:customer-renewal"],
-          status: "new",
+          sectionKey: "catalyst",
+          changeType: "added",
+          oldContent: "",
+          newContent: "新产能预计四季度爬坡。",
+        },
+        {
+          sectionKey: "legacy",
+          changeType: "not_mentioned",
+          oldContent: "旧产线折旧已计提完毕。",
+          newContent: "",
+        },
+        {
+          sectionKey: "overview",
+          changeType: "unchanged",
+          oldContent: "公司基本面保持稳定。",
+          newContent: "公司基本面保持稳定。",
+        },
+        {
+          sectionKey: "risk",
+          changeType: "changed",
+          oldContent: "供应商切换仍在评估。",
+          newContent: "供应商切换方案已获批。",
         },
       ],
-    });
-
-    const updateTrackingAlert = await runtime.app.inject({
-      method: "PATCH",
-      url:
-        `/v1/projects/${project.id}/tracking/alerts/` +
-        seeded.trackingAlertId,
-      payload: { status: "acknowledged" },
-    });
-    expect(updateTrackingAlert.statusCode, updateTrackingAlert.body).toBe(
-      200,
-    );
-    expect(updateTrackingAlert.json()).toMatchObject({
-      alertId: seeded.trackingAlertId,
-      status: "acknowledged",
-      snoozedUntil: null,
-    });
-
-    const valuationVersions = await runtime.app.inject({
-      method: "GET",
-      url:
-        `/v1/projects/${project.id}/valuation/series/` +
-        `${seeded.valuationSeriesId}/versions?limit=1&offset=0`,
-    });
-    expect(valuationVersions.statusCode, valuationVersions.body).toBe(200);
-    expect(valuationVersions.json()).toMatchObject({
-      total: 2,
-      limit: 1,
-      offset: 0,
-      hasMore: true,
-      items: [
+      itemChanges: [
         {
-          modelVersionId: seeded.valuationVersion2Id,
-          documentVersionNo: 2,
-          originalFilename: "acceptance-dcf-v2.xlsx",
-        },
-      ],
-    });
-
-    const valuationComparison = await runtime.app.inject({
-      method: "GET",
-      url:
-        `/v1/projects/${project.id}/valuation/series/` +
-        `${seeded.valuationSeriesId}/compare` +
-        `?fromVersionId=${seeded.valuationVersion1Id}` +
-        `&toVersionId=${seeded.valuationVersion2Id}`,
-    });
-    expect(
-      valuationComparison.statusCode,
-      valuationComparison.body,
-    ).toBe(200);
-    expect(valuationComparison.json()).toMatchObject({
-      series: { seriesId: seeded.valuationSeriesId, name: "Acceptance DCF" },
-      fromVersion: { modelVersionId: seeded.valuationVersion1Id },
-      toVersion: { modelVersionId: seeded.valuationVersion2Id },
-      changes: [
-        {
-          changeType: "formula_changed",
+          changeEventId: seeded.memoChangeEventId,
+          newVersionId: seeded.memoItemVersionId,
+          changeType: "status_changed",
           materiality: "high",
-          summary: "WACC 公式纳入新增风险溢价",
-          evidenceIds: ["cell:acceptance-v1-b12", "cell:acceptance-v2-b12"],
-        },
-      ],
-      fromValues: [
-        {
-          modelVersionId: seeded.valuationVersion1Id,
-          valueNumeric: 0.085,
-          cellRef: "B12",
-        },
-      ],
-      toValues: [
-        {
-          modelVersionId: seeded.valuationVersion2Id,
-          valueNumeric: 0.09,
-          cellRef: "B12",
+          summary: "备忘录确认供应链风险进入缓解阶段",
+          details: { source: "memo-v2" },
         },
       ],
     });
 
-    const valuationAnalysis = await runtime.app.inject({
+    const incompleteComparison = await runtime.app.inject({
       method: "GET",
       url:
-        `/v1/projects/${project.id}/valuation/analyses/` +
-        seeded.valuationAnalysisId,
+        `/v1/projects/${project.id}/tracking/memos/compare` +
+        `?fromVersionId=${seeded.memoVersion1Id}`,
     });
-    expect(valuationAnalysis.statusCode, valuationAnalysis.body).toBe(200);
-    expect(valuationAnalysis.json()).toMatchObject({
-      analysisId: seeded.valuationAnalysisId,
-      datasetId: project.id,
-      seriesId: seeded.valuationSeriesId,
-      status: "completed",
-      valuationMethod: "DCF",
-      executiveSummary: "WACC 是当前估值最敏感的变量。",
-      investmentConclusion: "维持基础情景，持续验证风险溢价。",
-      analysis: {
-        keyFindings: [
-          {
-            claim: "WACC 上调压低目标价值。",
-            evidenceIds: ["cell:acceptance-v2-b12"],
-          },
-        ],
+    expect(incompleteComparison.statusCode).toBe(400);
+
+    // (c) memo generation: 202 enqueue, idempotent replay, evidence guard.
+    const generatePayload = {
+      idempotencyKey: "memo-http-generate-1",
+      instruction: "更新供应链风险结论",
+      topic: "供应链",
+      title: "供应链跟踪备忘录",
+    };
+    const generate = await runtime.app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/tracking/memos`,
+      payload: generatePayload,
+    });
+    expect(generate.statusCode, generate.body).toBe(202);
+    expect(generate.json()).toMatchObject({
+      created: true,
+      job: {
+        projectId: project.id,
+        type: "memo.generate",
+        status: "queued",
+        idempotencyKey: "memo-http-generate-1",
+        payload: {
+          datasetId: project.id,
+          instruction: "更新供应链风险结论",
+          topic: "供应链",
+          title: "供应链跟踪备忘录",
+        },
       },
     });
+    const generatedJob = generate.json<{ job: { id: string } }>().job;
 
-    const updateValuationRule = await runtime.app.inject({
-      method: "PATCH",
-      url:
-        `/v1/projects/${project.id}/valuation/watch-rules/` +
-        seeded.valuationRuleId,
-      payload: { active: false, minMateriality: "critical" },
+    const generateReplay = await runtime.app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/tracking/memos`,
+      payload: generatePayload,
     });
-    expect(updateValuationRule.statusCode, updateValuationRule.body).toBe(200);
-    expect(updateValuationRule.json()).toMatchObject({
-      ruleId: seeded.valuationRuleId,
-      seriesId: seeded.valuationSeriesId,
-      name: "重大公式变化",
-      minMateriality: "critical",
-      changeTypes: ["formula_changed"],
-      active: false,
+    expect(generateReplay.statusCode, generateReplay.body).toBe(202);
+    expect(generateReplay.json()).toMatchObject({
+      created: false,
+      job: { id: generatedJob.id, type: "memo.generate" },
     });
 
-    const updateValuationAlert = await runtime.app.inject({
-      method: "PATCH",
-      url:
-        `/v1/projects/${project.id}/valuation/alerts/` +
-        seeded.valuationAlertId,
-      payload: { status: "acknowledged" },
+    const invalidEvidence = await runtime.app.inject({
+      method: "POST",
+      url: `/v1/projects/${project.id}/tracking/memos`,
+      payload: {
+        idempotencyKey: "memo-http-generate-2",
+        instruction: "引用不存在的证据",
+        evidenceIds: ["fact:does-not-exist"],
+      },
     });
-    expect(updateValuationAlert.statusCode, updateValuationAlert.body).toBe(
-      200,
-    );
-    expect(updateValuationAlert.json()).toMatchObject({
-      alertId: seeded.valuationAlertId,
-      seriesId: seeded.valuationSeriesId,
-      changeId: expect.any(String),
-      status: "acknowledged",
-      snoozedUntil: null,
+    expect(invalidEvidence.statusCode, invalidEvidence.body).toBe(400);
+    expect(invalidEvidence.json()).toMatchObject({
+      error: "invalid_evidence_reference",
     });
 
+    // (d) tenant isolation: another namespace cannot see the project.
     otherTenantRuntime = await createApiRuntime({
       ...config,
       port: 6769,
@@ -432,85 +257,28 @@ describe("seeded tracking and valuation HTTP acceptance", () => {
     const foreignRequests = [
       {
         method: "GET" as const,
-        url: `/v1/projects/${project.id}/tracking`,
-      },
-      {
-        method: "GET" as const,
-        url: `/v1/projects/${project.id}/tracking/items`,
-      },
-      {
-        method: "GET" as const,
-        url:
-          `/v1/projects/${project.id}/tracking/items/` +
-          `${seeded.itemId}/timeline`,
-      },
-      {
-        method: "GET" as const,
         url: `/v1/projects/${project.id}/tracking/memos`,
       },
       {
         method: "GET" as const,
-        url: `/v1/projects/${project.id}/tracking/watch-rules`,
+        url:
+          `/v1/projects/${project.id}/tracking/memos/compare` +
+          `?fromVersionId=${seeded.memoVersion1Id}` +
+          `&toVersionId=${seeded.memoVersion2Id}`,
       },
       {
         method: "POST" as const,
-        url: `/v1/projects/${project.id}/tracking/watch-rules`,
+        url: `/v1/projects/${project.id}/tracking/memos`,
         payload: {
-          name: "Cross tenant rule",
-          targetType: "all",
+          idempotencyKey: "memo-cross-tenant",
+          instruction: "跨租户请求",
         },
       },
       {
-        method: "PATCH" as const,
-        url:
-          `/v1/projects/${project.id}/tracking/watch-rules/` +
-          createdTrackingRule.ruleId,
-        payload: { active: true },
-      },
-      {
-        method: "GET" as const,
-        url: `/v1/projects/${project.id}/tracking/alerts`,
-      },
-      {
-        method: "PATCH" as const,
-        url:
-          `/v1/projects/${project.id}/tracking/alerts/` +
-          seeded.trackingAlertId,
-        payload: { status: "dismissed" },
-      },
-      {
         method: "GET" as const,
         url:
-          `/v1/projects/${project.id}/valuation/series/` +
-          `${seeded.valuationSeriesId}/versions`,
-      },
-      {
-        method: "GET" as const,
-        url:
-          `/v1/projects/${project.id}/valuation/series/` +
-          `${seeded.valuationSeriesId}/compare` +
-          `?fromVersionId=${seeded.valuationVersion1Id}` +
-          `&toVersionId=${seeded.valuationVersion2Id}`,
-      },
-      {
-        method: "GET" as const,
-        url:
-          `/v1/projects/${project.id}/valuation/analyses/` +
-          seeded.valuationAnalysisId,
-      },
-      {
-        method: "PATCH" as const,
-        url:
-          `/v1/projects/${project.id}/valuation/watch-rules/` +
-          seeded.valuationRuleId,
-        payload: { active: true },
-      },
-      {
-        method: "PATCH" as const,
-        url:
-          `/v1/projects/${project.id}/valuation/alerts/` +
-          seeded.valuationAlertId,
-        payload: { status: "dismissed" },
+          `/v1/projects/${project.id}/tracking/memos/` +
+          `${seeded.memoVersion2Id}/preview`,
       },
     ];
     for (const request of foreignRequests) {
@@ -521,238 +289,130 @@ describe("seeded tracking and valuation HTTP acceptance", () => {
         `${request.method} ${request.url}: ${response.body}`,
       ).toBe(404);
     }
+
+    // (e) the retired pre/post-investment surface is gone entirely.
+    for (const url of [
+      `/v1/projects/${project.id}/tracking`,
+      `/v1/projects/${project.id}/valuation`,
+      `/v1/projects/${project.id}/workflow`,
+    ]) {
+      // eslint-disable-next-line no-await-in-loop
+      const response = await runtime.app.inject({ method: "GET", url });
+      expect(response.statusCode, `${url}: ${response.body}`).toBe(404);
+    }
   });
 });
 
-function seedInsights(projectId: string, projectRoot: string): SeededInsights {
+function seedMemos(projectId: string, projectRoot: string): SeededMemos {
   const seeder = new ProjectResearchStoreManager();
   try {
-    const workflow = seeder.getWorkflow(projectRoot);
-    const tracking = workflow.tracking;
-    const firstItem = tracking.appendItemVersion({
+    const tracking = seeder.getWorkflow(projectRoot).tracking;
+    const memo1 = tracking.saveMemoVersion({
       datasetId: projectId,
-      itemType: "risk",
-      canonicalKey: "customer-renewal",
-      title: "核心客户续约",
-      status: "monitoring",
-      sourceType: "document",
-      sourceId: "customer-renewal-v1",
-      content: "核心客户续约仍存在不确定性",
-      state: "monitoring",
-      impact: "high",
-      evidenceIds: ["fact:customer-renewal-risk"],
-    });
-    const secondItem = tracking.appendItemVersion({
-      datasetId: projectId,
-      itemType: "risk",
-      canonicalKey: "customer-renewal",
-      title: "核心客户续约",
-      status: "resolved",
-      sourceType: "document",
-      sourceId: "customer-renewal-v2",
-      content: "核心客户续约已经落地",
-      state: "resolved",
-      impact: "high",
-      evidenceIds: ["fact:customer-renewal"],
-      change: {
-        changeType: "status_changed",
-        materiality: "high",
-        summary: "核心客户续约风险解除",
-        details: { from: "monitoring", to: "resolved" },
-      },
-    });
-    tracking.recordObservation({
-      datasetId: projectId,
-      itemId: firstItem.item.itemId,
-      itemVersionId: secondItem.version.itemVersionId,
-      sourceType: "memo",
-      sourceId: "investment-committee-confirmation",
-      content: "投委会确认续约合同已经签署",
-      evidenceIds: ["fact:customer-renewal"],
-      extracted: { confidence: 0.98 },
-    });
-    const trackingRule = tracking.ensureDefaultWatchRules(projectId)[0]!;
-    const trackingAlert = tracking.createAlert({
-      datasetId: projectId,
-      ruleId: trackingRule.ruleId,
-      itemId: firstItem.item.itemId,
-      changeEventId: secondItem.change!.changeEventId,
-      alertType: "status_changed",
-      priority: "high",
-      title: "核心客户续约状态变化",
-      summary: "核心客户续约风险已经解除",
-      whyItMatters: "客户集中度风险下降",
-      evidenceIds: ["fact:customer-renewal"],
-      dedupeKey: "customer-renewal-status-v2",
-    });
-    const memo = tracking.saveMemoVersion({
-      datasetId: projectId,
-      topic: "客户集中度",
-      title: "客户集中度跟踪备忘录",
-      asOfDate: "2026-07-31",
+      topic: "供应链",
+      title: "供应链跟踪备忘录",
+      asOfDate: "2026-06-30",
       sourceType: "agent_generated",
       status: "completed",
-      contentHash: "memo-customer-renewal-v1",
-      idempotencyKey: "memo-customer-renewal-v1",
+      contentHash: "memo-supply-chain-v1",
+      idempotencyKey: "memo-supply-chain-v1",
       sections: [
         {
+          sectionKey: "overview",
+          title: "概览",
+          content: "公司基本面保持稳定。",
+          evidenceIds: [],
+        },
+        {
           sectionKey: "risk",
-          title: "风险结论",
-          content: "续约落地后，客户集中度风险边际下降。",
-          evidenceIds: ["fact:customer-renewal"],
+          title: "供应链风险",
+          content: "供应商切换仍在评估。",
+          evidenceIds: ["fact:supplier-review"],
+        },
+        {
+          sectionKey: "legacy",
+          title: "历史事项",
+          content: "旧产线折旧已计提完毕。",
+          evidenceIds: [],
         },
       ],
     }).record;
-
-    const valuation = workflow.valuation;
-    const series = valuation.upsertSeries({
+    const memo2 = tracking.saveMemoVersion({
       datasetId: projectId,
-      seriesKey: "acceptance-dcf",
-      name: "Acceptance DCF",
-      companyName: "Acceptance Holdings",
-      companyTicker: "000001.SZ",
-      modelType: "dcf_model",
-    });
-    const firstVersion = valuation.saveModelVersion({
-      datasetId: projectId,
-      seriesId: series.seriesId,
-      docId: "acceptance-model-v1",
-      logicalDocId: "acceptance-model",
-      documentVersionNo: 1,
-      checksum: "a".repeat(64),
-      snapshotHash: "b".repeat(64),
-      originalFilename: "acceptance-dcf-v1.xlsx",
-      modelType: "dcf_model",
-      nodeCount: 1,
-      formulaNodeCount: 1,
-      analyzerVersion: "valuation-tracking-v1",
-      idempotencyKey: "acceptance-model-v1",
-    }).value;
-    const secondVersion = valuation.saveModelVersion({
-      datasetId: projectId,
-      seriesId: series.seriesId,
-      docId: "acceptance-model-v2",
-      logicalDocId: "acceptance-model",
-      documentVersionNo: 2,
-      parentModelVersionId: firstVersion.modelVersionId,
-      checksum: "c".repeat(64),
-      snapshotHash: "d".repeat(64),
-      originalFilename: "acceptance-dcf-v2.xlsx",
-      modelType: "dcf_model",
-      nodeCount: 1,
-      formulaNodeCount: 1,
-      analyzerVersion: "valuation-tracking-v1",
-      idempotencyKey: "acceptance-model-v2",
-    }).value;
-    const node = valuation.upsertNode({
-      seriesId: series.seriesId,
-      canonicalKey: "assumption:wacc:2026:base",
-      nodeKind: "assumption",
-      metricKey: "wacc",
-      displayName: "WACC",
-      scope: "company",
-      period: "2026",
-      scenario: "base",
-    });
-    valuation.saveNodeValue({
-      modelVersionId: firstVersion.modelVersionId,
-      nodeId: node.nodeId,
-      valueNumeric: 0.085,
-      unit: "percent",
-      formula: "=B8+B9",
-      formulaFingerprint: "wacc-v1",
-      sheetName: "DCF",
-      cellRef: "B12",
-      evidenceId: "cell:acceptance-v1-b12",
-      qualityStatus: "verified",
-      confidence: 0.98,
-    });
-    valuation.saveNodeValue({
-      modelVersionId: secondVersion.modelVersionId,
-      nodeId: node.nodeId,
-      valueNumeric: 0.09,
-      unit: "percent",
-      formula: "=B8+B9+B10",
-      formulaFingerprint: "wacc-v2",
-      sheetName: "DCF",
-      cellRef: "B12",
-      evidenceId: "cell:acceptance-v2-b12",
-      qualityStatus: "verified",
-      confidence: 0.98,
-    });
-    const valuationRule = valuation.upsertWatchRule({
-      datasetId: projectId,
-      seriesId: series.seriesId,
-      name: "重大公式变化",
-      minMateriality: "medium",
-      changeTypes: ["formula_changed"],
-      idempotencyKey: "material-formula-changes",
-      active: true,
-    });
-    valuation.recordChange({
-      datasetId: projectId,
-      seriesId: series.seriesId,
-      fromModelVersionId: firstVersion.modelVersionId,
-      toModelVersionId: secondVersion.modelVersionId,
-      nodeId: node.nodeId,
-      changeType: "formula_changed",
-      materiality: "high",
-      summary: "WACC 公式纳入新增风险溢价",
-      oldValue: { formula: "=B8+B9", value: 0.085 },
-      newValue: { formula: "=B8+B9+B10", value: 0.09 },
-      absoluteChange: 0.005,
-      relativeChange: 0.0588,
-      evidenceIds: ["cell:acceptance-v1-b12", "cell:acceptance-v2-b12"],
-    });
-    const valuationAlert = valuation.listAlerts(projectId, {
-      limit: 10,
-      offset: 0,
-    }).items[0]!;
-    const analysis = valuation.createAgentAnalysis({
-      datasetId: projectId,
-      seriesId: series.seriesId,
-      baseModelVersionId: secondVersion.modelVersionId,
-      comparisonModelVersionId: firstVersion.modelVersionId,
-      focus: "WACC 敏感性",
-      agentVersion: "pi-agent-v1",
-      idempotencyKey: "acceptance-analysis-v1",
-    }).value;
-    valuation.transitionAgentAnalysis(projectId, analysis.analysisId, {
-      status: "running",
-      planner: {
-        dimensions: ["assumptions"],
-        selectedEvidenceIds: ["cell:acceptance-v2-b12"],
-      },
-    });
-    valuation.transitionAgentAnalysis(projectId, analysis.analysisId, {
+      topic: "供应链",
+      title: "供应链跟踪备忘录",
+      asOfDate: "2026-07-31",
+      sourceType: "agent_generated",
       status: "completed",
-      valuationMethod: "DCF",
-      executiveSummary: "WACC 是当前估值最敏感的变量。",
-      investmentConclusion: "维持基础情景，持续验证风险溢价。",
-      analysis: {
-        keyFindings: [
-          {
-            claim: "WACC 上调压低目标价值。",
-            evidenceIds: ["cell:acceptance-v2-b12"],
-          },
-        ],
+      contentHash: "memo-supply-chain-v2",
+      idempotencyKey: "memo-supply-chain-v2",
+      sections: [
+        {
+          sectionKey: "overview",
+          title: "概览",
+          content: "公司基本面保持稳定。",
+          evidenceIds: [],
+        },
+        {
+          sectionKey: "risk",
+          title: "供应链风险",
+          content: "供应商切换方案已获批。",
+          evidenceIds: ["fact:supplier-approved"],
+        },
+        {
+          sectionKey: "catalyst",
+          title: "催化剂",
+          content: "新产能预计四季度爬坡。",
+          evidenceIds: [],
+        },
+      ],
+    }).record;
+    tracking.saveMemoVersion({
+      datasetId: projectId,
+      topic: "客户集中度",
+      title: "客户集中度备忘录",
+      asOfDate: "2026-07-31",
+      sourceType: "agent_generated",
+      status: "completed",
+      contentHash: "memo-concentration-v1",
+      idempotencyKey: "memo-concentration-v1",
+      sections: [],
+    });
+    tracking.appendItemVersion({
+      datasetId: projectId,
+      itemType: "risk",
+      canonicalKey: "supplier-transition",
+      title: "供应商切换",
+      sourceType: "document",
+      sourceId: "supplier-review-document",
+      content: "供应商切换仍在评估",
+      state: "monitoring",
+      evidenceIds: ["fact:supplier-review"],
+    });
+    const memoLinkedItem = tracking.appendItemVersion({
+      datasetId: projectId,
+      itemType: "risk",
+      canonicalKey: "supplier-transition",
+      title: "供应商切换",
+      sourceType: "memo",
+      sourceId: memo2.memoVersionId,
+      content: "供应商切换方案已获批",
+      state: "mitigating",
+      evidenceIds: ["fact:supplier-approved"],
+      change: {
+        changeType: "status_changed",
+        materiality: "high",
+        summary: "备忘录确认供应链风险进入缓解阶段",
+        details: { source: "memo-v2" },
       },
-      evidenceIds: ["cell:acceptance-v2-b12"],
-      rawResponse: "completed",
-      modelName: "pi-agent",
     });
 
     return {
-      projectId,
-      itemId: firstItem.item.itemId,
-      trackingAlertId: trackingAlert.record.alertId,
-      memoSeriesId: memo.seriesId,
-      valuationSeriesId: series.seriesId,
-      valuationVersion1Id: firstVersion.modelVersionId,
-      valuationVersion2Id: secondVersion.modelVersionId,
-      valuationAnalysisId: analysis.analysisId,
-      valuationRuleId: valuationRule.ruleId,
-      valuationAlertId: valuationAlert.alertId,
+      memoSeriesId: memo1.seriesId,
+      memoVersion1Id: memo1.memoVersionId,
+      memoVersion2Id: memo2.memoVersionId,
+      memoChangeEventId: memoLinkedItem.change!.changeEventId,
+      memoItemVersionId: memoLinkedItem.version.itemVersionId,
     };
   } finally {
     seeder.close();

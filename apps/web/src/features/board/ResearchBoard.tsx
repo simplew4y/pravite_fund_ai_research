@@ -14,7 +14,7 @@ import { deleteDocuments } from "../../api/client";
 import {
   addDocumentToSession,
   compareMemoVersions,
-  fetchTracking,
+  fetchMemoVersions,
   generateMemo,
   memoDownloadUrl,
 } from "../../api/insights";
@@ -35,10 +35,6 @@ import { AssetsPanel } from "./AssetsPanel";
 import { DocumentPreview } from "./DocumentPreview";
 import { JobsBadge } from "./JobsBadge";
 import { MemoDiff } from "./MemoDiff";
-import { RisksDeepPanel } from "./RisksDeepPanel";
-import { ValuationDeepPanel } from "./ValuationDeepPanel";
-import { WorkflowGraph } from "../workflow/WorkflowGraph";
-import { WorkflowPanel } from "../workflow/WorkflowPanel";
 
 function text(record: Record<string, unknown>, ...keys: string[]): string {
   for (const key of keys) {
@@ -308,8 +304,8 @@ function MemoPanel({ projectId }: { projectId: string }) {
   const { t } = useT();
   const info = useServerInfo();
   const tracking = useQuery({
-    queryKey: ["tracking", projectId],
-    queryFn: () => fetchTracking(projectId),
+    queryKey: ["memo-versions", projectId],
+    queryFn: () => fetchMemoVersions(projectId),
     enabled: info.data?.insights_store === true,
   });
   const [compareFrom, setCompareFrom] = useState<string | null>(null);
@@ -333,7 +329,7 @@ function MemoPanel({ projectId }: { projectId: string }) {
   if (tracking.isPending) return <p className="text-muted">{t("common.loading")}</p>;
   if (tracking.isError) return <p className="error-text">{t("common.error")}</p>;
 
-  const versions = tracking.data.memoVersions;
+  const versions = tracking.data.versions;
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -361,7 +357,7 @@ function MemoPanel({ projectId }: { projectId: string }) {
         return (
           <div key={id} className="doc-row">
             <span className="title">
-              v{text(version, "versionNo", "version")} · {text(version, "title", "topic")}
+              v{text(version, "versionNo", "version")} · {text(version, "seriesTitle", "topic")}
             </span>
             <button
               className="btn btn-ghost"
@@ -400,12 +396,6 @@ function MemoPanel({ projectId }: { projectId: string }) {
 
 export function ResearchBoard({ projectId }: { projectId: string }) {
   const { t } = useT();
-  const [workflowOpen, setWorkflowOpen] = useState(false);
-
-  // The graph modal is project-scoped; never keep it open across a switch.
-  useEffect(() => {
-    setWorkflowOpen(false);
-  }, [projectId]);
 
   return (
     <aside className="app-board">
@@ -419,25 +409,10 @@ export function ResearchBoard({ projectId }: { projectId: string }) {
         <h4>{t("board.assets")}</h4>
         <AssetsPanel projectId={projectId} />
       </section>
-      <section className="board-section" aria-label={t("board.workflow")}>
-        <h4>{t("board.workflow")}</h4>
-        <WorkflowPanel projectId={projectId} onOpen={() => setWorkflowOpen(true)} />
-      </section>
       <section className="board-section" aria-label={t("board.memo")}>
         <h4>{t("board.memo")}</h4>
         <MemoPanel projectId={projectId} />
       </section>
-      <section className="board-section" aria-label={t("board.valuation")}>
-        <h4>{t("board.valuation")}</h4>
-        <ValuationDeepPanel projectId={projectId} />
-      </section>
-      <section className="board-section" aria-label={t("board.risks")}>
-        <h4>{t("board.risks")}</h4>
-        <RisksDeepPanel projectId={projectId} />
-      </section>
-      {workflowOpen ? (
-        <WorkflowGraph projectId={projectId} onClose={() => setWorkflowOpen(false)} />
-      ) : null}
     </aside>
   );
 }

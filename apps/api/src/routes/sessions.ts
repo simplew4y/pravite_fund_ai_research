@@ -12,15 +12,12 @@ import {
   createProjectRequestSchema,
   createSessionRequestSchema,
   createSourceFolderRequestSchema,
-  completeWorkflowNodeRequestSchema,
   compactSessionRequestSchema,
   compareMemoVersionsQuerySchema,
   compareValuationVersionsQuerySchema,
   createTrackingWatchRuleRequestSchema,
   createValuationAgentAnalysisRequestSchema,
   createValuationWatchRuleRequestSchema,
-  createWorkflowAssumptionRequestSchema,
-  createWorkflowReportRequestSchema,
   deleteResearchAssetsRequestSchema,
   deleteResearchDocumentsRequestSchema,
   deriveValuationModelRequestSchema,
@@ -34,11 +31,9 @@ import {
   globalUploadBatchIdSchema,
   globalUploadItemIdSchema,
   identifierSchema,
-  initializeWorkflowRequestSchema,
   listJobsQuerySchema,
   listGlobalUploadBatchesQuerySchema,
   listGlobalUploadItemsQuerySchema,
-  listWorkflowAssumptionsQuerySchema,
   listSessionAttachmentsQuerySchema,
   listSessionResourcesQuerySchema,
   listMemoVersionsQuerySchema,
@@ -55,12 +50,9 @@ import {
   runTrackingScanRequestSchema,
   runValuationTrackingRequestSchema,
   saveResearchAssetRequestSchema,
-  selectWorkflowNodeRequestSchema,
   sendMessageRequestSchema,
   sessionResourceIdSchema,
   SESSION_ATTACHMENT_MAX_UPLOAD_BYTES,
-  setWorkflowContextRequestSchema,
-  startWorkflowNodeRequestSchema,
   steerSessionRequestSchema,
   sourceFolderIdSchema,
   type SessionEvent,
@@ -131,7 +123,6 @@ export function registerSessionRoutes(ctx: RouteContext): void {
     requireGlobalUploads,
     requireSessionResources,
     sourceFolderSnapshot,
-    requireWorkflow,
     requireInsights,
     readCloudSession,
     freshCloudSession,
@@ -143,7 +134,7 @@ export function registerSessionRoutes(ctx: RouteContext): void {
   void setSessionCookie; void clearSessionCookie; void disablePrivateCaching;
   void requireCloudAccounts; void requireJobs; void requireResearch;
   void requireSourceFolders; void requireGlobalUploads; void requireSessionResources;
-  void sourceFolderSnapshot; void requireWorkflow; void requireInsights;
+  void sourceFolderSnapshot; void requireInsights;
   void readCloudSession; void freshCloudSession; void proxyCloudJson;
   void tenantFor; void tenantAndModelAccessFor;
 

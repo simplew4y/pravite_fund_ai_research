@@ -10,7 +10,6 @@ import {
   excelSourcePayloadSchema,
   excelSourceQuerySchema,
   jobSchema,
-  listWorkflowAssumptionsQuerySchema,
   listSessionChildrenQuerySchema,
   pdfSourcePageQuerySchema,
   pdfSourcePageSchema,
@@ -64,32 +63,6 @@ describe("shared control-plane contracts", () => {
         type: "document.ingest",
         idempotencyKey: "document-hash-v1",
         maxAttempts: 21,
-      }),
-    ).toThrow();
-  });
-
-  it("bounds workflow assumption history filters", () => {
-    expect(
-      listWorkflowAssumptionsQuerySchema.parse({
-        limit: "25",
-        offset: "50",
-        status: "resolved",
-      }),
-    ).toEqual({
-      limit: 25,
-      offset: 50,
-      status: "resolved",
-    });
-    expect(
-      listWorkflowAssumptionsQuerySchema.parse({}),
-    ).toEqual({
-      limit: 50,
-      offset: 0,
-    });
-    expect(() =>
-      listWorkflowAssumptionsQuerySchema.parse({
-        limit: "501",
-        status: "deleted",
       }),
     ).toThrow();
   });

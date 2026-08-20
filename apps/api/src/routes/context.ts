@@ -13,15 +13,12 @@ import {
   createProjectRequestSchema,
   createSessionRequestSchema,
   createSourceFolderRequestSchema,
-  completeWorkflowNodeRequestSchema,
   compactSessionRequestSchema,
   compareMemoVersionsQuerySchema,
   compareValuationVersionsQuerySchema,
   createTrackingWatchRuleRequestSchema,
   createValuationAgentAnalysisRequestSchema,
   createValuationWatchRuleRequestSchema,
-  createWorkflowAssumptionRequestSchema,
-  createWorkflowReportRequestSchema,
   deleteResearchAssetsRequestSchema,
   deleteResearchDocumentsRequestSchema,
   deriveValuationModelRequestSchema,
@@ -35,11 +32,9 @@ import {
   globalUploadBatchIdSchema,
   globalUploadItemIdSchema,
   identifierSchema,
-  initializeWorkflowRequestSchema,
   listJobsQuerySchema,
   listGlobalUploadBatchesQuerySchema,
   listGlobalUploadItemsQuerySchema,
-  listWorkflowAssumptionsQuerySchema,
   listSessionAttachmentsQuerySchema,
   listSessionResourcesQuerySchema,
   listMemoVersionsQuerySchema,
@@ -56,12 +51,9 @@ import {
   runTrackingScanRequestSchema,
   runValuationTrackingRequestSchema,
   saveResearchAssetRequestSchema,
-  selectWorkflowNodeRequestSchema,
   sendMessageRequestSchema,
   sessionResourceIdSchema,
   SESSION_ATTACHMENT_MAX_UPLOAD_BYTES,
-  setWorkflowContextRequestSchema,
-  startWorkflowNodeRequestSchema,
   steerSessionRequestSchema,
   sourceFolderIdSchema,
   type SessionEvent,
@@ -223,17 +215,6 @@ export function createRouteContext(
       service.listAssignments(tenant, projectId),
     ]);
     return { folders, assignments };
-  }
-
-  function requireWorkflow() {
-    if (!dependencies.workflow) {
-      throw new DomainError(
-        "Project workflow service is not enabled",
-        "workflow_store_disabled",
-        503,
-      );
-    }
-    return dependencies.workflow;
   }
 
   function requireInsights() {
@@ -416,7 +397,6 @@ export function createRouteContext(
     requireGlobalUploads,
     requireSessionResources,
     sourceFolderSnapshot,
-    requireWorkflow,
     requireInsights,
     readCloudSession,
     freshCloudSession,

@@ -15,17 +15,11 @@ type ComputeOperation = ComputeRequest["operation"];
 
 export type ComputeBackedJobType =
   | "document.ingest"
-  | "report.generate"
-  | "valuation.extract"
-  | "valuation.derive"
-  | "market.refresh";
+  | "report.generate";
 
 export const COMPUTE_BACKED_JOB_TYPES: readonly ComputeBackedJobType[] = [
   "document.ingest",
   "report.generate",
-  "valuation.extract",
-  "valuation.derive",
-  "market.refresh",
 ];
 
 export interface ComputeJob
@@ -120,8 +114,6 @@ function operationForJob(
       explicit !== "extract_document" &&
       explicit !== "render_pdf_page" &&
       explicit !== "extract_workbook" &&
-      explicit !== "derive_workbook" &&
-      explicit !== "fetch_market_data" &&
       explicit !== "render_report"
     ) {
       throw new InvalidComputeJobError(
@@ -136,12 +128,6 @@ function operationForJob(
       return inferDocumentOperation(inputPath);
     case "report.generate":
       return "render_report";
-    case "valuation.extract":
-      return "extract_workbook";
-    case "valuation.derive":
-      return "derive_workbook";
-    case "market.refresh":
-      return "fetch_market_data";
     default:
       throw new InvalidComputeJobError(
         `Job type ${job.type} is not backed by the compute worker`,
@@ -321,45 +307,6 @@ export function validateComputeResult(
       nonNegativeMetric(response, "pageCount");
       nonNegativeMetric(response, "width");
       nonNegativeMetric(response, "height");
-      break;
-    }
-    case "derive_workbook": {
-      const workbook = artifactWithMediaType(
-        response,
-        (type) =>
-          type ===
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-          type === "application/vnd.ms-excel.sheet.macroenabled.12",
-      );
-      if (
-        records.mediaType.toLowerCase() !== "application/json" ||
-        jsonManifest === undefined ||
-        workbook === undefined
-      ) {
-        throw new InvalidComputeResultError(
-          "derive_workbook must return a workbook and JSON manifest",
-        );
-      }
-      if (response.metrics.sourceOverwritten !== false) {
-        throw new InvalidComputeResultError(
-          "derive_workbook must attest sourceOverwritten=false",
-        );
-      }
-      nonNegativeMetric(response, "changeCount");
-      break;
-    }
-    case "fetch_market_data": {
-      if (
-        records.mediaType.toLowerCase() !== "application/x-ndjson" ||
-        jsonManifest === undefined ||
-        typeof response.metrics.provider !== "string" ||
-        response.metrics.adjustment !== "raw"
-      ) {
-        throw new InvalidComputeResultError(
-          "fetch_market_data must return raw normalized NDJSON and a manifest",
-        );
-      }
-      nonNegativeMetric(response, "barCount");
       break;
     }
     case "render_report": {

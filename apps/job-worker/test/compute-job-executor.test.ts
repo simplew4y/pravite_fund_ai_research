@@ -14,7 +14,7 @@ import {
 } from "../src/compute-job-executor.js";
 
 function job(
-  type: "document.ingest" | "valuation.extract" = "document.ingest",
+  type: "document.ingest" = "document.ingest",
   payload: Record<string, unknown> = {},
 ) {
   return {
@@ -79,16 +79,6 @@ describe("computeRequestForJob", () => {
         }),
       ).operation,
     ).toBe("extract_document");
-  });
-
-  it("maps valuation extraction to workbook extraction", () => {
-    expect(
-      computeRequestForJob(
-        job("valuation.extract", {
-          inputPath: path.resolve("/tmp/model.xlsx"),
-        }),
-      ).operation,
-    ).toBe("extract_workbook");
   });
 
   it("uses a deterministic, bounded request id per attempt", () => {
@@ -276,47 +266,6 @@ describe("validateComputeResult", () => {
             text: 2,
           },
         },
-        error: null,
-      }),
-    ).toThrow(InvalidComputeResultError);
-  });
-
-  it("accepts normalized market records and manifest", () => {
-    expect(() =>
-      validateComputeResult(request("fetch_market_data"), {
-        protocolVersion: 1,
-        requestId: "request-validate",
-        status: "completed",
-        recordsFile: "market.ndjson",
-        artifacts: [
-          artifact("market.ndjson", "application/x-ndjson"),
-          artifact("manifest.json", "application/json"),
-        ],
-        metrics: {
-          provider: "fixture",
-          adjustment: "raw",
-          barCount: 3,
-        },
-        error: null,
-      }),
-    ).not.toThrow();
-  });
-
-  it("rejects a derived workbook without a no-overwrite attestation", () => {
-    expect(() =>
-      validateComputeResult(request("derive_workbook"), {
-        protocolVersion: 1,
-        requestId: "request-validate",
-        status: "completed",
-        recordsFile: "manifest.json",
-        artifacts: [
-          artifact(
-            "derived.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          ),
-          artifact("manifest.json", "application/json"),
-        ],
-        metrics: { changeCount: 1, sourceOverwritten: true },
         error: null,
       }),
     ).toThrow(InvalidComputeResultError);

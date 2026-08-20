@@ -32,7 +32,6 @@ export const apiHttpPlugin = defineKernelPlugin<{ config: ApiConfig }>({
     "sourceFolders",
     "sessionResources",
     "globalUploads",
-    "workflow",
     "insights",
     "sessions",
   ],
@@ -48,7 +47,6 @@ export const apiHttpPlugin = defineKernelPlugin<{ config: ApiConfig }>({
       sourceFolders: ctx.sourceFolders,
       globalUploads: ctx.globalUploads,
       sessionResources: ctx.sessionResources,
-      workflow: ctx.workflow,
       insights: ctx.insights,
       ...(identity.cloudAccounts === undefined
         ? {}
